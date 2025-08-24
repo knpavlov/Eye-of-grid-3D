@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Eye of Grid — Complete 3D</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; color: #e2e8f0; font-family: system-ui, sans-serif; }
+    #ui { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+    .ui-panel { pointer-events: auto; }
+    #three-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+    
+    /* Мана орбы */
+    .mana-bar { display: flex; gap: 6px; align-items: center; }
+    .mana-orb { 
+      width: 18px; height: 18px; border-radius: 50%; 
+      background: radial-gradient(circle at 30% 30%, #fff, #8bd5ff 30%, #1ea0ff 70%, #0a67b7); 
+      box-shadow: 0 0 10px rgba(30,160,255,0.8); 
+    }
+    .mana-slot { 
+      width: 18px; height: 18px; border-radius: 50%; 
+      border: 1px solid rgba(255,255,255,0.25); 
+      background: rgba(255,255,255,0.06); 
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.5); 
+    }
+    
+    /* Панели */
+    .overlay-panel { background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 16px; }
+    /* Оверлеи баннеров */
+    .banner { pointer-events:none; }
+    .turnBanner { animation: turnslide 2600ms ease-in-out both; }
+    @keyframes turnslide { 0%{ transform:translateX(-120%)} 20%{ transform:translateX(0)} 80%{ transform:translateX(0)} 100%{ transform:translateX(140%) } }
+    .battlePop { animation: pop 1100ms ease both; }
+    @keyframes pop { 0%{ transform:scale(.6); opacity:0 } 40%{ transform:scale(1.06); opacity:1 } 100%{ transform:scale(1); opacity:.96 } }
+  </style>
+  <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+</head>
+<body>
+  <canvas id="three-canvas"></canvas>
+  
+  <div id="ui">
+    <!-- Основные контролы -->
+    <div class="ui-panel fixed right-4 top-4 space-y-3 z-20">
+      <div class="overlay-panel px-4 py-2 text-sm">
+        <div id="turn-info">Ход: 1</div>
+        <div id="active-player">Активный: Игрок A</div>
+      </div>
+      
+      <div class="overlay-panel px-4 py-2">
+        <div class="text-sm mb-2">Мана:</div>
+        <div class="mana-bar" id="mana-display"></div>
+      </div>
+      
+      <div class="overlay-panel px-4 py-2 text-sm" id="control-info">
+        Контроль: A 0 • B 0
+      </div>
+      
+      <div class="flex gap-2">
+        <button id="end-turn-btn" class="overlay-panel px-4 py-2 text-sm bg-amber-600 hover:bg-amber-700 transition-colors">
+          Завершить ход
+        </button>
+        <button id="log-btn" class="overlay-panel px-4 py-2 text-sm bg-slate-600 hover:bg-slate-700 transition-colors">
+          Лог
+        </button>
+      </div>
+      
+      <div class="flex gap-2">
+        <button id="help-btn" class="overlay-panel px-4 py-2 text-sm bg-slate-600 hover:bg-slate-700 transition-colors">
+          Помощь
+        </button>
+        <button id="new-game-btn" class="overlay-panel px-4 py-2 text-sm bg-slate-600 hover:bg-slate-700 transition-colors">
+          Новая игра
+        </button>
+      </div>
+    </div>
+    
+    <!-- Панель логов -->
+    <div id="log-panel" class="ui-panel fixed right-4 top-4 w-96 h-96 overlay-panel p-4 hidden z-30">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-lg font-semibold">Журнал событий</h3>
+        <button id="close-log-btn" class="text-xl">&times;</button>
+      </div>
+      <div id="log-content" class="h-full overflow-y-auto text-sm space-y-1"></div>
+    </div>
+    
+    <!-- Панель помощи -->
+    <div id="help-panel" class="ui-panel fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden z-40">
+      <div class="overlay-panel p-6 max-w-lg">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-xl font-semibold">Как играть</h3>
+          <button id="close-help-btn" class="text-xl">&times;</button>
+        </div>
+        <div class="space-y-3 text-sm">
+          <p>• Перетаскивайте карты существ на игровое поле</p>
+          <p>• Выбирайте направление после размещения</p>
+          <p>• Кликайте по своим существам для атаки или поворота</p>
+          <p>• Используйте заклинания, выбрав карту и цель</p>
+          <p>• Победа: контролируйте 5+ клеток в конце хода</p>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Панель выбора направления -->
+    <div id="orientation-panel" class="ui-panel fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden z-40">
+      <div class="overlay-panel p-6">
+        <div class="text-center mb-4">Выберите направление</div>
+        <div class="grid grid-cols-3 gap-2 w-48 mx-auto">
+          <div></div>
+          <button data-dir="N" class="overlay-panel px-4 py-2 hover:bg-slate-700">↑</button>
+          <div></div>
+          <button data-dir="W" class="overlay-panel px-4 py-2 hover:bg-slate-700">←</button>
+          <div class="overlay-panel px-4 py-2 text-center">•</div>
+          <button data-dir="E" class="overlay-panel px-4 py-2 hover:bg-slate-700">→</button>
+          <div></div>
+          <button data-dir="S" class="overlay-panel px-4 py-2 hover:bg-slate-700">↓</button>
+          <div></div>
+        </div>
+        <div class="text-center mt-4">
+          <button id="cancel-orient-btn" class="overlay-panel px-4 py-2 bg-red-600 hover:bg-red-700">Отмена</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Панель действий с существом -->
+    <div id="unit-action-panel" class="ui-panel fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden z-40">
+      <div class="overlay-panel p-6 space-y-3">
+        <div id="unit-info" class="text-center mb-4"></div>
+        <button id="attack-btn" class="w-full overlay-panel px-4 py-2 bg-red-600 hover:bg-red-700">Атаковать</button>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="rotate-cw-btn" class="overlay-panel px-4 py-2 hover:bg-slate-700">Повернуть ↻</button>
+          <button id="rotate-ccw-btn" class="overlay-panel px-4 py-2 hover:bg-slate-700">Повернуть ↺</button>
+        </div>
+        <button id="cancel-action-btn" class="w-full overlay-panel px-4 py-2 bg-gray-600 hover:bg-gray-700">Отмена</button>
+      </div>
+    </div>
+    
+    <!-- Уведомления -->
+    <div id="notifications" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none"></div>
+
+    <!-- Баннеры: Turn и Battle -->
+    <div id="turn-banner" class="banner fixed inset-0 hidden items-center justify-center z-40">
+      <div class="turnBanner text-3xl md:text-5xl font-extrabold bg-gradient-to-br from-blue-600/80 to-cyan-500/80 px-6 md:px-10 py-4 md:py-5 rounded-3xl shadow-2xl ring-4 ring-cyan-400/30"></div>
+    </div>
+    <div id="battle-banner" class="banner fixed inset-0 hidden items-center justify-center z-40">
+      <div class="battlePop text-5xl font-extrabold bg-gradient-to-br from-red-600/80 to-yellow-500/80 px-10 py-5 rounded-3xl shadow-2xl ring-4 ring-yellow-400/40">BATTLE</div>
+    </div>
+  </div>
+
+  <script>
+    // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
+    
+    const DIR_VECTORS = { N: [-1, 0], E: [0, 1], S: [1, 0], W: [0, -1] };
+    const OPPOSITE_ELEMENT = { FIRE: 'WATER', WATER: 'FIRE', EARTH: 'FOREST', FOREST: 'EARTH' };
+    const elementEmoji = { FIRE: '🔥', WATER: '💧', EARTH: '🪨', FOREST: '🌲' };
+    const turnCW = { N: 'E', E: 'S', S: 'W', W: 'N' };
+    const turnCCW = { N: 'W', W: 'S', S: 'E', E: 'N' };
+    const facingDeg = { N: 0, E: 90, S: 180, W: 270 };
+    
+    const uid = () => Math.random().toString(36).slice(2, 9);
+    const inBounds = (r, c) => r >= 0 && r < 3 && c >= 0 && c < 3;
+    const capMana = (m) => Math.min(10, m);
+    const attackCost = (tpl) => (tpl.activation != null ? tpl.activation : Math.max(0, (tpl.cost || 0) - 1));
+    
+    // Карты
+    const CARDS = {
+      // Fire Set (юниты)
+      FIRE_FLAME_MAGUS: { id:'FIRE_FLAME_MAGUS', name:'Flame Magus', type:'UNIT', cost:1, activation:1, element:'FIRE', atk:1, hp:1, pattern:'FRONT', range:3, attackType:'MAGIC', blindspots:['N','E','S','W'], desc:'Magic Attack: target any creature; no retaliation.' },
+      FIRE_HELLFIRE_SPITTER: { id:'FIRE_HELLFIRE_SPITTER', name:'Hellfire Spitter', type:'UNIT', cost:1, activation:1, element:'FIRE', atk:1, hp:1, pattern:'ALL', range:1, firstStrike:true, blindspots:[], desc:'Quickness: always strikes first.' },
+      FIRE_FREEDONIAN: { id:'FIRE_FREEDONIAN', name:'Freedonian Wanderer', type:'UNIT', cost:2, activation:1, element:'FIRE', atk:1, hp:2, pattern:'FRONT', range:1, blindspots:['S'], auraGainManaOnSummon:true, desc:'While not on Fire tile, you gain 1 mana on allied summon.' },
+      FIRE_FLAME_LIZARD: { id:'FIRE_FLAME_LIZARD', name:'Partmole Flame Lizard', type:'UNIT', cost:2, activation:1, element:'FIRE', atk:2, hp:2, pattern:'FRONT', range:1, blindspots:['S'], firstStrike:true, desc:'Quickness.' },
+      FIRE_GREAT_MINOS: { id:'FIRE_GREAT_MINOS', name:'Great Minos of Sciondar', type:'UNIT', cost:3, activation:2, element:'FIRE', atk:2, hp:1, pattern:'FRONT', range:2, blindspots:['S'], dodge50:true, diesOffElement:'FIRE', desc:'Dodge 50% (non-magic). Destroy if not on Fire tile.' },
+      FIRE_FLAME_ASCETIC: { id:'FIRE_FLAME_ASCETIC', name:'Flame Ascetic', type:'UNIT', cost:3, activation:2, element:'FIRE', atk:2, hp:3, pattern:'FRONT', range:1, blindspots:['S'], randomPlus2:true, desc:'Attack +2 half the time.' },
+      FIRE_TRICEPTAUR: { id:'FIRE_TRICEPTAUR', name:'Triceptaur Behemoth', type:'UNIT', cost:5, activation:4, element:'FIRE', atk:5, hp:4, pattern:'FRONT_SIDES', range:1, blindspots:['S'], penaltyByTargets:true, desc:'If attacks 2 creatures, -2 ATK; if 3 creatures, -4 ATK.' },
+      FIRE_PURSUER: { id:'FIRE_PURSUER', name:'Pursuer of Saint Dhees', type:'UNIT', cost:6, activation:3, element:'FIRE', atk:5, hp:4, pattern:'FRONT', range:1, blindspots:['S'], dynamicAtk:'OTHERS_ON_BOARD', desc:'ATK = 5 + number of other creatures on board.' },
+      // Спеллы из других наборов (из 2D)
+      FREEZE_STREAM: { id:'FREEZE_STREAM', name:'Стылый поток', type:'SPELL', cost:2, element:'WATER', text:'Наносит 1 урона выбранному юниту.' },
+      RAISE_STONE: { id:'RAISE_STONE', name:'Подъём породы', type:'SPELL', cost:2, element:'EARTH', text:'+2 HP дружественному юниту.' },
+      WIND_SHIFT: { id:'WIND_SHIFT', name:'Лесной порыв', type:'SPELL', cost:2, element:'FOREST', text:'Повернуть выбранного юнита по часовой стрелке.' }
+    };
+    
+    // Стартер: только Fire Set + несколько спеллов
+    const STARTER_FIRESET = [
+      CARDS.FIRE_FLAME_MAGUS,
+      CARDS.FIRE_HELLFIRE_SPITTER,
+      CARDS.FIRE_FREEDONIAN,
+      CARDS.FIRE_FLAME_LIZARD,
+      CARDS.FIRE_GREAT_MINOS,
+      CARDS.FIRE_FLAME_ASCETIC,
+      CARDS.FIRE_TRICEPTAUR,
+      CARDS.FIRE_PURSUER,
+      CARDS.FIRE_FLAME_MAGUS,
+      CARDS.FIRE_HELLFIRE_SPITTER,
+      CARDS.FIRE_FLAME_LIZARD,
+      CARDS.FIRE_FREEDONIAN,
+      CARDS.FREEZE_STREAM,
+      CARDS.RAISE_STONE,
+      CARDS.WIND_SHIFT
+    ];
+    
+    // Функции игровой логики
+    const dirsForPattern = (facing, pattern) => {
+      const f = facing, l = turnCCW[f], r = turnCW[f];
+      if (pattern === 'FRONT') return [f];
+      if (pattern === 'SIDES') return [l, r];
+      if (pattern === 'ALL') return ['N', 'E', 'S', 'W'];
+      return [f, l, r];
+    };
+    
+    const computeCellBuff = (cellElement, unitElement) => {
+      if (cellElement === unitElement) return { atk: 0, hp: 2 };
+      const opp = OPPOSITE_ELEMENT[unitElement];
+      if (cellElement === opp) return { atk: 0, hp: -2 };
+      return { atk: 0, hp: 0 };
+    };
+    
+    const effectiveStats = (cell, unit) => {
+      const tpl = CARDS[unit.tplId];
+      const buff = computeCellBuff(cell.element, tpl.element);
+      return { 
+        atk: (tpl.atk || 0) + buff.atk, 
+        hp: (tpl.hp || 0) + buff.hp 
+      };
+    };
+    
+    const randomBoard = () => {
+      const elements = ['FIRE', 'WATER', 'EARTH', 'FOREST'];
+      return Array.from({ length: 3 }, () => 
+        Array.from({ length: 3 }, () => ({ 
+          element: elements[Math.floor(Math.random() * elements.length)] 
+        }))
+      );
+    };
+    
+    const shuffle = (array) => {
+      const result = [...array];
+      for (let i = result.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [result[i], result[j]] = [result[j], result[i]];
+      }
+      return result;
+    };
+    
+    const drawOne = (gameState, player) => {
+      if (!gameState.players[player].deck.length) return;
+      const card = gameState.players[player].deck.shift();
+      if (card) gameState.players[player].hand.push(card);
+    };
+    
+    const countControlled = (gameState, player) => {
+      let count = 0;
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          if (gameState.board[r][c].unit?.owner === player) count++;
+        }
+      }
+      return count;
+    };
+    
+    const startGame = (deck0, deck1) => {
+      const gameState = {
+        board: randomBoard(),
+        players: [
+          { 
+            name: 'Игрок A', 
+            deck: shuffle(deck0.filter(Boolean)), 
+            hand: [], 
+            discard: [], 
+            mana: 2 
+          },
+          { 
+            name: 'Игрок B', 
+            deck: shuffle(deck1.filter(Boolean)), 
+            hand: [], 
+            discard: [], 
+            mana: 0 
+          }
+        ],
+        active: 0,
+        turn: 1,
+        selectedCard: null,
+        pending: null,
+        winner: null
+      };
+      
+      for (let i = 0; i < 5; i++) {
+        drawOne(gameState, 0);
+        drawOne(gameState, 1);
+      }
+      
+      return gameState;
+    };
+    
+    // ====== БОЕВАЯ СИСТЕМА (порт из 2D) ======
+    function hasAdjacentGuard(state, r, c) {
+      const target = state.board[r][c].unit;
+      if (!target) return false;
+      for (const [dr, dc] of Object.values(DIR_VECTORS)) {
+        const nr = r + dr, nc = c + dc;
+        if (!inBounds(nr, nc)) continue;
+        const u = state.board[nr][nc].unit;
+        if (u && u.owner === target.owner && (CARDS[u.tplId].keywords || []).includes('GUARD')) return true;
+      }
+      return false;
+    }
+    
+    function computeHits(state, r, c) {
+      const attacker = state.board[r][c].unit;
+      if (!attacker) return [];
+      const tplA = CARDS[attacker.tplId];
+      const dirs = dirsForPattern(attacker.facing, tplA.pattern || 'FRONT');
+      const { atk } = effectiveStats(state.board[r][c], attacker);
+      const hits = [];
+      for (const d of dirs) {
+        const [dr, dc] = DIR_VECTORS[d];
+        const maxRange = Math.max(1, tplA.range || 1);
+        for (let step = 1; step <= maxRange; step++) {
+          const nr = r + dr * step, nc = c + dc * step;
+          if (!inBounds(nr, nc)) break;
+          const B = state.board[nr][nc].unit;
+          if (!B) continue;
+          if (B.owner === attacker.owner) break;
+          const aFlying = (tplA.keywords || []).includes('FLYING');
+          if (!aFlying && hasAdjacentGuard(state, nr, nc) && !(CARDS[B.tplId].keywords || []).includes('GUARD')) {
+            break;
+          }
+          const backDir = turnCW[turnCW[B.facing]];
+          const [bdr, bdc] = DIR_VECTORS[backDir];
+          const isBack = (nr + bdr === r && nc + bdc === c);
+          let extra = 0;
+          const blind = CARDS[B.tplId].blindspots || ['S'];
+          const dirFromBtoA = (() => {
+            if (r === nr - 1 && c === nc) return 'N';
+            if (r === nr + 1 && c === nc) return 'S';
+            if (r === nr && c === nc - 1) return 'W';
+            return 'E';
+          })();
+          if (blind.includes(dirFromBtoA)) extra += 1;
+          const dmg = Math.max(0, atk + (isBack ? 1 : 0) + extra);
+          hits.push({ r: nr, c: nc, dmg, backstab: isBack });
+          break; // первая цель по лучу
+        }
+      }
+      return hits;
+    }
+    
+    function stagedAttack(state, r, c) {
+      const n1 = structuredClone(state);
+      const attacker = n1.board[r][c].unit;
+      if (!attacker) return null;
+      const tplA = CARDS[attacker.tplId];
+      const hits = computeHits(n1, r, c);
+      if (!hits.length) return { empty: true };
+      const logLines = [];
+      const applyDeaths = () => {
+        for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
+          const u = n1.board[rr][cc].unit; if (u && u.currentHP <= 0) n1.board[rr][cc].unit = null;
+        }
+      };
+      const step1 = () => {
+        for (const h of hits) {
+          const B = n1.board[h.r][h.c].unit; if (!B) continue;
+          const before = B.currentHP;
+          const attackerTpl = CARDS[attacker.tplId];
+          const isMagic = attackerTpl.attackType === 'MAGIC';
+          const dodge = CARDS[B.tplId].dodge50 && !isMagic && Math.random() < 0.5;
+          const dealt = dodge ? 0 : h.dmg;
+          B.currentHP = Math.max(0, B.currentHP - dealt);
+          const afterHP = B.currentHP;
+          logLines.push(`${CARDS[attacker.tplId].name} → ${CARDS[B.tplId].name}: ${dealt} урона${h.backstab ? ' (+1 в спину)' : ''}${dodge ? ' (уклонение)' : ''} (HP ${before}→${afterHP})`);
+        }
+      };
+      const step2 = () => {
+        const still = hits.map(h => ({ h, B: n1.board[h.r][h.c].unit })).filter(x => x.B && x.B.currentHP > 0);
+        if (!still.length) return 0;
+        let totalRetaliation = 0;
+        for (const { h, B } of still) {
+          const tplB = CARDS[B.tplId];
+          const dirsB = dirsForPattern(B.facing, tplB.pattern || 'FRONT');
+          let retaliates = false;
+          for (const d of dirsB) {
+            const [dr, dc] = DIR_VECTORS[d];
+            if (h.r + dr === r && h.c + dc === c) { retaliates = true; break; }
+          }
+          if (retaliates) {
+            const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B);
+            totalRetaliation += Math.max(0, batk);
+          }
+        }
+        const attackerTpl = CARDS[attacker.tplId];
+        const preventRetaliation = attackerTpl.attackType === 'MAGIC';
+        if (!preventRetaliation && totalRetaliation > 0 && n1.board[r][c].unit) {
+          const A = n1.board[r][c].unit;
+          const before = A.currentHP;
+          A.currentHP = Math.max(0, A.currentHP - totalRetaliation);
+          const afterHP = A.currentHP;
+          logLines.push(`Ответный урон по ${CARDS[A.tplId].name}: ${totalRetaliation} (HP ${before}→${afterHP})`);
+        }
+        return totalRetaliation;
+      };
+      const finish = () => {
+        applyDeaths();
+        return { n1, logLines, targets: hits.map(h => ({ r: h.r, c: h.c, dmg: h.dmg })) };
+      };
+      return { step1, step2, finish, n1 };
+    }
+    
+    function magicAttack(state, fr, fc, tr, tc) {
+      const n1 = structuredClone(state);
+      const attacker = n1.board[fr][fc].unit; const target = n1.board[tr][tc].unit;
+      if (!attacker || !target || target.owner === attacker.owner) return null;
+      const atkStats = effectiveStats(n1.board[fr][fc], attacker, n1);
+      const tplA = CARDS[attacker.tplId];
+      const dmg = Math.max(0, (atkStats.atk || 0) + (tplA.randomPlus2 && Math.random() < 0.5 ? 2 : 0));
+      const before = target.currentHP;
+      target.currentHP = Math.max(0, target.currentHP - dmg);
+      const afterHP = target.currentHP;
+      // cleanup deaths
+      for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
+        const u = n1.board[rr][cc].unit; if (u && u.currentHP <= 0) n1.board[rr][cc].unit = null;
+      }
+      const logLines = [`${CARDS[attacker.tplId].name} (Magic) → ${CARDS[target.tplId].name}: ${dmg} dmg (HP ${before}→${afterHP})`];
+      return { n1, logLines, dmg, died: afterHP <= 0 };
+    }
+    
+    // ====== THREE.JS СЦЕНА ======
+    
+    let scene, camera, renderer, raycaster, mouse;
+    let boardGroup, cardGroup, effectsGroup;
+    let tileMeshes = [];
+    let unitMeshes = [];
+    let handCardMeshes = [];
+    let gameState = null;
+    let logEntries = [];
+    
+    // Состояние взаимодействия
+    let draggedCard = null;
+    let hoveredTile = null;
+    let hoveredHandCard = null;
+    let selectedCard = null;
+    let pendingPlacement = null;
+    let selectedUnit = null;
+    let magicFrom = null; // { r, c }
+    
+    function initThreeJS() {
+      const canvas = document.getElementById('three-canvas');
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.setClearColor(0x0b1220);
+      
+      scene = new THREE.Scene();
+      // Сделаем даль менее тёмной: убираем туман
+      scene.fog = null;
+      
+      camera = new THREE.PerspectiveCamera(54, window.innerWidth / window.innerHeight, 0.1, 120);
+      camera.position.set(0, 22, 13);
+      camera.lookAt(0, 0, 0);
+      
+      raycaster = new THREE.Raycaster();
+      mouse = new THREE.Vector2();
+      
+      boardGroup = new THREE.Group();
+      cardGroup = new THREE.Group();
+      effectsGroup = new THREE.Group();
+      scene.add(boardGroup);
+      scene.add(cardGroup);
+      scene.add(effectsGroup);
+      
+      // Освещение
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+      scene.add(ambientLight);
+      
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+      directionalLight.position.set(10, 20, 10);
+      directionalLight.castShadow = true;
+      directionalLight.shadow.mapSize.set(2048, 2048);
+      directionalLight.shadow.camera.near = 1;
+      directionalLight.shadow.camera.far = 50;
+      directionalLight.shadow.camera.left = -15;
+      directionalLight.shadow.camera.right = 15;
+      directionalLight.shadow.camera.top = 15;
+      directionalLight.shadow.camera.bottom = -15;
+      scene.add(directionalLight);
+      // Дополнительный полушарной свет, чтобы вдали было светлее
+      const hemi = new THREE.HemisphereLight(0xcadfff, 0x1a2a3a, 0.6);
+      scene.add(hemi);
+      
+      // Платформа
+      const platformGeometry = new THREE.CylinderGeometry(32, 32, 0.5, 48);
+      const platformMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x1a2332, 
+        metalness: 0.7, 
+        roughness: 0.3 
+      });
+      const platform = new THREE.Mesh(platformGeometry, platformMaterial);
+      platform.position.y = -0.5;
+      platform.receiveShadow = true;
+      scene.add(platform);
+    }
+    
+    // Материалы элементов
+    const ELEMENT_MATERIALS = {
+      FIRE: new THREE.MeshStandardMaterial({ 
+        color: 0xdc2626, 
+        emissive: 0x450000, 
+        metalness: 0.1, 
+        roughness: 0.8 
+      }),
+      WATER: new THREE.MeshStandardMaterial({ 
+        color: 0x0369a1, 
+        emissive: 0x001a2e, 
+        metalness: 0.3, 
+        roughness: 0.4 
+      }),
+      EARTH: new THREE.MeshStandardMaterial({ 
+        color: 0x525252, 
+        emissive: 0x0a0a0a, 
+        metalness: 0.05, 
+        roughness: 0.95 
+      }),
+      FOREST: new THREE.MeshStandardMaterial({ 
+        color: 0x166534, 
+        emissive: 0x001a0a, 
+        metalness: 0.1, 
+        roughness: 0.9 
+      })
+    };
+    
+    function createBoard() {
+      tileMeshes.forEach(row => row.forEach(tile => {
+        if (tile) boardGroup.remove(tile);
+      }));
+      tileMeshes = [];
+      
+      if (!gameState) return;
+      
+      const tileSize = 6.2; // увеличено
+      const tileHeight = 0.35;
+      const spacing = 0.2;
+      
+      for (let r = 0; r < 3; r++) {
+        const row = [];
+        for (let c = 0; c < 3; c++) {
+          const cell = gameState.board[r][c];
+          
+          const geometry = new THREE.BoxGeometry(tileSize, tileHeight, tileSize);
+          const material = ELEMENT_MATERIALS[cell.element].clone();
+          const tile = new THREE.Mesh(geometry, material);
+          
+          const x = (c - 1) * (tileSize + spacing);
+          const z = (r - 1) * (tileSize + spacing);
+          tile.position.set(x, tileHeight / 2, z);
+          tile.castShadow = false;
+          tile.receiveShadow = true;
+          
+          tile.userData = { type: 'tile', row: r, col: c, element: cell.element };
+          
+          boardGroup.add(tile);
+          row.push(tile);
+        }
+        tileMeshes.push(row);
+      }
+    }
+    
+    function createCard3D(cardData, isInHand = false) {
+      const cardWidth = 4.8;  // увеличено ~в 2-3 раза
+      const cardHeight = 5.6; // почти вся ячейка
+      const cardThickness = 0.12;
+      
+      const geometry = new THREE.BoxGeometry(cardWidth, cardThickness, cardHeight);
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 356;
+      const ctx = canvas.getContext('2d');
+      
+      drawCardFace(ctx, cardData, canvas.width, canvas.height);
+      
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      
+      const faceMaterial = new THREE.MeshStandardMaterial({ 
+        map: texture, 
+        metalness: 0.1, 
+        roughness: 0.7 
+      });
+      
+      const edgeMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x1e293b, 
+        metalness: 0.3, 
+        roughness: 0.8 
+      });
+      
+      const backMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x0f172a, 
+        metalness: 0.2, 
+        roughness: 0.9 
+      });
+      
+      const materials = [
+        edgeMaterial, edgeMaterial, faceMaterial, backMaterial, edgeMaterial, edgeMaterial
+      ];
+      
+      const card = new THREE.Mesh(geometry, materials);
+      card.castShadow = true;
+      card.receiveShadow = false;
+      
+      card.userData = {
+        type: 'card',
+        cardData: cardData,
+        isInHand: isInHand,
+        originalPosition: new THREE.Vector3(),
+        originalRotation: new THREE.Euler()
+      };
+      
+      // Масштаб для руки (фан) — уменьшаем X/Z, толщину оставляем
+      if (isInHand) {
+        card.scale.set(0.36, 1, 0.36);
+      }
+      return card;
+    }
+    
+    function drawCardFace(ctx, cardData, width, height) {
+      const gradient = ctx.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, '#1e293b');
+      gradient.addColorStop(1, '#0f172a');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      ctx.strokeStyle = getElementColor(cardData.element);
+      ctx.lineWidth = 4;
+      ctx.strokeRect(4, 4, width - 8, height - 8);
+      
+      ctx.fillStyle = '#f1f5f9';
+      ctx.font = 'bold 18px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      const name = cardData.name.length > 20 ? cardData.name.substring(0, 20) + '...' : cardData.name;
+      ctx.fillText(name, width / 2, 30);
+      
+      ctx.font = '24px Arial';
+      ctx.fillText(elementEmoji[cardData.element] || '', width / 2, 55);
+      
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.fillRect(16, 70, width - 32, 120);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(16, 70, width - 32, 120);
+      
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '12px Arial';
+      ctx.fillText('Illustration', width / 2, 135);
+      
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '11px Arial';
+      ctx.textAlign = 'left';
+      const text = cardData.desc || cardData.text || (cardData.keywords ? cardData.keywords.join(', ') : '');
+      wrapText(ctx, text, 16, 210, width - 32, 14);
+      
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.fillRect(0, height - 40, width, 40);
+      
+      ctx.fillStyle = '#f1f5f9';
+      ctx.font = 'bold 14px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText(`💎${cardData.cost || 0}`, 16, height - 15);
+      // Стоимость атаки как в 2D (⚡)
+      if (cardData.type === 'UNIT') {
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 13px Arial';
+        const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
+        ctx.fillText(`⚡${act}`, width/2, height - 16);
+      }
+      
+      if (cardData.type === 'UNIT') {
+        ctx.textAlign = 'right';
+        ctx.fillText(`⚔️${cardData.atk || 0}  ❤️${cardData.hp || 0}`, width - 16, height - 15);
+        // 3x3 схемы: атака и blindspot
+        drawPatternGrid(ctx, cardData, width - 76, 178, 10, 2);
+        drawBlindspotGrid(ctx, cardData, width - 36, 178, 10, 2);
+      }
+    }
+    
+    function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+      if (!text) return;
+      const words = text.split(' ');
+      let line = '';
+      
+      for (let n = 0; n < words.length; n++) {
+        const testLine = line + words[n] + ' ';
+        const metrics = ctx.measureText(testLine);
+        const testWidth = metrics.width;
+        
+        if (testWidth > maxWidth && n > 0) {
+          ctx.fillText(line, x, y);
+          line = words[n] + ' ';
+          y += lineHeight;
+        } else {
+          line = testLine;
+        }
+      }
+      ctx.fillText(line, x, y);
+    }
+    
+    function getElementColor(element) {
+      const colors = {
+        FIRE: '#dc2626',
+        WATER: '#0369a1', 
+        EARTH: '#525252',
+        FOREST: '#166534'
+      };
+      return colors[element] || '#64748b';
+    }
+    
+    function drawPatternGrid(ctx, cardData, x, y, cell, gap) {
+      const pattern = cardData.pattern || 'FRONT';
+      const range = cardData.range || 1;
+      // grid 3x3
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const cx = x + c * (cell + gap);
+          const cy = y + r * (cell + gap);
+          ctx.fillStyle = 'rgba(148,163,184,0.35)';
+          // center
+          if (r === 1 && c === 1) ctx.fillStyle = 'rgba(250,204,21,0.7)';
+          ctx.fillRect(cx, cy, cell, cell);
+          // highlight directions from facing N
+          const dirs = dirsForPattern('N', pattern);
+          const isN = (r === 0 && c === 1);
+          const isE = (r === 1 && c === 2);
+          const isS = (r === 2 && c === 1);
+          const isW = (r === 1 && c === 0);
+          if ((isN && dirs.includes('N')) || (isE && dirs.includes('E')) || (isS && dirs.includes('S')) || (isW && dirs.includes('W'))) {
+            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5; ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
+          }
+        }
+      }
+      // push center slightly if range>1
+      if (range > 1) {
+        ctx.fillStyle = 'rgba(148,163,184,0.5)';
+        ctx.fillRect(x + 1*(cell+gap) + 0.5, y + 1*(cell+gap) + 2, cell-1, cell-1);
+      }
+    }
+    function drawBlindspotGrid(ctx, cardData, x, y, cell, gap) {
+      const blind = (cardData.blindspots && cardData.blindspots.length) ? cardData.blindspots : ['S'];
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const cx = x + c * (cell + gap);
+          const cy = y + r * (cell + gap);
+          ctx.fillStyle = 'rgba(148,163,184,0.35)';
+          if (r === 1 && c === 1) ctx.fillStyle = 'rgba(250,204,21,0.7)';
+          ctx.fillRect(cx, cy, cell, cell);
+          const isN = (r === 0 && c === 1);
+          const isE = (r === 1 && c === 2);
+          const isS = (r === 2 && c === 1);
+          const isW = (r === 1 && c === 0);
+          if ((isN && blind.includes('N')) || (isE && blind.includes('E')) || (isS && blind.includes('S')) || (isW && blind.includes('W'))) {
+            ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1.5; ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
+          }
+        }
+      }
+    }
+    
+    function updateHand() {
+      handCardMeshes.forEach(card => {
+        if (card.parent) card.parent.remove(card);
+      });
+      handCardMeshes = [];
+      hoveredHandCard = null;
+      
+      if (!gameState) return;
+      
+      const hand = gameState.players[gameState.active].hand;
+      const handSize = hand.length;
+      
+      if (handSize === 0) return;
+      
+      // Параметры для веерного расположения
+      const spread = Math.min(4.0, Math.max(2.0, 20 / (handSize + 2)));
+      const angleSpread = Math.min(0.3, 1.2 / (handSize + 1));
+      const radius = 8.0;  // Разумный радиус для видимости
+      const baseY = 6.0;   // Рука над полем, но не слишком высоко
+      
+      for (let i = 0; i < handSize; i++) {
+        const cardData = hand[i];
+        const card = createCard3D(cardData, true);
+        
+        // Вычисляем позицию для веерного расположения
+        const angle = (i - (handSize - 1) / 2) * angleSpread;
+        const x = Math.sin(angle) * radius;
+        const z = radius + Math.cos(angle) * radius * 0.3;
+        const y = baseY + Math.sin(angle) * 1.5; // Небольшое изменение по Y для объема
+        
+        card.position.set(x, y, z);
+        
+        // Поворот карты для веерного эффекта
+        card.rotation.set(
+            -0.2 + angle * 0.1,   // Наклон вперед
+            angle * 0.5,           // Поворот в сторону
+            0                       // Без крена
+        );
+        
+        card.userData.originalPosition.copy(card.position);
+        card.userData.originalRotation.copy(card.rotation);
+        card.userData.handIndex = i;
+        card.userData.cardData = cardData;
+        
+        cardGroup.add(card);
+        handCardMeshes.push(card);
+      }
+    }
+    
+    function updateUnits() {
+      unitMeshes.forEach(unit => {
+        if (unit.parent) unit.parent.remove(unit);
+      });
+      unitMeshes = [];
+      
+      if (!gameState) return;
+      
+      const tileSize = 6.2;
+      const spacing = 0.2;
+      
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const unit = gameState.board[r][c].unit;
+          if (!unit) continue;
+          
+          const cardData = CARDS[unit.tplId];
+          const unitMesh = createCard3D(cardData, false);
+          
+          const x = (c - 1) * (tileSize + spacing);
+          const z = (r - 1) * (tileSize + spacing);
+          unitMesh.position.set(x, 0.5, z);
+          
+          const facingAngle = facingDeg[unit.facing] * Math.PI / 180;
+          unitMesh.rotation.y = facingAngle;
+          
+          const ownerColor = unit.owner === 0 ? 0x22c55e : 0xef4444;
+          const glowMaterial = new THREE.MeshStandardMaterial({
+            color: ownerColor,
+            emissive: ownerColor,
+            emissiveIntensity: 0.2,
+            transparent: true,
+            opacity: 0.3
+          });
+          
+          const glowGeometry = new THREE.BoxGeometry(1.8, 0.02, 2.4);
+          const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+          glow.position.set(0, -0.05, 0);
+          unitMesh.add(glow);
+          
+          unitMesh.userData = {
+            type: 'unit',
+            row: r,
+            col: c,
+            unitData: unit,
+            cardData: cardData
+          };
+          
+          cardGroup.add(unitMesh);
+          unitMeshes.push(unitMesh);
+        }
+      }
+    }
+    
+    function updateUI() {
+      if (!gameState) return;
+      
+      document.getElementById('turn-info').textContent = `Ход: ${gameState.turn}`;
+      document.getElementById('active-player').textContent = `Активный: ${gameState.players[gameState.active].name}`;
+      // показать баннер хода при смене
+      if (!updateUI.prevTurn || updateUI.prevTurn !== gameState.turn) {
+        const tb = document.getElementById('turn-banner');
+        const box = tb.querySelector('div');
+        box.textContent = `Turn ${gameState.turn} — ${gameState.players[gameState.active].name}`;
+        tb.classList.remove('hidden'); tb.classList.add('flex');
+        setTimeout(()=>{ tb.classList.add('hidden'); tb.classList.remove('flex'); }, 2600);
+      }
+      updateUI.prevTurn = gameState.turn;
+      
+      const manaDisplay = document.getElementById('mana-display');
+      manaDisplay.innerHTML = '';
+      
+      const currentMana = gameState.players[gameState.active].mana;
+      for (let i = 0; i < 10; i++) {
+        const orb = document.createElement('div');
+        orb.className = i < currentMana ? 'mana-orb' : 'mana-slot';
+        manaDisplay.appendChild(orb);
+      }
+      
+      const controlA = countControlled(gameState, 0);
+      const controlB = countControlled(gameState, 1);
+      document.getElementById('control-info').textContent = `Контроль: A ${controlA} • B ${controlB}`;
+      
+      if (controlA >= 5) {
+        showNotification('Игрок A побеждает!', 'success');
+        gameState.winner = 0;
+      } else if (controlB >= 5) {
+        showNotification('Игрок B побеждает!', 'success');
+        gameState.winner = 1;
+      }
+    }
+    
+    function showNotification(message, type = 'info') {
+      const notification = document.createElement('div');
+      notification.className = `overlay-panel p-4 mb-2 ${type === 'success' ? 'bg-green-600' : type === 'error' ? 'bg-red-600' : 'bg-blue-600'}`;
+      notification.textContent = message;
+      
+      const container = document.getElementById('notifications');
+      container.appendChild(notification);
+      
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.parentNode.removeChild(notification);
+        }
+      }, 3000);
+    }
+    
+    function addLog(message) {
+      logEntries.unshift(`• ${message}`);
+      if (logEntries.length > 100) logEntries.pop();
+      
+      const logContent = document.getElementById('log-content');
+      if (logContent) {
+        logContent.innerHTML = logEntries.map(entry => `<div>${entry}</div>`).join('');
+      }
+    }
+    
+    // Взаимодействие
+    function onMouseMove(event) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      if (draggedCard) {
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(tileMeshes.flat());
+        
+        if (hoveredTile) {
+          hoveredTile.material.emissiveIntensity = 0.1;
+        }
+        
+        if (intersects.length > 0) {
+          hoveredTile = intersects[0].object;
+          hoveredTile.material.emissiveIntensity = 0.3;
+          
+          const targetPos = hoveredTile.position.clone();
+          targetPos.y = 2;
+          gsap.to(draggedCard.position, {
+            x: targetPos.x,
+            y: targetPos.y,
+            z: targetPos.z,
+            duration: 0.1
+          });
+        } else {
+          hoveredTile = null;
+        }
+      } else {
+        // Ховер по картам в руке: увеличиваем наведённую, уменьшаем предыдущую
+        raycaster.setFromCamera(mouse, camera);
+        const handHits = raycaster.intersectObjects(handCardMeshes);
+        const newHover = handHits.length > 0 ? handHits[0].object : null;
+        if (hoveredHandCard && hoveredHandCard !== newHover) {
+          gsap.to(hoveredHandCard.scale, { x: 0.36, y: 1, z: 0.36, duration: 0.18 });
+          hoveredHandCard = null;
+        }
+        if (newHover && newHover.userData && newHover.userData.isInHand) {
+          hoveredHandCard = newHover;
+          gsap.to(newHover.scale, { x: 0.45, y: 1, z: 0.45, duration: 0.18 });
+        }
+      }
+      // Подсветка потенциальных целей при открытой панели действий юнита
+      if (selectedUnit) {
+        const r = selectedUnit.userData.row; const c = selectedUnit.userData.col;
+        const hits = computeHits(gameState, r, c);
+        // убираем прошлую подсветку
+        unitMeshes.forEach(m => { if (m.material && m.material[2]) { /* no-op here */ } });
+        // подсветим цели небольшим всплеском по Y
+        for (const h of hits) {
+          const m = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
+          if (m) gsap.to(m.position, { y: 0.7, yoyo: true, repeat: 1, duration: 0.2 });
+        }
+      }
+    }
+    
+    function onMouseDown(event) {
+      if (!gameState || gameState.winner !== null) return;
+      
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      raycaster.setFromCamera(mouse, camera);
+      
+      const handIntersects = raycaster.intersectObjects(handCardMeshes);
+      if (handIntersects.length > 0) {
+        const card = handIntersects[0].object;
+        const cardData = card.userData.cardData;
+        
+        if (cardData.type === 'UNIT') {
+          startCardDrag(card);
+        } else if (cardData.type === 'SPELL') {
+          selectSpellCard(card);
+        }
+        return;
+      }
+      
+      const unitIntersects = raycaster.intersectObjects(unitMeshes);
+      if (unitIntersects.length > 0) {
+        const unit = unitIntersects[0].object;
+        // если в режиме магической атаки
+        if (magicFrom) {
+          performMagicAttack(magicFrom, unit);
+          magicFrom = null;
+          return;
+        }
+        if (selectedCard && selectedCard.userData.cardData.type === 'SPELL') {
+          castSpellOnUnit(selectedCard, unit);
+        } else if (unit.userData.unitData.owner === gameState.active) {
+          showUnitActionPanel(unit);
+        }
+        return;
+      }
+      
+      if (selectedCard) {
+        resetCardSelection();
+      }
+    }
+    
+    function onMouseUp(event) {
+      if (draggedCard && hoveredTile) {
+        const row = hoveredTile.userData.row;
+        const col = hoveredTile.userData.col;
+        
+        if (gameState.board[row][col].unit) {
+          showNotification('Клетка уже занята!', 'error');
+          returnCardToHand(draggedCard);
+        } else {
+          pendingPlacement = {
+            card: draggedCard,
+            row: row,
+            col: col,
+            handIndex: draggedCard.userData.handIndex
+          };
+          showOrientationPanel();
+        }
+      } else if (draggedCard) {
+        returnCardToHand(draggedCard);
+      }
+      
+      endCardDrag();
+    }
+    
+    function startCardDrag(card) {
+      draggedCard = card;
+      // если карта была увеличена ховером — вернём к стандартному масштабу руки
+      if (hoveredHandCard) {
+        gsap.to(hoveredHandCard.scale, { x: 0.36, y: 1, z: 0.36, duration: 0.1 });
+        hoveredHandCard = null;
+      }
+      
+      gsap.to(card.position, {
+        y: card.position.y + 1,
+        duration: 0.2,
+        ease: "power2.out"
+      });
+      
+      gsap.to(card.rotation, {
+        x: 0,
+        z: 0,
+        duration: 0.2
+      });
+      
+      gsap.to(card.scale, {
+        x: 1.1,
+        y: 1.1,
+        z: 1.1,
+        duration: 0.2
+      });
+    }
+    
+    function endCardDrag() {
+      if (hoveredTile) {
+        hoveredTile.material.emissiveIntensity = 0.1;
+        hoveredTile = null;
+      }
+      draggedCard = null;
+    }
+    
+    function returnCardToHand(card) {
+      gsap.to(card.position, {
+        x: card.userData.originalPosition.x,
+        y: card.userData.originalPosition.y,
+        z: card.userData.originalPosition.z,
+        duration: 0.3,
+        ease: "power2.inOut"
+      });
+      
+      gsap.to(card.rotation, {
+        x: card.userData.originalRotation.x,
+        y: card.userData.originalRotation.y,
+        z: card.userData.originalRotation.z,
+        duration: 0.3
+      });
+      
+      gsap.to(card.scale, {
+        x: card.userData && card.userData.isInHand ? 0.36 : 1,
+        y: 1,
+        z: card.userData && card.userData.isInHand ? 0.36 : 1,
+        duration: 0.3
+      });
+    }
+    
+    function selectSpellCard(card) {
+      if (selectedCard === card) {
+        resetCardSelection();
+        return;
+      }
+      
+      if (selectedCard) {
+        resetCardSelection();
+      }
+      
+      selectedCard = card;
+      
+      gsap.to(card.position, {
+        y: card.userData.originalPosition.y + 0.3,
+        duration: 0.2
+      });
+      
+      card.material[2].emissive = new THREE.Color(0x0066cc);
+      card.material[2].emissiveIntensity = 0.3;
+      
+      showNotification(`Выбрано заклинание: ${card.userData.cardData.name}. Выберите цель.`);
+    }
+    
+    function resetCardSelection() {
+      if (selectedCard) {
+        returnCardToHand(selectedCard);
+        selectedCard.material[2].emissive = new THREE.Color(0x000000);
+        selectedCard.material[2].emissiveIntensity = 0;
+        selectedCard = null;
+      }
+    }
+    
+    function showOrientationPanel() {
+      document.getElementById('orientation-panel').classList.remove('hidden');
+    }
+    
+    function hideOrientationPanel() {
+      document.getElementById('orientation-panel').classList.add('hidden');
+      pendingPlacement = null;
+    }
+    
+    function showUnitActionPanel(unitMesh) {
+      selectedUnit = unitMesh;
+      const unitData = unitMesh.userData.unitData;
+      const cardData = unitMesh.userData.cardData;
+      
+      document.getElementById('unit-info').textContent = 
+        `${cardData.name} (${unitMesh.userData.row + 1},${unitMesh.userData.col + 1})`;
+      
+      const alreadyAttacked = unitData.lastAttackTurn === gameState.turn;
+      const attackBtn = document.getElementById('attack-btn');
+      attackBtn.disabled = alreadyAttacked;
+      const cost = attackCost(cardData);
+      attackBtn.textContent = alreadyAttacked ? 'Уже атаковал' : `Атаковать (−${cost})`;
+      // Подсветка потенциальных целей в панели действий
+      const hits = computeHits(gameState, selectedUnit.userData.row, selectedUnit.userData.col);
+      for (const h of hits) {
+        const m = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
+        if (!m) continue;
+        const ringGeom = new THREE.RingGeometry(0.6, 0.8, 24);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0xf97316, transparent:true, opacity:0.7, side:THREE.DoubleSide });
+        const ring = new THREE.Mesh(ringGeom, ringMat);
+        ring.rotation.x = -Math.PI/2;
+        ring.position.copy(m.position).add(new THREE.Vector3(0, -0.45, 0));
+        effectsGroup.add(ring);
+        gsap.to(ring.material, { opacity: 0, duration: 0.8, onComplete: ()=> effectsGroup.remove(ring) });
+      }
+      
+      document.getElementById('unit-action-panel').classList.remove('hidden');
+    }
+    
+    function hideUnitActionPanel() {
+      document.getElementById('unit-action-panel').classList.add('hidden');
+      selectedUnit = null;
+    }
+    
+    function initGame() {
+      gameState = startGame(STARTER_FIRESET, STARTER_FIRESET);
+      
+      createBoard();
+      updateUnits();
+      updateHand();
+      updateUI();
+      
+      addLog('Игра началась! Игрок A ходит первым.');
+      addLog('Перетаскивайте карты существ на поле, используйте заклинания кликом.');
+    }
+    
+    function endTurn() {
+      if (!gameState || gameState.winner !== null) return;
+      
+      const controlledCells = countControlled(gameState, gameState.active);
+      if (controlledCells >= 5) {
+        gameState.winner = gameState.active;
+        showNotification(`${gameState.players[gameState.active].name} побеждает!`, 'success');
+        return;
+      }
+      
+      gameState.active = gameState.active === 0 ? 1 : 0;
+      gameState.turn += 1;
+      
+      const player = gameState.players[gameState.active];
+      player.mana = capMana(player.mana + 2);
+      drawOne(gameState, gameState.active);
+      
+      resetCardSelection();
+      
+      updateHand();
+      updateUnits();
+      updateUI();
+      
+      addLog(`Ход ${gameState.turn}. ${player.name} получает +2 маны и добирает карту.`);
+    }
+    
+    function placeUnitWithDirection(direction) {
+      if (!pendingPlacement) return;
+      
+      const { card, row, col, handIndex } = pendingPlacement;
+      const cardData = card.userData.cardData;
+      const player = gameState.players[gameState.active];
+      
+      if (cardData.cost > player.mana) {
+        showNotification('Недостаточно маны!', 'error');
+        returnCardToHand(card);
+        hideOrientationPanel();
+        return;
+      }
+      
+      const unit = {
+        uid: uid(),
+        owner: gameState.active,
+        tplId: cardData.id,
+        currentHP: cardData.hp,
+        facing: direction
+      };
+      
+      gameState.board[row][col].unit = unit;
+      
+      player.mana -= cardData.cost;
+      player.discard.push(cardData);
+      player.hand.splice(handIndex, 1);
+      
+      const cellElement = gameState.board[row][col].element;
+      const buff = computeCellBuff(cellElement, cardData.element);
+      if (buff.hp !== 0) {
+        const before = unit.currentHP;
+        unit.currentHP = Math.max(0, unit.currentHP + buff.hp);
+        if (buff.hp > 0) {
+          addLog(`Элемент усиливает ${cardData.name}: HP ${before}→${unit.currentHP}`);
+        } else {
+          addLog(`Элемент ослабляет ${cardData.name}: HP ${before}→${unit.currentHP}`);
+        }
+      }
+      
+      if (unit.currentHP <= 0) {
+        addLog(`${cardData.name} погибает от неблагоприятной стихии!`);
+        gameState.board[row][col].unit = null;
+      }
+      
+      const targetPos = tileMeshes[row][col].position.clone();
+      targetPos.y = 0.5;
+      
+      gsap.to(card.position, {
+        x: targetPos.x,
+        y: targetPos.y,
+        z: targetPos.z,
+        duration: 0.5,
+        ease: "power2.inOut"
+      });
+      
+      gsap.to(card.rotation, {
+        x: 0,
+        y: (facingDeg[direction]) * Math.PI / 180,
+        z: 0,
+        duration: 0.5,
+        onComplete: () => {
+          updateHand();
+          updateUnits();
+          updateUI();
+        }
+      });
+      
+      addLog(`${player.name} призывает ${cardData.name} на (${row + 1},${col + 1})`);
+      hideOrientationPanel();
+      // бесплатная атака при наличии целей
+      const hits = computeHits(gameState, row, col);
+      if (hits && hits.length) {
+        performBattleSequence(row, col, false);
+      }
+    }
+    
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+    
+    function init() {
+      initThreeJS();
+      initGame();
+      
+      renderer.domElement.addEventListener('mousemove', onMouseMove);
+      renderer.domElement.addEventListener('mousedown', onMouseDown);
+      renderer.domElement.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('resize', onWindowResize);
+      
+      animate();
+    }
+    
+    // Обработчики UI
+    document.getElementById('end-turn-btn').addEventListener('click', endTurn);
+    document.getElementById('new-game-btn').addEventListener('click', () => location.reload());
+    document.getElementById('log-btn').addEventListener('click', () => {
+      document.getElementById('log-panel').classList.toggle('hidden');
+    });
+    document.getElementById('close-log-btn').addEventListener('click', () => {
+      document.getElementById('log-panel').classList.add('hidden');
+    });
+    document.getElementById('help-btn').addEventListener('click', () => {
+      document.getElementById('help-panel').classList.remove('hidden');
+    });
+    document.getElementById('close-help-btn').addEventListener('click', () => {
+      document.getElementById('help-panel').classList.add('hidden');
+    });
+    document.getElementById('cancel-orient-btn').addEventListener('click', () => {
+      if (pendingPlacement) {
+        returnCardToHand(pendingPlacement.card);
+      }
+      hideOrientationPanel();
+    });
+    document.getElementById('cancel-action-btn').addEventListener('click', hideUnitActionPanel);
+    // Действия в панели юнита
+    document.getElementById('rotate-cw-btn').addEventListener('click', () => {
+      if (selectedUnit) rotateUnit(selectedUnit, 'cw');
+    });
+    document.getElementById('rotate-ccw-btn').addEventListener('click', () => {
+      if (selectedUnit) rotateUnit(selectedUnit, 'ccw');
+    });
+    document.getElementById('attack-btn').addEventListener('click', () => {
+      if (selectedUnit) performUnitAttack(selectedUnit);
+    });
+    
+    document.querySelectorAll('[data-dir]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Явное соответствие символов на кнопках и направлений
+        const direction = btn.getAttribute('data-dir'); // 'N' | 'E' | 'S' | 'W'
+        if (direction === 'N') return placeUnitWithDirection('N');
+        if (direction === 'E') return placeUnitWithDirection('E');
+        if (direction === 'S') return placeUnitWithDirection('S');
+        if (direction === 'W') return placeUnitWithDirection('W');
+      });
+    });
+    
+    document.addEventListener('DOMContentLoaded', init);
+
+    // ====== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЕЙСТВИЙ ======
+    function rotateUnit(unitMesh, dir) {
+      const u = unitMesh.userData.unitData;
+      if (!u) return;
+      u.facing = dir === 'cw' ? turnCW[u.facing] : turnCCW[u.facing];
+      updateUnits();
+    }
+    
+    function performUnitAttack(unitMesh) {
+      if (!unitMesh) return;
+      const r = unitMesh.userData.row; const c = unitMesh.userData.col;
+      const unit = gameState.board[r][c].unit; if (!unit) return;
+      const tpl = CARDS[unit.tplId];
+      const cost = attackCost(tpl);
+      if (tpl.attackType === 'MAGIC') {
+        if (gameState.players[gameState.active].mana < cost) { showNotification(`Нужно ${cost} маны для атаки`, 'error'); return; }
+        gameState.players[gameState.active].mana -= cost;
+        updateUI();
+        magicFrom = { r, c };
+        addLog(`${tpl.name}: выберите цель для магической атаки.`);
+        hideUnitActionPanel();
+        return;
+      }
+      const hits = computeHits(gameState, r, c);
+      if (!hits.length) { showNotification('Нет доступных целей для атаки', 'error'); hideUnitActionPanel(); return; }
+      if (gameState.players[gameState.active].mana < cost) { showNotification(`Нужно ${cost} маны для атаки`, 'error'); hideUnitActionPanel(); return; }
+      gameState.players[gameState.active].mana -= cost;
+      updateUI();
+      performBattleSequence(r, c, true);
+      hideUnitActionPanel();
+    }
+    
+    function performBattleSequence(r, c, markAttackTurn) {
+      const staged = stagedAttack(gameState, r, c);
+      if (!staged || staged.empty) return;
+      // баннер боя
+      const bb = document.getElementById('battle-banner');
+      bb.classList.remove('hidden'); bb.classList.add('flex');
+      setTimeout(()=>{ bb.classList.add('hidden'); bb.classList.remove('flex'); }, 1100);
+      // небольшая анимация выпада
+      const aMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
+      if (aMesh) { gsap.to(aMesh.position, { y: aMesh.position.y + 0.25, yoyo: true, repeat: 1, duration: 0.12 }); }
+      // Линии направлений удара
+      const hitsPrev = computeHits(gameState, r, c);
+      for (const h of hitsPrev) {
+        const from = aMesh.position.clone();
+        const toMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
+        if (!toMesh) continue;
+        const to = toMesh.position.clone();
+        const dir = new THREE.Vector3().subVectors(to, from);
+        const len = dir.length(); dir.normalize();
+        const geom = new THREE.CylinderGeometry(0.04, 0.04, len, 6);
+        const mat = new THREE.MeshBasicMaterial({ color: 0xffd166 });
+        const beam = new THREE.Mesh(geom, mat);
+        beam.position.copy(from.clone().add(to).multiplyScalar(0.5));
+        beam.lookAt(to);
+        beam.rotateX(Math.PI/2);
+        effectsGroup.add(beam);
+        gsap.to(beam.material, { opacity: 0, duration: 0.5, onComplete: ()=>{ effectsGroup.remove(beam); } });
+      }
+      staged.step1();
+      gameState = staged.n1; updateUnits();
+      staged.step2();
+      const res = staged.finish();
+      gameState = res.n1; updateUnits(); updateUI();
+      for (const l of res.logLines.reverse()) addLog(l);
+      if (markAttackTurn && gameState.board[r][c].unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
+    }
+    
+    function performMagicAttack(from, targetMesh) {
+      const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
+      const res = magicAttack(gameState, from.r, from.c, tr, tc);
+      if (!res) { showNotification('Цель некорректна', 'error'); return; }
+      gameState = res.n1; updateUnits(); updateUI();
+      for (const l of res.logLines.reverse()) addLog(l);
+      const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
+      if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
+      // вспышка по цели
+      const tMesh = unitMeshes.find(m => m.userData.row === tr && m.userData.col === tc);
+      if (tMesh) {
+        const flashGeom = new THREE.SphereGeometry(0.25, 12, 12);
+        const flashMat = new THREE.MeshBasicMaterial({ color: 0xff6666, transparent: true, opacity: 0.8 });
+        const flash = new THREE.Mesh(flashGeom, flashMat);
+        flash.position.copy(tMesh.position).add(new THREE.Vector3(0, 0.4, 0));
+        effectsGroup.add(flash);
+        gsap.to(flash.scale, { x: 2, y: 2, z: 2, duration: 0.3 });
+        gsap.to(flash.material, { opacity: 0, duration: 0.3, onComplete: ()=> effectsGroup.remove(flash) });
+      }
+      const attacker = gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
+    }
+    
+    function castSpellOnUnit(cardMesh, unitMesh) {
+      const idx = cardMesh.userData.handIndex;
+      const pl = gameState.players[gameState.active];
+      if (idx == null || idx < 0 || idx >= pl.hand.length) { resetCardSelection(); return; }
+      const tpl = pl.hand[idx]; if (!tpl || tpl.type !== 'SPELL') { resetCardSelection(); return; }
+      if (tpl.cost > pl.mana) { showNotification('Недостаточно маны', 'error'); resetCardSelection(); return; }
+      const r = unitMesh.userData.row; const c = unitMesh.userData.col; const u = gameState.board[r][c].unit;
+      if (tpl.id === 'WIND_SHIFT') { if (u) u.facing = turnCW[u.facing]; addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут.`); }
+      if (tpl.id === 'FREEZE_STREAM') { if (u) { const before = u.currentHP; u.currentHP = Math.max(0, u.currentHP - 1); addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает 1 урона (HP ${before}→${u.currentHP})`); if (u.currentHP <= 0) gameState.board[r][c].unit = null; } }
+      if (tpl.id === 'RAISE_STONE') { if (u && u.owner === gameState.active) { const before = u.currentHP; u.currentHP += 2; addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает +2 HP (HP ${before}→${u.currentHP})`); } }
+      pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
+      resetCardSelection(); updateHand(); updateUnits(); updateUI();
+    }
+
+    // (убраны несуществующие обработчики magic-btn и draw-btn)
+  </script>
+</body>
+</html>
