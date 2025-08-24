@@ -42,7 +42,7 @@
   
   <div id="ui">
     <!-- Основные контролы -->
-    <div class="ui-panel fixed right-4 top-4 space-y-3 z-20">
+    <div id="controls" class="ui-panel fixed right-4 top-4 space-y-3 z-20">
       <div class="overlay-panel px-4 py-2 text-sm">
         <div id="turn-info">Ход: 1</div>
         <div id="active-player">Активный: Игрок A</div>
@@ -77,7 +77,7 @@
     </div>
     
     <!-- Панель логов -->
-    <div id="log-panel" class="ui-panel fixed right-4 top-4 w-96 h-96 overlay-panel p-4 hidden z-30">
+    <div id="log-panel" class="ui-panel fixed right-4 w-96 h-96 overlay-panel p-4 hidden z-30" style="top: 260px;">
       <div class="flex justify-between items-center mb-3">
         <h3 class="text-lg font-semibold">Журнал событий</h3>
         <button id="close-log-btn" class="text-xl">&times;</button>
@@ -156,7 +156,11 @@
     const elementEmoji = { FIRE: '🔥', WATER: '💧', EARTH: '🪨', FOREST: '🌲' };
     const turnCW = { N: 'E', E: 'S', S: 'W', W: 'N' };
     const turnCCW = { N: 'W', W: 'S', S: 'E', E: 'N' };
-    const facingDeg = { N: 0, E: 90, S: 180, W: 270 };
+    // Переопределяем ориентации: N должен смотреть к верхнему краю (−Z), S — к нижнему (+Z)
+    // В three.js «вперёд» меша по умолчанию это +Z (0°), поэтому:
+    // S: 0°, E: -90°, W: 90°, N: 180°
+    // Исправление: N (стрелка вверх) = 0°, S (стрелка вниз) = 180°; E/W оставляем как есть
+    const facingDeg = { N: 0, E: -90, S: 180, W: 90 };
     
     const uid = () => Math.random().toString(36).slice(2, 9);
     const inBounds = (r, c) => r >= 0 && r < 3 && c >= 0 && c < 3;
@@ -429,10 +433,13 @@
     let scene, camera, renderer, raycaster, mouse;
     let boardGroup, cardGroup, effectsGroup;
     let tileMeshes = [];
+    let tileFrames = [];
     let unitMeshes = [];
     let handCardMeshes = [];
     let gameState = null;
     let logEntries = [];
+    let TILE_TEXTURES = {};
+    let PROC_TILE_TEXTURES = {};
     
     // Состояние взаимодействия
     let draggedCard = null;
@@ -451,6 +458,11 @@
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       renderer.setClearColor(0x0b1220);
+      // Цветовое пространство и экспозиция — повысим читаемость текстур
+      if (THREE.SRGBColorSpace) {
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+      }
+      renderer.toneMappingExposure = 1.08;
       
       scene = new THREE.Scene();
       // Сделаем даль менее тёмной: убираем туман
@@ -500,41 +512,93 @@
       platform.position.y = -0.5;
       platform.receiveShadow = true;
       scene.add(platform);
+      // Загрузка текстур тайлов поля
+      const loader = new THREE.TextureLoader();
+      const texMap = { FIRE: 'tile-fire.png', WATER: 'tile-water.png', EARTH: 'tile-earth.png', FOREST: 'tile-forest.png' };
+      for (const k in texMap) {
+        try {
+          const t = loader.load(texMap[k]);
+          t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.RepeatWrapping;
+          t.repeat.set(1, 1);
+          t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
+          TILE_TEXTURES[k] = t;
+        } catch (e) {
+          // фолбэк создадим ниже процедурно
+        }
+      }
+    }
+
+    function createProceduralTileTexture(element) {
+      if (PROC_TILE_TEXTURES[element]) return PROC_TILE_TEXTURES[element];
+      const c = document.createElement('canvas');
+      c.width = 256; c.height = 256; const ctx = c.getContext('2d');
+      // фон
+      const base = {
+        FIRE: '#3b0d0d', WATER: '#0d243b', EARTH: '#2f2b24', FOREST: '#0f2b1a'
+      }[element] || '#2a2a2a';
+      ctx.fillStyle = base; ctx.fillRect(0,0,256,256);
+      ctx.globalAlpha = 0.5;
+      if (element === 'FIRE') {
+        for (let i= -64; i<256; i+=24) {
+          ctx.fillStyle = i % 48 === 0 ? '#b91c1c' : '#ef4444';
+          ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i+64,0); ctx.lineTo(i+256,256); ctx.lineTo(i+192,256); ctx.closePath(); ctx.fill();
+        }
+      } else if (element === 'WATER') {
+        ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 3; ctx.globalAlpha = 0.7;
+        for (let y=20; y<256; y+=24) {
+          ctx.beginPath(); for (let x=0; x<=256; x+=8) { ctx.lineTo(x, y + Math.sin((x+y)/20)*6); } ctx.stroke();
+        }
+      } else if (element === 'EARTH') {
+        for (let y=0; y<256; y+=16) {
+          for (let x=0; x<256; x+=16) {
+            const v = 40 + Math.floor(Math.random()*30);
+            ctx.fillStyle = `rgb(${v+60},${v+40},${v})`; ctx.fillRect(x,y,16,16);
+          }
+        }
+      } else if (element === 'FOREST') {
+        ctx.fillStyle = '#16a34a';
+        for (let i=0; i<180; i++) {
+          const x = Math.random()*256; const y = Math.random()*256; const r = Math.random()*3+1;
+          ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+        }
+        ctx.strokeStyle = '#22c55e'; ctx.globalAlpha = 0.35;
+        for (let i=0; i<40; i++) { ctx.beginPath(); ctx.moveTo(Math.random()*256, Math.random()*256); ctx.lineTo(Math.random()*256, Math.random()*256); ctx.stroke(); }
+      }
+      const tex = new THREE.CanvasTexture(c); tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(1,1);
+      PROC_TILE_TEXTURES[element] = tex; return tex;
     }
     
-    // Материалы элементов
-    const ELEMENT_MATERIALS = {
-      FIRE: new THREE.MeshStandardMaterial({ 
-        color: 0xdc2626, 
-        emissive: 0x450000, 
-        metalness: 0.1, 
-        roughness: 0.8 
-      }),
-      WATER: new THREE.MeshStandardMaterial({ 
-        color: 0x0369a1, 
-        emissive: 0x001a2e, 
-        metalness: 0.3, 
-        roughness: 0.4 
-      }),
-      EARTH: new THREE.MeshStandardMaterial({ 
-        color: 0x525252, 
-        emissive: 0x0a0a0a, 
-        metalness: 0.05, 
-        roughness: 0.95 
-      }),
-      FOREST: new THREE.MeshStandardMaterial({ 
-        color: 0x166534, 
-        emissive: 0x001a0a, 
-        metalness: 0.1, 
-        roughness: 0.9 
-      })
+    // Базовые цвета для элементов (фолбэк, если текстуры не загрузились)
+    const ELEMENT_BASE_COLORS = {
+      FIRE: 0xdc2626,
+      WATER: 0x0369a1,
+      EARTH: 0x525252,
+      FOREST: 0x166534
     };
+
+    function getTileMaterial(element) {
+      let tex = TILE_TEXTURES[element];
+      // Если текстура ещё не готова, используем процедурную
+      if (!tex || !tex.image || !tex.image.width) tex = createProceduralTileTexture(element);
+      if (tex) return new THREE.MeshBasicMaterial({ map: tex });
+      return new THREE.MeshStandardMaterial({
+        color: ELEMENT_BASE_COLORS[element] || 0x64748b,
+        metalness: 0.12,
+        roughness: 0.6,
+        emissive: 0x1a1a1a,
+        emissiveIntensity: 0.18
+      });
+    }
     
     function createBoard() {
       tileMeshes.forEach(row => row.forEach(tile => {
         if (tile) boardGroup.remove(tile);
       }));
+      tileFrames.forEach(row => row.forEach(f => { if (f) boardGroup.remove(f); }));
       tileMeshes = [];
+      tileFrames = [];
       
       if (!gameState) return;
       
@@ -544,11 +608,12 @@
       
       for (let r = 0; r < 3; r++) {
         const row = [];
+        const frameRow = [];
         for (let c = 0; c < 3; c++) {
           const cell = gameState.board[r][c];
           
           const geometry = new THREE.BoxGeometry(tileSize, tileHeight, tileSize);
-          const material = ELEMENT_MATERIALS[cell.element].clone();
+          const material = getTileMaterial(cell.element);
           const tile = new THREE.Mesh(geometry, material);
           
           const x = (c - 1) * (tileSize + spacing);
@@ -561,12 +626,22 @@
           
           boardGroup.add(tile);
           row.push(tile);
+
+          // Рамка владения (линии по периметру)
+          const edgeGeom = new THREE.EdgesGeometry(new THREE.BoxGeometry(tileSize + 0.02, 0.02, tileSize + 0.02));
+          const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.0, depthTest: false });
+          const edges = new THREE.LineSegments(edgeGeom, edgeMat);
+          edges.position.set(x, tileHeight + 0.011, z);
+          edges.renderOrder = 997;
+          boardGroup.add(edges);
+          frameRow.push(edges);
         }
         tileMeshes.push(row);
+        tileFrames.push(frameRow);
       }
     }
     
-    function createCard3D(cardData, isInHand = false) {
+    function createCard3D(cardData, isInHand = false, hpOverride = null) {
       const cardWidth = 4.8;  // увеличено ~в 2-3 раза
       const cardHeight = 5.6; // почти вся ячейка
       const cardThickness = 0.12;
@@ -578,7 +653,7 @@
       canvas.height = 356;
       const ctx = canvas.getContext('2d');
       
-      drawCardFace(ctx, cardData, canvas.width, canvas.height);
+      drawCardFace(ctx, cardData, canvas.width, canvas.height, hpOverride);
       
       const texture = new THREE.CanvasTexture(canvas);
       texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -624,7 +699,7 @@
       return card;
     }
     
-    function drawCardFace(ctx, cardData, width, height) {
+    function drawCardFace(ctx, cardData, width, height, hpOverride = null) {
       const gradient = ctx.createLinearGradient(0, 0, 0, height);
       gradient.addColorStop(0, '#1e293b');
       gradient.addColorStop(1, '#0f172a');
@@ -677,7 +752,8 @@
       
       if (cardData.type === 'UNIT') {
         ctx.textAlign = 'right';
-        ctx.fillText(`⚔️${cardData.atk || 0}  ❤️${cardData.hp || 0}`, width - 16, height - 15);
+        const hpToShow = (hpOverride != null) ? hpOverride : (cardData.hp || 0);
+        ctx.fillText(`⚔️${cardData.atk || 0}  ❤️${hpToShow}`, width - 16, height - 15);
         // 3x3 схемы: атака и blindspot
         drawPatternGrid(ctx, cardData, width - 76, 178, 10, 2);
         drawBlindspotGrid(ctx, cardData, width - 36, 178, 10, 2);
@@ -827,10 +903,21 @@
       for (let r = 0; r < 3; r++) {
         for (let c = 0; c < 3; c++) {
           const unit = gameState.board[r][c].unit;
+          // Обновим рамки владения
+          if (tileFrames[r] && tileFrames[r][c]) {
+            const frame = tileFrames[r][c];
+            if (unit) {
+              const col = (unit.owner === 0) ? 0x22c55e : 0xef4444;
+              frame.material.color = new THREE.Color(col);
+              frame.material.opacity = 0.85;
+            } else {
+              frame.material.opacity = 0.0;
+            }
+          }
           if (!unit) continue;
           
           const cardData = CARDS[unit.tplId];
-          const unitMesh = createCard3D(cardData, false);
+          const unitMesh = createCard3D(cardData, false, unit.currentHP);
           
           const x = (c - 1) * (tileSize + spacing);
           const z = (r - 1) * (tileSize + spacing);
@@ -860,11 +947,35 @@
             unitData: unit,
             cardData: cardData
           };
+          // Текущее HP поверх карты
+          try { attachHpOverlay(unitMesh, unit.currentHP); } catch (e) {}
           
           cardGroup.add(unitMesh);
           unitMeshes.push(unitMesh);
         }
       }
+    }
+
+    function attachHpOverlay(unitMesh, hpValue) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128; canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0,0,128,64);
+      ctx.font = 'bold 36px Arial';
+      ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+      ctx.fillStyle = '#e11d48';
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 6;
+      const text = String(hpValue);
+      ctx.strokeText(text, 124, 60);
+      ctx.fillText(text, 124, 60);
+      const tex = new THREE.CanvasTexture(canvas); tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
+      const sprite = new THREE.Sprite(mat);
+      sprite.scale.set(0.9, 0.45, 1);
+      // позиция у нижнего правого угла карты
+      sprite.position.set(1.0, 0.08, 1.25);
+      sprite.renderOrder = 999;
+      unitMesh.add(sprite);
     }
     
     function updateUI() {
@@ -883,13 +994,29 @@
       updateUI.prevTurn = gameState.turn;
       
       const manaDisplay = document.getElementById('mana-display');
-      manaDisplay.innerHTML = '';
-      
+      const prev = manaDisplay.querySelectorAll('.mana-orb').length;
       const currentMana = gameState.players[gameState.active].mana;
-      for (let i = 0; i < 10; i++) {
+      // Анимация: очищаем и перелёт шариков при увеличении
+      manaDisplay.innerHTML = '';
+      const total = 10;
+      for (let i = 0; i < total; i++) {
         const orb = document.createElement('div');
-        orb.className = i < currentMana ? 'mana-orb' : 'mana-slot';
+        const filled = i < currentMana;
+        orb.className = filled ? 'mana-orb' : 'mana-slot';
+        orb.style.opacity = filled ? '0' : '1';
         manaDisplay.appendChild(orb);
+        if (filled) {
+          // небольшая задержка, как будто орбы «влетают» справа
+          const delay = 0.06 * Math.max(0, i - prev);
+          setTimeout(()=>{
+            orb.style.transform = 'translateX(16px) scale(0.6)';
+            orb.style.transition = 'transform 220ms ease, opacity 220ms ease';
+            requestAnimationFrame(()=>{
+              orb.style.opacity = '1';
+              orb.style.transform = 'translateX(0) scale(1)';
+            });
+          }, delay*1000);
+        }
       }
       
       const controlA = countControlled(gameState, 0);
@@ -1302,7 +1429,8 @@
       // бесплатная атака при наличии целей
       const hits = computeHits(gameState, row, col);
       if (hits && hits.length) {
-        performBattleSequence(row, col, false);
+        // Дадим карте долететь и повернуться прежде чем биться
+        setTimeout(() => performBattleSequence(row, col, false), 350);
       }
     }
     
@@ -1333,7 +1461,11 @@
     document.getElementById('end-turn-btn').addEventListener('click', endTurn);
     document.getElementById('new-game-btn').addEventListener('click', () => location.reload());
     document.getElementById('log-btn').addEventListener('click', () => {
-      document.getElementById('log-panel').classList.toggle('hidden');
+      const lp = document.getElementById('log-panel');
+      lp.classList.toggle('hidden');
+      // На всякий случай жёстко позиционируем ниже контролов
+      lp.style.top = (document.getElementById('controls').offsetHeight + 40) + 'px';
+      if (!lp.classList.contains('hidden')) lp.style.pointerEvents = 'auto';
     });
     document.getElementById('close-log-btn').addEventListener('click', () => {
       document.getElementById('log-panel').classList.add('hidden');
@@ -1414,34 +1546,122 @@
       const bb = document.getElementById('battle-banner');
       bb.classList.remove('hidden'); bb.classList.add('flex');
       setTimeout(()=>{ bb.classList.add('hidden'); bb.classList.remove('flex'); }, 1100);
-      // небольшая анимация выпада
+      // небольшая анимация выпада/толчка
       const aMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-      if (aMesh) { gsap.to(aMesh.position, { y: aMesh.position.y + 0.25, yoyo: true, repeat: 1, duration: 0.12 }); }
-      // Линии направлений удара
       const hitsPrev = computeHits(gameState, r, c);
-      for (const h of hitsPrev) {
-        const from = aMesh.position.clone();
-        const toMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
-        if (!toMesh) continue;
-        const to = toMesh.position.clone();
-        const dir = new THREE.Vector3().subVectors(to, from);
-        const len = dir.length(); dir.normalize();
-        const geom = new THREE.CylinderGeometry(0.04, 0.04, len, 6);
-        const mat = new THREE.MeshBasicMaterial({ color: 0xffd166 });
-        const beam = new THREE.Mesh(geom, mat);
-        beam.position.copy(from.clone().add(to).multiplyScalar(0.5));
-        beam.lookAt(to);
-        beam.rotateX(Math.PI/2);
-        effectsGroup.add(beam);
-        gsap.to(beam.material, { opacity: 0, duration: 0.5, onComplete: ()=>{ effectsGroup.remove(beam); } });
+      const fromPos = (aMesh ? aMesh.position.clone() : tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 0.5, 0)));
+      if (aMesh && hitsPrev.length) {
+        const firstTargetMesh = unitMeshes.find(m => m.userData.row === hitsPrev[0].r && m.userData.col === hitsPrev[0].c);
+        if (firstTargetMesh) {
+          const dir = new THREE.Vector3().subVectors(firstTargetMesh.position, aMesh.position).normalize();
+          const push = dir.clone().multiplyScalar(0.55);
+          const back = dir.clone().multiplyScalar(-0.55);
+          const tl = gsap.timeline();
+          tl.to(aMesh.position, { x: aMesh.position.x + push.x, z: aMesh.position.z + push.z, duration: 0.18, ease: 'power2.out' })
+            .to(aMesh.position, { x: aMesh.position.x + back.x, z: aMesh.position.z + back.z, duration: 0.28, ease: 'power2.inOut' });
+        } else {
+          gsap.to(aMesh.position, { y: aMesh.position.y + 0.25, yoyo: true, repeat: 1, duration: 0.2 });
+        }
       }
+      // Визуальные лучи и эффекты попаданий + тряска целей и вылетающие числа
+      for (const h of hitsPrev) {
+        const toMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
+        if (toMesh) {
+          const to = toMesh.position.clone();
+          const from = fromPos.clone();
+          const dir = new THREE.Vector3().subVectors(to, from);
+          const len = dir.length(); dir.normalize();
+          const geom = new THREE.CylinderGeometry(0.05, 0.05, len, 8);
+          const mat = new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false });
+          const beam = new THREE.Mesh(geom, mat);
+          beam.position.copy(from.clone().add(to).multiplyScalar(0.5));
+          beam.lookAt(to);
+          beam.rotateX(Math.PI/2);
+          beam.renderOrder = 998;
+          effectsGroup.add(beam);
+          gsap.to(beam.material, { opacity: 0, duration: 1.0, onComplete: ()=>{ effectsGroup.remove(beam); } });
+          // Тряска и числа урона
+          shakeMesh(toMesh, 5, 0.22);
+          spawnDamageText(toMesh, `-${h.dmg}`, '#ff5555');
+        }
+      }
+      // Применяем урон (этап 1), обновляем HP на сцене, но не удаляем юнитов
       staged.step1();
       gameState = staged.n1; updateUnits();
-      staged.step2();
-      const res = staged.finish();
-      gameState = res.n1; updateUnits(); updateUI();
-      for (const l of res.logLines.reverse()) addLog(l);
-      if (markAttackTurn && gameState.board[r][c].unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
+      // Тот, кто умрёт после step1
+      const dying = hitsPrev.filter(h => {
+        const u = gameState.board[h.r][h.c].unit; return u && u.currentHP <= 0;
+      });
+      // Небольшая задержка для анимации смерти, затем анимация «улёта»
+      setTimeout(() => {
+        for (const h of dying) {
+          const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
+          if (tMesh) {
+            const away = aMesh ? new THREE.Vector3().subVectors(tMesh.position, aMesh.position).normalize().multiplyScalar(1.2) : new THREE.Vector3(0, 0, 1);
+            fadeOutAndFly(tMesh, away);
+          }
+        }
+        const afterDeathDelay = dying.length ? 800 : 0;
+        setTimeout(() => {
+          // Ответный урон
+          const retaliation = staged.step2() || 0;
+          if (retaliation > 0) {
+            if (aMesh) {
+              shakeMesh(aMesh, 3, 0.2);
+              spawnDamageText(aMesh, `-${retaliation}`, '#ffd166');
+            }
+          }
+          // Завершение: удаление мёртвых из state, обновление сцены/UI и логов
+          const res = staged.finish();
+          gameState = res.n1; updateUnits(); updateUI();
+          for (const l of res.logLines.reverse()) addLog(l);
+          if (markAttackTurn && gameState.board[r][c].unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
+        }, afterDeathDelay);
+      }, 420);
+    }
+
+    function spawnDamageText(targetMesh, text, color = '#ff5555') {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256; canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0,0,canvas.width, canvas.height);
+      ctx.font = 'bold 64px Arial';
+      ctx.fillStyle = color;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 6;
+      ctx.strokeText(text, canvas.width/2, canvas.height/2);
+      ctx.fillText(text, canvas.width/2, canvas.height/2);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 1, depthTest: false, depthWrite: false });
+      const sprite = new THREE.Sprite(mat);
+      sprite.scale.set(2.6, 1.4, 1);
+      const pos = targetMesh.position.clone().add(new THREE.Vector3(0, 0.9, 0));
+      sprite.position.copy(pos);
+      sprite.renderOrder = 999;
+      effectsGroup.add(sprite);
+      gsap.to(sprite.position, { y: sprite.position.y + 1.5, duration: 1.2, ease: 'power1.out' });
+      gsap.to(sprite.material, { opacity: 0, duration: 1.2, onComplete: () => { effectsGroup.remove(sprite); tex.dispose(); mat.dispose(); } });
+    }
+
+    function shakeMesh(mesh, times = 3, duration = 0.1) {
+      const tl = gsap.timeline();
+      const ox = mesh.position.x; const oz = mesh.position.z;
+      for (let i = 0; i < times; i++) {
+        const dx = (Math.random()*0.2 - 0.1);
+        const dz = (Math.random()*0.2 - 0.1);
+        tl.to(mesh.position, { x: ox + dx, z: oz + dz, duration: duration/2 })
+          .to(mesh.position, { x: ox, z: oz, duration: duration/2 });
+      }
+      return tl;
+    }
+
+    function fadeOutAndFly(mesh, awayVec) {
+      awayVec = awayVec || new THREE.Vector3(0, 0, 1);
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      mats.forEach(m => { m.transparent = true; });
+      gsap.to(mesh.position, { x: mesh.position.x + awayVec.x, y: mesh.position.y + 1.6, z: mesh.position.z + awayVec.z, duration: 0.7, ease: 'power2.in' });
+      gsap.to(mats, { opacity: 0, duration: 0.75 });
     }
     
     function performMagicAttack(from, targetMesh) {
