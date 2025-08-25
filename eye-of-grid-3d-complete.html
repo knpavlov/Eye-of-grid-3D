@@ -33,6 +33,8 @@
     @keyframes turnslide { 0%{ transform:translateX(-120%)} 20%{ transform:translateX(0)} 80%{ transform:translateX(0)} 100%{ transform:translateX(140%) } }
     .battlePop { animation: pop 1100ms ease both; }
     @keyframes pop { 0%{ transform:scale(.6); opacity:0 } 40%{ transform:scale(1.06); opacity:1 } 100%{ transform:scale(1); opacity:.96 } }
+    /* Tooltip для 3D-колод/кладбищ */
+    #hover-tooltip { position: fixed; pointer-events: none; z-index: 50; }
   </style>
   <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
@@ -41,43 +43,45 @@
   <canvas id="three-canvas"></canvas>
   
   <div id="ui">
-    <!-- Основные контролы -->
-    <div id="controls" class="ui-panel fixed right-4 top-4 space-y-3 z-20">
-      <div class="overlay-panel px-4 py-2 text-sm">
+    <!-- Боковые панели: слева — игрок A, справа — игрок B -->
+    <div id="left-side" class="ui-panel fixed left-4 top-1/2 -translate-y-1/2 space-y-3 z-20">
+      <div class="overlay-panel px-4 py-1 text-sm text-center">Игрок 1</div>
+      <div class="overlay-panel px-4 py-2">
+        <div class="text-sm mb-1">Мана</div>
+        <div class="mana-bar" id="mana-display-0"></div>
+      </div>
+      <div class="overlay-panel px-4 py-2 text-sm" id="control-info-0">Контроль: 0</div>
+    </div>
+
+    <div id="right-side" class="ui-panel fixed right-4 top-1/2 -translate-y-1/2 space-y-3 z-20">
+      <div class="overlay-panel px-4 py-1 text-sm text-center">Игрок 2</div>
+      <div class="overlay-panel px-4 py-2">
+        <div class="text-sm mb-1">Мана</div>
+        <div class="mana-bar" id="mana-display-1"></div>
+      </div>
+      <div class="overlay-panel px-4 py-2 text-sm" id="control-info-1">Контроль: 0</div>
+    </div>
+
+    <!-- Верхний центр: ход, активный игрок, завершить ход -->
+    <div id="top-center" class="ui-panel fixed top-3 left-1/2 -translate-x-1/2 z-20">
+      <div class="overlay-panel px-4 py-2 flex items-center gap-4">
         <div id="turn-info">Ход: 1</div>
         <div id="active-player">Активный: Игрок A</div>
+        <button id="end-turn-btn" class="px-4 py-2 text-sm bg-amber-600 hover:bg-amber-700 transition-colors rounded-lg">Завершить ход</button>
       </div>
-      
-      <div class="overlay-panel px-4 py-2">
-        <div class="text-sm mb-2">Мана:</div>
-        <div class="mana-bar" id="mana-display"></div>
-      </div>
-      
-      <div class="overlay-panel px-4 py-2 text-sm" id="control-info">
-        Контроль: A 0 • B 0
-      </div>
-      
-      <div class="flex gap-2">
-        <button id="end-turn-btn" class="overlay-panel px-4 py-2 text-sm bg-amber-600 hover:bg-amber-700 transition-colors">
-          Завершить ход
-        </button>
-        <button id="log-btn" class="overlay-panel px-4 py-2 text-sm bg-slate-600 hover:bg-slate-700 transition-colors">
-          Лог
-        </button>
-      </div>
-      
-      <div class="flex gap-2">
-        <button id="help-btn" class="overlay-panel px-4 py-2 text-sm bg-slate-600 hover:bg-slate-700 transition-colors">
-          Помощь
-        </button>
-        <button id="new-game-btn" class="overlay-panel px-4 py-2 text-sm bg-slate-600 hover:bg-slate-700 transition-colors">
-          Новая игра
-        </button>
+    </div>
+
+    <!-- Правый нижний угол: сервисные кнопки -->
+    <div id="corner-right" class="ui-panel fixed right-4 bottom-4 z-20">
+      <div class="flex gap-2 opacity-90">
+        <button id="log-btn" class="overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors">Лог</button>
+        <button id="help-btn" class="overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors">Помощь</button>
+        <button id="new-game-btn" class="overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors">Новая игра</button>
       </div>
     </div>
     
     <!-- Панель логов -->
-    <div id="log-panel" class="ui-panel fixed right-4 w-96 h-96 overlay-panel p-4 hidden z-30" style="top: 260px;">
+    <div id="log-panel" class="ui-panel fixed right-4 bottom-20 w-96 h-80 overlay-panel p-4 hidden z-30">
       <div class="flex justify-between items-center mb-3">
         <h3 class="text-lg font-semibold">Журнал событий</h3>
         <button id="close-log-btn" class="text-xl">&times;</button>
@@ -146,6 +150,8 @@
     <div id="battle-banner" class="banner fixed inset-0 hidden items-center justify-center z-40">
       <div class="battlePop text-5xl font-extrabold bg-gradient-to-br from-red-600/80 to-yellow-500/80 px-10 py-5 rounded-3xl shadow-2xl ring-4 ring-yellow-400/40">BATTLE</div>
     </div>
+    <!-- Tooltip -->
+    <div id="hover-tooltip" class="hidden overlay-panel px-2 py-1 text-xs"></div>
   </div>
 
   <script>
@@ -271,6 +277,7 @@
             deck: shuffle(deck0.filter(Boolean)), 
             hand: [], 
             discard: [], 
+            graveyard: [],
             mana: 2 
           },
           { 
@@ -278,6 +285,7 @@
             deck: shuffle(deck1.filter(Boolean)), 
             hand: [], 
             discard: [], 
+            graveyard: [],
             mana: 0 
           }
         ],
@@ -357,9 +365,11 @@
       const hits = computeHits(n1, r, c);
       if (!hits.length) return { empty: true };
       const logLines = [];
+      const deaths = [];
       const applyDeaths = () => {
         for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
-          const u = n1.board[rr][cc].unit; if (u && u.currentHP <= 0) n1.board[rr][cc].unit = null;
+          const u = n1.board[rr][cc].unit;
+          if (u && u.currentHP <= 0) { deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId }); n1.board[rr][cc].unit = null; }
         }
       };
       const step1 = () => {
@@ -379,6 +389,7 @@
         const still = hits.map(h => ({ h, B: n1.board[h.r][h.c].unit })).filter(x => x.B && x.B.currentHP > 0);
         if (!still.length) return 0;
         let totalRetaliation = 0;
+        const retaliators = [];
         for (const { h, B } of still) {
           const tplB = CARDS[B.tplId];
           const dirsB = dirsForPattern(B.facing, tplB.pattern || 'FRONT');
@@ -390,6 +401,7 @@
           if (retaliates) {
             const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B);
             totalRetaliation += Math.max(0, batk);
+            retaliators.push({ r: h.r, c: h.c });
           }
         }
         const attackerTpl = CARDS[attacker.tplId];
@@ -401,11 +413,11 @@
           const afterHP = A.currentHP;
           logLines.push(`Ответный урон по ${CARDS[A.tplId].name}: ${totalRetaliation} (HP ${before}→${afterHP})`);
         }
-        return totalRetaliation;
+        return { total: totalRetaliation, retaliators };
       };
       const finish = () => {
         applyDeaths();
-        return { n1, logLines, targets: hits.map(h => ({ r: h.r, c: h.c, dmg: h.dmg })) };
+        return { n1, logLines, targets: hits.map(h => ({ r: h.r, c: h.c, dmg: h.dmg })), deaths };
       };
       return { step1, step2, finish, n1 };
     }
@@ -420,18 +432,19 @@
       const before = target.currentHP;
       target.currentHP = Math.max(0, target.currentHP - dmg);
       const afterHP = target.currentHP;
-      // cleanup deaths
-      for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
-        const u = n1.board[rr][cc].unit; if (u && u.currentHP <= 0) n1.board[rr][cc].unit = null;
-      }
       const logLines = [`${CARDS[attacker.tplId].name} (Magic) → ${CARDS[target.tplId].name}: ${dmg} dmg (HP ${before}→${afterHP})`];
-      return { n1, logLines, dmg, died: afterHP <= 0 };
+      // cleanup + сбор смертей
+      const deaths = [];
+      for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
+        const u = n1.board[rr][cc].unit; if (u && u.currentHP <= 0) { deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId }); n1.board[rr][cc].unit = null; }
+      }
+      return { n1, logLines, dmg, deaths };
     }
     
     // ====== THREE.JS СЦЕНА ======
     
     let scene, camera, renderer, raycaster, mouse;
-    let boardGroup, cardGroup, effectsGroup;
+    let boardGroup, cardGroup, effectsGroup, metaGroup;
     let tileMeshes = [];
     let tileFrames = [];
     let unitMeshes = [];
@@ -442,6 +455,10 @@
     let PROC_TILE_TEXTURES = {};
     let CARD_IMAGES = {};
     let CARD_PENDING = {};
+    // 3D объекты справа (колоды/кладбища)
+    let deckMeshes = [];
+    let graveyardMeshes = [];
+    let hoveredMeta = null; // { metaType: 'deck'|'grave', player: 0|1 }
     
     // Состояние взаимодействия
     let draggedCard = null;
@@ -472,7 +489,7 @@
       
       camera = new THREE.PerspectiveCamera(54, window.innerWidth / window.innerHeight, 0.1, 120);
       camera.position.set(0, 22, 13);
-      camera.lookAt(0, 0, 0);
+      camera.lookAt(0, 1.2, 0);
       
       raycaster = new THREE.Raycaster();
       mouse = new THREE.Vector2();
@@ -480,9 +497,11 @@
       boardGroup = new THREE.Group();
       cardGroup = new THREE.Group();
       effectsGroup = new THREE.Group();
+      metaGroup = new THREE.Group();
       scene.add(boardGroup);
       scene.add(cardGroup);
       scene.add(effectsGroup);
+      scene.add(metaGroup);
       
       // Освещение
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
@@ -529,6 +548,40 @@
           // фолбэк создадим ниже процедурно
         }
       }
+    }
+
+    function worldToScreen(vec3) {
+      const v = vec3.clone().project(camera);
+      const x = (v.x + 1) / 2 * renderer.domElement.clientWidth;
+      const y = (1 - v.y) / 2 * renderer.domElement.clientHeight;
+      return { x, y };
+    }
+
+    function animateManaGainFromWorld(pos, ownerIndex) {
+      try {
+        const start = worldToScreen(pos);
+        const targetEl = document.getElementById(`mana-display-${ownerIndex}`);
+        if (!targetEl) return;
+        const rect = targetEl.getBoundingClientRect();
+        const tx = rect.left + rect.width / 2;
+        const ty = rect.top + rect.height / 2;
+        const orb = document.createElement('div');
+        orb.className = 'mana-orb';
+        orb.style.position = 'fixed';
+        orb.style.left = start.x + 'px';
+        orb.style.top = start.y + 'px';
+        orb.style.transform = 'translate(-50%, -50%) scale(0.9)';
+        orb.style.opacity = '0.9';
+        orb.style.zIndex = '60';
+        document.body.appendChild(orb);
+        gsap.to(orb, { duration: 0.85, ease: 'power2.inOut', left: tx, top: ty, onComplete: () => {
+          if (orb && orb.parentNode) orb.parentNode.removeChild(orb);
+          if (gameState && gameState.players && gameState.players[ownerIndex]) {
+            gameState.players[ownerIndex].mana = capMana((gameState.players[ownerIndex].mana || 0) + 1);
+            updateUI();
+          }
+        }});
+      } catch {}
     }
 
     function preloadCardImages() {
@@ -642,6 +695,8 @@
       const tileSize = 6.2; // увеличено
       const tileHeight = 0.35;
       const spacing = 0.2;
+      const boardYOffset = 1.2; // выше, чтобы рука не перекрывала
+      const boardZShift = -2.6; // отодвинуть поле дальше от камеры/руки
       
       for (let r = 0; r < 3; r++) {
         const row = [];
@@ -654,8 +709,8 @@
           const tile = new THREE.Mesh(geometry, material);
           
           const x = (c - 1) * (tileSize + spacing);
-          const z = (r - 1) * (tileSize + spacing);
-          tile.position.set(x, tileHeight / 2, z);
+          const z = (r - 1) * (tileSize + spacing) + boardZShift;
+          tile.position.set(x, tileHeight / 2 + boardYOffset, z);
           tile.castShadow = false;
           tile.receiveShadow = true;
           
@@ -673,10 +728,10 @@
           const bottom = new THREE.Mesh(new THREE.BoxGeometry(tileSize + 0.04, h, borderT), frameMat.clone());
           const left   = new THREE.Mesh(new THREE.BoxGeometry(borderT, h, tileSize + 0.04), frameMat.clone());
           const right  = new THREE.Mesh(new THREE.BoxGeometry(borderT, h, tileSize + 0.04), frameMat.clone());
-          top.position.set(x, tileHeight + h/2 + 0.002, z - (tileSize/2 - borderT/2));
-          bottom.position.set(x, tileHeight + h/2 + 0.002, z + (tileSize/2 - borderT/2));
-          left.position.set(x - (tileSize/2 - borderT/2), tileHeight + h/2 + 0.002, z);
-          right.position.set(x + (tileSize/2 - borderT/2), tileHeight + h/2 + 0.002, z);
+          top.position.set(x, tileHeight + boardYOffset + h/2 + 0.002, z - (tileSize/2 - borderT/2));
+          bottom.position.set(x, tileHeight + boardYOffset + h/2 + 0.002, z + (tileSize/2 - borderT/2));
+          left.position.set(x - (tileSize/2 - borderT/2), tileHeight + boardYOffset + h/2 + 0.002, z);
+          right.position.set(x + (tileSize/2 - borderT/2), tileHeight + boardYOffset + h/2 + 0.002, z);
           for (const seg of [top, bottom, left, right]) { seg.renderOrder = 600; frame.add(seg); }
           frame.renderOrder = 800; // ниже карт в руке, но выше тайла
           boardGroup.add(frame);
@@ -742,9 +797,9 @@
         originalRotation: new THREE.Euler()
       };
       
-      // Масштаб для руки (фан) — уменьшаем X/Z, толщину оставляем
+      // Масштаб для руки — +50%
       if (isInHand) {
-        card.scale.set(0.36, 1, 0.36);
+        card.scale.set(0.54, 1, 0.54);
       }
       // Если страница запущена как file:// — накладываем иллюстрацию отдельной плоскостью, чтобы избежать tainted canvas
       try { if (location && location.protocol === 'file:') attachIllustrationPlane(card, cardData); } catch {}
@@ -847,13 +902,15 @@
       ctx.fillStyle = '#f1f5f9';
       ctx.font = 'bold 14px Arial';
       ctx.textAlign = 'left';
-      ctx.fillText(`💎${cardData.cost || 0}`, 16, height - 15);
-      // Стоимость атаки как в 2D (⚡)
+      const summonCostText = `💎${cardData.cost || 0}`;
+      ctx.fillText(summonCostText, 16, height - 15);
+      // Стоимость действия ⚡ — переносим рядом, немного правее, чтобы читалось как пара
       if (cardData.type === 'UNIT') {
-        ctx.textAlign = 'center';
+        ctx.textAlign = 'left';
         ctx.font = 'bold 13px Arial';
         const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
-        ctx.fillText(`⚡${act}`, width/2, height - 16);
+        const shift = ctx.measureText(summonCostText).width + 10;
+        ctx.fillText(`⚡${act}`, 16 + shift, height - 15);
       }
       
       if (cardData.type === 'UNIT') {
@@ -1006,6 +1063,7 @@
       
       const tileSize = 6.2;
       const spacing = 0.2;
+      const boardZShift = -2.6;
       
       for (let r = 0; r < 3; r++) {
         for (let c = 0; c < 3; c++) {
@@ -1030,8 +1088,9 @@
           const unitMesh = createCard3D(cardData, false, unit.currentHP);
           
           const x = (c - 1) * (tileSize + spacing);
-          const z = (r - 1) * (tileSize + spacing);
-          unitMesh.position.set(x, 0.5, z);
+          const z = (r - 1) * (tileSize + spacing) + boardZShift;
+          const yBase = tileFrames[r] && tileFrames[r][c] ? (tileFrames[r][c].children?.[0]?.position?.y || (0.5 + 1.2)) : (0.5 + 1.2);
+          unitMesh.position.set(x, yBase + 0.28, z);
           
           const facingAngle = facingDeg[unit.facing] * Math.PI / 180;
           unitMesh.rotation.y = facingAngle;
@@ -1082,35 +1141,38 @@
       }
       updateUI.prevTurn = gameState.turn;
       
-      const manaDisplay = document.getElementById('mana-display');
-      const prev = manaDisplay.querySelectorAll('.mana-orb').length;
-      const currentMana = gameState.players[gameState.active].mana;
-      // Анимация: очищаем и перелёт шариков при увеличении
-      manaDisplay.innerHTML = '';
+      // Обновляем две панели маны (для обоих игроков)
       const total = 10;
-      for (let i = 0; i < total; i++) {
-        const orb = document.createElement('div');
-        const filled = i < currentMana;
-        orb.className = filled ? 'mana-orb' : 'mana-slot';
-        orb.style.opacity = filled ? '0' : '1';
-        manaDisplay.appendChild(orb);
-        if (filled) {
-          // небольшая задержка, как будто орбы «влетают» справа
-          const delay = 0.06 * Math.max(0, i - prev);
-          setTimeout(()=>{
-            orb.style.transform = 'translateX(16px) scale(0.6)';
-            orb.style.transition = 'transform 220ms ease, opacity 220ms ease';
-            requestAnimationFrame(()=>{
-              orb.style.opacity = '1';
-              orb.style.transform = 'translateX(0) scale(1)';
-            });
-          }, delay*1000);
+      for (let p = 0; p < 2; p++) {
+        const manaDisplay = document.getElementById(`mana-display-${p}`);
+        if (!manaDisplay) continue;
+        const prev = manaDisplay.querySelectorAll('.mana-orb').length;
+        const currentMana = gameState.players[p].mana;
+        manaDisplay.innerHTML = '';
+        for (let i = 0; i < total; i++) {
+          const orb = document.createElement('div');
+          const filled = i < currentMana;
+          orb.className = filled ? 'mana-orb' : 'mana-slot';
+          orb.style.opacity = filled ? '0' : '1';
+          manaDisplay.appendChild(orb);
+          if (filled) {
+            const delay = 0.06 * Math.max(0, i - prev);
+            setTimeout(()=>{
+              orb.style.transform = 'translateX(16px) scale(0.6)';
+              orb.style.transition = 'transform 220ms ease, opacity 220ms ease';
+              requestAnimationFrame(()=>{
+                orb.style.opacity = '1';
+                orb.style.transform = 'translateX(0) scale(1)';
+              });
+            }, delay*1000);
+          }
         }
       }
       
       const controlA = countControlled(gameState, 0);
       const controlB = countControlled(gameState, 1);
-      document.getElementById('control-info').textContent = `Контроль: A ${controlA} • B ${controlB}`;
+      const ci0 = document.getElementById('control-info-0'); if (ci0) ci0.textContent = `Контроль A: ${controlA}`;
+      const ci1 = document.getElementById('control-info-1'); if (ci1) ci1.textContent = `Контроль B: ${controlB}`;
       
       if (controlA >= 5) {
         showNotification('Игрок A побеждает!', 'success');
@@ -1181,12 +1243,12 @@
         const handHits = raycaster.intersectObjects(handCardMeshes);
         const newHover = handHits.length > 0 ? handHits[0].object : null;
         if (hoveredHandCard && hoveredHandCard !== newHover) {
-          gsap.to(hoveredHandCard.scale, { x: 0.36, y: 1, z: 0.36, duration: 0.18 });
+          gsap.to(hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.18 });
           hoveredHandCard = null;
         }
         if (newHover && newHover.userData && newHover.userData.isInHand) {
           hoveredHandCard = newHover;
-          gsap.to(newHover.scale, { x: 0.45, y: 1, z: 0.45, duration: 0.18 });
+          gsap.to(newHover.scale, { x: 0.675, y: 1, z: 0.675, duration: 0.18 });
         }
       }
       // Подсветка потенциальных целей при открытой панели действий юнита
@@ -1199,6 +1261,33 @@
         for (const h of hits) {
           const m = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
           if (m) gsap.to(m.position, { y: 0.7, yoyo: true, repeat: 1, duration: 0.2 });
+        }
+      }
+
+      // Tooltip для колод/кладбищ
+      {
+        raycaster.setFromCamera(mouse, camera);
+        const metaHits = raycaster.intersectObjects([...deckMeshes, ...graveyardMeshes], true);
+        const tip = document.getElementById('hover-tooltip');
+        if (metaHits.length > 0) {
+          const obj = metaHits[0].object;
+          const data = obj.userData || obj.parent?.userData || {};
+          if (data && data.metaType) {
+            const p = data.player ?? 0;
+            hoveredMeta = { metaType: data.metaType, player: p };
+            if (tip) {
+              const deckCount = gameState?.players?.[p]?.deck?.length ?? 0;
+              const gyCount = gameState?.players?.[p]?.graveyard?.length ?? 0;
+              tip.textContent = data.metaType === 'deck' ? `Колода ${p===0?'A':'B'}: ${deckCount}` : `Кладбище ${p===0?'A':'B'}: ${gyCount}`;
+              tip.style.left = (event.clientX + 16) + 'px';
+              tip.style.top = (event.clientY + 16) + 'px';
+              tip.classList.remove('hidden');
+            }
+          }
+        } else {
+          hoveredMeta = null;
+          const tipEl = document.getElementById('hover-tooltip');
+          if (tipEl) tipEl.classList.add('hidden');
         }
       }
     }
@@ -1324,9 +1413,9 @@
       });
       
       gsap.to(card.scale, {
-        x: card.userData && card.userData.isInHand ? 0.36 : 1,
+        x: card.userData && card.userData.isInHand ? 0.54 : 1,
         y: 1,
-        z: card.userData && card.userData.isInHand ? 0.36 : 1,
+        z: card.userData && card.userData.isInHand ? 0.54 : 1,
         duration: 0.3
       });
     }
@@ -1414,6 +1503,7 @@
       updateUnits();
       updateHand();
       updateUI();
+      createMetaObjects();
       
       addLog('Игра началась! Игрок A ходит первым.');
       addLog('Перетаскивайте карты существ на поле, используйте заклинания кликом.');
@@ -1487,11 +1577,16 @@
       
       if (unit.currentHP <= 0) {
         addLog(`${cardData.name} погибает от неблагоприятной стихии!`);
+        const owner = unit.owner;
+        // анимация возврата маны + учёт кладбища
+        try { gameState.players[owner].graveyard.push(CARDS[unit.tplId]); } catch {}
+        const pos = tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
+        animateManaGainFromWorld(pos, owner);
         gameState.board[row][col].unit = null;
       }
       
       const targetPos = tileMeshes[row][col].position.clone();
-      targetPos.y = 0.5;
+      targetPos.y = tileMeshes[row][col].position.y + 0.28;
       
       gsap.to(card.position, {
         x: targetPos.x,
@@ -1510,29 +1605,14 @@
           updateHand();
           updateUnits();
           updateUI();
+          // После размещения — если есть цели, запускаем единый боевой сценарий
+          const hitsNow = computeHits(gameState, row, col);
+          if (hitsNow && hitsNow.length) performBattleSequence(row, col, false);
         }
       });
       
       addLog(`${player.name} призывает ${cardData.name} на (${row + 1},${col + 1})`);
       hideOrientationPanel();
-      // бесплатная атака при наличии целей
-      const hits = computeHits(gameState, row, col);
-      if (hits && hits.length) {
-        // Выпадающее движение при автоатаке, затем бой
-        const aMesh = unitMeshes.find(m => m.userData.row === row && m.userData.col === col);
-        const first = hits[0];
-        const targetMesh = unitMeshes.find(m => m.userData.row === first.r && m.userData.col === first.c);
-        const startBattle = () => performBattleSequence(row, col, false);
-        if (aMesh && targetMesh) {
-          const dir = new THREE.Vector3().subVectors(targetMesh.position, aMesh.position).normalize();
-          const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
-          const tl = gsap.timeline({ onComplete: startBattle });
-          tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.28, ease: 'power2.out' })
-            .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.36, ease: 'power2.inOut' });
-        } else {
-          setTimeout(startBattle, 450);
-        }
-      }
     }
     
     function animate() {
@@ -1557,6 +1637,33 @@
       window.addEventListener('resize', onWindowResize);
       
       animate();
+    }
+
+    function createMetaObjects() {
+      // Очистить предыдущие
+      deckMeshes.forEach(m => m.parent && m.parent.remove(m));
+      graveyardMeshes.forEach(m => m.parent && m.parent.remove(m));
+      deckMeshes = []; graveyardMeshes = [];
+      if (!gameState) return;
+      const baseX = (6.2 + 0.2) * 1 + 6.6; // правее поля
+      const zA = -5.2; const zB = 5.2;
+      function buildDeck(player, z) {
+        const g = new THREE.Group(); g.position.set(baseX, 1.0, z); g.userData = { metaType: 'deck', player };
+        const body = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.8, 5.0), new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.3, roughness: 0.8 }));
+        body.castShadow = true; body.receiveShadow = true; body.userData = { metaType: 'deck', player };
+        const top = new THREE.Mesh(new THREE.BoxGeometry(3.62, 0.04, 5.02), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+        top.position.y = 0.42; top.userData = { metaType: 'deck', player };
+        g.add(body); g.add(top); metaGroup.add(g); deckMeshes.push(g);
+      }
+      function buildGrave(player, z) {
+        const g = new THREE.Group(); g.position.set(baseX + 4.2, 0.9, z); g.userData = { metaType: 'grave', player };
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.3, 20), new THREE.MeshStandardMaterial({ color: 0x334155 }));
+        base.userData = { metaType: 'grave', player };
+        const icon = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x64748b }));
+        icon.position.y = 0.9; icon.rotation.y = Math.PI / 8; icon.userData = { metaType: 'grave', player };
+        g.add(base); g.add(icon); metaGroup.add(g); graveyardMeshes.push(g);
+      }
+      buildDeck(0, zA); buildDeck(1, zB); buildGrave(0, zA); buildGrave(1, zB);
     }
     
     // Обработчики UI
@@ -1651,7 +1758,7 @@
       // небольшая анимация выпада/толчка
       const aMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
       const hitsPrev = computeHits(gameState, r, c);
-      const fromPos = (aMesh ? aMesh.position.clone() : tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 0.5, 0)));
+      const fromPos = (aMesh ? aMesh.position.clone() : tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 0.8, 0)));
 
       const doStep1 = () => {
         // Лучи и эффекты попаданий
@@ -1695,14 +1802,34 @@
           }
           const afterDeathDelay = dying.length ? 800 : 0;
           setTimeout(() => {
-            const retaliation = staged.step2() || 0;
+            const ret = staged.step2() || { total: 0, retaliators: [] };
+            const retaliation = typeof ret === 'number' ? ret : (ret.total || 0);
             if (retaliation > 0) {
               if (aMesh) {
                 shakeMesh(aMesh, 3, 0.2);
                 spawnDamageText(aMesh, `-${retaliation}`, '#ffd166');
               }
+              const retaliators = (ret.retaliators || []);
+              for (const rrObj of retaliators) {
+                const rMesh = unitMeshes.find(m => m.userData.row === rrObj.r && m.userData.col === rrObj.c);
+                if (rMesh && aMesh) {
+                  const dir2 = new THREE.Vector3().subVectors(aMesh.position, rMesh.position).normalize();
+                  const push2 = { x: dir2.x * 0.6, z: dir2.z * 0.6 };
+                  gsap.timeline()
+                    .to(rMesh.position, { x: `+=${push2.x}`, z: `+=${push2.z}`, duration: 0.22, ease: 'power2.out' })
+                    .to(rMesh.position, { x: `-=${push2.x}`, z: `-=${push2.z}`, duration: 0.3, ease: 'power2.inOut' });
+                }
+              }
             }
             const res = staged.finish();
+            // Зафиксируем смерти: манасфера + перемещение в кладбище
+            if (res.deaths && res.deaths.length) {
+              for (const d of res.deaths) {
+                try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
+                const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
+                animateManaGainFromWorld(p, d.owner);
+              }
+            }
             gameState = res.n1; updateUnits(); updateUI();
             for (const l of res.logLines.reverse()) addLog(l);
             if (markAttackTurn && gameState.board[r][c].unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
@@ -1795,6 +1922,15 @@
           spawnDamageText(tMesh, `-${res.dmg}`, '#ff5555');
         }
       }
+      // Манасфера и кладбище для погибших от магии
+      if (res.deaths && res.deaths.length) {
+        for (const d of res.deaths) {
+          try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
+          const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
+          animateManaGainFromWorld(p, d.owner);
+        }
+        updateUI();
+      }
       const attacker = gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
     }
     
@@ -1806,7 +1942,7 @@
       if (tpl.cost > pl.mana) { showNotification('Недостаточно маны', 'error'); resetCardSelection(); return; }
       const r = unitMesh.userData.row; const c = unitMesh.userData.col; const u = gameState.board[r][c].unit;
       if (tpl.id === 'WIND_SHIFT') { if (u) u.facing = turnCW[u.facing]; addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут.`); }
-      if (tpl.id === 'FREEZE_STREAM') { if (u) { const before = u.currentHP; u.currentHP = Math.max(0, u.currentHP - 1); addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает 1 урона (HP ${before}→${u.currentHP})`); if (u.currentHP <= 0) gameState.board[r][c].unit = null; } }
+      if (tpl.id === 'FREEZE_STREAM') { if (u) { const before = u.currentHP; u.currentHP = Math.max(0, u.currentHP - 1); addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает 1 урона (HP ${before}→${u.currentHP})`); if (u.currentHP <= 0) { const owner=u.owner; try { gameState.players[owner].graveyard.push(CARDS[u.tplId]); } catch {} const pos = tileMeshes[r][c].position.clone().add(new THREE.Vector3(0,1.2,0)); animateManaGainFromWorld(pos, owner); gameState.board[r][c].unit = null; } } }
       if (tpl.id === 'RAISE_STONE') { if (u && u.owner === gameState.active) { const before = u.currentHP; u.currentHP += 2; addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает +2 HP (HP ${before}→${u.currentHP})`); } }
       pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
       resetCardSelection(); updateHand(); updateUnits(); updateUI();
