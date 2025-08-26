@@ -33,6 +33,11 @@
     @keyframes turnslide { 0%{ transform:translateX(-120%)} 20%{ transform:translateX(0)} 80%{ transform:translateX(0)} 100%{ transform:translateX(140%) } }
     .battlePop { animation: pop 1100ms ease both; }
     @keyframes pop { 0%{ transform:scale(.6); opacity:0 } 40%{ transform:scale(1.06); opacity:1 } 100%{ transform:scale(1); opacity:.96 } }
+    /* Flashy BATTLE splash */
+    .battle-flash-wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+    .battle-flash-bg { position: absolute; inset: 0; background: radial-gradient(80% 60% at 50% 50%, rgba(255,255,255,0.08), rgba(0,0,0,0.8)); mix-blend-mode: screen; }
+    .battle-flash-text { position: relative; font-weight: 900; letter-spacing: 0.08em; text-shadow: 0 0 20px rgba(255, 236, 153, .9), 0 0 40px rgba(255, 98, 0, .7); }
+    .battle-flash-scan { position:absolute; inset:0; background: linear-gradient( to bottom, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100% ); transform: translateY(-100%); }
     /* Tooltip для 3D-колод/кладбищ */
     #hover-tooltip { position: fixed; pointer-events: none; z-index: 50; }
   </style>
@@ -533,20 +538,36 @@
       platform.position.y = -0.5;
       platform.receiveShadow = true;
       scene.add(platform);
-      // Загрузка текстур тайлов поля
+      // Загрузка текстур тайлов поля (с приоритетом папки Textures/ и фолбэком)
       const loader = new THREE.TextureLoader();
-      const texMap = { FIRE: 'tile-fire.png', WATER: 'tile-water.png', EARTH: 'tile-earth.png', FOREST: 'tile-forest.png' };
-      for (const k in texMap) {
-        try {
-          const t = loader.load(texMap[k]);
-          t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.RepeatWrapping;
-          t.repeat.set(1, 1);
-          t.anisotropy = renderer.capabilities.getMaxAnisotropy();
-          if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
-          TILE_TEXTURES[k] = t;
-        } catch (e) {
-          // фолбэк создадим ниже процедурно
-        }
+      const baseMap = { FIRE: 'tile-fire.png', WATER: 'tile-water.png', EARTH: 'tile-earth.png', FOREST: 'tile-forest.png' };
+      for (const k in baseMap) {
+        const primary = `Textures/${baseMap[k]}`;
+        const fallback = baseMap[k];
+        loader.load(
+          primary,
+          (tex) => {
+            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(1, 1);
+            tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+            if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+            TILE_TEXTURES[k] = tex;
+          },
+          undefined,
+          () => {
+            // Фолбэк: старый путь из корня
+            loader.load(
+              fallback,
+              (tex2) => {
+                tex2.wrapS = THREE.RepeatWrapping; tex2.wrapT = THREE.RepeatWrapping;
+                tex2.repeat.set(1, 1);
+                tex2.anisotropy = renderer.capabilities.getMaxAnisotropy();
+                if (THREE.SRGBColorSpace) tex2.colorSpace = THREE.SRGBColorSpace;
+                TILE_TEXTURES[k] = tex2;
+              }
+            );
+          }
+        );
       }
     }
 
@@ -560,27 +581,41 @@
     function animateManaGainFromWorld(pos, ownerIndex) {
       try {
         const start = worldToScreen(pos);
-        const targetEl = document.getElementById(`mana-display-${ownerIndex}`);
-        if (!targetEl) return;
-        const rect = targetEl.getBoundingClientRect();
-        const tx = rect.left + rect.width / 2;
-        const ty = rect.top + rect.height / 2;
+        const barEl = document.getElementById(`mana-display-${ownerIndex}`);
+        if (!barEl) return;
+        // определить целевую ячейку: текущая мана = индекс слота для влёта
+        const currentMana = (gameState && gameState.players && gameState.players[ownerIndex]) ? (gameState.players[ownerIndex].mana || 0) : 0;
+        const targetIdx = Math.min(9, currentMana);
+        const child = barEl.children && barEl.children[targetIdx];
+        let tx, ty;
+        if (child) {
+          const srect = child.getBoundingClientRect();
+          tx = srect.left + srect.width / 2;
+          ty = srect.top + srect.height / 2;
+        } else {
+          const rect = barEl.getBoundingClientRect();
+          tx = rect.left + rect.width / 2;
+          ty = rect.top + rect.height / 2;
+        }
         const orb = document.createElement('div');
         orb.className = 'mana-orb';
         orb.style.position = 'fixed';
         orb.style.left = start.x + 'px';
         orb.style.top = start.y + 'px';
-        orb.style.transform = 'translate(-50%, -50%) scale(0.9)';
-        orb.style.opacity = '0.9';
+        orb.style.transform = 'translate(-50%, -50%) scale(0.3)';
+        orb.style.opacity = '0';
         orb.style.zIndex = '60';
         document.body.appendChild(orb);
-        gsap.to(orb, { duration: 0.85, ease: 'power2.inOut', left: tx, top: ty, onComplete: () => {
+        const tl = gsap.timeline({ onComplete: () => {
           if (orb && orb.parentNode) orb.parentNode.removeChild(orb);
           if (gameState && gameState.players && gameState.players[ownerIndex]) {
             gameState.players[ownerIndex].mana = capMana((gameState.players[ownerIndex].mana || 0) + 1);
             updateUI();
           }
         }});
+        // 0.5с появление, затем 2.0с полёт к панели
+        tl.to(orb, { duration: 0.5, ease: 'back.out(1.4)', opacity: 1, transform: 'translate(-50%, -50%) scale(1)' })
+          .to(orb, { duration: 2.0, ease: 'power2.inOut', left: tx, top: ty }, '>-0.1');
       } catch {}
     }
 
@@ -1131,13 +1166,10 @@
       
       document.getElementById('turn-info').textContent = `Ход: ${gameState.turn}`;
       document.getElementById('active-player').textContent = `Активный: ${gameState.players[gameState.active].name}`;
-      // показать баннер хода при смене
+      // flashy-анонс хода при смене
       if (!updateUI.prevTurn || updateUI.prevTurn !== gameState.turn) {
-        const tb = document.getElementById('turn-banner');
-        const box = tb.querySelector('div');
-        box.textContent = `Turn ${gameState.turn} — ${gameState.players[gameState.active].name}`;
-        tb.classList.remove('hidden'); tb.classList.add('flex');
-        setTimeout(()=>{ tb.classList.add('hidden'); tb.classList.remove('flex'); }, 2600);
+        const title = `Ход ${gameState.turn} — ${gameState.players[gameState.active].name}`;
+        showTurnSplash(title);
       }
       updateUI.prevTurn = gameState.turn;
       
@@ -1748,38 +1780,18 @@
       hideUnitActionPanel();
     }
     
-    function performBattleSequence(r, c, markAttackTurn) {
+    async function performBattleSequence(r, c, markAttackTurn) {
       const staged = stagedAttack(gameState, r, c);
       if (!staged || staged.empty) return;
-      // баннер боя
-      const bb = document.getElementById('battle-banner');
-      bb.classList.remove('hidden'); bb.classList.add('flex');
-      setTimeout(()=>{ bb.classList.add('hidden'); bb.classList.remove('flex'); }, 1100);
+      // flashy заставка BATTLE 3 секунды
+      await showBattleSplash();
       // небольшая анимация выпада/толчка
       const aMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
       const hitsPrev = computeHits(gameState, r, c);
       const fromPos = (aMesh ? aMesh.position.clone() : tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 0.8, 0)));
 
       const doStep1 = () => {
-        // Лучи и эффекты попаданий
-        for (const h of hitsPrev) {
-          const toMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
-          if (toMesh) {
-            const to = toMesh.position.clone();
-            const from = fromPos.clone();
-            const dir = new THREE.Vector3().subVectors(to, from);
-            const len = dir.length(); dir.normalize();
-            const geom = new THREE.CylinderGeometry(0.05, 0.05, len, 8);
-            const mat = new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false });
-            const beam = new THREE.Mesh(geom, mat);
-            beam.position.copy(from.clone().add(to).multiplyScalar(0.5));
-            beam.lookAt(to);
-            beam.rotateX(Math.PI/2);
-            beam.renderOrder = 998;
-            effectsGroup.add(beam);
-            gsap.to(beam.material, { opacity: 0, duration: 1.3, onComplete: ()=>{ effectsGroup.remove(beam); } });
-          }
-        }
+        // Убраны жёлтые лучи/стрелки под картами
         // Применяем урон (этап 1) и перерисовываем юниты
         staged.step1();
         gameState = staged.n1; updateUnits();
@@ -1788,52 +1800,47 @@
           const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
           if (tMesh) { shakeMesh(tMesh, 6, 0.12); spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555'); }
         }
-        // Кто умер после step1
-        const dying = hitsPrev.filter(h => {
-          const u = gameState.board[h.r][h.c].unit; return u && u.currentHP <= 0;
-        });
-        setTimeout(() => {
-          for (const h of dying) {
-            const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
-            if (tMesh) {
-              const away = aMesh ? new THREE.Vector3().subVectors(tMesh.position, aMesh.position).normalize().multiplyScalar(1.2) : new THREE.Vector3(0, 0, 1);
-              fadeOutAndFly(tMesh, away);
+        setTimeout(async () => {
+          // Пауза 1 секунда перед ответкой
+          await sleep(1000);
+          const ret = staged.step2() || { total: 0, retaliators: [] };
+          const retaliation = typeof ret === 'number' ? ret : (ret.total || 0);
+          if (retaliation > 0) {
+            // Выпад всех контратакующих
+            const retaliators = (ret.retaliators || []);
+            let maxDur = 0;
+            for (const rrObj of retaliators) {
+              const rMesh = unitMeshes.find(m => m.userData.row === rrObj.r && m.userData.col === rrObj.c);
+              if (rMesh && aMesh) {
+                const dir2 = new THREE.Vector3().subVectors(aMesh.position, rMesh.position).normalize();
+                const push2 = { x: dir2.x * 0.6, z: dir2.z * 0.6 };
+                const tl2 = gsap.timeline();
+                tl2.to(rMesh.position, { x: `+=${push2.x}`, z: `+=${push2.z}`, duration: 0.22, ease: 'power2.out' })
+                   .to(rMesh.position, { x: `-=${push2.x}`, z: `-=${push2.z}`, duration: 0.30, ease: 'power2.inOut' });
+                maxDur = Math.max(maxDur, 0.52);
+              }
             }
+            // После лунжей контратаки — тряска и числа урона по атакующему
+            setTimeout(() => { if (aMesh) { shakeMesh(aMesh, 6, 0.14); spawnDamageText(aMesh, `-${retaliation}`, '#ffd166'); } }, Math.max(0, maxDur * 1000 - 10));
           }
-          const afterDeathDelay = dying.length ? 800 : 0;
-          setTimeout(() => {
-            const ret = staged.step2() || { total: 0, retaliators: [] };
-            const retaliation = typeof ret === 'number' ? ret : (ret.total || 0);
-            if (retaliation > 0) {
-              if (aMesh) {
-                shakeMesh(aMesh, 3, 0.2);
-                spawnDamageText(aMesh, `-${retaliation}`, '#ffd166');
+          // Финализация: анимация смерти и орбы перед применением состояния
+          const res = staged.finish();
+          if (res.deaths && res.deaths.length) {
+            for (const d of res.deaths) {
+              try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
+              const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
+              if (deadMesh) {
+                const fromMesh = aMesh || deadMesh;
+                const dirUp = new THREE.Vector3().subVectors(deadMesh.position, fromMesh.position).normalize().multiplyScalar(0.4);
+                fadeOutAndFly(deadMesh, dirUp);
               }
-              const retaliators = (ret.retaliators || []);
-              for (const rrObj of retaliators) {
-                const rMesh = unitMeshes.find(m => m.userData.row === rrObj.r && m.userData.col === rrObj.c);
-                if (rMesh && aMesh) {
-                  const dir2 = new THREE.Vector3().subVectors(aMesh.position, rMesh.position).normalize();
-                  const push2 = { x: dir2.x * 0.6, z: dir2.z * 0.6 };
-                  gsap.timeline()
-                    .to(rMesh.position, { x: `+=${push2.x}`, z: `+=${push2.z}`, duration: 0.22, ease: 'power2.out' })
-                    .to(rMesh.position, { x: `-=${push2.x}`, z: `-=${push2.z}`, duration: 0.3, ease: 'power2.inOut' });
-                }
-              }
+              const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.6, 0));
+              animateManaGainFromWorld(p, d.owner);
             }
-            const res = staged.finish();
-            // Зафиксируем смерти: манасфера + перемещение в кладбище
-            if (res.deaths && res.deaths.length) {
-              for (const d of res.deaths) {
-                try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
-                const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-                animateManaGainFromWorld(p, d.owner);
-              }
-            }
-            gameState = res.n1; updateUnits(); updateUI();
-            for (const l of res.logLines.reverse()) addLog(l);
-            if (markAttackTurn && gameState.board[r][c].unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
-          }, afterDeathDelay);
+            setTimeout(() => { gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; }, 1500);
+          } else {
+            gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
+          }
         }, 420);
       };
 
@@ -1867,15 +1874,20 @@
       ctx.fillText(text, canvas.width/2, canvas.height/2);
       const tex = new THREE.CanvasTexture(canvas);
       tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 1, depthTest: false, depthWrite: false });
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0, depthTest: false, depthWrite: false });
       const sprite = new THREE.Sprite(mat);
       sprite.scale.set(2.6, 1.4, 1);
       const pos = targetMesh.position.clone().add(new THREE.Vector3(0, 0.9, 0));
       sprite.position.copy(pos);
       sprite.renderOrder = 999;
       effectsGroup.add(sprite);
-      gsap.to(sprite.position, { y: sprite.position.y + 1.5, duration: 1.2, ease: 'power1.out' });
-      gsap.to(sprite.material, { opacity: 0, duration: 1.2, onComplete: () => { effectsGroup.remove(sprite); tex.dispose(); mat.dispose(); } });
+      const tl = gsap.timeline({ onComplete: () => { effectsGroup.remove(sprite); tex.dispose(); mat.dispose(); } });
+      // 0.5с вылет, 1с стоп, 0.5с испарение
+      tl.to(sprite.material, { opacity: 1, duration: 0.05 })
+        .to(sprite.position, { y: sprite.position.y + 0.8, duration: 0.5, ease: 'power1.out' })
+        .to({}, { duration: 1.0 })
+        .to(sprite.position, { y: sprite.position.y + 1.6, duration: 0.5, ease: 'power1.in' }, 'end')
+        .to(sprite.material, { opacity: 0, duration: 0.5 }, 'end');
     }
 
     function shakeMesh(mesh, times = 3, duration = 0.1) {
@@ -1894,8 +1906,10 @@
       awayVec = awayVec || new THREE.Vector3(0, 0, 1);
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       mats.forEach(m => { m.transparent = true; });
-      gsap.to(mesh.position, { x: mesh.position.x + awayVec.x, y: mesh.position.y + 1.6, z: mesh.position.z + awayVec.z, duration: 0.7, ease: 'power2.in' });
-      gsap.to(mats, { opacity: 0, duration: 0.75 });
+      const tl = gsap.timeline();
+      tl.to(mesh.rotation, { y: mesh.rotation.y + Math.PI * 0.6, x: mesh.rotation.x - Math.PI * 0.20, duration: 1.5, ease: 'power1.inOut' }, 0)
+        .to(mesh.position, { x: mesh.position.x + awayVec.x, y: mesh.position.y + 2.2, z: mesh.position.z + awayVec.z, duration: 1.5, ease: 'power2.in' }, 0)
+        .to(mats, { opacity: 0, duration: 1.5 }, 0);
     }
     
     function performMagicAttack(from, targetMesh) {
@@ -1922,16 +1936,67 @@
           spawnDamageText(tMesh, `-${res.dmg}`, '#ff5555');
         }
       }
-      // Манасфера и кладбище для погибших от магии
+      // Манасфера и кладбище для погибших от магии (анимация смерти 1.5с + орб 0.5+2.0)
       if (res.deaths && res.deaths.length) {
         for (const d of res.deaths) {
           try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
+          const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
+          if (deadMesh) { fadeOutAndFly(deadMesh, new THREE.Vector3(0, 0, 0.6)); }
           const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
           animateManaGainFromWorld(p, d.owner);
         }
         updateUI();
       }
-      const attacker = gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
+      const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
+    }
+    // Вспомогательные утилиты: задержка и яркая заставка BATTLE на 3 секунды
+    function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+    async function showBattleSplash() {
+      const bb = document.getElementById('battle-banner');
+      if (!bb) return;
+      const inner = bb.querySelector('div');
+      if (!inner) return;
+      inner.innerHTML = '';
+      const wrap = document.createElement('div'); wrap.className = 'battle-flash-wrap';
+      const bg = document.createElement('div'); bg.className = 'battle-flash-bg'; wrap.appendChild(bg);
+      const txt = document.createElement('div'); txt.className = 'battle-flash-text text-6xl md:text-8xl'; txt.textContent = 'BATTLE'; wrap.appendChild(txt);
+      const scan = document.createElement('div'); scan.className = 'battle-flash-scan'; wrap.appendChild(scan);
+      inner.appendChild(wrap);
+      bb.classList.remove('hidden'); bb.classList.add('flex');
+      const tl = gsap.timeline();
+      tl.fromTo(txt, { scale: 0.6, opacity: 0 }, { scale: 1.1, opacity: 1, duration: 0.5, ease: 'back.out(1.8)' })
+        .to(txt, { scale: 1.0, duration: 0.4, ease: 'power2.out' })
+        .to(scan, { yPercent: 200, duration: 1.2, ease: 'power1.inOut' }, 0.1)
+        .to(txt, { duration: 0.1, textShadow: '0 0 30px rgba(255,255,255,1), 0 0 80px rgba(255,120,0,.9)' }, 0.35)
+        .to(bg, { opacity: 0.6, duration: 0.3 }, 0)
+        .to(bg, { opacity: 0.2, duration: 0.7 }, 0.5)
+        .to(txt, { scale: 1.06, duration: 0.3, repeat: 3, yoyo: true, ease: 'sine.inOut' }, 1.2);
+      await sleep(3000);
+      bb.classList.add('hidden'); bb.classList.remove('flex');
+      inner.innerHTML = '<div class="battlePop text-5xl font-extrabold bg-gradient-to-br from-red-600/80 to-yellow-500/80 px-10 py-5 rounded-3xl shadow-2xl ring-4 ring-yellow-400/40">BATTLE</div>';
+    }
+
+    async function showTurnSplash(title) {
+      const tb = document.getElementById('turn-banner');
+      if (!tb) return;
+      const inner = tb.querySelector('div');
+      if (!inner) return;
+      inner.innerHTML = '';
+      const wrap = document.createElement('div'); wrap.className = 'battle-flash-wrap';
+      const bg = document.createElement('div'); bg.className = 'battle-flash-bg'; wrap.appendChild(bg);
+      const txt = document.createElement('div'); txt.className = 'battle-flash-text text-4xl md:text-6xl'; txt.textContent = title; wrap.appendChild(txt);
+      const scan = document.createElement('div'); scan.className = 'battle-flash-scan'; wrap.appendChild(scan);
+      inner.appendChild(wrap);
+      tb.classList.remove('hidden'); tb.classList.add('flex');
+      const tl = gsap.timeline();
+      tl.fromTo(txt, { scale: 0.7, opacity: 0 }, { scale: 1.08, opacity: 1, duration: 0.45, ease: 'back.out(1.8)' })
+        .to(txt, { scale: 1.0, duration: 0.35, ease: 'power2.out' })
+        .to(scan, { yPercent: 200, duration: 1.0, ease: 'power1.inOut' }, 0.1)
+        .to(bg, { opacity: 0.5, duration: 0.25 }, 0)
+        .to(bg, { opacity: 0.15, duration: 0.6 }, 0.45);
+      await sleep(2600);
+      tb.classList.add('hidden'); tb.classList.remove('flex');
+      inner.innerHTML = '';
     }
     
     function castSpellOnUnit(cardMesh, unitMesh) {
