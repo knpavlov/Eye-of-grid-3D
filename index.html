@@ -547,9 +547,10 @@
       scene.add(platform);
       // Загрузка текстур тайлов поля из папки textures/
       const loader = new THREE.TextureLoader();
-      const baseMap = { FIRE: 'textures/tile_fire.png', WATER: 'textures/tile_water.png', EARTH: 'textures/tile_earth.png', FOREST: 'textures/tile_forest.png' };
+      const ASSET_VERSION = '2';
+      const baseMap = { FIRE: './textures/tile_fire.png', WATER: './textures/tile_water.png', EARTH: './textures/tile_earth.png', FOREST: './textures/tile_forest.png' };
       for (const k in baseMap) {
-        const path = baseMap[k];
+        const path = `${baseMap[k]}?v=${ASSET_VERSION}`;
         loader.load(
           path,
           (tex) => {
@@ -558,10 +559,14 @@
             tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
             if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
             TILE_TEXTURES[k] = tex;
+            tex.needsUpdate = true;
+            // Если поле уже создано — обновим материалы соответствующих тайлов
+            try { updateTileMaterialsFor(k); } catch {}
           },
           undefined,
           () => {
             // если не удалось — оставим процедурную текстуру как фолбэк
+            try { console.warn('Не удалось загрузить текстуру тайла', k, path); } catch {}
           }
         );
       }
@@ -711,6 +716,29 @@
         emissive: 0x1a1a1a,
         emissiveIntensity: 0.18
       });
+    }
+
+    // Обновить материалы уже созданных тайлов при подгрузке текстуры
+    function updateTileMaterialsFor(elementKey) {
+      if (!tileMeshes || !tileMeshes.length) return;
+      const tex = TILE_TEXTURES[elementKey];
+      if (!tex) return;
+      for (let r = 0; r < tileMeshes.length; r++) {
+        const row = tileMeshes[r]; if (!row) continue;
+        for (let c = 0; c < row.length; c++) {
+          const tile = row[c]; if (!tile) continue;
+          const cell = (gameState && gameState.board && gameState.board[r] && gameState.board[r][c]) ? gameState.board[r][c] : null;
+          if (cell && cell.element === elementKey) {
+            // освобождаем старый материал и назначаем новый с текстурой
+            try { tile.material.dispose && tile.material.dispose(); } catch {}
+            const mat = new THREE.MeshBasicMaterial({ map: tex });
+            tile.material = mat;
+            tile.material.needsUpdate = true;
+          }
+        }
+      }
+      // Перерисуем кадр
+      try { renderer && renderer.render(scene, camera); } catch {}
     }
     
     function createBoard() {
