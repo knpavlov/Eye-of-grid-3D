@@ -50,7 +50,7 @@
   <div id="ui">
     <!-- Боковые панели: слева — игрок A, справа — игрок B -->
     <div id="left-side" class="ui-panel fixed left-4 top-1/2 -translate-y-1/2 space-y-3 z-20">
-      <div class="overlay-panel px-4 py-1 text-sm text-center">Игрок 1</div>
+      <div class="text-2xl md:text-3xl font-semibold text-center">Игрок 1</div>
       <div class="overlay-panel px-4 py-2">
         <div class="text-sm mb-1">Мана</div>
         <div class="mana-bar" id="mana-display-0"></div>
@@ -59,7 +59,7 @@
     </div>
 
     <div id="right-side" class="ui-panel fixed right-4 top-1/2 -translate-y-1/2 space-y-3 z-20">
-      <div class="overlay-panel px-4 py-1 text-sm text-center">Игрок 2</div>
+      <div class="text-2xl md:text-3xl font-semibold text-center">Игрок 2</div>
       <div class="overlay-panel px-4 py-2">
         <div class="text-sm mb-1">Мана</div>
         <div class="mana-bar" id="mana-display-1"></div>
@@ -71,7 +71,7 @@
     <div id="top-center" class="ui-panel fixed top-3 left-1/2 -translate-x-1/2 z-20">
       <div class="overlay-panel px-4 py-2 flex items-center gap-4">
         <div id="turn-info">Ход: 1</div>
-        <div id="active-player">Активный: Игрок A</div>
+        <div id="active-player">Активный: Игрок 1</div>
         <button id="end-turn-btn" class="px-4 py-2 text-sm bg-amber-600 hover:bg-amber-700 transition-colors rounded-lg">Завершить ход</button>
       </div>
     </div>
@@ -278,7 +278,7 @@
         board: randomBoard(),
         players: [
           { 
-            name: 'Игрок A', 
+            name: 'Игрок 1', 
             deck: shuffle(deck0.filter(Boolean)), 
             hand: [], 
             discard: [], 
@@ -286,7 +286,7 @@
             mana: 2 
           },
           { 
-            name: 'Игрок B', 
+            name: 'Игрок 2', 
             deck: shuffle(deck1.filter(Boolean)), 
             hand: [], 
             discard: [], 
@@ -545,14 +545,13 @@
       platform.position.y = -0.5;
       platform.receiveShadow = true;
       scene.add(platform);
-      // Загрузка текстур тайлов поля (с приоритетом папки Textures/ и фолбэком)
+      // Загрузка текстур тайлов поля из папки textures/
       const loader = new THREE.TextureLoader();
-      const baseMap = { FIRE: 'tile-fire.png', WATER: 'tile-water.png', EARTH: 'tile-earth.png', FOREST: 'tile-forest.png' };
+      const baseMap = { FIRE: 'textures/tile_fire.png', WATER: 'textures/tile_water.png', EARTH: 'textures/tile_earth.png', FOREST: 'textures/tile_forest.png' };
       for (const k in baseMap) {
-        const primary = `Textures/${baseMap[k]}`;
-        const fallback = baseMap[k];
+        const path = baseMap[k];
         loader.load(
-          primary,
+          path,
           (tex) => {
             tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
             tex.repeat.set(1, 1);
@@ -562,17 +561,7 @@
           },
           undefined,
           () => {
-            // Фолбэк: старый путь из корня
-            loader.load(
-              fallback,
-              (tex2) => {
-                tex2.wrapS = THREE.RepeatWrapping; tex2.wrapT = THREE.RepeatWrapping;
-                tex2.repeat.set(1, 1);
-                tex2.anisotropy = renderer.capabilities.getMaxAnisotropy();
-                if (THREE.SRGBColorSpace) tex2.colorSpace = THREE.SRGBColorSpace;
-                TILE_TEXTURES[k] = tex2;
-              }
-            );
+            // если не удалось — оставим процедурную текстуру как фолбэк
           }
         );
       }
@@ -1210,14 +1199,14 @@
       
       const controlA = countControlled(gameState, 0);
       const controlB = countControlled(gameState, 1);
-      const ci0 = document.getElementById('control-info-0'); if (ci0) ci0.textContent = `Контроль A: ${controlA}`;
-      const ci1 = document.getElementById('control-info-1'); if (ci1) ci1.textContent = `Контроль B: ${controlB}`;
+      const ci0 = document.getElementById('control-info-0'); if (ci0) ci0.textContent = `Контроль: ${controlA}`;
+      const ci1 = document.getElementById('control-info-1'); if (ci1) ci1.textContent = `Контроль: ${controlB}`;
       
       if (controlA >= 5) {
-        showNotification('Игрок A побеждает!', 'success');
+        showNotification('Игрок 1 побеждает!', 'success');
         gameState.winner = 0;
       } else if (controlB >= 5) {
-        showNotification('Игрок B побеждает!', 'success');
+        showNotification('Игрок 2 побеждает!', 'success');
         gameState.winner = 1;
       }
     }
@@ -1317,7 +1306,7 @@
             if (tip) {
               const deckCount = gameState?.players?.[p]?.deck?.length ?? 0;
               const gyCount = gameState?.players?.[p]?.graveyard?.length ?? 0;
-              tip.textContent = data.metaType === 'deck' ? `Колода ${p===0?'A':'B'}: ${deckCount}` : `Кладбище ${p===0?'A':'B'}: ${gyCount}`;
+              tip.textContent = data.metaType === 'deck' ? `Колода Игрок ${p===0? '1':'2'}: ${deckCount}` : `Кладбище Игрок ${p===0? '1':'2'}: ${gyCount}`;
               tip.style.left = (event.clientX + 16) + 'px';
               tip.style.top = (event.clientY + 16) + 'px';
               tip.classList.remove('hidden');
@@ -1544,7 +1533,7 @@
       updateUI();
       createMetaObjects();
       
-      addLog('Игра началась! Игрок A ходит первым.');
+      addLog('Игра началась! Игрок 1 ходит первым.');
       addLog('Перетаскивайте карты существ на поле, используйте заклинания кликом.');
     }
     
