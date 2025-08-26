@@ -345,16 +345,23 @@
           const backDir = turnCW[turnCW[B.facing]];
           const [bdr, bdc] = DIR_VECTORS[backDir];
           const isBack = (nr + bdr === r && nc + bdc === c);
-          let extra = 0;
-          const blind = CARDS[B.tplId].blindspots || ['S'];
-          const dirFromBtoA = (() => {
+          // Определяем направление на атакующего относительно ПОВОРОТА цели
+          const dirAbs = (() => {
             if (r === nr - 1 && c === nc) return 'N';
             if (r === nr + 1 && c === nc) return 'S';
             if (r === nr && c === nc - 1) return 'W';
             return 'E';
           })();
-          if (blind.includes(dirFromBtoA)) extra += 1;
-          const dmg = Math.max(0, atk + (isBack ? 1 : 0) + extra);
+          const ORDER = ['N','E','S','W'];
+          const absIdx = ORDER.indexOf(dirAbs);
+          const faceIdx = ORDER.indexOf(B.facing);
+          const relIdx = (absIdx - faceIdx + 4) % 4;
+          const dirRel = ORDER[relIdx];
+          const blind = CARDS[B.tplId].blindspots || ['S'];
+          const inBlind = blind.includes(dirRel);
+          // Исключаем двойное начисление за спину: максимум +1
+          const extraTotal = isBack ? 1 : (inBlind ? 1 : 0);
+          const dmg = Math.max(0, atk + extraTotal);
           hits.push({ r: nr, c: nc, dmg, backstab: isBack });
           break; // первая цель по лучу
         }
@@ -1805,14 +1812,17 @@
           await sleep(1000);
           const ret = staged.step2() || { total: 0, retaliators: [] };
           const retaliation = typeof ret === 'number' ? ret : (ret.total || 0);
+          let animDelayMs = 0;
           if (retaliation > 0) {
             // Выпад всех контратакующих
             const retaliators = (ret.retaliators || []);
             let maxDur = 0;
             for (const rrObj of retaliators) {
               const rMesh = unitMeshes.find(m => m.userData.row === rrObj.r && m.userData.col === rrObj.c);
-              if (rMesh && aMesh) {
-                const dir2 = new THREE.Vector3().subVectors(aMesh.position, rMesh.position).normalize();
+              // Пересчитаем актуальный меш атакующего после обновления юнитов
+              const aMeshLive = unitMeshes.find(m => m.userData.row === r && m.userData.col === c) || aMesh;
+              if (rMesh && aMeshLive) {
+                const dir2 = new THREE.Vector3().subVectors(aMeshLive.position, rMesh.position).normalize();
                 const push2 = { x: dir2.x * 0.6, z: dir2.z * 0.6 };
                 const tl2 = gsap.timeline();
                 tl2.to(rMesh.position, { x: `+=${push2.x}`, z: `+=${push2.z}`, duration: 0.22, ease: 'power2.out' })
@@ -1821,7 +1831,8 @@
               }
             }
             // После лунжей контратаки — тряска и числа урона по атакующему
-            setTimeout(() => { if (aMesh) { shakeMesh(aMesh, 6, 0.14); spawnDamageText(aMesh, `-${retaliation}`, '#ffd166'); } }, Math.max(0, maxDur * 1000 - 10));
+            setTimeout(() => { const aLive = unitMeshes.find(m => m.userData.row === r && m.userData.col === c) || aMesh; if (aLive) { shakeMesh(aLive, 6, 0.14); spawnDamageText(aLive, `-${retaliation}`, '#ffd166'); } }, Math.max(0, maxDur * 1000 - 10));
+            animDelayMs = Math.max(animDelayMs, Math.floor(maxDur * 1000) + 160);
           }
           // Финализация: анимация смерти и орбы перед применением состояния
           const res = staged.finish();
@@ -1839,7 +1850,10 @@
             }
             setTimeout(() => { gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; }, 1500);
           } else {
-            gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
+            // Если смертей нет — подождём, пока анимация контратаки завершится, затем применим состояние
+            setTimeout(() => {
+              gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
+            }, Math.max(0, animDelayMs));
           }
         }, 420);
       };
