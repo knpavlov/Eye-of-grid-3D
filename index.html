@@ -263,6 +263,13 @@
       if (card) gameState.players[player].hand.push(card);
       return card || null;
     };
+
+    // Специальная версия: вынуть верхнюю карту, но НЕ класть в руку (для эффектной анимации)
+    const drawOneNoAdd = (gameState, player) => {
+      if (!gameState.players[player].deck.length) return null;
+      const card = gameState.players[player].deck.shift();
+      return card || null;
+    };
     
     const countControlled = (gameState, player) => {
       let count = 0;
@@ -471,6 +478,7 @@
     // Управление анимациями заставки хода и добора карты
     let lastTurnSplashPromise = Promise.resolve();
     let __endTurnInProgress = false;
+    let drawAnimationActive = false;
     // Отступ руки по оси Z (положительное — дальше от камеры)
     const HAND_Z_OFFSET = 1.0;
     // 3D объекты справа (колоды/кладбища)
@@ -877,7 +885,30 @@
       const prev = cardMesh.children?.find(ch => ch.userData && ch.userData.kind === 'illustrationPlane');
       if (prev) { cardMesh.remove(prev); }
       const img = CARD_IMAGES[cardData.id] || CARD_IMAGES[cardData.id?.toLowerCase?.()] || CARD_IMAGES[(cardData.name||'').toLowerCase().replace(/[^a-z0-9\s_-]/g,'').replace(/\s+/g,'_')];
-      if (!img || !img.complete) return;
+      // Если иллюстрация ещё не готова (частая ситуация при file://) — добавим временную заглушку
+      if (!img || !img.complete) {
+        try {
+          const W = 256, H = 356; const illX = 16, illY = 70, illW = W - 32, illH = 120;
+          const w = cardMesh.geometry.parameters.width; const t = cardMesh.geometry.parameters.height; const h = cardMesh.geometry.parameters.depth;
+          const planeW = w * (illW / W); const planeH = h * (illH / H);
+          const centerX = (illX + illW/2) / W; const centerY = (illY + illH/2) / H;
+          const offsetX = (centerX - 0.5) * w; const offsetZ = (centerY - 0.5) * h;
+          const c = document.createElement('canvas'); c.width = 64; c.height = 64; const cx = c.getContext('2d');
+          const grd = cx.createLinearGradient(0,0,64,64); grd.addColorStop(0,'#1e293b'); grd.addColorStop(1,'#334155');
+          cx.fillStyle = grd; cx.fillRect(0,0,64,64);
+          cx.fillStyle = '#94a3b8'; cx.font = '10px Arial'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('Loading…', 32, 32);
+          const tex = new THREE.CanvasTexture(c); if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+          const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+          const geom = new THREE.PlaneGeometry(planeW, planeH);
+          const plane = new THREE.Mesh(geom, mat);
+          plane.rotation.x = -Math.PI/2;
+          plane.position.set(offsetX, (t/2) + 0.001, offsetZ);
+          plane.renderOrder = (cardMesh.renderOrder || 1200) + 1;
+          plane.userData = { kind: 'illustrationPlane' };
+          cardMesh.add(plane);
+        } catch {}
+        return;
+      }
       // Пропорции области иллюстрации из макета канваса 256x356
       const W = 256, H = 356; const illX = 16, illY = 70, illW = W - 32, illH = 120;
       // Габариты карты
@@ -1151,49 +1182,57 @@
       collect(mesh);
       if (hovered) {
         mesh.renderOrder = 10000;
-        materials.forEach(m => { if (m) { m.depthTest = false; m.depthWrite = false; m.needsUpdate = true; } });
+        materials.forEach(m => { if (m) { m.depthTest = true; m.depthWrite = false; m.needsUpdate = true; } });
       } else {
         mesh.renderOrder = 2000;
-        materials.forEach(m => { if (m) { m.depthTest = true; m.depthWrite = false; m.needsUpdate = true; } });
+        materials.forEach(m => { if (m) { m.depthTest = true; m.depthWrite = true; m.needsUpdate = true; } });
       }
     }
 
     async function animateDrawnCardToHand(cardTpl) {
       try {
         if (!cardTpl) return;
-        const hand = gameState.players[gameState.active].hand || [];
-        const index = Math.max(0, hand.length - 1);
-        const mesh = handCardMeshes.find(m => m.userData && m.userData.handIndex === index);
-        if (!mesh) return;
-        // Сохраняем целевые трансформы, затем переносим реальную карту в центр и делаем крупной
-        const targetPos = mesh.userData.originalPosition.clone();
-        const targetRot = new THREE.Euler(mesh.userData.originalRotation.x, mesh.userData.originalRotation.y, mesh.userData.originalRotation.z);
-        const targetScale = new THREE.Vector3(0.54, 1, 0.54);
-        const materials = [];
-        const collect = (obj) => {
-          if (!obj) return;
-          if (obj.material) {
-            if (Array.isArray(obj.material)) materials.push(...obj.material);
-            else materials.push(obj.material);
-          }
-          (obj.children || []).forEach(collect);
-        };
-        collect(mesh);
-        materials.forEach(m => { try { m.transparent = true; m.opacity = 0; } catch {} });
-        const prevRenderOrder = mesh.renderOrder;
-        mesh.renderOrder = 9000;
-        mesh.position.set(0, 8.2, 4.8);
-        mesh.rotation.set(0, 0, 0);
-        mesh.scale.set(1.7, 1.7, 1.7);
+        drawAnimationActive = true;
+        // Создаём временный крупный меш (не относится к руке), и ориентируем как «билборд» к камере
+        const big = createCard3D(cardTpl, false);
+        // Разместим карту выше и ближе к центру стола, чтобы не пересекалась с рукой
+        big.position.set(0, 10.0, 2.4);
+        // Повернуть параллельно камере: фронт карты на камеру, без уголка перспект.
+        // Камера смотрит на (0,1.2,0), берем её yaw вокруг Y
+        try {
+          // Построим ортонормальный базис: y — в сторону камеры (нормаль лица),
+          // z — «вверх» карты, совмещённый с up-осью камеры, x — вправо.
+          const toCam = new THREE.Vector3().subVectors(camera.position, big.position).normalize();
+          const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
+          let right = new THREE.Vector3().crossVectors(camUp, toCam);
+          if (right.lengthSq() < 1e-6) right.set(1, 0, 0); else right.normalize();
+          const upInPlane = new THREE.Vector3().crossVectors(toCam, right).normalize();
+          const basis = new THREE.Matrix4();
+          basis.makeBasis(right, toCam, upInPlane); // x=right, y=toCam (нормаль), z=up
+          const q = new THREE.Quaternion().setFromRotationMatrix(basis);
+          big.setRotationFromQuaternion(q);
+        } catch { big.rotation.set(0, 0, 0); }
+        big.scale.set(1.7, 1.7, 1.7);
+        big.renderOrder = 9000;
+        const mats = Array.isArray(big.material) ? big.material : [big.material];
+        mats.forEach(m => { if (m) { m.transparent = true; m.opacity = 0; } });
+        cardGroup.add(big);
+
+        // Целевая позиция в руке — вычислим, как будто карта станет последней
+        const totalAfter = (gameState.players[gameState.active].hand?.length || 0) + 1;
+        const indexAfter = totalAfter - 1;
+        const target = computeHandTransform(indexAfter, totalAfter);
+
         await new Promise(resolve => {
           const tl = gsap.timeline({ onComplete: resolve });
-          tl.to(materials, { opacity: 1, duration: 1.0, ease: 'power2.out' })
+          tl.to(mats, { opacity: 1, duration: 1.0, ease: 'power2.out' })
             .to({}, { duration: 1.0 })
-            .to(mesh.position, { x: targetPos.x, y: targetPos.y, z: targetPos.z, duration: 1.0, ease: 'power2.inOut' }, 'fly')
-            .to(mesh.rotation, { x: targetRot.x, y: targetRot.y, z: targetRot.z, duration: 1.0, ease: 'power2.inOut' }, 'fly')
-            .to(mesh.scale, { x: targetScale.x, y: targetScale.y, z: targetScale.z, duration: 1.0, ease: 'power2.inOut' }, 'fly');
+            .to(big.position, { x: target.position.x, y: target.position.y, z: target.position.z, duration: 1.0, ease: 'power2.inOut' }, 'fly')
+            .to(big.rotation, { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z, duration: 1.0, ease: 'power2.inOut' }, 'fly')
+            .to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: 1.0, ease: 'power2.inOut' }, 'fly');
         });
-        mesh.renderOrder = prevRenderOrder;
+        try { cardGroup.remove(big); } catch {}
+        drawAnimationActive = false;
       } catch {}
     }
     
@@ -1383,7 +1422,7 @@
       } else {
         // Ховер по картам в руке: увеличиваем наведённую, уменьшаем предыдущую, поднимаем над стеком
         raycaster.setFromCamera(mouse, camera);
-        const handHits = raycaster.intersectObjects(handCardMeshes);
+        const handHits = drawAnimationActive ? [] : raycaster.intersectObjects(handCardMeshes);
         const newHover = handHits.length > 0 ? handHits[0].object : null;
         if (hoveredHandCard && hoveredHandCard !== newHover) {
           gsap.to(hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.18 });
@@ -1670,7 +1709,8 @@
       
       const player = gameState.players[gameState.active];
       player.mana = capMana(player.mana + 2);
-      const drawn = drawOne(gameState, gameState.active);
+      // Карта для анимации: извлекаем, но пока не кладём в руку
+      const drawnTpl = drawOneNoAdd(gameState, gameState.active);
       
       resetCardSelection();
       
@@ -1679,8 +1719,10 @@
       updateUI();
       // Дождаться завершения заставки хода, затем эффектная анимация добора
       try { await lastTurnSplashPromise; } catch {}
-      if (drawn) {
-        await animateDrawnCardToHand(drawn);
+      if (drawnTpl) {
+        await animateDrawnCardToHand(drawnTpl);
+        // После завершения полёта помещаем карту в руку официально
+        try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}
         updateHand();
       }
       
@@ -1786,6 +1828,13 @@
       renderer.domElement.addEventListener('mousemove', onMouseMove);
       renderer.domElement.addEventListener('mousedown', onMouseDown);
       renderer.domElement.addEventListener('mouseup', onMouseUp);
+      renderer.domElement.addEventListener('mouseleave', () => {
+        if (hoveredHandCard) {
+          gsap.to(hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.18 });
+          setHandCardHoverVisual(hoveredHandCard, false);
+          hoveredHandCard = null;
+        }
+      });
       window.addEventListener('resize', onWindowResize);
       
       animate();
