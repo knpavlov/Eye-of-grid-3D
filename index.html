@@ -473,6 +473,16 @@
     let logEntries = [];
     let TILE_TEXTURES = {};
     let PROC_TILE_TEXTURES = {};
+    // Настройки показа большой карты при доборе — можно править из консоли
+    window.DRAW_CARD_TUNE = {
+      posY: 10.0,   // высота
+      posZ: 2.4,    // дистанция к камере (чем меньше, тем ближе)
+      scale: 1.7,   // масштаб
+      // Ручная довращалка (в градусах):
+      pitchDeg: 45,  // наклон вперёд/назад (ось X)
+      yawDeg: 0,    // поворот влево/вправо (ось Y)
+      rollDeg: 0    // крен (ось Z)
+    };
     let CARD_IMAGES = {};
     let CARD_PENDING = {};
     // Управление анимациями заставки хода и добора карты
@@ -1196,23 +1206,25 @@
         // Создаём временный крупный меш (не относится к руке), и ориентируем как «билборд» к камере
         const big = createCard3D(cardTpl, false);
         // Разместим карту выше и ближе к центру стола, чтобы не пересекалась с рукой
-        big.position.set(0, 10.0, 2.4);
+        const T = window.DRAW_CARD_TUNE || {};
+        big.position.set(0, (T.posY ?? 10.0), (T.posZ ?? 2.4));
         // Повернуть параллельно камере: фронт карты на камеру, без уголка перспект.
         // Камера смотрит на (0,1.2,0), берем её yaw вокруг Y
         try {
-          // Построим ортонормальный базис: y — в сторону камеры (нормаль лица),
-          // z — «вверх» карты, совмещённый с up-осью камеры, x — вправо.
-          const toCam = new THREE.Vector3().subVectors(camera.position, big.position).normalize();
-          const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
-          let right = new THREE.Vector3().crossVectors(camUp, toCam);
+          // Ориентируем карту строго к камере: лицевая нормаль = -направление взгляда камеры,
+          // верх карты выровнен с up камерой.
+          const camForward = new THREE.Vector3();
+          camera.getWorldDirection(camForward); // куда смотрит камера
+          const faceNormal = camForward.clone().negate().normalize(); // лицом к камере
+          const camUpWorld = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
+          let right = new THREE.Vector3().crossVectors(camUpWorld, faceNormal);
           if (right.lengthSq() < 1e-6) right.set(1, 0, 0); else right.normalize();
-          const upInPlane = new THREE.Vector3().crossVectors(toCam, right).normalize();
-          const basis = new THREE.Matrix4();
-          basis.makeBasis(right, toCam, upInPlane); // x=right, y=toCam (нормаль), z=up
+          const upInPlane = new THREE.Vector3().crossVectors(faceNormal, right).normalize();
+          const basis = new THREE.Matrix4().makeBasis(right, faceNormal, upInPlane);
           const q = new THREE.Quaternion().setFromRotationMatrix(basis);
           big.setRotationFromQuaternion(q);
         } catch { big.rotation.set(0, 0, 0); }
-        big.scale.set(1.7, 1.7, 1.7);
+        big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
         big.renderOrder = 9000;
         const mats = Array.isArray(big.material) ? big.material : [big.material];
         mats.forEach(m => { if (m) { m.transparent = true; m.opacity = 0; } });
@@ -1230,6 +1242,12 @@
             .to(big.position, { x: target.position.x, y: target.position.y, z: target.position.z, duration: 1.0, ease: 'power2.inOut' }, 'fly')
             .to(big.rotation, { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z, duration: 1.0, ease: 'power2.inOut' }, 'fly')
             .to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: 1.0, ease: 'power2.inOut' }, 'fly');
+          // После ориентации к камере применим ручные углы (в градусах)
+          try {
+            big.rotateX(THREE.MathUtils.degToRad(T.pitchDeg || 0));
+            big.rotateY(THREE.MathUtils.degToRad(T.yawDeg || 0));
+            big.rotateZ(THREE.MathUtils.degToRad(T.rollDeg || 0));
+          } catch {}
         });
         try { cardGroup.remove(big); } catch {}
         drawAnimationActive = false;
