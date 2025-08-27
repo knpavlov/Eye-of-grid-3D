@@ -884,6 +884,23 @@
       if (isInHand) {
         card.scale.set(0.54, 1, 0.54);
       }
+      // Накладываем тонкий оверлей всей лицевой стороны, чтобы исключить визуальные артефакты
+      try {
+        const w = geometry.parameters.width; const t = geometry.parameters.height; const h = geometry.parameters.depth;
+        const faceOverlayGeom = new THREE.PlaneGeometry(w, h);
+        const faceOverlayMat = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+        faceOverlayMat.depthTest = true;
+        faceOverlayMat.depthWrite = false;
+        faceOverlayMat.polygonOffset = true;
+        faceOverlayMat.polygonOffsetFactor = -2;
+        faceOverlayMat.polygonOffsetUnits = -2;
+        const faceOverlay = new THREE.Mesh(faceOverlayGeom, faceOverlayMat);
+        faceOverlay.rotation.x = -Math.PI/2;
+        faceOverlay.position.set(0, (t/2) + 0.002, 0);
+        faceOverlay.renderOrder = (card.renderOrder || 1200) + 1;
+        faceOverlay.userData = { kind: 'faceOverlay' };
+        card.add(faceOverlay);
+      } catch {}
       // Если страница запущена как file:// — накладываем иллюстрацию отдельной плоскостью, чтобы избежать tainted canvas
       try { if (location && location.protocol === 'file:') attachIllustrationPlane(card, cardData); } catch {}
       return card;
@@ -1192,10 +1209,26 @@
       collect(mesh);
       if (hovered) {
         mesh.renderOrder = 10000;
-        materials.forEach(m => { if (m) { m.depthTest = true; m.depthWrite = false; m.needsUpdate = true; } });
+        // ВАЖНО: оставляем depthWrite=true, чтобы карта корректно рисовала свою лицевую сторону над своими же гранями/рубашкой
+        materials.forEach(m => { if (m) { m.depthTest = true; m.depthWrite = true; m.needsUpdate = true; } });
+        // Поднимем и немного приблизим к камере вдоль направления взгляда
+        try {
+          if (mesh.userData && mesh.userData.originalPosition) {
+            const camDir = new THREE.Vector3();
+            camera.getWorldDirection(camDir);
+            const towardCamera = camDir.clone().multiplyScalar(-0.7); // шаг к камере
+            const target = mesh.userData.originalPosition.clone().add(new THREE.Vector3(0, 0.9, 0)).add(towardCamera);
+            gsap.to(mesh.position, { x: target.x, y: target.y, z: target.z, duration: 0.18 });
+          }
+        } catch {}
+        // Поднимем иллюстрационный плейн (если есть) поверх самой карты
+        try { (mesh.children || []).forEach(ch => { if (ch && ch.userData && ch.userData.kind === 'illustrationPlane') { ch.renderOrder = mesh.renderOrder + 1; } }); } catch {}
       } else {
         mesh.renderOrder = 2000;
+        // Возвращаем стандартные тест/запись глубины
         materials.forEach(m => { if (m) { m.depthTest = true; m.depthWrite = true; m.needsUpdate = true; } });
+        try { if (mesh.userData && mesh.userData.originalPosition) { const p = mesh.userData.originalPosition; gsap.to(mesh.position, { x: p.x, y: p.y, z: p.z, duration: 0.18 }); } } catch {}
+        try { (mesh.children || []).forEach(ch => { if (ch && ch.userData && ch.userData.kind === 'illustrationPlane') { ch.renderOrder = mesh.renderOrder + 1; } }); } catch {}
       }
     }
 
@@ -1440,8 +1473,8 @@
       } else {
         // Ховер по картам в руке: увеличиваем наведённую, уменьшаем предыдущую, поднимаем над стеком
         raycaster.setFromCamera(mouse, camera);
-        const handHits = drawAnimationActive ? [] : raycaster.intersectObjects(handCardMeshes);
-        const newHover = handHits.length > 0 ? handHits[0].object : null;
+        const handHits = drawAnimationActive ? [] : raycaster.intersectObjects(handCardMeshes, true);
+        const newHover = handHits.length > 0 ? (handHits[0].object.userData?.isInHand ? handHits[0].object : handHits[0].object.parent) : null;
         if (hoveredHandCard && hoveredHandCard !== newHover) {
           gsap.to(hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.18 });
           setHandCardHoverVisual(hoveredHandCard, false);
@@ -1503,9 +1536,10 @@
       
       raycaster.setFromCamera(mouse, camera);
       
-      const handIntersects = raycaster.intersectObjects(handCardMeshes);
+      const handIntersects = raycaster.intersectObjects(handCardMeshes, true);
       if (handIntersects.length > 0) {
-        const card = handIntersects[0].object;
+        const hitObj = handIntersects[0].object;
+        const card = hitObj.userData?.isInHand ? hitObj : hitObj.parent;
         const cardData = card.userData.cardData;
         
         if (cardData.type === 'UNIT') {
