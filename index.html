@@ -29,8 +29,16 @@
     .overlay-panel { background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 16px; }
     /* Оверлеи баннеров */
     .banner { pointer-events:none; }
-    .turnBanner { animation: turnslide 2000ms ease-in-out both; }
-    @keyframes turnslide { 0%{ transform:translateX(-120%)} 20%{ transform:translateX(0)} 80%{ transform:translateX(0)} 100%{ transform:translateX(140%) } }
+    /* Turn Splash — новый вау-экран */
+    .ts-wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+    .ts-bg { position: absolute; inset: 0; background: radial-gradient(80% 60% at 50% 50%, rgba(37,99,235,0.22), rgba(2,6,23,0.9)); mix-blend-mode: screen; }
+    .ts-title { position: relative; font-weight: 900; letter-spacing: 0.06em; line-height: 1; }
+    .ts-title-solid { color: #ffffff; -webkit-text-stroke: 1px rgba(10,15,25,0.55); paint-order: stroke fill; }
+    .ts-title-glow { text-shadow: none; }
+    .ts-ring { position: absolute; width: 40vmin; height: 40vmin; border-radius: 50%; border: 2px solid rgba(255,255,255,.7); }
+    .ts-ring.thin { width: 55vmin; height: 55vmin; opacity: .45; border-color: rgba(255,255,255,.45); }
+    .ts-streaks { position: absolute; inset: -20% -20%; transform: rotate(-18deg); background: repeating-linear-gradient(90deg, rgba(255,255,255,0) 0, rgba(255,255,255,0) 16px, rgba(255,255,255,.12) 16px, rgba(255,255,255,.12) 24px); mix-blend-mode: screen; opacity: .35; }
+    .ts-scan { position: absolute; inset: 0; background: linear-gradient(to bottom, transparent 0, rgba(255,255,255,.12) 40%, transparent 80%); transform: translateY(-100%); }
     .battlePop { animation: pop 1100ms ease both; }
     @keyframes pop { 0%{ transform:scale(.6); opacity:0 } 40%{ transform:scale(1.06); opacity:1 } 100%{ transform:scale(1); opacity:.96 } }
     /* Flashy BATTLE splash */
@@ -149,9 +157,7 @@
     <div id="notifications" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none"></div>
 
     <!-- Баннеры: Turn и Battle -->
-    <div id="turn-banner" class="banner fixed inset-0 hidden items-center justify-center z-40">
-      <div class="turnBanner text-3xl md:text-5xl font-extrabold bg-gradient-to-br from-blue-600/80 to-cyan-500/80 px-6 md:px-10 py-4 md:py-5 rounded-3xl shadow-2xl ring-4 ring-cyan-400/30"></div>
-    </div>
+    <div id="turn-banner" class="banner fixed inset-0 hidden items-center justify-center z-40"></div>
     <div id="battle-banner" class="banner fixed inset-0 hidden items-center justify-center z-40">
       <div class="battlePop text-5xl font-extrabold bg-gradient-to-br from-red-600/80 to-yellow-500/80 px-10 py-5 rounded-3xl shadow-2xl ring-4 ring-yellow-400/40">BATTLE</div>
     </div>
@@ -487,6 +493,49 @@
     let CARD_PENDING = {};
     // Управление анимациями заставки хода и добора карты
     let lastTurnSplashPromise = Promise.resolve();
+    let lastSplashTurnRequested = 0;
+    let lastSplashTurnShown = 0;
+    let turnSplashTurnQueued = 0;
+    function queueTurnSplash(title) {
+      try {
+        lastTurnSplashPromise = lastTurnSplashPromise.then(() => showTurnSplash(title));
+      } catch {}
+      return lastTurnSplashPromise;
+    }
+    // Резерв: гарантированно показать заставку с повтором, если вдруг не отрисовалась
+    async function forceTurnSplashWithRetry(maxRetries = 2) {
+      let tries = 0;
+      let shown = false;
+      while (tries <= maxRetries && !shown) {
+        tries += 1;
+        await requestTurnSplash();
+        // ждем 2 кадра, чтобы DOM успел применить display:flex
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        try {
+          const tb = document.getElementById('turn-banner');
+          shown = !!tb && (tb.classList.contains('flex') || tb.style.display === 'flex');
+        } catch {}
+      }
+      // Страховка от зависания блокировки ввода
+      setTimeout(() => { splashActive = false; refreshInputLockUI(); }, 2200);
+    }
+    async function requestTurnSplash() {
+      if (!gameState) return;
+      const currentTurn = gameState.turn;
+      // если уже показали в этом ходу — ничего не делаем
+      if (lastSplashTurnShown >= currentTurn) return lastTurnSplashPromise;
+      // если уже стоит в очереди на этот ход — возвращаем существующий промис
+      if (turnSplashTurnQueued === currentTurn) return lastTurnSplashPromise;
+      lastSplashTurnRequested = currentTurn;
+      turnSplashTurnQueued = currentTurn;
+      const title = `Ход ${currentTurn} - Игрок ${gameState.active + 1}`;
+      // Оборачиваем в промис, который по завершении отмечает ход показанным
+      lastTurnSplashPromise = queueTurnSplash(title).then(() => {
+        try { lastSplashTurnShown = currentTurn; } catch {}
+        if (turnSplashTurnQueued === currentTurn) turnSplashTurnQueued = 0;
+      });
+      return lastTurnSplashPromise;
+    }
     let __endTurnInProgress = false;
     let drawAnimationActive = false;
     let splashActive = false;
@@ -1436,14 +1485,6 @@
       
       document.getElementById('turn-info').textContent = `Ход: ${gameState.turn}`;
       document.getElementById('active-player').textContent = `Активный: ${gameState.players[gameState.active].name}`;
-      // flashy-анонс хода при смене
-      if (!updateUI.prevTurn || updateUI.prevTurn !== gameState.turn) {
-        const title = `Ход ${gameState.turn} — ${gameState.players[gameState.active].name}`;
-        lastTurnSplashPromise = showTurnSplash(title);
-      } else {
-        lastTurnSplashPromise = Promise.resolve();
-      }
-      updateUI.prevTurn = gameState.turn;
       
       // Обновляем две панели маны (для обоих игроков)
       const total = 10;
@@ -1812,13 +1853,15 @@
       selectedUnit = null;
     }
     
-    function initGame() {
+    async function initGame() {
       gameState = startGame(STARTER_FIRESET, STARTER_FIRESET);
       
       createBoard();
       updateUnits();
       updateHand();
       updateUI();
+      // Заставка хода при старте игры с резервом
+      try { await forceTurnSplashWithRetry(2); } catch {}
       createMetaObjects();
       
       addLog('Игра началась! Игрок 1 ходит первым.');
@@ -1851,8 +1894,9 @@
       updateHand();
       updateUnits();
       updateUI();
+      // Показ заставки хода на каждый ход с резервом
+      try { await forceTurnSplashWithRetry(2); } catch {}
       // Дождаться завершения заставки хода, затем эффектная анимация маны и после — добор
-      try { await lastTurnSplashPromise; } catch {}
       try { await animateTurnManaGain(gameState.active, before, manaAfter, 1800); } catch {}
       // Теперь зафиксируем новую ману в состоянии и отрисуем её появление
       player.mana = manaAfter;
@@ -2278,26 +2322,35 @@
       splashActive = true; refreshInputLockUI();
       const bb = document.getElementById('battle-banner');
       if (!bb) { splashActive = false; refreshInputLockUI(); return; }
-      const inner = bb.querySelector('div');
-      if (!inner) { splashActive = false; refreshInputLockUI(); return; }
-      inner.innerHTML = '';
-      const wrap = document.createElement('div'); wrap.className = 'battle-flash-wrap';
-      const bg = document.createElement('div'); bg.className = 'battle-flash-bg'; wrap.appendChild(bg);
-      const txt = document.createElement('div'); txt.className = 'battle-flash-text text-6xl md:text-8xl'; txt.textContent = 'BATTLE'; wrap.appendChild(txt);
-      const scan = document.createElement('div'); scan.className = 'battle-flash-scan'; wrap.appendChild(scan);
-      inner.appendChild(wrap);
-      bb.classList.remove('hidden'); bb.classList.add('flex');
+      bb.innerHTML = '';
+      const wrap = document.createElement('div'); wrap.className = 'ts-wrap';
+      const bg = document.createElement('div'); bg.className = 'ts-bg'; wrap.appendChild(bg);
+      const ringOuter = document.createElement('div'); ringOuter.className = 'ts-ring thin'; wrap.appendChild(ringOuter);
+      const ringInner = document.createElement('div'); ringInner.className = 'ts-ring'; wrap.appendChild(ringInner);
+      const streaks = document.createElement('div'); streaks.className = 'ts-streaks'; wrap.appendChild(streaks);
+      const txt = document.createElement('div'); txt.className = 'ts-title ts-title-solid text-6xl md:text-8xl'; txt.textContent = 'BATTLE'; wrap.appendChild(txt);
+      const scan = document.createElement('div'); scan.className = 'ts-scan'; wrap.appendChild(scan);
+      bb.appendChild(wrap);
+      bb.style.display = 'flex'; bb.classList.remove('hidden'); bb.classList.add('flex');
       const tl = gsap.timeline();
-      tl.fromTo(txt, { scale: 0.6, opacity: 0 }, { scale: 1.1, opacity: 1, duration: 0.5, ease: 'back.out(1.8)' })
-        .to(txt, { scale: 1.0, duration: 0.4, ease: 'power2.out' })
-        .to(scan, { yPercent: 200, duration: 0.9, ease: 'power1.inOut' }, 0.1)
-        .to(txt, { duration: 0.1, textShadow: '0 0 30px rgba(255,255,255,1), 0 0 80px rgba(255,120,0,.9)' }, 0.35)
-        .to(bg, { opacity: 0.6, duration: 0.25 }, 0)
-        .to(bg, { opacity: 0.2, duration: 0.5 }, 0.4)
-        .to(txt, { scale: 1.06, duration: 0.25, repeat: 2, yoyo: true, ease: 'sine.inOut' }, 0.95);
-      await sleep(2000);
-      bb.classList.add('hidden'); bb.classList.remove('flex');
-      inner.innerHTML = '<div class="battlePop text-5xl font-extrabold bg-gradient-to-br from-red-600/80 to-yellow-500/80 px-10 py-5 rounded-3xl shadow-2xl ring-4 ring-yellow-400/40">BATTLE</div>';
+      tl.set(txt, { scale: 0.65, opacity: 0 })
+        .set(ringOuter, { scale: 0.8, opacity: 0 })
+        .set(ringInner, { scale: 0.5, opacity: 0 })
+        .fromTo(bg, { opacity: 0 }, { opacity: 0.6, duration: 0.18, ease: 'power2.out' }, 0)
+        .to(ringOuter, { opacity: 1, scale: 1.0, duration: 0.28, ease: 'back.out(2.2)' }, 0.02)
+        .to(ringInner, { opacity: 1, scale: 1.0, duration: 0.32, ease: 'back.out(2.2)' }, 0.06)
+        .to(txt, { opacity: 1, scale: 1.08, duration: 0.36, ease: 'back.out(1.9)' }, 0.08)
+        .to(txt, { scale: 1.0, duration: 0.22, ease: 'power2.out' })
+        .to(scan, { yPercent: 200, duration: 0.7, ease: 'power1.inOut' }, 0.12)
+        .to(streaks, { opacity: 0.25, duration: 0.5 }, 0.2)
+        .to([ringOuter, ringInner], { opacity: 0.9, duration: 0.2 }, 0.45)
+        .to([bg, streaks], { opacity: 0.12, duration: 0.38 }, 0.58)
+        .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.28, ease: 'power2.in' }, 1.62)
+        .to(bb, { opacity: 0, duration: 0.2, ease: 'power2.in' }, 1.7);
+      await sleep(1900);
+      bb.classList.add('hidden'); bb.classList.remove('flex'); bb.style.display = 'none';
+      bb.style.opacity = '';
+      bb.innerHTML = '';
       splashActive = false; refreshInputLockUI();
     }
 
@@ -2305,25 +2358,41 @@
       splashActive = true; refreshInputLockUI();
       const tb = document.getElementById('turn-banner');
       if (!tb) { splashActive = false; refreshInputLockUI(); return; }
-      const inner = tb.querySelector('div');
-      if (!inner) { splashActive = false; refreshInputLockUI(); return; }
-      inner.innerHTML = '';
-      const wrap = document.createElement('div'); wrap.className = 'battle-flash-wrap';
-      const bg = document.createElement('div'); bg.className = 'battle-flash-bg'; wrap.appendChild(bg);
-      const txt = document.createElement('div'); txt.className = 'battle-flash-text text-4xl md:text-6xl'; txt.textContent = title; wrap.appendChild(txt);
-      const scan = document.createElement('div'); scan.className = 'battle-flash-scan'; wrap.appendChild(scan);
-      inner.appendChild(wrap);
-      tb.classList.remove('hidden'); tb.classList.add('flex');
+      tb.innerHTML = '';
+      // Разметка нового экрана
+      const wrap = document.createElement('div'); wrap.className = 'ts-wrap';
+      const bg = document.createElement('div'); bg.className = 'ts-bg'; wrap.appendChild(bg);
+      const ringOuter = document.createElement('div'); ringOuter.className = 'ts-ring thin'; wrap.appendChild(ringOuter);
+      const ringInner = document.createElement('div'); ringInner.className = 'ts-ring'; wrap.appendChild(ringInner);
+      const streaks = document.createElement('div'); streaks.className = 'ts-streaks'; wrap.appendChild(streaks);
+      const txt = document.createElement('div'); txt.className = 'ts-title ts-title-solid text-4xl md:text-6xl'; txt.textContent = title; wrap.appendChild(txt);
+      const scan = document.createElement('div'); scan.className = 'ts-scan'; wrap.appendChild(scan);
+      tb.appendChild(wrap);
+      tb.style.display = 'flex'; tb.classList.remove('hidden'); tb.classList.add('flex');
+      // Анимации (≤ 2 сек суммарно)
       const tl = gsap.timeline();
-      tl.fromTo(txt, { scale: 0.7, opacity: 0 }, { scale: 1.08, opacity: 1, duration: 0.45, ease: 'back.out(1.8)' })
-        .to(txt, { scale: 1.0, duration: 0.35, ease: 'power2.out' })
-        .to(scan, { yPercent: 200, duration: 0.8, ease: 'power1.inOut' }, 0.1)
-        .to(bg, { opacity: 0.5, duration: 0.2 }, 0)
-        .to(bg, { opacity: 0.15, duration: 0.45 }, 0.35);
-      await sleep(2000);
-      tb.classList.add('hidden'); tb.classList.remove('flex');
-      inner.innerHTML = '';
+      tl.set(txt, { scale: 0.65, opacity: 0 })
+        .set(ringOuter, { scale: 0.8, opacity: 0 })
+        .set(ringInner, { scale: 0.5, opacity: 0 })
+        .fromTo(bg, { opacity: 0 }, { opacity: 0.6, duration: 0.18, ease: 'power2.out' }, 0)
+        .to(ringOuter, { opacity: 1, scale: 1.0, duration: 0.28, ease: 'back.out(2.2)' }, 0.02)
+        .to(ringInner, { opacity: 1, scale: 1.0, duration: 0.32, ease: 'back.out(2.2)' }, 0.06)
+        .to(txt, { opacity: 1, scale: 1.08, duration: 0.36, ease: 'back.out(1.9)' }, 0.08)
+        .to(txt, { scale: 1.0, duration: 0.22, ease: 'power2.out' })
+        .to(scan, { yPercent: 200, duration: 0.7, ease: 'power1.inOut' }, 0.12)
+        .to(streaks, { opacity: 0.25, duration: 0.5 }, 0.2)
+        .to([ringOuter, ringInner], { opacity: 0.9, duration: 0.2 }, 0.45)
+        .to([bg, streaks], { opacity: 0.12, duration: 0.38 }, 0.58)
+        .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.28, ease: 'power2.in' }, 1.62)
+        .to(tb, { opacity: 0, duration: 0.2, ease: 'power2.in' }, 1.7);
+      await sleep(1900);
+      tb.classList.add('hidden'); tb.classList.remove('flex'); tb.style.display = 'none';
+      tb.style.opacity = '';
+      tb.innerHTML = '';
       splashActive = false; refreshInputLockUI();
+      try {
+        lastSplashTurnShown = (gameState?.turn || lastSplashTurnShown);
+      } catch {}
     }
     
     function castSpellOnUnit(cardMesh, unitMesh) {
