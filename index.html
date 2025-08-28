@@ -29,7 +29,7 @@
     .overlay-panel { background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 16px; }
     /* Оверлеи баннеров */
     .banner { pointer-events:none; }
-    .turnBanner { animation: turnslide 2600ms ease-in-out both; }
+    .turnBanner { animation: turnslide 2000ms ease-in-out both; }
     @keyframes turnslide { 0%{ transform:translateX(-120%)} 20%{ transform:translateX(0)} 80%{ transform:translateX(0)} 100%{ transform:translateX(140%) } }
     .battlePop { animation: pop 1100ms ease both; }
     @keyframes pop { 0%{ transform:scale(.6); opacity:0 } 40%{ transform:scale(1.06); opacity:1 } 100%{ transform:scale(1); opacity:.96 } }
@@ -489,6 +489,16 @@
     let lastTurnSplashPromise = Promise.resolve();
     let __endTurnInProgress = false;
     let drawAnimationActive = false;
+    let splashActive = false;
+    function isInputLocked() {
+      return __endTurnInProgress || drawAnimationActive || splashActive;
+    }
+    function refreshInputLockUI() {
+      try {
+        const endBtn = document.getElementById('end-turn-btn');
+        if (endBtn) endBtn.disabled = isInputLocked();
+      } catch {}
+    }
     // Отступ руки по оси Z (положительное — дальше от камеры)
     const HAND_Z_OFFSET = 1.0;
     // 3D объекты справа (колоды/кладбища)
@@ -1235,7 +1245,7 @@
     async function animateDrawnCardToHand(cardTpl) {
       try {
         if (!cardTpl) return;
-        drawAnimationActive = true;
+        drawAnimationActive = true; refreshInputLockUI();
         // Создаём временный крупный меш (не относится к руке), и ориентируем как «билборд» к камере
         const big = createCard3D(cardTpl, false);
         // Разместим карту выше и ближе к центру стола, чтобы не пересекалась с рукой
@@ -1283,7 +1293,7 @@
           } catch {}
         });
         try { cardGroup.remove(big); } catch {}
-        drawAnimationActive = false;
+        drawAnimationActive = false; refreshInputLockUI();
       } catch {}
     }
     
@@ -1443,6 +1453,7 @@
     
     // Взаимодействие
     function onMouseMove(event) {
+      if (isInputLocked()) return;
       const rect = renderer.domElement.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -1529,6 +1540,7 @@
     
     function onMouseDown(event) {
       if (!gameState || gameState.winner !== null) return;
+      if (isInputLocked()) return;
       
       const rect = renderer.domElement.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1573,6 +1585,7 @@
     }
     
     function onMouseUp(event) {
+      if (isInputLocked()) { endCardDrag(); return; }
       if (draggedCard && hoveredTile) {
         const row = hoveredTile.userData.row;
         const col = hoveredTile.userData.col;
@@ -1658,6 +1671,7 @@
     }
     
     function selectSpellCard(card) {
+      if (isInputLocked()) return;
       if (selectedCard === card) {
         resetCardSelection();
         return;
@@ -1669,6 +1683,7 @@
       
       selectedCard = card;
       
+      if (isInputLocked()) return;
       gsap.to(card.position, {
         y: card.userData.originalPosition.y + 0.3,
         duration: 0.2
@@ -1748,6 +1763,8 @@
     
     async function endTurn() {
       if (!gameState || gameState.winner !== null) return;
+      if (isInputLocked()) return;
+      __endTurnInProgress = true;
       
       const controlledCells = countControlled(gameState, gameState.active);
       if (controlledCells >= 5) {
@@ -1772,6 +1789,7 @@
       // Дождаться завершения заставки хода, затем эффектная анимация добора
       try { await lastTurnSplashPromise; } catch {}
       if (drawnTpl) {
+        refreshInputLockUI();
         await animateDrawnCardToHand(drawnTpl);
         // После завершения полёта помещаем карту в руку официально
         try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}
@@ -1779,6 +1797,9 @@
       }
       
       addLog(`Ход ${gameState.turn}. ${player.name} получает +2 маны и добирает карту.`);
+      refreshInputLockUI();
+      __endTurnInProgress = false;
+      refreshInputLockUI();
     }
     
     function placeUnitWithDirection(direction) {
@@ -1921,6 +1942,7 @@
     
     // Обработчики UI
     document.getElementById('end-turn-btn').addEventListener('click', endTurn);
+    refreshInputLockUI();
     document.getElementById('new-game-btn').addEventListener('click', () => location.reload());
     document.getElementById('log-btn').addEventListener('click', () => {
       const lp = document.getElementById('log-panel');
@@ -1971,6 +1993,7 @@
 
     // ====== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЕЙСТВИЙ ======
     function rotateUnit(unitMesh, dir) {
+      if (isInputLocked()) return;
       const u = unitMesh.userData.unitData;
       if (!u) return;
       u.facing = dir === 'cw' ? turnCW[u.facing] : turnCCW[u.facing];
@@ -1979,6 +2002,7 @@
     
     function performUnitAttack(unitMesh) {
       if (!unitMesh) return;
+      if (isInputLocked()) return;
       const r = unitMesh.userData.row; const c = unitMesh.userData.col;
       const unit = gameState.board[r][c].unit; if (!unit) return;
       const tpl = CARDS[unit.tplId];
@@ -2004,7 +2028,7 @@
     async function performBattleSequence(r, c, markAttackTurn) {
       const staged = stagedAttack(gameState, r, c);
       if (!staged || staged.empty) return;
-      // flashy заставка BATTLE 3 секунды
+      // flashy заставка BATTLE (сокращённая)
       await showBattleSplash();
       // небольшая анимация выпада/толчка
       const aMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
@@ -2022,8 +2046,8 @@
           if (tMesh) { shakeMesh(tMesh, 6, 0.12); spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555'); }
         }
         setTimeout(async () => {
-          // Пауза 1 секунда перед ответкой
-          await sleep(1000);
+          // Сокращённая пауза перед контратакой
+          await sleep(700);
           const ret = staged.step2() || { total: 0, retaliators: [] };
           const retaliation = typeof ret === 'number' ? ret : (ret.total || 0);
           let animDelayMs = 0;
@@ -2180,6 +2204,7 @@
     // Вспомогательные утилиты: задержка и яркая заставка BATTLE на 3 секунды
     function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
     async function showBattleSplash() {
+      splashActive = true; refreshInputLockUI();
       const bb = document.getElementById('battle-banner');
       if (!bb) return;
       const inner = bb.querySelector('div');
@@ -2194,17 +2219,19 @@
       const tl = gsap.timeline();
       tl.fromTo(txt, { scale: 0.6, opacity: 0 }, { scale: 1.1, opacity: 1, duration: 0.5, ease: 'back.out(1.8)' })
         .to(txt, { scale: 1.0, duration: 0.4, ease: 'power2.out' })
-        .to(scan, { yPercent: 200, duration: 1.2, ease: 'power1.inOut' }, 0.1)
+        .to(scan, { yPercent: 200, duration: 0.9, ease: 'power1.inOut' }, 0.1)
         .to(txt, { duration: 0.1, textShadow: '0 0 30px rgba(255,255,255,1), 0 0 80px rgba(255,120,0,.9)' }, 0.35)
-        .to(bg, { opacity: 0.6, duration: 0.3 }, 0)
-        .to(bg, { opacity: 0.2, duration: 0.7 }, 0.5)
-        .to(txt, { scale: 1.06, duration: 0.3, repeat: 3, yoyo: true, ease: 'sine.inOut' }, 1.2);
-      await sleep(3000);
+        .to(bg, { opacity: 0.6, duration: 0.25 }, 0)
+        .to(bg, { opacity: 0.2, duration: 0.5 }, 0.4)
+        .to(txt, { scale: 1.06, duration: 0.25, repeat: 2, yoyo: true, ease: 'sine.inOut' }, 0.95);
+      await sleep(2000);
       bb.classList.add('hidden'); bb.classList.remove('flex');
       inner.innerHTML = '<div class="battlePop text-5xl font-extrabold bg-gradient-to-br from-red-600/80 to-yellow-500/80 px-10 py-5 rounded-3xl shadow-2xl ring-4 ring-yellow-400/40">BATTLE</div>';
+      splashActive = false; refreshInputLockUI();
     }
 
     async function showTurnSplash(title) {
+      splashActive = true; refreshInputLockUI();
       const tb = document.getElementById('turn-banner');
       if (!tb) return;
       const inner = tb.querySelector('div');
@@ -2219,12 +2246,13 @@
       const tl = gsap.timeline();
       tl.fromTo(txt, { scale: 0.7, opacity: 0 }, { scale: 1.08, opacity: 1, duration: 0.45, ease: 'back.out(1.8)' })
         .to(txt, { scale: 1.0, duration: 0.35, ease: 'power2.out' })
-        .to(scan, { yPercent: 200, duration: 1.0, ease: 'power1.inOut' }, 0.1)
-        .to(bg, { opacity: 0.5, duration: 0.25 }, 0)
-        .to(bg, { opacity: 0.15, duration: 0.6 }, 0.45);
-      await sleep(2600);
+        .to(scan, { yPercent: 200, duration: 0.8, ease: 'power1.inOut' }, 0.1)
+        .to(bg, { opacity: 0.5, duration: 0.2 }, 0)
+        .to(bg, { opacity: 0.15, duration: 0.45 }, 0.35);
+      await sleep(2000);
       tb.classList.add('hidden'); tb.classList.remove('flex');
       inner.innerHTML = '';
+      splashActive = false; refreshInputLockUI();
     }
     
     function castSpellOnUnit(cardMesh, unitMesh) {
