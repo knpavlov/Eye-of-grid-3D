@@ -70,6 +70,9 @@
     
     /* Панели */
     .overlay-panel { background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 16px; }
+    /* Prompt: кликабельна только панель, остальное кликается сквозь */
+    #prompt-panel { pointer-events: none; }
+    #prompt-panel .overlay-panel { pointer-events: auto; }
     /* Оверлеи баннеров */
     .banner { pointer-events:none; }
     /* Turn Splash — новый вау-экран */
@@ -159,7 +162,7 @@
           <p>• Перетаскивайте карты существ на игровое поле</p>
           <p>• Выбирайте направление после размещения</p>
           <p>• Кликайте по своим существам для атаки или поворота</p>
-          <p>• Используйте заклинания, выбрав карту и цель</p>
+          <p>• Используйте заклинания, перетаскивая их на цель или на поле</p>
           <p>• Победа: контролируйте 5+ клеток в конце хода</p>
         </div>
       </div>
@@ -196,6 +199,16 @@
           <button id="rotate-ccw-btn" class="overlay-panel px-4 py-2 hover:bg-slate-700">Повернуть ↺</button>
         </div>
         <button id="cancel-action-btn" class="w-full overlay-panel px-4 py-2 bg-gray-600 hover:bg-gray-700">Отмена</button>
+      </div>
+    </div>
+
+    <!-- Постоянная панель подсказок/промптов -->
+    <div id="prompt-panel" class="ui-panel fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden z-40">
+      <div class="overlay-panel p-6 space-y-4">
+        <div id="prompt-text" class="text-center"></div>
+        <div class="text-center">
+          <button id="cancel-prompt-btn" class="overlay-panel px-4 py-2 bg-gray-600 hover:bg-gray-700">Отмена</button>
+        </div>
       </div>
     </div>
     
@@ -242,9 +255,40 @@
       FIRE_TRICEPTAUR: { id:'FIRE_TRICEPTAUR', name:'Triceptaur Behemoth', type:'UNIT', cost:5, activation:4, element:'FIRE', atk:5, hp:4, pattern:'FRONT_SIDES', range:1, blindspots:['S'], penaltyByTargets:true, desc:'If attacks 2 creatures, -2 ATK; if 3 creatures, -4 ATK.' },
       FIRE_PURSUER: { id:'FIRE_PURSUER', name:'Pursuer of Saint Dhees', type:'UNIT', cost:6, activation:3, element:'FIRE', atk:5, hp:4, pattern:'FRONT', range:1, blindspots:['S'], dynamicAtk:'OTHERS_ON_BOARD', desc:'ATK = 5 + number of other creatures on board.' },
       // Спеллы из других наборов (из 2D)
-      FREEZE_STREAM: { id:'FREEZE_STREAM', name:'Стылый поток', type:'SPELL', cost:2, element:'WATER', text:'Наносит 1 урона выбранному юниту.' },
+      // FREEZE_STREAM удалён
       RAISE_STONE: { id:'RAISE_STONE', name:'Подъём породы', type:'SPELL', cost:2, element:'EARTH', text:'+2 HP дружественному юниту.' },
-      WIND_SHIFT: { id:'WIND_SHIFT', name:'Лесной порыв', type:'SPELL', cost:2, element:'FOREST', text:'Повернуть выбранного юнита по часовой стрелке.' }
+      // WIND_SHIFT удалён,
+      SPELL_FISSURES_OF_GOGHLIE: {
+        id: 'SPELL_FISSURES_OF_GOGHLIE', name: 'Fissures of Goghlie', type: 'SPELL',
+        element: 'NEUTRAL', spellType: 'CONJURATION', cost: 2,
+        text: 'Fieldquake any one field.'
+      },
+      // Новые спеллы
+      SPELL_PARMTETIC_HOLY_FEAST: {
+        id: 'SPELL_PARMTETIC_HOLY_FEAST', name: 'Parmetic Holy Feast', type: 'SPELL',
+        element: 'NEUTRAL', spellType: 'RITUAL', cost: 0, ritualCost: 'discard 1 creature',
+        text: 'Discard a creature from hand and gain 2 mana.'
+      },
+      SPELL_GOGHLIE_ALTAR: {
+        id: 'SPELL_GOGHLIE_ALTAR', name: 'Goghlie Altar', type: 'SPELL',
+        element: 'NEUTRAL', spellType: 'RITUAL', cost: 0, ritualCost: 'none',
+        text: 'Both players gain mana equal to the number of enemy creatures on the board.'
+      },
+      SPELL_BEGUILING_FOG: {
+        id: 'SPELL_BEGUILING_FOG', name: 'Beguiling Fog', type: 'SPELL',
+        element: 'NEUTRAL', spellType: 'CONJURATION', cost: 0,
+        text: 'Rotate any one creature in any direction.'
+      },
+      SPELL_CLARE_WILS_BANNER: {
+        id: 'SPELL_CLARE_WILS_BANNER', name: "Clare Wil's Banner", type: 'SPELL',
+        element: 'NEUTRAL', spellType: 'CONJURATION', cost: 1,
+        text: "Targeted allied creature gains +2 Attack until the end of the spellcaster's turn."
+      },
+      SPELL_SUMMONER_MESMERS_ERRAND: {
+        id: 'SPELL_SUMMONER_MESMERS_ERRAND', name: "Summoner Mesmer's Errand", type: 'SPELL',
+        element: 'NEUTRAL', spellType: 'CONJURATION', cost: 1,
+        text: 'Draw two cards.'
+      }
     };
     
     // Стартер: только Fire Set + несколько спеллов
@@ -261,9 +305,14 @@
       CARDS.FIRE_HELLFIRE_SPITTER,
       CARDS.FIRE_FLAME_LIZARD,
       CARDS.FIRE_FREEDONIAN,
-      CARDS.FREEZE_STREAM,
       CARDS.RAISE_STONE,
-      CARDS.WIND_SHIFT
+      // Добавим новые спеллы в стартовую колоду для теста
+      CARDS.SPELL_PARMTETIC_HOLY_FEAST,
+      CARDS.SPELL_GOGHLIE_ALTAR,
+      CARDS.SPELL_BEGUILING_FOG,
+      CARDS.SPELL_CLARE_WILS_BANNER,
+      CARDS.SPELL_SUMMONER_MESMERS_ERRAND,
+      CARDS.SPELL_FISSURES_OF_GOGHLIE
     ];
     
     // Функции игровой логики
@@ -286,8 +335,10 @@
     const effectiveStats = (cell, unit) => {
       const tpl = CARDS[unit.tplId];
       const buff = computeCellBuff(cell.element, tpl.element);
+      // Временный баф атаки (например, от Clare Wil's Banner)
+      const tempAtk = (typeof unit.tempAtkBuff === 'number') ? unit.tempAtkBuff : 0;
       return { 
-        atk: (tpl.atk || 0) + buff.atk, 
+        atk: (tpl.atk || 0) + buff.atk + tempAtk, 
         hp: (tpl.hp || 0) + buff.hp 
       };
     };
@@ -621,6 +672,12 @@
     let pendingPlacement = null;
     let selectedUnit = null;
     let magicFrom = null; // { r, c }
+    // Паузы/состояния для новых механик
+    let pendingSpellOrientation = null; // { spellCardMesh, unitMesh }
+    let pendingDiscardSelection = null; // { requiredType: 'UNIT', onPicked: function }
+    let activePrompt = null; // { text: string, onCancel: function }
+    let pendingRitualBoardMesh = null; // временный меш спелла на поле
+    let spellDragHandled = false; // флаг, что возврат карты в руку уже не нужен
     
     function initThreeJS() {
       const canvas = document.getElementById('three-canvas');
@@ -1010,7 +1067,7 @@
       }
     }
     
-    function createCard3D(cardData, isInHand = false, hpOverride = null) {
+    function createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
       const cardWidth = 4.8;  // увеличено ~в 2-3 раза
       const cardHeight = 5.6; // почти вся ячейка
       const cardThickness = 0.12;
@@ -1022,7 +1079,7 @@
       canvas.height = 356;
       const ctx = canvas.getContext('2d');
       
-      drawCardFace(ctx, cardData, canvas.width, canvas.height, hpOverride);
+      drawCardFace(ctx, cardData, canvas.width, canvas.height, hpOverride, atkOverride);
       
       const texture = new THREE.CanvasTexture(canvas);
       texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -1139,7 +1196,7 @@
       cardMesh.add(plane);
     }
     
-    function drawCardFace(ctx, cardData, width, height, hpOverride = null) {
+    function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
       const gradient = ctx.createLinearGradient(0, 0, 0, height);
       gradient.addColorStop(0, '#1e293b');
       gradient.addColorStop(1, '#0f172a');
@@ -1224,7 +1281,8 @@
       if (cardData.type === 'UNIT') {
         ctx.textAlign = 'right';
         const hpToShow = (hpOverride != null) ? hpOverride : (cardData.hp || 0);
-        ctx.fillText(`⚔️${cardData.atk || 0}  ❤️${hpToShow}`, width - 16, height - 15);
+        const atkToShow = (atkOverride != null) ? atkOverride : (cardData.atk || 0);
+        ctx.fillText(`⚔️${atkToShow}  ❤️${hpToShow}`, width - 16, height - 15);
         // 3x3 схемы: атака и blindspot
         drawPatternGrid(ctx, cardData, width - 76, 178, 10, 2);
         drawBlindspotGrid(ctx, cardData, width - 36, 178, 10, 2);
@@ -1525,7 +1583,7 @@
       
       const tileSize = 6.2;
       const spacing = 0.2;
-      const boardZShift = -2.6;
+      const boardZShift = -3.5;
       
       for (let r = 0; r < 3; r++) {
         for (let c = 0; c < 3; c++) {
@@ -1547,10 +1605,11 @@
           if (!unit) continue;
           
           const cardData = CARDS[unit.tplId];
-          const unitMesh = createCard3D(cardData, false, unit.currentHP);
+          const stats = effectiveStats(gameState.board[r][c], unit);
+          const unitMesh = createCard3D(cardData, false, unit.currentHP, stats.atk);
           
           const x = (c - 1) * (tileSize + spacing);
-          const z = (r - 1) * (tileSize + spacing) + boardZShift;
+          const z = (r - 1) * (tileSize + spacing) + boardZShift + 0.0; // Важно - смещение карт на поле?
           const yBase = tileFrames[r] && tileFrames[r][c] ? (tileFrames[r][c].children?.[0]?.position?.y || (0.5 + 0.5)) : (0.5 + 0.5);
           unitMesh.position.set(x, yBase + 0.28, z);
           
@@ -1798,11 +1857,20 @@
         const hitObj = handIntersects[0].object;
         const card = hitObj.userData?.isInHand ? hitObj : hitObj.parent;
         const cardData = card.userData.cardData;
+        // Если ждём ритуального дискарда — перехват клика по руке
+        if (pendingDiscardSelection && cardData && cardData.type === (pendingDiscardSelection.requiredType || cardData.type)) {
+          const owner = gameState.players[gameState.active];
+          const handIdx = card.userData.handIndex;
+          try { pendingDiscardSelection.onPicked(handIdx); } catch {}
+          pendingDiscardSelection = null;
+          return;
+        }
         
         if (cardData.type === 'UNIT') {
           startCardDrag(card);
         } else if (cardData.type === 'SPELL') {
-          selectSpellCard(card);
+          // Новый принцип: спеллы разыгрываются перетаскиванием, а не кликом
+          startCardDrag(card);
         }
         return;
       }
@@ -1830,30 +1898,65 @@
       if (selectedCard) {
         resetCardSelection();
       }
+      // Отмена ритуального дискарда кликом по полю
+      if (pendingDiscardSelection) {
+        try { hidePrompt(); } catch {}
+        pendingDiscardSelection = null;
+        // Вернём визуально карту спелла, если она была перетянута
+        if (draggedCard && draggedCard.userData && draggedCard.userData.cardData && draggedCard.userData.cardData.type === 'SPELL') {
+          returnCardToHand(draggedCard);
+        }
+      }
     }
     
     function onMouseUp(event) {
       if (isInputLocked()) { endCardDrag(); return; }
-      if (draggedCard && hoveredTile) {
-        const row = hoveredTile.userData.row;
-        const col = hoveredTile.userData.col;
-        
-        if (gameState.board[row][col].unit) {
-          showNotification('Клетка уже занята!', 'error');
-          returnCardToHand(draggedCard);
-        } else {
-          pendingPlacement = {
-            card: draggedCard,
-            row: row,
-            col: col,
-            handIndex: draggedCard.userData.handIndex
-          };
-          showOrientationPanel();
+      if (draggedCard) {
+        const cardData = draggedCard.userData.cardData;
+        // Определим, навели ли на юнита
+        const rect = renderer.domElement.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        const unitIntersects = raycaster.intersectObjects(unitMeshes, true);
+        let unitMesh = null;
+        if (unitIntersects.length > 0) {
+          let u = unitIntersects[0].object;
+          while (u && (!u.userData || u.userData.type !== 'unit')) u = u.parent;
+          unitMesh = u;
         }
-      } else if (draggedCard) {
-        returnCardToHand(draggedCard);
+        if (cardData.type === 'SPELL') {
+          // Перетаскивание спелла: каст по цели (юнит/клетка)
+          try { castSpellByDrag(draggedCard, unitMesh, hoveredTile); } catch {}
+          // Если логика каста создала бордовый меш/сожгла карту (spellDragHandled=true) — не возвращаем; иначе вернуть в руку
+          if (!spellDragHandled) {
+            returnCardToHand(draggedCard);
+          }
+          spellDragHandled = false;
+        } else if (cardData.type === 'UNIT') {
+          // Перетаскивание существа: прежняя логика размещения на пустую клетку
+          if (hoveredTile) {
+            const row = hoveredTile.userData.row;
+            const col = hoveredTile.userData.col;
+            if (gameState.board[row][col].unit) {
+              showNotification('Клетка уже занята!', 'error');
+              returnCardToHand(draggedCard);
+            } else {
+              pendingPlacement = {
+                card: draggedCard,
+                row: row,
+                col: col,
+                handIndex: draggedCard.userData.handIndex
+              };
+              showOrientationPanel();
+            }
+          } else {
+            returnCardToHand(draggedCard);
+          }
+        }
+        endCardDrag();
+        return;
       }
-      
       endCardDrag();
     }
     
@@ -1918,30 +2021,7 @@
       });
     }
     
-    function selectSpellCard(card) {
-      if (isInputLocked()) return;
-      if (selectedCard === card) {
-        resetCardSelection();
-        return;
-      }
-      
-      if (selectedCard) {
-        resetCardSelection();
-      }
-      
-      selectedCard = card;
-      
-      if (isInputLocked()) return;
-      gsap.to(card.position, {
-        y: card.userData.originalPosition.y + 0.3,
-        duration: 0.2
-      });
-      
-      card.material[2].emissive = new THREE.Color(0x0066cc);
-      card.material[2].emissiveIntensity = 0.3;
-      
-      showNotification(`Выбрано заклинание: ${card.userData.cardData.name}. Выберите цель.`);
-    }
+    function selectSpellCard(card) { /* больше не используется — каст спеллов только drag&drop */ }
     
     function resetCardSelection() {
       if (selectedCard) {
@@ -2091,6 +2171,15 @@
         return;
       }
       
+      // Очистить временные бафы, действующие «до конца хода кастера»
+      try {
+        for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
+          const u = gameState.board[rr][cc].unit; if (!u) continue;
+          if (typeof u.tempAtkBuff === 'number' && u.tempBuffOwner === gameState.active) {
+            delete u.tempAtkBuff; delete u.tempBuffOwner;
+          }
+        }
+      } catch {}
       gameState.active = gameState.active === 0 ? 1 : 0;
       gameState.turn += 1;
       
@@ -2316,6 +2405,13 @@
     document.getElementById('close-help-btn').addEventListener('click', () => {
       document.getElementById('help-panel').classList.add('hidden');
     });
+    // Prompt handlers
+    document.getElementById('cancel-prompt-btn').addEventListener('click', () => {
+      if (activePrompt && typeof activePrompt.onCancel === 'function') {
+        try { activePrompt.onCancel(); } catch {}
+      }
+      hidePrompt();
+    });
     document.getElementById('cancel-orient-btn').addEventListener('click', () => {
       if (pendingPlacement) {
         returnCardToHand(pendingPlacement.card);
@@ -2338,6 +2434,23 @@
       btn.addEventListener('click', () => {
         // Явное соответствие символов на кнопках и направлений
         const direction = btn.getAttribute('data-dir'); // 'N' | 'E' | 'S' | 'W'
+        // Если ожидается выбор направления для спелла — применим его и завершим
+        if (pendingSpellOrientation) {
+          const { spellCardMesh, unitMesh } = pendingSpellOrientation;
+          const idx = spellCardMesh.userData.handIndex;
+          const pl = gameState.players[gameState.active];
+          const tpl = pl.hand[idx];
+          const r = unitMesh.userData.row; const c = unitMesh.userData.col; const u = gameState.board[r][c].unit;
+          if (tpl && tpl.id === 'SPELL_BEGUILING_FOG' && u) {
+            u.facing = direction;
+            addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут в ${direction}.`);
+            pl.discard.push(tpl); pl.hand.splice(idx, 1);
+            resetCardSelection(); updateHand(); updateUnits(); updateUI();
+          }
+          pendingSpellOrientation = null; hideOrientationPanel();
+          return;
+        }
+        // Иначе — штатное размещение юнита
         if (direction === 'N') return placeUnitWithDirection('N');
         if (direction === 'E') return placeUnitWithDirection('E');
         if (direction === 'S') return placeUnitWithDirection('S');
@@ -2348,6 +2461,20 @@
     document.addEventListener('DOMContentLoaded', init);
 
     // ====== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЕЙСТВИЙ ======
+    function showPrompt(text, onCancel) {
+      const pp = document.getElementById('prompt-panel');
+      const pt = document.getElementById('prompt-text');
+      if (pp && pt) {
+        pt.textContent = text || '';
+        pp.classList.remove('hidden');
+        activePrompt = { text, onCancel };
+      }
+    }
+    function hidePrompt() {
+      const pp = document.getElementById('prompt-panel');
+      if (pp) pp.classList.add('hidden');
+      activePrompt = null;
+    }
     function rotateUnit(unitMesh, dir) {
       if (isInputLocked()) return;
       const u = unitMesh.userData.unitData;
@@ -2627,6 +2754,7 @@
               shader.uniforms.uThreshold = { value: 0.0 };
               shader.uniforms.uEdgeWidth = { value: 0.12 };
               shader.uniforms.uEdgeColor = { value: new THREE.Color(0.55, 0.80, 1.0) };
+              shader.uniforms.uBaseColor = { value: new THREE.Color(0.90, 0.95, 1.0) };
               shader.uniforms.uNoiseScale = { value: 3.0 };
               shader.uniforms.uNoiseMove = { value: new THREE.Vector2(0.15, -0.1) };
               shader.vertexShader = shader.vertexShader
@@ -2821,11 +2949,116 @@
       if (tpl.cost > pl.mana) { showNotification('Недостаточно маны', 'error'); resetCardSelection(); return; }
       const r = unitMesh.userData.row; const c = unitMesh.userData.col; const u = gameState.board[r][c].unit;
       let delayedApply = false;
+      // Новые спеллы
+      if (tpl.id === 'SPELL_BEGUILING_FOG') {
+        // Разрешаем поворот любой цели в любую сторону — спросим направление через панель ориентации
+        pendingSpellOrientation = { spellCardMesh: cardMesh, unitMesh };
+        addLog(`${tpl.name}: выберите направление для цели.`);
+        // Временно покажем панель и перехватим её клики (см. обработчик ниже)
+        showOrientationPanel();
+        return; // завершим, остальная логика применения выполнится после выбора направления
+      }
+      if (tpl.id === 'SPELL_CLARE_WILS_BANNER') {
+        if (!u || u.owner !== gameState.active) { showNotification('Цель: только дружественное существо', 'error'); return; }
+        // Применяем временный баф атаки до конца хода кастера
+        u.tempAtkBuff = (u.tempAtkBuff || 0) + 2;
+        u.tempBuffOwner = gameState.active;
+        addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает +2 ATK до конца хода.`);
+        const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
+        if (tMesh) {
+          spawnDamageText(tMesh, `+2`, '#22c55e');
+          // Шейдерная вспышка вокруг цели
+          try {
+            const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.8, 48), new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.0 }));
+            ring.rotation.x = -Math.PI/2; ring.position.copy(tMesh.position).add(new THREE.Vector3(0, 0.32, 0));
+            effectsGroup.add(ring);
+            gsap.to(ring.material, { opacity: 0.8, duration: 0.12 })
+              .then(() => gsap.to(ring.scale, { x: 2.5, y: 2.5, z: 2.5, duration: 0.4, ease: 'power2.out' }))
+              .then(() => gsap.to(ring.material, { opacity: 0, duration: 0.24, onComplete: ()=> effectsGroup.remove(ring) }));
+          } catch {}
+        }
+        pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
+        resetCardSelection(); updateHand(); updateUnits(); updateUI();
+        return;
+      }
+      if (tpl.id === 'SPELL_SUMMONER_MESMERS_ERRAND') {
+        // Добор двух карт с существующей анимацией
+        if (tpl.cost > pl.mana) { showNotification('Недостаточно маны', 'error'); resetCardSelection(); return; }
+        pl.mana -= tpl.cost;
+        (async () => {
+          for (let i = 0; i < 2; i++) {
+            const drawnTpl = drawOneNoAdd(gameState, gameState.active);
+            if (drawnTpl) {
+              refreshInputLockUI();
+              await animateDrawnCardToHand(drawnTpl);
+              try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}
+              updateHand();
+            }
+          }
+          addLog(`${tpl.name}: вы добираете 2 карты.`);
+          pl.discard.push(tpl); pl.hand.splice(idx, 1); updateUI();
+        })();
+        resetCardSelection();
+        return;
+      }
+      if (tpl.id === 'SPELL_GOGHLIE_ALTAR') {
+        // Оба игрока получают ману = числу вражеских существ на доске
+        const countUnits = (ownerIdx) => {
+          let n = 0; for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
+            const un = gameState.board[rr][cc].unit; if (un && un.owner !== ownerIdx) n++;
+          } return n;
+        };
+        const g0 = countUnits(0), g1 = countUnits(1);
+        gameState.players[0].mana = capMana(gameState.players[0].mana + g0);
+        gameState.players[1].mana = capMana(gameState.players[1].mana + g1);
+        // Визуальный эффект: вспышки энергии от всех вражеских юнитов к панели маны получателя
+        for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
+          const un = gameState.board[rr][cc].unit; if (!un) continue;
+          const pos = tileMeshes[rr][cc].position.clone().add(new THREE.Vector3(0, 1.2, 0));
+          animateManaGainFromWorld(pos, (un.owner === 0 ? 1 : 0));
+        }
+        addLog(`${tpl.name}: оба игрока получают ману от вражеских существ (P1 +${g0}, P2 +${g1}).`);
+        pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
+        resetCardSelection(); updateHand(); updateUI();
+        return;
+      }
+      if (tpl.id === 'SPELL_PARMTETIC_HOLY_FEAST') {
+        // Ритуал: требуется сбросить существо из руки -> применить анимацию dissolve для выбранной карты из руки
+        const handCreatures = pl.hand.filter(x => x && x.type === 'UNIT');
+        if (handCreatures.length === 0) { showNotification('Нет существ в руке для ритуала', 'error'); return; }
+        pendingDiscardSelection = {
+          requiredType: 'UNIT',
+          onPicked: (handIdx) => {
+            const toDiscardTpl = pl.hand[handIdx]; if (!toDiscardTpl) return;
+            // Поднимем 3D-карту из руки и прожжём её через dissolve
+            const handMesh = handCardMeshes.find(m => m.userData?.handIndex === handIdx);
+            if (handMesh) {
+              // Снимем из руки визуально перед анимацией
+              try { handMesh.userData.isInHand = false; } catch {}
+              dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9);
+            }
+            // Состояние: переносим карту в graveyard и удаляем из руки
+            try { pl.graveyard.push(toDiscardTpl); } catch {}
+            pl.hand.splice(handIdx, 1);
+            updateHand();
+            // Вознаграждение ритуала: +2 маны
+            const beforeM = pl.mana; pl.mana = capMana(pl.mana + 2); updateUI();
+            addLog(`${tpl.name}: сбрасываете существо из руки и получаете +2 маны (\`${toDiscardTpl.name}\`).`);
+            // Сам спелл уходит в discard
+            pl.discard.push(tpl); pl.hand.splice(idx, 1);
+            resetCardSelection(); updateHand(); updateUI();
+          }
+        };
+        addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`);
+        // Подсветить руку не будем — выбор по клику на карте из руки (см. перехват в onMouseDown)
+        return;
+      }
       if (tpl.id === 'WIND_SHIFT') { if (u) u.facing = turnCW[u.facing]; addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут.`); }
       if (tpl.id === 'FREEZE_STREAM') {
         if (u) {
           const before = u.currentHP; u.currentHP = Math.max(0, u.currentHP - 1);
           addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает 1 урона (HP ${before}→${u.currentHP})`);
+          try { const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c); if (tMesh) spawnDamageText(tMesh, `-1`, '#ef4444'); } catch {}
           if (u.currentHP <= 0) {
             delayedApply = true;
             const owner = u.owner;
@@ -2839,10 +3072,197 @@
           }
         }
       }
-      if (tpl.id === 'RAISE_STONE') { if (u && u.owner === gameState.active) { const before = u.currentHP; u.currentHP += 2; addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает +2 HP (HP ${before}→${u.currentHP})`); } }
+      if (tpl.id === 'RAISE_STONE') {
+        if (!u) { showNotification('Нужно перетащить на существо', 'error'); return; }
+        if (u.owner !== gameState.active) { showNotification('Только союзное существо', 'error'); return; }
+        const before = u.currentHP; u.currentHP += 2; addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает +2 HP (HP ${before}→${u.currentHP})`);
+        try { const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c); if (tMesh) spawnDamageText(tMesh, `+2`, '#22c55e'); } catch {}
+      }
       pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
       resetCardSelection(); updateHand();
       if (!delayedApply) { updateUnits(); updateUI(); }
+    }
+
+    // Новый универсальный обработчик каста спелла при перетаскивании
+    function castSpellByDrag(cardMesh, unitMesh, tileMesh) {
+      const idx = cardMesh.userData.handIndex;
+      const pl = gameState.players[gameState.active];
+      if (idx == null || idx < 0 || idx >= pl.hand.length) { return; }
+      const tpl = pl.hand[idx]; if (!tpl || tpl.type !== 'SPELL') { return; }
+      if (tpl.cost > pl.mana) { showNotification('Недостаточно маны', 'error'); return; }
+      // Для спеллов без цели — позволяем дроп на любую клетку поля
+      const id = tpl.id;
+      const requiresUnitTarget = (/*'FREEZE_STREAM' removed*/ id === 'RAISE_STONE' || /*'WIND_SHIFT' removed*/ id === 'SPELL_BEGUILING_FOG' || id === 'SPELL_CLARE_WILS_BANNER');
+      if (requiresUnitTarget) {
+        if (!unitMesh) { showNotification('Нужно перетащить на существо', 'error'); return; }
+        // Спецэффект баффа/дебаффа перед применением
+        try {
+          const glow = new THREE.Mesh(new THREE.RingGeometry(0.4, 0.6, 32), new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.0 }));
+          glow.rotation.x = -Math.PI/2; glow.position.copy(unitMesh.position).add(new THREE.Vector3(0, 0.3, 0));
+          effectsGroup.add(glow);
+          gsap.to(glow.material, { opacity: 0.8, duration: 0.12 })
+            .then(() => gsap.to(glow.scale, { x: 2.2, y: 2.2, z: 2.2, duration: 0.35, ease: 'power1.out' }))
+            .then(() => gsap.to(glow.material, { opacity: 0, duration: 0.28, onComplete: ()=> effectsGroup.remove(glow) }));
+        } catch {}
+        return castSpellOnUnit(cardMesh, unitMesh);
+      }
+      // Спеллы без цели
+      if (id === 'SPELL_SUMMONER_MESMERS_ERRAND') {
+        // Добор двух карт
+        if (tpl.cost > pl.mana) { showNotification('Недостаточно маны', 'error'); return; }
+        pl.mana -= tpl.cost;
+        // Немедленно «сожжём» карту спелла на месте броска и пометим, что карту не надо возвращать в руку
+        try {
+          const big = createCard3D(tpl, false);
+          const p = tileMesh ? tileMesh.position.clone().add(new THREE.Vector3(0, 1.0, 0)) : new THREE.Vector3(0, 1.0, 0);
+          big.position.copy(p);
+          (boardGroup || scene).add(big);
+          dissolveAndAsh(big, new THREE.Vector3(0, 0.6, 0), 0.9);
+          spellDragHandled = true;
+          // Скрыть перетягиваемую карту, чтобы не мигала
+          try { cardMesh.visible = false; } catch {}
+        } catch {}
+        // Удалить из руки и положить в сброс сразу, затем анимировать добор 2 карт
+        pl.hand.splice(idx, 1); pl.discard.push(tpl); updateHand(); updateUI();
+        (async () => {
+          for (let i = 0; i < 2; i++) {
+            const drawnTpl = drawOneNoAdd(gameState, gameState.active);
+            if (drawnTpl) {
+              refreshInputLockUI();
+              await animateDrawnCardToHand(drawnTpl);
+              try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}
+              updateHand();
+            }
+          }
+          addLog(`${tpl.name}: вы добираете 2 карты.`);
+        })();
+        return;
+      }
+      if (id === 'SPELL_GOGHLIE_ALTAR') {
+        const countUnits = (ownerIdx) => { let n = 0; for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) { const un = gameState.board[rr][cc].unit; if (un && un.owner !== ownerIdx) n++; } return n; };
+        const g0 = countUnits(0), g1 = countUnits(1);
+        gameState.players[0].mana = capMana(gameState.players[0].mana + g0);
+        gameState.players[1].mana = capMana(gameState.players[1].mana + g1);
+        for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) { const un = gameState.board[rr][cc].unit; if (!un) continue; const pos = tileMeshes[rr][cc].position.clone().add(new THREE.Vector3(0, 1.2, 0)); animateManaGainFromWorld(pos, (un.owner === 0 ? 1 : 0)); }
+        addLog(`${tpl.name}: оба игрока получают ману от вражеских существ (P1 +${g0}, P2 +${g1}).`);
+        // Визуально сожжём карту спелла в точке дропа
+        try {
+          const big = createCard3D(tpl, false);
+          const p = tileMesh ? tileMesh.position.clone().add(new THREE.Vector3(0, 1.0, 0)) : new THREE.Vector3(0, 1.0, 0);
+          big.position.copy(p);
+          (boardGroup || scene).add(big);
+          dissolveAndAsh(big, new THREE.Vector3(0, 0.6, 0), 0.9);
+          spellDragHandled = true;
+        } catch {}
+        pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
+        updateHand(); updateUI();
+        return;
+      }
+      if (id === 'SPELL_FISSURES_OF_GOGHLIE') {
+        if (!tileMesh) { showNotification('Перетащите на клетку поля', 'error'); return; }
+        const r = tileMesh.userData.row, c = tileMesh.userData.col;
+        const cell = gameState.board[r][c];
+        if (!cell) return;
+        if (cell.element === 'MECH') { showNotification('Mech поле не меняется', 'error'); return; }
+        const oppMap = { FIRE:'WATER', WATER:'FIRE', EARTH:'FOREST', FOREST:'EARTH' };
+        const prevEl = cell.element; const nextEl = oppMap[prevEl] || prevEl;
+        cell.element = nextEl;
+        // Визуальный «fieldquake»: шейдерное сгорание старого тайла и замена материала на противоположный
+        try {
+          const tile = tileMeshes[r][c];
+          // Простая вспышка/импульс
+          const pulse = new THREE.Mesh(new THREE.RingGeometry(0.6, 1.1, 48), new THREE.MeshBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0 }));
+          pulse.rotation.x = -Math.PI/2; pulse.position.copy(tile.position).add(new THREE.Vector3(0, 0.2, 0));
+          effectsGroup.add(pulse);
+          gsap.to(pulse.material, { opacity: 0.85, duration: 0.12 })
+            .then(() => gsap.to(pulse.scale, { x: 2.2, y: 2.2, z: 2.2, duration: 0.35, ease: 'power2.out' }))
+            .then(() => gsap.to(pulse.material, { opacity: 0, duration: 0.22, onComplete: ()=> effectsGroup.remove(pulse) }));
+          // Замена материала тайла
+          const mat = getTileMaterial(nextEl);
+          try { tile.material.dispose && tile.material.dispose(); } catch {}
+          tile.material = mat; tile.material.needsUpdate = true;
+        } catch {}
+        // Юнит на клетке может изменить HP из-за смены элемента
+        const u = gameState.board[r][c].unit;
+        if (u) {
+          const tpl = CARDS[u.tplId];
+          const prevBuff = computeCellBuff(prevEl, tpl.element);
+          const nextBuff = computeCellBuff(nextEl, tpl.element);
+          const deltaHp = (nextBuff.hp || 0) - (prevBuff.hp || 0);
+          if (deltaHp !== 0) {
+            const before = u.currentHP; u.currentHP = Math.max(0, before + deltaHp);
+            const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
+            if (tMesh) spawnDamageText(tMesh, `${deltaHp > 0 ? '+' : ''}${deltaHp}`, deltaHp > 0 ? '#22c55e' : '#ef4444');
+            if (u.currentHP <= 0) {
+              try { gameState.players[u.owner].graveyard.push(CARDS[u.tplId]); } catch {}
+              const deadMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
+              if (deadMesh) { dissolveAndAsh(deadMesh, new THREE.Vector3(0,0,0.6), 0.9); setTimeout(()=>{ gameState.board[r][c].unit = null; updateUnits(); updateUI(); }, 1000); }
+            }
+          }
+        }
+        // Визуально «сжечь» карту спелла в точке дропа и убрать из руки
+        try {
+          const big = createCard3D(tpl, false);
+          const p = tileMesh.position.clone().add(new THREE.Vector3(0, 1.0, 0));
+          big.position.copy(p); (boardGroup || scene).add(big); dissolveAndAsh(big, new THREE.Vector3(0,0.6,0), 0.9);
+          spellDragHandled = true;
+        } catch {}
+        pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
+        updateHand(); updateUnits(); updateUI();
+        return;
+      }
+      if (id === 'SPELL_PARMTETIC_HOLY_FEAST') {
+        const handCreatures = pl.hand.filter(x => x && x.type === 'UNIT');
+        if (handCreatures.length === 0) { showNotification('Нет существ в руке для ритуала', 'error'); return; }
+        // Визуально «оставим» карту на поле: создаём временный меш спелла и не возвращаем перетянутую карту
+        try {
+          const big = createCard3D(tpl, false);
+          const p = tileMesh ? tileMesh.position.clone().add(new THREE.Vector3(0, 1.0, 0)) : new THREE.Vector3(0, 1.0, 0);
+          big.position.copy(p);
+          (boardGroup || scene).add(big);
+          pendingRitualBoardMesh = big;
+          spellDragHandled = true;
+          // Вернём визуально перетягиваемую карту в руку сразу (сама карта пока остаётся в руке логически)
+          try { returnCardToHand(cardMesh); } catch {}
+        } catch {}
+        showPrompt('Выберите существо из руки для ритуала', () => {
+          // Отмена ритуала — вернуть карту в руку и убрать временный меш
+          try { if (pendingRitualBoardMesh && pendingRitualBoardMesh.parent) pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {}
+          pendingRitualBoardMesh = null;
+          returnCardToHand(cardMesh);
+          pendingDiscardSelection = null;
+        });
+        // Если карт несколько — ждём клика по карте в руке
+        if (handCreatures.length > 1) {
+          pendingDiscardSelection = { requiredType: 'UNIT', onPicked: (handIdx) => {
+            const toDiscardTpl = pl.hand[handIdx]; if (!toDiscardTpl) return;
+            const handMesh = handCardMeshes.find(m => m.userData?.handIndex === handIdx);
+            if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
+            try { pl.graveyard.push(toDiscardTpl); } catch {}
+            pl.hand.splice(handIdx, 1); updateHand();
+            pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
+            // Завершение ритуала: визуально сжечь временный меш спелла и убрать его, затем удалить карту из руки и положить в discard
+            try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
+            pl.hand.splice(idx, 1); pl.discard.push(tpl); updateHand(); updateUI();
+            hidePrompt(); pendingDiscardSelection = null;
+          } }; addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`); return;
+        }
+        // Если ровно одна карта-сущность — сбрасываем её сразу
+        const singleIdx = pl.hand.findIndex(x => x && x.type === 'UNIT');
+        if (singleIdx >= 0) {
+          const toDiscardTpl = pl.hand[singleIdx];
+          const handMesh = handCardMeshes.find(m => m.userData?.handIndex === singleIdx);
+          if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
+          try { pl.graveyard.push(toDiscardTpl); } catch {}
+          pl.hand.splice(singleIdx, 1); updateHand();
+          pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
+          try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
+          pl.hand.splice(idx, 1); pl.discard.push(tpl); updateHand(); updateUI(); hidePrompt();
+        }
+        return;
+      }
+      // Если сюда попали — нераспознанная цель/спелл
+      showNotification('Неверная цель для заклинания', 'error');
     }
 
     // (убраны несуществующие обработчики magic-btn и draw-btn)
