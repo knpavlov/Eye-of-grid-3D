@@ -24,6 +24,33 @@
       background: rgba(255,255,255,0.06); 
       box-shadow: inset 0 2px 6px rgba(0,0,0,0.5); 
     }
+    /* Кнопка завершения хода с круговым таймером */
+    .end-turn-btn { 
+      position: relative; width: 84px; height: 84px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, rgba(30,41,59,0.9), rgba(30,41,59,0.85) 45%, rgba(15,23,42,0.95));
+      box-shadow: inset 0 2px 10px rgba(0,0,0,0.45), 0 0 0 2px rgba(100,116,139,0.6), 0 8px 24px rgba(15,23,42,0.35);
+      border: none; cursor: pointer; color: #0f172a; overflow: hidden; pointer-events: auto;
+    }
+    .end-turn-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .end-turn-btn .time-fill { 
+      position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 0;
+      background: linear-gradient(to bottom, rgba(250,204,21,0.9), rgba(234,179,8,0.85));
+      transition: top 220ms ease;
+    }
+    .end-turn-btn .label-text { 
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 1;
+      font-weight: 800; font-size: 13px; color: #f8fafc; text-shadow: 0 1px 0 rgba(0,0,0,0.4);
+    }
+    .end-turn-btn .sec-text { 
+      position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; z-index: 1;
+      font-weight: 700; font-size: 12px; color: #ffffff; opacity: 0.95; text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+    }
+    /* Пульсация рамки в последние 10 секунд */
+    @keyframes urgentPulse {
+      0%   { box-shadow: inset 0 2px 10px rgba(0,0,0,0.45), 0 0 0 2px rgba(100,116,139,0.6), 0 8px 24px rgba(15,23,42,0.35), 0 0 0 2px rgba(239,68,68,0.78), 0 0 16px rgba(239,68,68,0.45); }
+      100% { box-shadow: inset 0 2px 10px rgba(0,0,0,0.45), 0 0 0 2px rgba(100,116,139,0.6), 0 8px 24px rgba(15,23,42,0.35), 0 0 0 2px rgba(239,68,68,0.98), 0 0 22px rgba(239,68,68,0.62); }
+    }
+    .end-turn-btn.urgent { animation: urgentPulse 0.8s ease-in-out infinite alternate; }
     /* Выделение активного игрока */
     .active-player-panel { 
       box-shadow: 0 0 0 2px rgba(34,197,94,0.9), 0 0 16px rgba(34,197,94,0.45);
@@ -91,12 +118,15 @@
       <div class="overlay-panel px-4 py-2 text-sm" id="control-info-1">Контроль: 0</div>
     </div>
 
-    <!-- Верхний центр: ход, таймер, завершить ход -->
+    <!-- Верхний центр: номер хода и круглая кнопка с таймером -->
     <div id="top-center" class="ui-panel fixed top-3 left-1/2 -translate-x-1/2 z-20">
-      <div class="overlay-panel px-4 py-2 flex items-center gap-4">
-        <div id="turn-info">Ход: 1</div>
-        <div id="turn-timer">100</div>
-        <button id="end-turn-btn" class="px-4 py-2 text-sm bg-amber-600 hover:bg-amber-700 transition-colors rounded-lg">Завершить ход</button>
+      <div class="overlay-panel px-4 py-3 flex flex-col items-center gap-2">
+        <div id="turn-info" class="text-sm tracking-wide">Ход: 1</div>
+        <button id="end-turn-btn" class="end-turn-btn" aria-label="Завершить ход">
+          <span class="time-fill"></span>
+          <span class="label-text">Конец хода</span>
+          <span class="sec-text">100</span>
+        </button>
       </div>
     </div>
 
@@ -497,7 +527,7 @@
     let PROC_TILE_TEXTURES = {};
     // Настройки показа большой карты при доборе — можно править из консоли
     window.DRAW_CARD_TUNE = {
-      posY: 10.0,   // высота
+      posY: 8.5,   // высота
       posZ: 2.4,    // дистанция к камере (чем меньше, тем ближе)
       scale: 1.7,   // масштаб
       // Ручная довращалка (в градусах):
@@ -1543,7 +1573,21 @@
       if (!gameState) return;
       
       document.getElementById('turn-info').textContent = `Ход: ${gameState.turn}`;
-      const tt = document.getElementById('turn-timer'); if (tt && typeof window.__turnTimerSeconds === 'number') { tt.textContent = `${window.__turnTimerSeconds}`; }
+      // Обновить числовой текст таймера в круглой кнопке и высоту заполнения
+      try {
+        const btn = document.getElementById('end-turn-btn');
+        if (btn) {
+          const fill = btn.querySelector('.time-fill');
+          const txt = btn.querySelector('.sec-text');
+          if (typeof window.__turnTimerSeconds === 'number') {
+            const s = Math.max(0, Math.min(100, window.__turnTimerSeconds));
+            if (txt) txt.textContent = `${s}`;
+            // Инверсия: опускаем верхнюю границу жёлтой заливки сверху вниз
+            const percent = s / 100; // 1 -> top:0%, 0 -> top:100%
+            if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
+          }
+        }
+      } catch {}
       // Выделение активного игрока
       try {
         const leftSide = document.getElementById('left-side');
@@ -1955,11 +1999,31 @@
       // Сброс и запуск таймера хода на 100 секунд
       try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
       window.__turnTimerSeconds = 100;
-      const ttEl = document.getElementById('turn-timer'); if (ttEl) ttEl.textContent = `${window.__turnTimerSeconds}`;
+      (function syncBtn(){ try {
+        const btn = document.getElementById('end-turn-btn');
+        if (btn) {
+          const fill = btn.querySelector('.time-fill');
+          const txt = btn.querySelector('.sec-text');
+          if (txt) txt.textContent = `${window.__turnTimerSeconds}`;
+          if (fill) fill.style.top = `0%`;
+        }
+      } catch {} })();
       window.__turnTimerId = setInterval(() => {
         if (typeof window.__turnTimerSeconds !== 'number') window.__turnTimerSeconds = 100;
         if (window.__turnTimerSeconds > 0) window.__turnTimerSeconds -= 1;
-        const el = document.getElementById('turn-timer'); if (el) el.textContent = `${window.__turnTimerSeconds}`;
+        try {
+          const btn = document.getElementById('end-turn-btn');
+          if (btn) {
+            const fill = btn.querySelector('.time-fill');
+            const txt = btn.querySelector('.sec-text');
+            const s = Math.max(0, Math.min(100, window.__turnTimerSeconds));
+            if (txt) txt.textContent = `${s}`;
+            const percent = s / 100; // 1 -> top:0%, 0 -> top:100%
+            if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
+            // Пульсация рамки в последние 10 секунд
+            if (s <= 10) { btn.classList.add('urgent'); } else { btn.classList.remove('urgent'); }
+          }
+        } catch {}
       }, 1000);
       
       const controlledCells = countControlled(gameState, gameState.active);
@@ -1988,11 +2052,30 @@
       // Перезапустить таймер хода на 100 сек после заставки
       try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
       window.__turnTimerSeconds = 100;
-      const ttEl2 = document.getElementById('turn-timer'); if (ttEl2) ttEl2.textContent = `${window.__turnTimerSeconds}`;
+      (function syncBtn(){ try {
+        const btn = document.getElementById('end-turn-btn');
+        if (btn) {
+          const fill = btn.querySelector('.time-fill');
+          const txt = btn.querySelector('.sec-text');
+          if (txt) txt.textContent = `${window.__turnTimerSeconds}`;
+          if (fill) fill.style.top = `0%`;
+        }
+      } catch {} })();
       window.__turnTimerId = setInterval(() => {
         if (typeof window.__turnTimerSeconds !== 'number') window.__turnTimerSeconds = 100;
         if (window.__turnTimerSeconds > 0) window.__turnTimerSeconds -= 1;
-        const el = document.getElementById('turn-timer'); if (el) el.textContent = `${window.__turnTimerSeconds}`;
+        try {
+          const btn = document.getElementById('end-turn-btn');
+          if (btn) {
+            const fill = btn.querySelector('.time-fill');
+            const txt = btn.querySelector('.sec-text');
+            const s = Math.max(0, Math.min(100, window.__turnTimerSeconds));
+            if (txt) txt.textContent = `${s}`;
+            const percent = s / 100;
+            if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
+            if (s <= 10) { btn.classList.add('urgent'); } else { btn.classList.remove('urgent'); }
+          }
+        } catch {}
       }, 1000);
       // Дождаться завершения заставки хода, затем эффектная анимация маны (ускорена)
       try { await animateTurnManaGain(gameState.active, before, manaAfter, 1190); } catch {}
