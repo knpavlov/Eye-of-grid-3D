@@ -24,6 +24,22 @@
       background: rgba(255,255,255,0.06); 
       box-shadow: inset 0 2px 6px rgba(0,0,0,0.5); 
     }
+    /* Выделение активного игрока */
+    .active-player-panel { 
+      box-shadow: 0 0 0 2px rgba(34,197,94,0.9), 0 0 16px rgba(34,197,94,0.45);
+      border-radius: 18px;
+    }
+    @keyframes titlePulse {
+      0%   { transform: scale(1); }
+      100% { transform: scale(1.08); }
+    }
+    .title-pulse {
+      display: inline-block;
+      color: #bbf7d0; /* светло-зелёный */
+      text-shadow: 0 0 10px rgba(34,197,94,0.45);
+      animation: titlePulse 1.1s ease-in-out infinite alternate;
+      will-change: transform;
+    }
     
     /* Панели */
     .overlay-panel { background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 16px; }
@@ -57,8 +73,8 @@
   
   <div id="ui">
     <!-- Боковые панели: слева — игрок A, справа — игрок B -->
-    <div id="left-side" class="ui-panel fixed left-4 top-1/2 -translate-y-1/2 space-y-3 z-20">
-      <div class="text-2xl md:text-3xl font-semibold text-center">Игрок 1</div>
+    <div id="left-side" class="ui-panel fixed left-4 top-1/2 -translate-y-1/2 space-y-3 z-20 flex flex-col items-center">
+      <div id="player-title-0" class="text-2xl md:text-3xl font-semibold text-center w-full">Игрок 1</div>
       <div class="overlay-panel px-4 py-2">
         <div class="text-sm mb-1">Мана</div>
         <div class="mana-bar" id="mana-display-0"></div>
@@ -66,8 +82,8 @@
       <div class="overlay-panel px-4 py-2 text-sm" id="control-info-0">Контроль: 0</div>
     </div>
 
-    <div id="right-side" class="ui-panel fixed right-4 top-1/2 -translate-y-1/2 space-y-3 z-20">
-      <div class="text-2xl md:text-3xl font-semibold text-center">Игрок 2</div>
+    <div id="right-side" class="ui-panel fixed right-4 top-1/2 -translate-y-1/2 space-y-3 z-20 flex flex-col items-center">
+      <div id="player-title-1" class="text-2xl md:text-3xl font-semibold text-center w-full">Игрок 2</div>
       <div class="overlay-panel px-4 py-2">
         <div class="text-sm mb-1">Мана</div>
         <div class="mana-bar" id="mana-display-1"></div>
@@ -75,11 +91,11 @@
       <div class="overlay-panel px-4 py-2 text-sm" id="control-info-1">Контроль: 0</div>
     </div>
 
-    <!-- Верхний центр: ход, активный игрок, завершить ход -->
+    <!-- Верхний центр: ход, таймер, завершить ход -->
     <div id="top-center" class="ui-panel fixed top-3 left-1/2 -translate-x-1/2 z-20">
       <div class="overlay-panel px-4 py-2 flex items-center gap-4">
         <div id="turn-info">Ход: 1</div>
-        <div id="active-player">Активный: Игрок 1</div>
+        <div id="turn-timer">100</div>
         <button id="end-turn-btn" class="px-4 py-2 text-sm bg-amber-600 hover:bg-amber-700 transition-colors rounded-lg">Завершить ход</button>
       </div>
     </div>
@@ -1527,7 +1543,28 @@
       if (!gameState) return;
       
       document.getElementById('turn-info').textContent = `Ход: ${gameState.turn}`;
-      document.getElementById('active-player').textContent = `Активный: ${gameState.players[gameState.active].name}`;
+      const tt = document.getElementById('turn-timer'); if (tt && typeof window.__turnTimerSeconds === 'number') { tt.textContent = `${window.__turnTimerSeconds}`; }
+      // Выделение активного игрока
+      try {
+        const leftSide = document.getElementById('left-side');
+        const rightSide = document.getElementById('right-side');
+        const t0 = document.getElementById('player-title-0');
+        const t1 = document.getElementById('player-title-1');
+        if (leftSide && rightSide && t0 && t1) {
+          if (gameState.active === 0) {
+            // Подсвечиваем обе панели (мана и контроль) у активного
+            leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
+            rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
+            t0.classList.add('title-pulse');
+            t1.classList.remove('title-pulse');
+          } else {
+            rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
+            leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
+            t1.classList.add('title-pulse');
+            t0.classList.remove('title-pulse');
+          }
+        }
+      } catch {}
       
       // Обновляем две панели маны (для обоих игроков)
       const total = 10;
@@ -1915,6 +1952,15 @@
       if (!gameState || gameState.winner !== null) return;
       if (isInputLocked()) return;
       __endTurnInProgress = true;
+      // Сброс и запуск таймера хода на 100 секунд
+      try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
+      window.__turnTimerSeconds = 100;
+      const ttEl = document.getElementById('turn-timer'); if (ttEl) ttEl.textContent = `${window.__turnTimerSeconds}`;
+      window.__turnTimerId = setInterval(() => {
+        if (typeof window.__turnTimerSeconds !== 'number') window.__turnTimerSeconds = 100;
+        if (window.__turnTimerSeconds > 0) window.__turnTimerSeconds -= 1;
+        const el = document.getElementById('turn-timer'); if (el) el.textContent = `${window.__turnTimerSeconds}`;
+      }, 1000);
       
       const controlledCells = countControlled(gameState, gameState.active);
       if (controlledCells >= 5) {
@@ -1939,6 +1985,15 @@
       updateUI();
       // Показ заставки хода на каждый ход с резервом
       try { await forceTurnSplashWithRetry(2); } catch {}
+      // Перезапустить таймер хода на 100 сек после заставки
+      try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
+      window.__turnTimerSeconds = 100;
+      const ttEl2 = document.getElementById('turn-timer'); if (ttEl2) ttEl2.textContent = `${window.__turnTimerSeconds}`;
+      window.__turnTimerId = setInterval(() => {
+        if (typeof window.__turnTimerSeconds !== 'number') window.__turnTimerSeconds = 100;
+        if (window.__turnTimerSeconds > 0) window.__turnTimerSeconds -= 1;
+        const el = document.getElementById('turn-timer'); if (el) el.textContent = `${window.__turnTimerSeconds}`;
+      }, 1000);
       // Дождаться завершения заставки хода, затем эффектная анимация маны (ускорена)
       try { await animateTurnManaGain(gameState.active, before, manaAfter, 1190); } catch {}
       // Минимальная задержка (<0.1с) перед началом проявления большой карты
