@@ -597,6 +597,8 @@
     }
     // Отступ руки по оси Z (положительное — дальше от камеры)
     const HAND_Z_OFFSET = 1.0;
+    // Смещение колод/кладбищ от камеры вдоль оси Z (положительное значение — дальше от камеры)
+    const META_Z_AWAY = 1.5;
     // 3D объекты справа (колоды/кладбища)
     let deckMeshes = [];
     let graveyardMeshes = [];
@@ -665,14 +667,14 @@
       scene.add(hemi);
       
       // Платформа
-      const platformGeometry = new THREE.CylinderGeometry(32, 32, 0.5, 48);
+      const platformGeometry = new THREE.CylinderGeometry(32, 32, 0.7, 48);
       const platformMaterial = new THREE.MeshStandardMaterial({ 
         color: 0x1a2332, 
         metalness: 0.7, 
         roughness: 0.3 
       });
       const platform = new THREE.Mesh(platformGeometry, platformMaterial);
-      platform.position.y = -0.5;
+      platform.position.y = -0.35;
       platform.receiveShadow = true;
       scene.add(platform);
       // Загрузка текстур тайлов поля из папки textures/
@@ -944,8 +946,8 @@
       const tileSize = 6.2; // увеличено
       const tileHeight = 0.35;
       const spacing = 0.2;
-      const boardYOffset = 1.2; // выше, чтобы рука не перекрывала
-      const boardZShift = -2.6; // отодвинуть поле дальше от камеры/руки
+      const boardYOffset = 0.0; // опущено ближе к платформе. Важно
+      const boardZShift = -3.5; // отодвинуть поле дальше от камеры/руки. Важно
       
       for (let r = 0; r < 3; r++) {
         const row = [];
@@ -1532,7 +1534,7 @@
           
           const x = (c - 1) * (tileSize + spacing);
           const z = (r - 1) * (tileSize + spacing) + boardZShift;
-          const yBase = tileFrames[r] && tileFrames[r][c] ? (tileFrames[r][c].children?.[0]?.position?.y || (0.5 + 1.2)) : (0.5 + 1.2);
+          const yBase = tileFrames[r] && tileFrames[r][c] ? (tileFrames[r][c].children?.[0]?.position?.y || (0.5 + 0.5)) : (0.5 + 0.5);
           unitMesh.position.set(x, yBase + 0.28, z);
           
           const facingAngle = facingDeg[unit.facing] * Math.PI / 180;
@@ -1955,6 +1957,17 @@
       attackBtn.disabled = alreadyAttacked;
       const cost = attackCost(cardData);
       attackBtn.textContent = alreadyAttacked ? 'Уже атаковал' : `Атаковать (−${cost})`;
+      // Ротация: платное действие, 1 раз за ход
+      const rotateCost = attackCost(cardData);
+      const alreadyRotated = unitData.lastRotateTurn === gameState.turn;
+      const rCw = document.getElementById('rotate-cw-btn');
+      const rCcw = document.getElementById('rotate-ccw-btn');
+      if (rCw && rCcw) {
+        rCw.disabled = !!alreadyRotated;
+        rCcw.disabled = !!alreadyRotated;
+        rCw.textContent = alreadyRotated ? 'Уже поворачивался' : `Повернуть ↻ (−${rotateCost})`;
+        rCcw.textContent = alreadyRotated ? 'Уже поворачивался' : `Повернуть ↺ (−${rotateCost})`;
+      }
       // Подсветка потенциальных целей в панели действий
       const hits = computeHits(gameState, selectedUnit.userData.row, selectedUnit.userData.col);
       for (const h of hits) {
@@ -1980,7 +1993,9 @@
     async function initGame() {
       gameState = startGame(STARTER_FIRESET, STARTER_FIRESET);
       
+      // Сразу строим сцену и мета-объекты, без задержки появления
       createBoard();
+      createMetaObjects();
       updateUnits();
       updateHand();
       updateUI();
@@ -2013,7 +2028,6 @@
           }
         } catch {}
       }, 1000);
-      createMetaObjects();
       
       addLog('Игра началась! Игрок 1 ходит первым.');
       addLog('Перетаскивайте карты существ на поле, используйте заклинания кликом.');
@@ -2245,9 +2259,9 @@
       deckMeshes = []; graveyardMeshes = [];
       if (!gameState) return;
       const baseX = (6.2 + 0.2) * 1 + 6.6; // правее поля
-      const zA = -5.2; const zB = 5.2;
+      const zA = -5.2 - META_Z_AWAY; const zB = 0.2 + META_Z_AWAY; // Важно (смещение колоды/кладбища от камеры)
       function buildDeck(player, z) {
-        const g = new THREE.Group(); g.position.set(baseX, 1.0, z); g.userData = { metaType: 'deck', player };
+        const g = new THREE.Group(); g.position.set(baseX, 0.5, z); g.userData = { metaType: 'deck', player };
         const body = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.8, 5.0), new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.3, roughness: 0.8 }));
         body.castShadow = true; body.receiveShadow = true; body.userData = { metaType: 'deck', player };
         const top = new THREE.Mesh(new THREE.BoxGeometry(3.62, 0.04, 5.02), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
@@ -2255,7 +2269,7 @@
         g.add(body); g.add(top); metaGroup.add(g); deckMeshes.push(g);
       }
       function buildGrave(player, z) {
-        const g = new THREE.Group(); g.position.set(baseX + 4.2, 0.9, z); g.userData = { metaType: 'grave', player };
+        const g = new THREE.Group(); g.position.set(baseX + 4.2, 0.5, z); g.userData = { metaType: 'grave', player };
         const base = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.3, 20), new THREE.MeshStandardMaterial({ color: 0x334155 }));
         base.userData = { metaType: 'grave', player };
         const icon = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x64748b }));
@@ -2321,8 +2335,16 @@
       if (isInputLocked()) return;
       const u = unitMesh.userData.unitData;
       if (!u) return;
+      if (u.owner !== gameState.active) { showNotification('Нельзя поворачивать чужое существо', 'error'); return; }
+      if (u.lastRotateTurn === gameState.turn) { showNotification('Уже поворачивался в этот ход', 'error'); return; }
+      const tpl = CARDS[u.tplId];
+      const cost = attackCost(tpl);
+      if (gameState.players[gameState.active].mana < cost) { showNotification(`Нужно ${cost} маны для поворота`, 'error'); return; }
+      gameState.players[gameState.active].mana -= cost; updateUI();
       u.facing = dir === 'cw' ? turnCW[u.facing] : turnCCW[u.facing];
+      u.lastRotateTurn = gameState.turn;
       updateUnits();
+      hideUnitActionPanel();
     }
     
     function performUnitAttack(unitMesh) {
