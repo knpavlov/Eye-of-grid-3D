@@ -705,7 +705,7 @@
     }
 
     // Эффектная анимация прироста маны в начале хода — вспышка орбов и искры
-    function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationMs = 1700) {
+    function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationMs = 1190) {
       manaGainActive = true; refreshInputLockUI();
       const bar = document.getElementById(`mana-display-${ownerIndex}`);
       if (!bar) { manaGainActive = false; refreshInputLockUI(); return Promise.resolve(); }
@@ -720,9 +720,9 @@
       };
       if (indices.length === 0) {
         const tl = gsap.timeline({ onComplete: cleanup });
-        tl.to(bar, { filter: 'brightness(2.1) drop-shadow(0 0 16px rgba(96,165,250,0.95))', duration: 0.22, ease: 'power2.out' })
-          .to(bar, { filter: 'none', duration: 0.6, ease: 'power2.inOut' })
-          .to({}, { duration: Math.max(0, (durationMs/1000) - 0.82) });
+        tl.to(bar, { filter: 'brightness(2.1) drop-shadow(0 0 16px rgba(96,165,250,0.95))', duration: 0.154, ease: 'power2.out' })
+          .to(bar, { filter: 'none', duration: 0.42, ease: 'power2.inOut' })
+          .to({}, { duration: Math.max(0, (durationMs/1000) - 0.574) });
         return new Promise(resolve => tl.eventCallback('onComplete', () => { cleanup(); resolve(); }));
       }
       const tl = gsap.timeline({ onComplete: cleanup });
@@ -730,9 +730,9 @@
         const el = bar.children[idx]; if (!el) continue;
         el.style.willChange = 'transform, box-shadow, filter, opacity';
         el.style.transformOrigin = '50% 50%';
-        tl.to(el, { duration: 0.28, ease: 'back.out(2.2)', onStart: () => { el.className = 'mana-orb'; el.style.boxShadow = '0 0 22px rgba(96,165,250,0.95), 0 0 44px rgba(56,189,248,0.85)'; }, onComplete: () => { el.style.boxShadow = '0 0 12px rgba(30,160,255,0.85)'; } }, 0)
-          .to(el, { scale: 2.5, duration: 0.28, ease: 'back.out(2.2)' }, 0)
-          .to(el, { scale: 1.0, duration: 0.6, ease: 'power2.inOut' }, 0.28);
+        tl.to(el, { duration: 0.196, ease: 'back.out(2.2)', onStart: () => { el.className = 'mana-orb'; el.style.boxShadow = '0 0 22px rgba(96,165,250,0.95), 0 0 44px rgba(56,189,248,0.85)'; }, onComplete: () => { el.style.boxShadow = '0 0 12px rgba(30,160,255,0.85)'; } }, 0)
+          .to(el, { scale: 2.5, duration: 0.196, ease: 'back.out(2.2)' }, 0)
+          .to(el, { scale: 1.0, duration: 0.42, ease: 'power2.inOut' }, 0.196);
         const rect = el.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
@@ -755,9 +755,9 @@
           const dist = 40 + Math.random() * 40;
           const dx = Math.cos(angle) * dist;
           const dy = Math.sin(angle) * dist;
-          const t0 = (idx - startIdx) * 0.08;
-          tl.fromTo(sp, { x: 0, y: 0, opacity: 0, scale: 0.6 }, { x: dx, y: dy, opacity: 1, scale: 1.2, duration: 0.22, ease: 'power2.out' }, t0)
-            .to(sp, { opacity: 0, scale: 0.3, duration: 0.5, ease: 'power1.in', delay: 0.15 }, `>-0.1`);
+          const t0 = (idx - startIdx) * 0.056;
+          tl.fromTo(sp, { x: 0, y: 0, opacity: 0, scale: 0.6 }, { x: dx, y: dy, opacity: 1, scale: 1.2, duration: 0.154, ease: 'power2.out' }, t0)
+            .to(sp, { opacity: 0, scale: 0.3, duration: 0.35, ease: 'power1.in', delay: 0.105 }, `>-0.1`);
         }
       }
       tl.to({}, { duration: Math.max(0, (durationMs/1000) - tl.duration()) });
@@ -1379,8 +1379,20 @@
         } catch { big.rotation.set(0, 0, 0); }
         big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
         big.renderOrder = 9000;
+        // Соберём все материалы (включая накладные плейны иллюстрации и оверлей лица),
+        // чтобы обеспечить плавное проявление без мгновенного всплытия слоёв
         const mats = Array.isArray(big.material) ? big.material : [big.material];
-        mats.forEach(m => { if (m) { m.transparent = true; m.opacity = 0; } });
+        const allMaterials = [];
+        const collectMaterials = (obj) => {
+          if (!obj) return;
+          if (obj.material) {
+            if (Array.isArray(obj.material)) allMaterials.push(...obj.material);
+            else allMaterials.push(obj.material);
+          }
+          (obj.children || []).forEach(collectMaterials);
+        };
+        collectMaterials(big);
+        allMaterials.forEach(m => { if (m) { m.transparent = true; m.opacity = 0; } });
         cardGroup.add(big);
 
         // Целевая позиция в руке — вычислим, как будто карта станет последней
@@ -1420,11 +1432,12 @@
 
         await new Promise(resolve => {
           const tl = gsap.timeline({ onComplete: resolve });
-          tl.to(mats, { opacity: 1, duration: 1.0, ease: 'power2.out' })
-            .to({}, { duration: 1.0 })
-            .to(big.position, { x: target.position.x, y: target.position.y, z: target.position.z, duration: 1.0, ease: 'power2.inOut' }, 'fly')
-            .to(big.rotation, { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z, duration: 1.0, ease: 'power2.inOut' }, 'fly')
-            .to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: 1.0, ease: 'power2.inOut' }, 'fly');
+          // Проявление ≤ 1.0с
+          tl.to(allMaterials, { opacity: 1, duration: 0.8, ease: 'power2.out' })
+            // Полёт в руку ≤ 0.7с, все трансформации синхронно
+            .to(big.position, { x: target.position.x, y: target.position.y, z: target.position.z, duration: 0.7, ease: 'power2.inOut' }, 'fly')
+            .to(big.rotation, { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z, duration: 0.7, ease: 'power2.inOut' }, 'fly')
+            .to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: 0.7, ease: 'power2.inOut' }, 'fly');
           // После ориентации к камере применим ручные углы (в градусах)
           try {
             big.rotateX(THREE.MathUtils.degToRad(T.pitchDeg || 0));
@@ -1890,7 +1903,7 @@
       updateUnits();
       updateHand();
       updateUI();
-      // Заставка хода при старте игры с резервом
+      // Заставка хода при старте игры с резервом (ускорена)
       try { await forceTurnSplashWithRetry(2); } catch {}
       createMetaObjects();
       
@@ -1926,8 +1939,10 @@
       updateUI();
       // Показ заставки хода на каждый ход с резервом
       try { await forceTurnSplashWithRetry(2); } catch {}
-      // Дождаться завершения заставки хода, затем эффектная анимация маны и после — добор
-      try { await animateTurnManaGain(gameState.active, before, manaAfter, 1800); } catch {}
+      // Дождаться завершения заставки хода, затем эффектная анимация маны (ускорена)
+      try { await animateTurnManaGain(gameState.active, before, manaAfter, 1190); } catch {}
+      // Минимальная задержка (<0.1с) перед началом проявления большой карты
+      await sleep(80);
       // Теперь зафиксируем новую ману в состоянии и отрисуем её появление
       player.mana = manaAfter;
       updateUI();
@@ -2366,18 +2381,18 @@
       tl.set(txt, { scale: 0.65, opacity: 0 })
         .set(ringOuter, { scale: 0.8, opacity: 0 })
         .set(ringInner, { scale: 0.5, opacity: 0 })
-        .fromTo(bg, { opacity: 0 }, { opacity: 0.6, duration: 0.18, ease: 'power2.out' }, 0)
-        .to(ringOuter, { opacity: 1, scale: 1.0, duration: 0.28, ease: 'back.out(2.2)' }, 0.02)
-        .to(ringInner, { opacity: 1, scale: 1.0, duration: 0.32, ease: 'back.out(2.2)' }, 0.06)
-        .to(txt, { opacity: 1, scale: 1.08, duration: 0.36, ease: 'back.out(1.9)' }, 0.08)
-        .to(txt, { scale: 1.0, duration: 0.22, ease: 'power2.out' })
-        .to(scan, { yPercent: 200, duration: 0.7, ease: 'power1.inOut' }, 0.12)
-        .to(streaks, { opacity: 0.25, duration: 0.5 }, 0.2)
-        .to([ringOuter, ringInner], { opacity: 0.9, duration: 0.2 }, 0.45)
-        .to([bg, streaks], { opacity: 0.12, duration: 0.38 }, 0.58)
-        .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.28, ease: 'power2.in' }, 1.62)
-        .to(bb, { opacity: 0, duration: 0.2, ease: 'power2.in' }, 1.7);
-      await sleep(1900);
+        .fromTo(bg, { opacity: 0 }, { opacity: 0.6, duration: 0.126, ease: 'power2.out' }, 0)
+        .to(ringOuter, { opacity: 1, scale: 1.0, duration: 0.196, ease: 'back.out(2.2)' }, 0.014)
+        .to(ringInner, { opacity: 1, scale: 1.0, duration: 0.224, ease: 'back.out(2.2)' }, 0.042)
+        .to(txt, { opacity: 1, scale: 1.08, duration: 0.252, ease: 'back.out(1.9)' }, 0.056)
+        .to(txt, { scale: 1.0, duration: 0.154, ease: 'power2.out' })
+        .to(scan, { yPercent: 200, duration: 0.49, ease: 'power1.inOut' }, 0.084)
+        .to(streaks, { opacity: 0.25, duration: 0.35 }, 0.14)
+        .to([ringOuter, ringInner], { opacity: 0.9, duration: 0.14 }, 0.315)
+        .to([bg, streaks], { opacity: 0.12, duration: 0.266 }, 0.406)
+        .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.196, ease: 'power2.in' }, 1.134)
+        .to(bb, { opacity: 0, duration: 0.14, ease: 'power2.in' }, 1.19);
+      await sleep(1330);
       bb.classList.add('hidden'); bb.classList.remove('flex'); bb.style.display = 'none';
       bb.style.opacity = '';
       bb.innerHTML = '';
@@ -2399,23 +2414,23 @@
       const scan = document.createElement('div'); scan.className = 'ts-scan'; wrap.appendChild(scan);
       tb.appendChild(wrap);
       tb.style.display = 'flex'; tb.classList.remove('hidden'); tb.classList.add('flex');
-      // Анимации (≤ 2 сек суммарно)
+      // Анимации (ускорены на 30%)
       const tl = gsap.timeline();
       tl.set(txt, { scale: 0.65, opacity: 0 })
         .set(ringOuter, { scale: 0.8, opacity: 0 })
         .set(ringInner, { scale: 0.5, opacity: 0 })
-        .fromTo(bg, { opacity: 0 }, { opacity: 0.6, duration: 0.18, ease: 'power2.out' }, 0)
-        .to(ringOuter, { opacity: 1, scale: 1.0, duration: 0.28, ease: 'back.out(2.2)' }, 0.02)
-        .to(ringInner, { opacity: 1, scale: 1.0, duration: 0.32, ease: 'back.out(2.2)' }, 0.06)
-        .to(txt, { opacity: 1, scale: 1.08, duration: 0.36, ease: 'back.out(1.9)' }, 0.08)
-        .to(txt, { scale: 1.0, duration: 0.22, ease: 'power2.out' })
-        .to(scan, { yPercent: 200, duration: 0.7, ease: 'power1.inOut' }, 0.12)
-        .to(streaks, { opacity: 0.25, duration: 0.5 }, 0.2)
-        .to([ringOuter, ringInner], { opacity: 0.9, duration: 0.2 }, 0.45)
-        .to([bg, streaks], { opacity: 0.12, duration: 0.38 }, 0.58)
-        .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.28, ease: 'power2.in' }, 1.62)
-        .to(tb, { opacity: 0, duration: 0.2, ease: 'power2.in' }, 1.7);
-      await sleep(1900);
+        .fromTo(bg, { opacity: 0 }, { opacity: 0.6, duration: 0.126, ease: 'power2.out' }, 0)
+        .to(ringOuter, { opacity: 1, scale: 1.0, duration: 0.196, ease: 'back.out(2.2)' }, 0.014)
+        .to(ringInner, { opacity: 1, scale: 1.0, duration: 0.224, ease: 'back.out(2.2)' }, 0.042)
+        .to(txt, { opacity: 1, scale: 1.08, duration: 0.252, ease: 'back.out(1.9)' }, 0.056)
+        .to(txt, { scale: 1.0, duration: 0.154, ease: 'power2.out' })
+        .to(scan, { yPercent: 200, duration: 0.49, ease: 'power1.inOut' }, 0.084)
+        .to(streaks, { opacity: 0.25, duration: 0.35 }, 0.14)
+        .to([ringOuter, ringInner], { opacity: 0.9, duration: 0.14 }, 0.315)
+        .to([bg, streaks], { opacity: 0.12, duration: 0.266 }, 0.406)
+        .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.196, ease: 'power2.in' }, 1.134)
+        .to(tb, { opacity: 0, duration: 0.14, ease: 'power2.in' }, 1.19);
+      await sleep(1330);
       tb.classList.add('hidden'); tb.classList.remove('flex'); tb.style.display = 'none';
       tb.style.opacity = '';
       tb.innerHTML = '';
