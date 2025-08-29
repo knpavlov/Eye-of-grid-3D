@@ -2556,11 +2556,25 @@
     }
 
     function dissolveAndAsh(mesh, awayVec, durationSec = 1.0) {
-      if (!mesh || !mesh.geometry) return;
-      const parent = mesh.parent || scene;
-      // Apply dissolve to original mesh materials (preserves textures/overlays)
+      // Клонируем визуальный объект и анимируем клон в effectsGroup, оригинал скрываем
+      if (!mesh) return;
+      try { mesh.updateWorldMatrix(true, true); } catch {}
+      const worldPos = new THREE.Vector3();
+      const worldQuat = new THREE.Quaternion();
+      const worldScale = new THREE.Vector3();
+      try { mesh.getWorldPosition(worldPos); mesh.getWorldQuaternion(worldQuat); mesh.getWorldScale(worldScale); } catch {}
+      const ghost = mesh.clone(true);
+      ghost.traverse(obj => { if (obj && obj.userData) obj.userData = { ...obj.userData }; });
+      ghost.position.copy(worldPos);
+      ghost.quaternion.copy(worldQuat);
+      ghost.scale.copy(worldScale);
+      ghost.renderOrder = (mesh.renderOrder || 1000) + 10;
+      try { effectsGroup.add(ghost); } catch { (mesh.parent||scene).add(ghost); }
+      try { mesh.visible = false; } catch {}
+
+      // Подготовим материалы на клоне и соберём uniform'ы
       const dissolveTargets = [];
-      mesh.traverse(obj => {
+      ghost.traverse(obj => {
         if (obj && obj.isMesh && obj.material) {
           const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
           const newMats = [];
@@ -2576,10 +2590,9 @@
               shader.uniforms.uEdgeColor = { value: new THREE.Color(0.55, 0.80, 1.0) };
               shader.uniforms.uNoiseScale = { value: 3.0 };
               shader.uniforms.uNoiseMove = { value: new THREE.Vector2(0.15, -0.1) };
-              // Inject varying and helpers (world-space driven, не зависит от vUv)
               shader.vertexShader = shader.vertexShader
                 .replace('#include <common>', '#include <common>\n varying vec3 dWorldPos;')
-                .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n dWorldPos = worldPosition;');
+                .replace('#include <project_vertex>', '#include <project_vertex>\n dWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;');
               const header = `
                 varying vec3 dWorldPos;
                 uniform float uTime; uniform float uThreshold; uniform float uEdgeWidth; uniform vec3 uEdgeColor; uniform float uNoiseScale; uniform vec2 uNoiseMove;
@@ -2597,11 +2610,8 @@
                 }
               `;
               shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + header);
-              // Заменим финальную запись цвета на нашу обёртку
-              shader.fragmentShader = shader.fragmentShader
-                .replace(/gl_FragColor\s*=\s*vec4\(\s*outgoingLight\s*,\s*diffuseColor\.a\s*\)\s*;/g, 'vec4 __base = vec4( outgoingLight, diffuseColor.a ); gl_FragColor = applyDissolve(__base);')
-                .replace(/gl_FragColor\s*=\s*vec4\(\s*diffuse\s*,\s*opacity\s*\)\s*;/g, 'vec4 __base = vec4( diffuse, opacity ); gl_FragColor = applyDissolve(__base);')
-                .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n gl_FragColor = applyDissolve(gl_FragColor);');
+              try { shader.fragmentShader = shader.fragmentShader.replace(/gl_FragColor\s*=\s*([^;]+);/g, 'gl_FragColor = applyDissolve($1);'); } catch(e) {}
+              shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', '#include <dithering_fragment>\n gl_FragColor = applyDissolve(gl_FragColor);');
               dissolveTargets.push(shader.uniforms);
             };
             matClone.needsUpdate = true;
@@ -2610,13 +2620,18 @@
           obj.material = Array.isArray(obj.material) ? newMats : newMats[0];
         }
       });
+
       const start = performance.now();
       let rafId = 0; let alive = true;
-      (function tick(){ if (!alive) return; const t = (performance.now() - start) / 1000; for (const u of dissolveTargets) { if (u && u.uTime) u.uTime.value = t; } try { renderer.compile(scene, camera); } catch {} rafId = requestAnimationFrame(tick); })();
+      (function tick(){
+        if (!alive) return;
+        const t = (performance.now() - start) / 1000;
+        for (const u of dissolveTargets) { if (u && u.uTime) u.uTime.value = t; }
+        rafId = requestAnimationFrame(tick);
+      })();
       const tl = gsap.timeline({ onComplete: () => {
         alive = false; try { cancelAnimationFrame(rafId); } catch {}
-        // Не удаляем мгновенно меш — просто скрываем, чтобы избежать мерцаний пересборки
-        try { mesh.visible = false; } catch {}
+        try { effectsGroup.remove(ghost); } catch {}
       }});
       const dy = 1.2;
       tl.to({}, { duration: 0.0 })
@@ -2624,7 +2639,7 @@
           th: 1.0, duration: Math.max(0.6, durationSec), ease: 'power1.inOut',
           onUpdate: function(){ const v = this.targets()[0].th; for (const u of dissolveTargets) { if (u && u.uThreshold) u.uThreshold.value = v; } },
         }, 0)
-        .to(mesh.position, { y: mesh.position.y + dy, duration: Math.max(0.6, durationSec), ease: 'power1.inOut' }, 0);
+        .to(ghost.position, { y: ghost.position.y + dy, duration: Math.max(0.6, durationSec), ease: 'power1.inOut' }, 0);
     }
 
     function fadeOutAndFly(mesh, awayVec) {
@@ -2641,7 +2656,7 @@
       const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
       const res = magicAttack(gameState, from.r, from.c, tr, tc);
       if (!res) { showNotification('Цель некорректна', 'error'); return; }
-      gameState = res.n1; updateUnits(); updateUI();
+      // Не обновляем состояние немедленно, чтобы дать пройти анимации смерти
       for (const l of res.logLines.reverse()) addLog(l);
       const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
       if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
@@ -2661,7 +2676,7 @@
           spawnDamageText(tMesh, `-${res.dmg}`, '#ff5555');
         }
       }
-      // Манасфера и кладбище для погибших от магии (анимация смерти 1.5с + орб 0.5+2.0)
+      // Манасфера и кладбище для погибших от магии; откладываем перерисовку до конца дизолва
       if (res.deaths && res.deaths.length) {
         for (const d of res.deaths) {
           try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
@@ -2670,9 +2685,15 @@
           const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
           animateManaGainFromWorld(p, d.owner);
         }
-        updateUI();
+        setTimeout(() => {
+          gameState = res.n1; updateUnits(); updateUI();
+          const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
+        }, 1000);
+      } else {
+        // Если смертей нет — применяем состояние сразу
+        gameState = res.n1; updateUnits(); updateUI();
+        const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
       }
-      const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
     }
     // Вспомогательные утилиты: задержка и яркая заставка BATTLE на 3 секунды
     function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
@@ -2760,11 +2781,29 @@
       const tpl = pl.hand[idx]; if (!tpl || tpl.type !== 'SPELL') { resetCardSelection(); return; }
       if (tpl.cost > pl.mana) { showNotification('Недостаточно маны', 'error'); resetCardSelection(); return; }
       const r = unitMesh.userData.row; const c = unitMesh.userData.col; const u = gameState.board[r][c].unit;
+      let delayedApply = false;
       if (tpl.id === 'WIND_SHIFT') { if (u) u.facing = turnCW[u.facing]; addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут.`); }
-      if (tpl.id === 'FREEZE_STREAM') { if (u) { const before = u.currentHP; u.currentHP = Math.max(0, u.currentHP - 1); addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает 1 урона (HP ${before}→${u.currentHP})`); if (u.currentHP <= 0) { const owner=u.owner; try { gameState.players[owner].graveyard.push(CARDS[u.tplId]); } catch {} const pos = tileMeshes[r][c].position.clone().add(new THREE.Vector3(0,1.2,0)); animateManaGainFromWorld(pos, owner); gameState.board[r][c].unit = null; } } }
+      if (tpl.id === 'FREEZE_STREAM') {
+        if (u) {
+          const before = u.currentHP; u.currentHP = Math.max(0, u.currentHP - 1);
+          addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает 1 урона (HP ${before}→${u.currentHP})`);
+          if (u.currentHP <= 0) {
+            delayedApply = true;
+            const owner = u.owner;
+            try { gameState.players[owner].graveyard.push(CARDS[u.tplId]); } catch {}
+            const pos = tileMeshes[r][c].position.clone().add(new THREE.Vector3(0,1.2,0));
+            animateManaGainFromWorld(pos, owner);
+            // Запускаем дизолв на текущем меше цели
+            if (unitMesh) { dissolveAndAsh(unitMesh, new THREE.Vector3(0,0,0.6), 0.9); }
+            // Отложим удаление из доски до завершения анимации
+            setTimeout(() => { gameState.board[r][c].unit = null; updateUnits(); updateUI(); }, 1000);
+          }
+        }
+      }
       if (tpl.id === 'RAISE_STONE') { if (u && u.owner === gameState.active) { const before = u.currentHP; u.currentHP += 2; addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает +2 HP (HP ${before}→${u.currentHP})`); } }
       pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
-      resetCardSelection(); updateHand(); updateUnits(); updateUI();
+      resetCardSelection(); updateHand();
+      if (!delayedApply) { updateUnits(); updateUI(); }
     }
 
     // (убраны несуществующие обработчики magic-btn и draw-btn)
