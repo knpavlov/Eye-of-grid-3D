@@ -1388,6 +1388,36 @@
         const indexAfter = totalAfter - 1;
         const target = computeHandTransform(indexAfter, totalAfter);
 
+        // Предраскладка: заранее сместим существующие карты руки в положения для totalAfter,
+        // чтобы к моменту прилёта новой карты соседи уже стояли на своих местах
+        try {
+          const preLayoutDuration = 0.9;
+          for (let i = 0; i < handCardMeshes.length; i++) {
+            const mesh = handCardMeshes[i];
+            if (!mesh || !mesh.userData || !mesh.userData.isInHand) continue;
+            const t = computeHandTransform(i, totalAfter);
+            gsap.to(mesh.position, {
+              x: t.position.x,
+              y: t.position.y,
+              z: t.position.z,
+              duration: preLayoutDuration,
+              ease: 'power2.inOut'
+            });
+            gsap.to(mesh.rotation, {
+              x: t.rotation.x,
+              y: t.rotation.y,
+              z: t.rotation.z,
+              duration: preLayoutDuration,
+              ease: 'power2.inOut'
+            });
+            // Вернём масштаб к стандартному для руки на случай, если какая-то карта была наведена
+            gsap.to(mesh.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.18 });
+            // Обновим базовые позиции/углы для корректного ховера после анимации
+            try { mesh.userData.originalPosition.copy(t.position); } catch {}
+            try { mesh.userData.originalRotation.copy(t.rotation); } catch {}
+          }
+        } catch {}
+
         await new Promise(resolve => {
           const tl = gsap.timeline({ onComplete: resolve });
           tl.to(mats, { opacity: 1, duration: 1.0, ease: 'power2.out' })
