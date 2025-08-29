@@ -47,8 +47,8 @@
     }
     /* Пульсация рамки в последние 10 секунд */
     @keyframes urgentPulse {
-      0%   { box-shadow: inset 0 2px 10px rgba(0,0,0,0.45), 0 0 0 2px rgba(100,116,139,0.6), 0 8px 24px rgba(15,23,42,0.35), 0 0 0 2px rgba(239,68,68,0.78), 0 0 16px rgba(239,68,68,0.45); }
-      100% { box-shadow: inset 0 2px 10px rgba(0,0,0,0.45), 0 0 0 2px rgba(100,116,139,0.6), 0 8px 24px rgba(15,23,42,0.35), 0 0 0 2px rgba(239,68,68,0.98), 0 0 22px rgba(239,68,68,0.62); }
+      0%   { box-shadow: inset 0 2px 10px rgba(0,0,0,0.45), 0 0 0 2px rgba(239,68,68,0.95), 0 0 16px rgba(239,68,68,0.55), 0 0 0 4px rgba(239,68,68,0.22); }
+      100% { box-shadow: inset 0 2px 10px rgba(0,0,0,0.45), 0 0 0 2px rgba(239,68,68,1.0), 0 0 22px rgba(239,68,68,0.75), 0 0 0 6px rgba(239,68,68,0.28); }
     }
     .end-turn-btn.urgent { animation: urgentPulse 0.8s ease-in-out infinite alternate; }
     /* Выделение активного игрока */
@@ -1986,6 +1986,33 @@
       updateUI();
       // Заставка хода при старте игры с резервом (ускорена)
       try { await forceTurnSplashWithRetry(2); } catch {}
+      // Запуск таймера на первом ходу
+      try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
+      window.__turnTimerSeconds = 100;
+      (function syncBtn(){ try {
+        const btn = document.getElementById('end-turn-btn');
+        if (btn) {
+          const fill = btn.querySelector('.time-fill');
+          const txt = btn.querySelector('.sec-text');
+          if (txt) txt.textContent = `${window.__turnTimerSeconds}`;
+          if (fill) fill.style.top = `0%`;
+        }
+      } catch {} })();
+      window.__turnTimerId = setInterval(() => {
+        if (typeof window.__turnTimerSeconds !== 'number') window.__turnTimerSeconds = 100;
+        if (window.__turnTimerSeconds > 0) window.__turnTimerSeconds -= 1;
+        try {
+          const btn = document.getElementById('end-turn-btn');
+          if (btn) {
+            const fill = btn.querySelector('.time-fill');
+            const txt = btn.querySelector('.sec-text');
+            const s = Math.max(0, Math.min(100, window.__turnTimerSeconds));
+            if (txt) txt.textContent = `${s}`;
+            const percent = s / 100; if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
+            if (s <= 10) { btn.classList.add('urgent'); } else { btn.classList.remove('urgent'); }
+          }
+        } catch {}
+      }, 1000);
       createMetaObjects();
       
       addLog('Игра началась! Игрок 1 ходит первым.');
@@ -2379,12 +2406,12 @@
               if (deadMesh) {
                 const fromMesh = aMesh || deadMesh;
                 const dirUp = new THREE.Vector3().subVectors(deadMesh.position, fromMesh.position).normalize().multiplyScalar(0.4);
-                fadeOutAndFly(deadMesh, dirUp);
+                dissolveAndAsh(deadMesh, dirUp, 0.9);
               }
               const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.6, 0));
               animateManaGainFromWorld(p, d.owner);
             }
-            setTimeout(() => { gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; }, 1500);
+            setTimeout(() => { gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; }, 1000);
           } else {
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем применим состояние
             setTimeout(() => {
@@ -2452,6 +2479,154 @@
       return tl;
     }
 
+    // Dissolve shader for death effect (fiery burn-away)
+    function createDissolveMaterial() {
+      return new THREE.ShaderMaterial({
+        transparent: true,
+        depthTest: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        uniforms: {
+          uTime:       { value: 0.0 },
+          uThreshold:  { value: 0.0 },
+          uEdgeWidth:  { value: 0.08 },
+          uEdgeColor:  { value: new THREE.Color(0.55, 0.80, 1.0) }, // магическая голубая кромка
+          uBaseColor:  { value: new THREE.Color(0.90, 0.95, 1.0) }, // холодный светлый
+          uNoiseScale: { value: 3.0 },
+          uNoiseMove:  { value: new THREE.Vector2(0.15, -0.1) },
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          varying vec3 vPos;
+          void main(){
+            vUv = uv;
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            vPos = (modelMatrix * vec4(position, 1.0)).xyz;
+            gl_Position = projectionMatrix * mv;
+          }
+        `,
+        fragmentShader: `
+          precision highp float;
+          varying vec2 vUv;
+          varying vec3 vPos;
+          uniform float uTime;
+          uniform float uThreshold;
+          uniform float uEdgeWidth;
+          uniform vec3  uEdgeColor;
+          uniform vec3  uBaseColor;
+          uniform float uNoiseScale;
+          uniform vec2  uNoiseMove;
+          float hash(vec2 p){
+            p = fract(p * vec2(123.34, 345.45));
+            p += dot(p, p + 34.345);
+            return fract(p.x * p.y);
+          }
+          float noise(vec2 p){
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            float a = hash(i);
+            float b = hash(i + vec2(1.0, 0.0));
+            float c = hash(i + vec2(0.0, 1.0));
+            float d = hash(i + vec2(1.0, 1.0));
+            vec2 u = f * f * (3.0 - 2.0 * f);
+            return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+          }
+          float fbm(vec2 p){
+            float v = 0.0;
+            float a = 0.5;
+            for (int i = 0; i < 5; i++){
+              v += a * noise(p);
+              p *= 2.02;
+              a *= 0.5;
+            }
+            return v;
+          }
+          void main(){
+            float heightBias = clamp((vPos.y + 0.9) * 0.2, 0.0, 1.0);
+            vec2  uv = vUv * uNoiseScale + uNoiseMove * uTime;
+            float n = fbm(uv) * 0.8 + heightBias * 0.2;
+            float d = n - uThreshold;
+            if (d < 0.0) discard;
+            float edge = smoothstep(0.0, uEdgeWidth, d) - smoothstep(uEdgeWidth, uEdgeWidth * 2.0, d);
+            vec3 color = mix(uBaseColor, uEdgeColor, edge);
+            gl_FragColor = vec4(color, 1.0);
+          }
+        `
+      });
+    }
+
+    function dissolveAndAsh(mesh, awayVec, durationSec = 1.0) {
+      if (!mesh || !mesh.geometry) return;
+      const parent = mesh.parent || scene;
+      // Apply dissolve to original mesh materials (preserves textures/overlays)
+      const dissolveTargets = [];
+      mesh.traverse(obj => {
+        if (obj && obj.isMesh && obj.material) {
+          const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+          const newMats = [];
+          for (const m of materials) {
+            if (!m) { newMats.push(m); continue; }
+            const matClone = m.clone();
+            matClone.transparent = true;
+            matClone.depthWrite = false;
+            matClone.onBeforeCompile = (shader) => {
+              shader.uniforms.uTime = { value: 0.0 };
+              shader.uniforms.uThreshold = { value: 0.0 };
+              shader.uniforms.uEdgeWidth = { value: 0.12 };
+              shader.uniforms.uEdgeColor = { value: new THREE.Color(0.55, 0.80, 1.0) };
+              shader.uniforms.uNoiseScale = { value: 3.0 };
+              shader.uniforms.uNoiseMove = { value: new THREE.Vector2(0.15, -0.1) };
+              // Inject varying and helpers (world-space driven, не зависит от vUv)
+              shader.vertexShader = shader.vertexShader
+                .replace('#include <common>', '#include <common>\n varying vec3 dWorldPos;')
+                .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n dWorldPos = worldPosition;');
+              const header = `
+                varying vec3 dWorldPos;
+                uniform float uTime; uniform float uThreshold; uniform float uEdgeWidth; uniform vec3 uEdgeColor; uniform float uNoiseScale; uniform vec2 uNoiseMove;
+                float dhash(vec2 p){ p = fract(p * vec2(123.34, 345.45)); p += dot(p, p + 34.345); return fract(p.x * p.y); }
+                float dnoise(vec2 p){ vec2 i = floor(p); vec2 f = fract(p); float a = dhash(i); float b = dhash(i+vec2(1.0,0.0)); float c = dhash(i+vec2(0.0,1.0)); float d = dhash(i+vec2(1.0,1.0)); vec2 u = f*f*(3.0-2.0*f); return mix(a,b,u.x) + (c-a)*u.y*(1.0-u.x) + (d-b)*u.x*u.y; }
+                float dfbm(vec2 p){ float v=0.0; float a=0.5; for (int i=0;i<5;i++){ v+=a*dnoise(p); p*=2.02; a*=0.5; } return v; }
+                vec4 applyDissolve(vec4 baseColor){
+                  vec2  uv = dWorldPos.xz * uNoiseScale + uNoiseMove * uTime;
+                  float heightBias = clamp((dWorldPos.y) * 0.15, 0.0, 1.0);
+                  float n = dfbm(uv) * 0.8 + heightBias * 0.2;
+                  float d = n - uThreshold; if (d < 0.0) discard;
+                  float edge = smoothstep(0.0, uEdgeWidth, d) - smoothstep(uEdgeWidth, uEdgeWidth*2.0, d);
+                  vec3 c = mix(baseColor.rgb, uEdgeColor, edge);
+                  return vec4(c, baseColor.a);
+                }
+              `;
+              shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + header);
+              // Заменим финальную запись цвета на нашу обёртку
+              shader.fragmentShader = shader.fragmentShader
+                .replace(/gl_FragColor\s*=\s*vec4\(\s*outgoingLight\s*,\s*diffuseColor\.a\s*\)\s*;/g, 'vec4 __base = vec4( outgoingLight, diffuseColor.a ); gl_FragColor = applyDissolve(__base);')
+                .replace(/gl_FragColor\s*=\s*vec4\(\s*diffuse\s*,\s*opacity\s*\)\s*;/g, 'vec4 __base = vec4( diffuse, opacity ); gl_FragColor = applyDissolve(__base);')
+                .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n gl_FragColor = applyDissolve(gl_FragColor);');
+              dissolveTargets.push(shader.uniforms);
+            };
+            matClone.needsUpdate = true;
+            newMats.push(matClone);
+          }
+          obj.material = Array.isArray(obj.material) ? newMats : newMats[0];
+        }
+      });
+      const start = performance.now();
+      let rafId = 0; let alive = true;
+      (function tick(){ if (!alive) return; const t = (performance.now() - start) / 1000; for (const u of dissolveTargets) { if (u && u.uTime) u.uTime.value = t; } try { renderer.compile(scene, camera); } catch {} rafId = requestAnimationFrame(tick); })();
+      const tl = gsap.timeline({ onComplete: () => {
+        alive = false; try { cancelAnimationFrame(rafId); } catch {}
+        // Не удаляем мгновенно меш — просто скрываем, чтобы избежать мерцаний пересборки
+        try { mesh.visible = false; } catch {}
+      }});
+      const dy = 1.2;
+      tl.to({}, { duration: 0.0 })
+        .to({ th: 0.0 }, {
+          th: 1.0, duration: Math.max(0.6, durationSec), ease: 'power1.inOut',
+          onUpdate: function(){ const v = this.targets()[0].th; for (const u of dissolveTargets) { if (u && u.uThreshold) u.uThreshold.value = v; } },
+        }, 0)
+        .to(mesh.position, { y: mesh.position.y + dy, duration: Math.max(0.6, durationSec), ease: 'power1.inOut' }, 0);
+    }
+
     function fadeOutAndFly(mesh, awayVec) {
       awayVec = awayVec || new THREE.Vector3(0, 0, 1);
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -2491,7 +2666,7 @@
         for (const d of res.deaths) {
           try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
           const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
-          if (deadMesh) { fadeOutAndFly(deadMesh, new THREE.Vector3(0, 0, 0.6)); }
+          if (deadMesh) { dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9); }
           const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
           animateManaGainFromWorld(p, d.owner);
         }
