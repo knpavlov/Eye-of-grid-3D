@@ -646,6 +646,8 @@
     let drawAnimationActive = false;
     let splashActive = false;
     let manaGainActive = false;
+    // Ожидаемая анимация маны: диапазон новых орбов, которые должны появиться синхронно со вспышкой
+    let PENDING_MANA_ANIM = null; // { ownerIndex, startIdx, endIdx }
     // Сколько последних добранных карт временно скрывать из моей руки (для красивой анимации влёта)
     let pendingDrawCount = 0;
     function isInputLocked() {
@@ -823,6 +825,13 @@
     // Эффектная анимация прироста маны в начале хода — вспышка орбов и искры
     function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationMs = 1500) {
       manaGainActive = true; refreshInputLockUI();
+      // Готовим панель: блокируем раннее появление новых орбов и пересобираем UI
+      try {
+        const startIdx = Math.max(0, Math.min(9, beforeMana));
+        const endIdx = Math.max(-1, Math.min(9, afterMana - 1));
+        PENDING_MANA_ANIM = { ownerIndex, startIdx, endIdx };
+        updateUI();
+      } catch {}
       const bar = document.getElementById(`mana-display-${ownerIndex}`);
       if (!bar) { manaGainActive = false; refreshInputLockUI(); return Promise.resolve(); }
       const startIdx = Math.max(0, Math.min(9, beforeMana));
@@ -833,6 +842,8 @@
       const cleanup = () => {
         for (const s of sparks) { try { if (s.parentNode) s.parentNode.removeChild(s); } catch {} }
         manaGainActive = false; refreshInputLockUI();
+        // Разблокируем обновление панели маны и финально дорисуем состояние
+        try { PENDING_MANA_ANIM = null; updateUI(); } catch {}
       };
       if (indices.length === 0) {
         const tl = gsap.timeline({ onComplete: cleanup });
@@ -846,7 +857,9 @@
         const el = bar.children[idx]; if (!el) continue;
         el.style.willChange = 'transform, box-shadow, filter, opacity';
         el.style.transformOrigin = '50% 50%';
-        tl.to(el, { duration: 0.196, ease: 'back.out(2.2)', onStart: () => { el.className = 'mana-orb'; el.style.boxShadow = '0 0 22px rgba(96,165,250,0.95), 0 0 44px rgba(56,189,248,0.85)'; }, onComplete: () => { el.style.boxShadow = '0 0 12px rgba(30,160,255,0.85)'; } }, 0)
+        // На старте вставляем пустую ячейку и ровно в этот же тик превращаем её в орб + вспышка
+        tl.call(() => { try { el.className = 'mana-orb'; el.style.opacity = '1'; } catch {} }, null, 0)
+          .to(el, { duration: 0.196, ease: 'back.out(2.2)', onStart: () => { el.style.boxShadow = '0 0 22px rgba(96,165,250,0.95), 0 0 44px rgba(56,189,248,0.85)'; }, onComplete: () => { el.style.boxShadow = '0 0 12px rgba(30,160,255,0.85)'; } }, 0)
           .to(el, { scale: 2.5, duration: 0.196, ease: 'back.out(2.2)' }, 0)
           .to(el, { scale: 1.0, duration: 0.42, ease: 'power2.inOut' }, 0.196);
         const rect = el.getBoundingClientRect();
@@ -1372,6 +1385,8 @@
     }
     
     function updateHand() {
+      // Во время полёта карты не перерисовываем руку, чтобы не ломать предраскладку
+      if (drawAnimationActive) return;
       handCardMeshes.forEach(card => {
         if (card.parent) card.parent.remove(card);
       });
@@ -1533,17 +1548,21 @@
         cardGroup.add(big);
 
         // Целевая позиция в руке — вычислим, как будто карта станет последней
-        const totalAfter = (gameState.players[gameState.active].hand?.length || 0) + 1;
+        // В момент анимации мы уже спрятали последнюю карту (pendingDrawCount=1),
+        // поэтому берём фактический рендеримый размер руки и прибавляем 1.
+        const totalVisible = Math.max(0, handCardMeshes.filter(m => m?.userData?.isInHand).length);
+        const totalAfter = totalVisible + 1;
         const indexAfter = totalAfter - 1;
         const target = computeHandTransform(indexAfter, totalAfter);
 
         // Предраскладка: заранее сместим существующие карты руки в положения для totalAfter,
         // чтобы к моменту прилёта новой карты соседи уже стояли на своих местах
         try {
-          const preLayoutDuration = 0.9;
+          const preLayoutDuration = 0.6;
           for (let i = 0; i < handCardMeshes.length; i++) {
             const mesh = handCardMeshes[i];
             if (!mesh || !mesh.userData || !mesh.userData.isInHand) continue;
+            // Учтём, что new card займёт позицию indexAfter, поэтому старые индексы не сдвигаем чрезмерно
             const t = computeHandTransform(i, totalAfter);
             gsap.to(mesh.position, {
               x: t.position.x,
@@ -1764,14 +1783,19 @@
         if (!manaDisplay) continue;
         const prev = manaDisplay.querySelectorAll('.mana-orb').length;
         const currentMana = gameState.players[p].mana;
+        const pending = (PENDING_MANA_ANIM && PENDING_MANA_ANIM.ownerIndex === p) ? PENDING_MANA_ANIM : null;
+        const renderMana = pending ? Math.min(currentMana, Math.max(0, pending.startIdx)) : currentMana;
         manaDisplay.innerHTML = '';
         for (let i = 0; i < total; i++) {
           const orb = document.createElement('div');
-          const filled = i < currentMana;
+          const filled = i < renderMana;
+          const isBlockedForAnim = !!(pending && i >= pending.startIdx && i <= pending.endIdx);
           orb.className = filled ? 'mana-orb' : 'mana-slot';
           orb.style.opacity = filled ? '0' : '1';
           manaDisplay.appendChild(orb);
-          if (filled) {
+          // Плавное проявление только для уже существующих орбов; новые орбы во время анимации
+          // появятся из animateTurnManaGain (синхронно со вспышкой)
+          if (filled && !isBlockedForAnim) {
             const delay = 0.06 * Math.max(0, i - prev);
             setTimeout(()=>{
               orb.style.transform = 'translateX(16px) scale(0.6)';
@@ -2265,6 +2289,8 @@
       const drawnTpl = drawOneNoAdd(gameState, gameState.active);
       // ЛОГИКА: применим ману сразу, а карту добавим после анимации (у активного клиента)
       player.mana = manaAfter;
+      // Заблокировать преждевременное появление новых орбов до анимации вспышки
+      try { PENDING_MANA_ANIM = { ownerIndex: gameState.active, startIdx: Math.max(0, Math.min(9, before)), endIdx: Math.max(-1, Math.min(9, manaAfter - 1)) }; } catch {}
       let shouldAnimateDraw = false;
       try {
         const amIActiveNow = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number')
@@ -2283,7 +2309,7 @@
       
       updateHand();
       updateUnits();
-      updateUI();
+      // updateUI выполнится вместе с анимацией маны (после заставки)
       // Показ заставки хода: строго блокирующе (визуальная последовательность)
       try { await forceTurnSplashWithRetry(2); } catch {}
       // Перезапустить таймер хода на 100 сек после заставки (анимация таймера локально у обоих)
@@ -3594,6 +3620,8 @@
           const owner = (typeof state.active === 'number') ? state.active : (gameState?.active ?? 0);
           const beforeM = (prev?.players?.[owner]?.mana ?? 0);
           const afterM = (state?.players?.[owner]?.mana ?? 0);
+          // Блокируем преждевременную отрисовку новых орбов на панели до вспышки
+          try { PENDING_MANA_ANIM = { ownerIndex: owner, startIdx: Math.max(0, Math.min(9, beforeM)), endIdx: Math.max(-1, Math.min(9, afterM - 1)) }; updateUI(); } catch {}
           await animateTurnManaGain(owner, beforeM, afterM, 1500);
           // Короткая пауза перед добором карты
           await sleep(80);
