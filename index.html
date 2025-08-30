@@ -1601,8 +1601,12 @@
               frame.traverse(child => { if (child.isMesh && child.material) { child.material.opacity = opacity; child.material.color = new THREE.Color(color); } });
             };
             if (unit) {
-              const ownerIsActive = unit.owner === gameState.active;
-              const col = ownerIsActive ? 0x22c55e : 0xef4444;
+              // В онлайне: подсветка по владельцу относительно моего места (MY_SEAT)
+              // Оффлайн: по владельцу (0 зелёный, 1 красный)
+              let viewerSeat = null;
+              try { if (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') viewerSeat = window.MY_SEAT; } catch {}
+              const isMine = (viewerSeat === null) ? (unit.owner === 0) : (unit.owner === viewerSeat);
+              const col = isMine ? 0x22c55e : 0xef4444;
               setFrame(0.95, col);
             } else {
               setFrame(0.0, 0x000000);
@@ -2213,7 +2217,7 @@
       updateUI();
       // Показ заставки хода на каждый ход с резервом (не блокируем синхронизацию хода)
       try { forceTurnSplashWithRetry(2); } catch {}
-      // Перезапустить таймер хода на 100 сек после заставки
+      // Перезапустить таймер хода на 100 сек после заставки (анимация таймера локально у обоих)
       try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
       window.__turnTimerSeconds = 100;
       (function syncBtn(){ try {
@@ -2241,17 +2245,27 @@
           }
         } catch {}
       }, 1000);
-      // Эффектная анимация маны параллельно (состояние уже применено)
-      try { animateTurnManaGain(gameState.active, before, manaAfter, 1190); } catch {}
+      // Эффектная анимация маны параллельно (показываем только у активного игрока на его клиенте)
+      try {
+        const showManaAnim = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number')
+          ? (window.MY_SEAT === gameState.active)
+          : true;
+        if (showManaAnim) animateTurnManaGain(gameState.active, before, manaAfter, 1190);
+      } catch {}
       // Минимальная задержка (<0.1с) перед началом проявления большой карты
       await sleep(80);
-      // ВИЗУАЛ: локально проигрываем анимации (состояние уже применено и синхронизировано)
+      // ВИЗУАЛ: локально проигрываем анимации добора ТОЛЬКО если это наш клиент
       updateUI();
-      if (drawnTpl) {
-        refreshInputLockUI();
-        await animateDrawnCardToHand(drawnTpl);
-        updateHand();
-      }
+      try {
+        const amIActiveNow = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number')
+          ? (window.MY_SEAT === gameState.active)
+          : true;
+        if (amIActiveNow && drawnTpl) {
+          refreshInputLockUI();
+          await animateDrawnCardToHand(drawnTpl);
+          updateHand();
+        }
+      } catch {}
       
       addLog(`Ход ${gameState.turn}. ${player.name} получает +2 маны и добирает карту.`);
       
@@ -3060,9 +3074,11 @@
             // Вознаграждение ритуала: +2 маны
             const beforeM = pl.mana; pl.mana = capMana(pl.mana + 2); updateUI();
             addLog(`${tpl.name}: сбрасываете существо из руки и получаете +2 маны (\`${toDiscardTpl.name}\`).`);
-            // Сам спелл уходит в discard
+            // Списать стоимость спелла (если будет >0 в будущем) и отправить сам спелл в discard
+            pl.mana = capMana(pl.mana - (tpl.cost || 0));
             pl.discard.push(tpl); pl.hand.splice(idx, 1);
             resetCardSelection(); updateHand(); updateUI();
+            try { schedulePush('spell-holy-feast', { force: true }); } catch {}
           }
         };
         addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`);
@@ -3259,7 +3275,9 @@
             pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
             // Завершение ритуала: визуально сжечь временный меш спелла и убрать его, затем удалить карту из руки и положить в discard
             try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
+            pl.mana = capMana(pl.mana - (tpl.cost || 0));
             pl.hand.splice(idx, 1); pl.discard.push(tpl); updateHand(); updateUI();
+            try { schedulePush('spell-holy-feast', { force: true }); } catch {}
             hidePrompt(); pendingDiscardSelection = null;
           } }; addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`); return;
         }
@@ -3273,7 +3291,9 @@
           pl.hand.splice(singleIdx, 1); updateHand();
           pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
           try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
+          pl.mana = capMana(pl.mana - (tpl.cost || 0));
           pl.hand.splice(idx, 1); pl.discard.push(tpl); updateHand(); updateUI(); hidePrompt();
+          try { schedulePush('spell-holy-feast', { force: true }); } catch {}
         }
         return;
       }
