@@ -821,7 +821,7 @@
     }
 
     // Эффектная анимация прироста маны в начале хода — вспышка орбов и искры
-    function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationMs = 1190) {
+    function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationMs = 1500) {
       manaGainActive = true; refreshInputLockUI();
       const bar = document.getElementById(`mana-display-${ownerIndex}`);
       if (!bar) { manaGainActive = false; refreshInputLockUI(); return Promise.resolve(); }
@@ -2284,8 +2284,8 @@
       updateHand();
       updateUnits();
       updateUI();
-      // Показ заставки хода на каждый ход с резервом (не блокируем синхронизацию хода)
-      try { forceTurnSplashWithRetry(2); } catch {}
+      // Показ заставки хода: строго блокирующе (визуальная последовательность)
+      try { await forceTurnSplashWithRetry(2); } catch {}
       // Перезапустить таймер хода на 100 сек после заставки (анимация таймера локально у обоих)
       try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
       window.__turnTimerSeconds = 100;
@@ -2315,7 +2315,7 @@
         } catch {}
       }, 1000);
       // Эффектная анимация маны: показываем у обоих игроков, но для активного — анимируем его панель
-      try { animateTurnManaGain(gameState.active, before, manaAfter, 1190); } catch {}
+      try { await animateTurnManaGain(gameState.active, before, manaAfter, 1500); } catch {}
       // Минимальная задержка (<0.1с) перед началом проявления большой карты
       await sleep(80);
       // ВИЗУАЛ: локально проигрываем анимации добора ТОЛЬКО если это наш клиент
