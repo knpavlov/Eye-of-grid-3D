@@ -3267,14 +3267,14 @@
 
     // (убраны несуществующие обработчики magic-btn и draw-btn)
   </script>
-<!-- === Multiplayer patch: button + queue + countdown + sync + indicator === --> 
+<!-- === Multiplayer patch v2: sync + queue + countdown + lock input + indicator === -->
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
 (() => {
   // ===== 0) Config =====
   const SERVER_URL = (location.hostname === "localhost")
     ? "http://localhost:3001"
-    : "https://eog-mp-server-production.up.railway.app"; // ← замени на свой домен Railway
+    : "https://eog-mp-server-production.up.railway.app"; // ← замени на свой домен
 
   // ===== 1) Styles =====
   const css = `
@@ -3292,25 +3292,24 @@
   .mp-dot{width:8px;height:8px;border-radius:50%;background:#64748b;box-shadow:0 0 0 2px rgba(0,0,0,.3) inset}
   .mp-dot.on{background:#16a34a}
   .mp-tag{padding:2px 6px;border-radius:999px;background:#1f2937;border:1px solid #334155}
+  .mp-lock{position:fixed;inset:0;z-index:9997;display:none;align-items:center;justify-content:center;pointer-events:auto;background:rgba(2,6,23,.35)}
+  .mp-lock.on{display:flex}
+  .mp-lock .mp-card{background:#0b1224cc}
   `;
   const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
-  // ===== 2) Button: create + keep alive =====
+  // ===== 2) Button «Online-матч» (само-восстанавливается при перерисовках) =====
   function mountOnlineButton() {
-    if (document.getElementById('find-match-btn')) return; // уже есть
+    if (document.getElementById('find-match-btn')) return;
     const btn = document.createElement('button');
     btn.id = 'find-match-btn';
     btn.className = 'mp-btn';
     btn.textContent = 'Online-матч';
-
-    // пробуем добавить рядом с «Новая игра»
     const host = document.getElementById('corner-right')
       || document.querySelector('#corner-right .flex')
       || document.querySelector('.controls, .overlay, .hud');
-
     if (host) host.appendChild(btn);
     else {
-      // фоллбек — фиксируем снизу справа
       const wrap = document.getElementById('mp-floater') || (() => {
         const d = document.createElement('div'); d.id='mp-floater'; d.className='mp-floater'; document.body.appendChild(d); return d;
       })();
@@ -3318,12 +3317,9 @@
     }
     btn.addEventListener('click', onFindMatchClick);
   }
-  // ставим кнопку сразу и следим за перерисовками
   mountOnlineButton();
   const mo = new MutationObserver(() => mountOnlineButton());
   mo.observe(document.body, { childList:true, subtree:true });
-  // экспорт «на всякий» для ручного вызова из консоли
-  window.debugMountOnlineButton = mountOnlineButton;
 
   // ===== 3) Queue modal + countdown =====
   let queueModal=null, startModal=null;
@@ -3338,7 +3334,6 @@
     document.body.appendChild(queueModal);
   }
   function hideQueueModal(){ queueModal?.remove(); queueModal=null; }
-
   function showStartCountdown(seat, secs=3){
     hideStartCountdown();
     startModal = document.createElement('div');
@@ -3356,27 +3351,9 @@
 
   // ===== 4) Socket + sync =====
   const socket = io(SERVER_URL, { transports:['websocket'] });
-  let NET_ACTIVE=false, MY_SEAT=null, APPLYING=false, pending=false;
+  let NET_ACTIVE=false, MY_SEAT=null, APPLYING=false;
 
-  function schedulePush(reason='auto', {force=false}={}){
-    if (!window.gameState) return;
-    if (APPLYING && !force) return;
-    if (pending) return;
-    pending=true;
-    requestAnimationFrame(()=>{ pending=false; try{ socket.emit('pushState',{state:window.gameState,reason}); }catch(e){} });
-  }
-
-  function wrap(name){
-    const fn = window[name];
-    if (typeof fn !== 'function') return false;
-    window[name] = function(...args){
-      const r = fn.apply(this,args);
-      schedulePush(name);
-      return r;
-    };
-    return true;
-  }
-
+  // --- SENDING: «обёртки» + DIGEST-пуллер ---
   const TO_WRAP = [
     // партия/ход
     'initGame','startGame','newGame','resetGame','endTurn','resign','setWinner',
@@ -3395,28 +3372,87 @@
     // UI триггеры
     'updateUI','updateUnits','updateHand','createBoard','createMetaObjects','addLog'
   ];
+  function wrap(name){
+    const fn = window[name];
+    if (typeof fn !== 'function') return;
+    window[name] = function(...args){
+      const r = fn.apply(this,args);
+      schedulePush(name);     // шлём сразу
+      return r;
+    };
+  }
   TO_WRAP.forEach(wrap);
 
-  // приём состояния
+  // digest: быстрый снимок значимых полей
+  function digest(state){
+    try {
+      if (!state) return '';
+      const compact = {
+        active: state.active,
+        turn: state.turn,
+        winner: state.winner ?? null,
+        players: (state.players||[]).map(p => ({
+          mana: p.mana, max: p.maxMana,
+          hand: (p.hand||[]).map(c=>c.id),
+          deckN: (p.deck||[]).length,
+          discardN: (p.discard||[]).length
+        })),
+        board: (state.board||[]).map(row => row.map(cell => {
+          const u = cell?.unit;
+          return u ? {o:u.owner,h:u.hp,a:u.atk,f:u.facing,t:u.tplId} : null;
+        }))
+      };
+      return JSON.stringify(compact);
+    } catch { return '';}
+  }
+
+  let lastDigest = '';
+  let pending = false;
+  function schedulePush(reason='auto', {force=false}={}){
+    if (!NET_ACTIVE || !window.gameState) return;
+    if (APPLYING && !force) return;              // не эхоим полученный снапшот
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(()=>{
+      pending = false;
+      try { socket.emit('pushState', { state: window.gameState, reason }); } catch{}
+      lastDigest = digest(window.gameState);
+    });
+  }
+
+  // Периодическая отправка при любом изменении (подстраховка, если обёртка не сработала)
+  setInterval(()=>{
+    if (!NET_ACTIVE || !window.gameState) return;
+    // пушит только тот, у кого сейчас ХОД (чтобы оба могли делать свои ходы)
+    const myTurn = (typeof window.gameState.active === 'number') && (window.gameState.active === MY_SEAT);
+    if (!myTurn) return;
+    const d = digest(window.gameState);
+    if (d && d !== lastDigest) schedulePush('digest');
+  }, 250);
+
+  // --- RECEIVING: применяем снапшот и перерисовываем ---
   socket.on('state', (state)=>{
     if (!state) return;
-    APPLYING=true;
-    try{
+    APPLYING = true;
+    try {
       window.gameState = state;
+      lastDigest = digest(state);
       try{ updateUI(); }catch{}
       try{ updateUnits(); }catch{}
       try{ updateHand(); }catch{}
       try{ createBoard && createBoard(); }catch{}
       try{ createMetaObjects && createMetaObjects(); }catch{}
       updateIndicator();
+      updateInputLock();
     } finally { APPLYING=false; }
   });
 
+  // ===== 5) Queue / start =====
   function onFindMatchClick(){ showQueueModal(); socket.emit('joinQueue'); }
-
-  socket.on('matchFound', ({ matchId, seat })=>{
+  socket.on('matchFound', ({ seat })=>{
     hideQueueModal();
-    MY_SEAT = seat; NET_ACTIVE = true; updateIndicator();
+    MY_SEAT = seat; NET_ACTIVE = true;
+    updateIndicator(); updateInputLock();
     showStartCountdown(seat, 3);
   });
 
@@ -3430,13 +3466,13 @@
   }
 
   socket.on('opponentLeft', ()=>{
-    NET_ACTIVE=false; updateIndicator();
+    NET_ACTIVE=false; updateIndicator(); updateInputLock();
     const m=document.createElement('div'); m.className='mp-modal';
     m.innerHTML=`<div class="mp-card">Противник отключился<br><div class="mp-subtle">Матч завершён</div></div>`;
     document.body.appendChild(m); setTimeout(()=>m.remove(),1800);
   });
 
-  // ===== 5) Online indicator =====
+  // ===== 6) Online indicator + whose turn =====
   const ind = document.createElement('div');
   ind.className='mp-ind';
   ind.innerHTML = `<span class="mp-dot" id="mp-dot"></span>
@@ -3465,6 +3501,17 @@
   socket.on('matchFound', updateIndicator);
   setInterval(updateIndicator, 500);
   updateIndicator();
+
+  // ===== 7) Input lock: когда не твой ход — блокируем клики по сцене =====
+  const lock = document.createElement('div');
+  lock.className = 'mp-lock';
+  lock.innerHTML = `<div class="mp-card">Ход соперника…</div>`;
+  document.body.appendChild(lock);
+
+  function updateInputLock(){
+    const shouldLock = NET_ACTIVE && window.gameState && (window.gameState.active !== MY_SEAT);
+    lock.classList.toggle('on', !!shouldLock);
+  }
 
 })();
 </script>
