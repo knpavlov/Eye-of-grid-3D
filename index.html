@@ -2139,6 +2139,12 @@
     async function endTurn() {
       if (!gameState || gameState.winner !== null) return;
       if (isInputLocked()) return;
+      // Онлайн-гейт: не позволяем завершить ход, если сейчас не ваш ход
+      try {
+        if (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') {
+          if (gameState.active !== window.MY_SEAT) { showNotification('Сейчас ход соперника', 'error'); return; }
+        }
+      } catch {}
       __endTurnInProgress = true;
       // Сброс и запуск таймера хода на 100 секунд
       try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
@@ -2394,7 +2400,9 @@
     }
     
     // Обработчики UI
-    document.getElementById('end-turn-btn').addEventListener('click', endTurn);
+    document.getElementById('end-turn-btn').addEventListener('click', () => {
+      try { if (typeof window.endTurn === 'function') window.endTurn(); } catch {}
+    });
     refreshInputLockUI();
     document.getElementById('new-game-btn').addEventListener('click', () => location.reload());
     document.getElementById('log-btn').addEventListener('click', () => {
@@ -3462,6 +3470,8 @@
       lastDigest = digest(gameState);
     });
   }
+  // Экспортируем наружу, чтобы ранние функции (например, endTurn) могли вызвать schedulePush
+  try { window.schedulePush = schedulePush; } catch {}
 
   // Периодическая отправка при любом изменении (подстраховка, если обёртка не сработала)
   setInterval(()=>{
