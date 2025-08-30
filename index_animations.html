@@ -138,7 +138,7 @@
       <div class="flex gap-2 opacity-90">
         <button id="log-btn" class="overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors">Лог</button>
         <button id="help-btn" class="overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors">Помощь</button>
-        <button id="new-game-btn" class="overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors">Оффлайн-игра</button>
+        <button id="new-game-btn" class="overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors">Новая игра</button>
       </div>
     </div>
     
@@ -646,8 +646,6 @@
     let drawAnimationActive = false;
     let splashActive = false;
     let manaGainActive = false;
-    // Сколько последних добранных карт временно скрывать из моей руки (для красивой анимации влёта)
-    let pendingDrawCount = 0;
     function isInputLocked() {
       return __endTurnInProgress || drawAnimationActive || splashActive || manaGainActive;
     }
@@ -1379,20 +1377,8 @@
       hoveredHandCard = null;
       
       if (!gameState) return;
-
-      // В онлайне всегда показываем СВОЮ руку, а не руку активного игрока
-      const viewerSeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number')
-        ? window.MY_SEAT
-        : gameState.active;
-      let hand = (gameState.players && gameState.players[viewerSeat] && gameState.players[viewerSeat].hand)
-        ? gameState.players[viewerSeat].hand.slice()
-        : [];
-      // В момент анимации добора скрываем N последних карт, чтобы не было дублирования
-      try {
-        if (viewerSeat === (typeof window !== 'undefined' ? window.MY_SEAT : viewerSeat) && pendingDrawCount > 0) {
-          hand = hand.slice(0, Math.max(0, hand.length - pendingDrawCount));
-        }
-      } catch {}
+      
+      const hand = gameState.players[gameState.active].hand;
       const handSize = hand.length;
       
       if (handSize === 0) return;
@@ -1609,16 +1595,8 @@
               frame.traverse(child => { if (child.isMesh && child.material) { child.material.opacity = opacity; child.material.color = new THREE.Color(color); } });
             };
             if (unit) {
-              // В онлайне: подсветка по владельцу относительно моего места (MY_SEAT)
-              // Оффлайн: по владельцу (0 зелёный, 1 красный)
-              // Определяем место зрителя: онлайн — MY_SEAT, офлайн — текущий активный
-              let viewerSeat = null;
-              try {
-                if (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') viewerSeat = window.MY_SEAT;
-                else viewerSeat = gameState.active;
-              } catch { viewerSeat = gameState.active; }
-              const isMine = (unit.owner === viewerSeat);
-              const col = isMine ? 0x22c55e : 0xef4444;
+              const ownerIsActive = unit.owner === gameState.active;
+              const col = ownerIsActive ? 0x22c55e : 0xef4444;
               setFrame(0.95, col);
             } else {
               setFrame(0.0, 0x000000);
@@ -1665,53 +1643,6 @@
           unitMeshes.push(unitMesh);
         }
       }
-    }
-
-    // Визуализировать изменения между предыдущим и новым состоянием (для наблюдателя/оппонента)
-    function playDeltaAnimations(prevState, nextState) {
-      try {
-        if (!prevState || !nextState) return;
-        const prevB = prevState.board || [];
-        const nextB = nextState.board || [];
-        for (let r = 0; r < 3; r++) {
-          for (let c = 0; c < 3; c++) {
-            const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
-            const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
-            if (pu && nu) {
-              const pHP = (typeof pu.currentHP === 'number') ? pu.currentHP : pu.hp;
-              const nHP = (typeof nu.currentHP === 'number') ? nu.currentHP : nu.hp;
-              const delta = (typeof pHP === 'number' && typeof nHP === 'number') ? (nHP - pHP) : 0;
-              if (delta !== 0) {
-                try {
-                  const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-                  if (tMesh) spawnDamageText(tMesh, `${delta > 0 ? '+' : ''}${delta}`, delta > 0 ? '#22c55e' : '#ef4444');
-                } catch {}
-              }
-            } else if (pu && !nu) {
-              // Юнит исчез — короткий импульс на клетке
-              try {
-                const tile = tileMeshes?.[r]?.[c]; if (!tile) continue;
-                const pulse = new THREE.Mesh(new THREE.RingGeometry(0.4, 0.8, 32), new THREE.MeshBasicMaterial({ color: 0x9ca3af, transparent: true, opacity: 0 }));
-                pulse.rotation.x = -Math.PI/2; pulse.position.copy(tile.position).add(new THREE.Vector3(0, 0.2, 0));
-                effectsGroup.add(pulse);
-                gsap.to(pulse.material, { opacity: 0.9, duration: 0.12 })
-                  .then(() => gsap.to(pulse.scale, { x: 2.2, y: 2.2, z: 2.2, duration: 0.35, ease: 'power2.out' }))
-                  .then(() => gsap.to(pulse.material, { opacity: 0, duration: 0.22, onComplete: ()=> effectsGroup.remove(pulse) }));
-              } catch {}
-            } else if (!pu && nu) {
-              // Юнит появился — лёгкий «поп» масштаба
-              try {
-                const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-                if (tMesh) {
-                  const s = tMesh.scale.clone();
-                  tMesh.scale.set(s.x * 0.7, s.y * 0.7, s.z * 0.7);
-                  gsap.to(tMesh.scale, { x: s.x, y: s.y, z: s.z, duration: 0.28, ease: 'power2.out' });
-                }
-              } catch {}
-            }
-          }
-        }
-      } catch {}
     }
 
     // attachHpOverlay удалён, т.к. HP теперь перерисовывается на самой карте
@@ -2202,12 +2133,8 @@
     async function endTurn() {
       if (!gameState || gameState.winner !== null) return;
       if (isInputLocked()) return;
-      try {
-        if (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') {
-          if (gameState.active !== window.MY_SEAT) { showNotification('Сейчас ход соперника', 'error'); return; }
-        }
-      } catch {}
       __endTurnInProgress = true;
+      // Сброс и запуск таймера хода на 100 секунд
       try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
       window.__turnTimerSeconds = 100;
       (function syncBtn(){ try {
@@ -2229,18 +2156,22 @@
             const txt = btn.querySelector('.sec-text');
             const s = Math.max(0, Math.min(100, window.__turnTimerSeconds));
             if (txt) txt.textContent = `${s}`;
-            const percent = s / 100; 
+            const percent = s / 100; // 1 -> top:0%, 0 -> top:100%
             if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
+            // Пульсация рамки в последние 10 секунд
             if (s <= 10) { btn.classList.add('urgent'); } else { btn.classList.remove('urgent'); }
           }
         } catch {}
       }, 1000);
+      
       const controlledCells = countControlled(gameState, gameState.active);
       if (controlledCells >= 5) {
         gameState.winner = gameState.active;
         showNotification(`${gameState.players[gameState.active].name} побеждает!`, 'success');
         return;
       }
+      
+      // Очистить временные бафы, действующие «до конца хода кастера»
       try {
         for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
           const u = gameState.board[rr][cc].unit; if (!u) continue;
@@ -2251,34 +2182,66 @@
       } catch {}
       gameState.active = gameState.active === 0 ? 1 : 0;
       gameState.turn += 1;
+      
       const player = gameState.players[gameState.active];
       const before = player.mana;
       const manaAfter = capMana(before + 2);
+      // Карта для анимации: извлекаем, но пока не кладём в руку
       const drawnTpl = drawOneNoAdd(gameState, gameState.active);
+      
       resetCardSelection();
+      
+      updateHand();
       updateUnits();
       updateUI();
-      // Чёткая последовательность: Turn Splash -> Mana -> Draw
+      // Показ заставки хода на каждый ход с резервом
       try { await forceTurnSplashWithRetry(2); } catch {}
-      try { await animateTurnManaGain(gameState.active, before, manaAfter, 1190); } catch {}
-      player.mana = manaAfter;
-      try { schedulePush('endTurn-apply', { force: true }); } catch {}
-      // Добор: анимация у активного, скрывая pending карты
-      try {
-        const amIActiveNow = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number')
-          ? (window.MY_SEAT === gameState.active)
-          : true;
-        if (amIActiveNow && drawnTpl) {
-          pendingDrawCount = 1; updateHand(); refreshInputLockUI();
-          await animateDrawnCardToHand(drawnTpl);
-          try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}
-          pendingDrawCount = 0; updateHand();
-        } else if (drawnTpl) {
-          try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}
-          updateHand();
+      // Перезапустить таймер хода на 100 сек после заставки
+      try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
+      window.__turnTimerSeconds = 100;
+      (function syncBtn(){ try {
+        const btn = document.getElementById('end-turn-btn');
+        if (btn) {
+          const fill = btn.querySelector('.time-fill');
+          const txt = btn.querySelector('.sec-text');
+          if (txt) txt.textContent = `${window.__turnTimerSeconds}`;
+          if (fill) fill.style.top = `0%`;
         }
-      } catch { pendingDrawCount = 0; }
+      } catch {} })();
+      window.__turnTimerId = setInterval(() => {
+        if (typeof window.__turnTimerSeconds !== 'number') window.__turnTimerSeconds = 100;
+        if (window.__turnTimerSeconds > 0) window.__turnTimerSeconds -= 1;
+        try {
+          const btn = document.getElementById('end-turn-btn');
+          if (btn) {
+            const fill = btn.querySelector('.time-fill');
+            const txt = btn.querySelector('.sec-text');
+            const s = Math.max(0, Math.min(100, window.__turnTimerSeconds));
+            if (txt) txt.textContent = `${s}`;
+            const percent = s / 100;
+            if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
+            if (s <= 10) { btn.classList.add('urgent'); } else { btn.classList.remove('urgent'); }
+          }
+        } catch {}
+      }, 1000);
+      // Дождаться завершения заставки хода, затем эффектная анимация маны (ускорена)
+      try { await animateTurnManaGain(gameState.active, before, manaAfter, 1190); } catch {}
+      // Минимальная задержка (<0.1с) перед началом проявления большой карты
+      await sleep(80);
+      // Теперь зафиксируем новую ману в состоянии и отрисуем её появление
+      player.mana = manaAfter;
+      updateUI();
+      if (drawnTpl) {
+        refreshInputLockUI();
+        await animateDrawnCardToHand(drawnTpl);
+        // После завершения полёта помещаем карту в руку официально
+        try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}
+        updateHand();
+      }
+      
       addLog(`Ход ${gameState.turn}. ${player.name} получает +2 маны и добирает карту.`);
+      
+      // Гарантированная разблокировка ввода
       __endTurnInProgress = false;
       manaGainActive = false;
       refreshInputLockUI();
@@ -2423,9 +2386,7 @@
     }
     
     // Обработчики UI
-    document.getElementById('end-turn-btn').addEventListener('click', () => {
-      try { if (typeof window.endTurn === 'function') window.endTurn(); } catch {}
-    });
+    document.getElementById('end-turn-btn').addEventListener('click', endTurn);
     refreshInputLockUI();
     document.getElementById('new-game-btn').addEventListener('click', () => location.reload());
     document.getElementById('log-btn').addEventListener('click', () => {
@@ -3083,11 +3044,9 @@
             // Вознаграждение ритуала: +2 маны
             const beforeM = pl.mana; pl.mana = capMana(pl.mana + 2); updateUI();
             addLog(`${tpl.name}: сбрасываете существо из руки и получаете +2 маны (\`${toDiscardTpl.name}\`).`);
-            // Списать стоимость спелла (если будет >0 в будущем) и отправить сам спелл в discard
-            pl.mana = capMana(pl.mana - (tpl.cost || 0));
+            // Сам спелл уходит в discard
             pl.discard.push(tpl); pl.hand.splice(idx, 1);
             resetCardSelection(); updateHand(); updateUI();
-            try { schedulePush('spell-holy-feast', { force: true }); } catch {}
           }
         };
         addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`);
@@ -3284,9 +3243,7 @@
             pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
             // Завершение ритуала: визуально сжечь временный меш спелла и убрать его, затем удалить карту из руки и положить в discard
             try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
-            pl.mana = capMana(pl.mana - (tpl.cost || 0));
             pl.hand.splice(idx, 1); pl.discard.push(tpl); updateHand(); updateUI();
-            try { schedulePush('spell-holy-feast', { force: true }); } catch {}
             hidePrompt(); pendingDiscardSelection = null;
           } }; addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`); return;
         }
@@ -3300,9 +3257,7 @@
           pl.hand.splice(singleIdx, 1); updateHand();
           pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
           try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
-          pl.mana = capMana(pl.mana - (tpl.cost || 0));
           pl.hand.splice(idx, 1); pl.discard.push(tpl); updateHand(); updateUI(); hidePrompt();
-          try { schedulePush('spell-holy-feast', { force: true }); } catch {}
         }
         return;
       }
@@ -3312,416 +3267,5 @@
 
     // (убраны несуществующие обработчики magic-btn и draw-btn)
   </script>
-<!-- серверный патч -->
-<!-- === Multiplayer patch v2: sync + queue + countdown + lock input + indicator === --> 
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script> 
-(() => {
-  // ===== 0) Config =====
-  const SERVER_URL = (location.hostname === "localhost")
-    ? "http://localhost:3001"
-    : "https://eog-mp-server-production.up.railway.app"; // ← домен сервера
-
-  // ===== 1) Styles =====
-  const css = `
-  .mp-modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:9999}
-  .mp-card{min-width:280px;padding:18px 20px;border-radius:12px;background:#0f172a;color:#e5e7eb;border:1px solid #334155;box-shadow:0 10px 30px rgba(0,0,0,.35);text-align:center}
-  .mp-btn{display:inline-flex;gap:8px;align-items:center;justify-content:center;padding:6px 10px;border-radius:6px;cursor:pointer;background:#475569;color:#e5e7eb;border:1px solid rgba(255,255,255,0.1);font-size:12px}
-  .mp-btn:hover{background:#64748b}
-  .mp-subtle{color:#94a3b8;font-size:12px;margin-top:6px}
-  .mp-spinner{width:16px;height:16px;border:2px solid #64748b;border-top-color:transparent;border-radius:50%;animation:mp-spin .8s linear infinite}
-  @keyframes mp-spin{to{transform:rotate(360deg)}}
-  .mp-count{font-weight:800;font-size:64px;letter-spacing:.03em;margin:8px 0 10px}
-  .mp-seat{font-size:14px;color:#cbd5e1}
-  .mp-floater{position:fixed;right:12px;bottom:12px;z-index:9998;display:flex;gap:8px}
-  .mp-ind{position:fixed;left:12px;bottom:12px;z-index:9998;display:flex;align-items:center;gap:8px;background:rgba(15,23,42,.85);color:#e5e7eb;border:1px solid #334155;padding:6px 10px;border-radius:999px;font:12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-  .mp-dot{width:8px;height:8px;border-radius:50%;background:#64748b;box-shadow:0 0 0 2px rgba(0,0,0,.3) inset}
-  .mp-dot.on{background:#16a34a}
-  .mp-tag{padding:2px 6px;border-radius:999px;background:#1f2937;border:1px solid #334155}
-  .mp-lock{position:fixed;inset:0;z-index:9997;display:none;align-items:center;justify-content:center;pointer-events:auto;background:rgba(2,6,23,.35)}
-  .mp-lock.on{display:flex}
-  .mp-lock .mp-card{background:#0b1224cc}
-  `;
-  const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
-
-  // ===== 2) Кнопка «Онлайн-игра» — как стандартные overlay-кнопки рядом с остальными =====
-  function mountOnlineButton() {
-    if (document.getElementById('find-match-btn')) return;
-    const btn = document.createElement('button');
-    btn.id = 'find-match-btn';
-    btn.className = 'overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors';
-    btn.textContent = 'Онлайн-игра';
-    const host = document.querySelector('#corner-right .flex') || document.getElementById('corner-right');
-    if (host) host.appendChild(btn);
-    else {
-      const wrap = document.getElementById('mp-floater') || (() => {
-        const d = document.createElement('div'); d.id='mp-floater'; d.className='mp-floater'; document.body.appendChild(d); return d;
-      })();
-      wrap.appendChild(btn);
-    }
-    btn.addEventListener('click', onFindMatchClick);
-  }
-  mountOnlineButton();
-  const mo = new MutationObserver(() => mountOnlineButton());
-  mo.observe(document.body, { childList:true, subtree:true });
-
-  // ===== 3) Queue modal + countdown =====
-  let queueModal=null, startModal=null;
-  function showQueueModal(){
-    hideQueueModal();
-    queueModal = document.createElement('div');
-    queueModal.className='mp-modal';
-    queueModal.innerHTML = `<div class="mp-card">
-      <div style="display:flex;gap:10px;justify-content:center;align-items:center">
-        <div class="mp-spinner"></div><div>Поиск матча…</div>
-      </div><div class="mp-subtle">Ждём второго игрока</div></div>`;
-    document.body.appendChild(queueModal);
-  }
-  function hideQueueModal(){ queueModal?.remove(); queueModal=null; }
-  function showStartCountdown(seat, secs=3){
-    hideStartCountdown();
-    startModal = document.createElement('div');
-    startModal.className='mp-modal';
-    startModal.innerHTML = `<div class="mp-card">
-      <div>Матч найден!</div>
-      <div class="mp-seat">Вы играете за: <b>${seat===0?'Игрок 1':'Игрок 2'}</b></div>
-      <div class="mp-count" id="mp-count">${secs}</div>
-      <div class="mp-subtle">Старт через секунды…</div></div>`;
-    document.body.appendChild(startModal);
-    let t=secs; const el=startModal.querySelector('#mp-count');
-    const timer=setInterval(()=>{ t--; if(t<=0){ clearInterval(timer); hideStartCountdown(); onCountdownFinished(seat); } else el.textContent=t; },1000);
-  }
-  function hideStartCountdown(){ startModal?.remove(); startModal=null; }
-
-  // ===== 4) Socket + sync =====
-  const socket = io(SERVER_URL, { transports:['websocket'] });
-  let NET_ACTIVE=false, MY_SEAT=null, APPLYING=false;
-
-  // --- SENDING: «обёртки» + DIGEST-пуллер ---
-  const TO_WRAP = [
-    // партия/ход
-    'initGame','startGame','newGame','resetGame','endTurn','resign','setWinner',
-    // колоды/руки
-    'shuffleDeck','drawOne','drawCard','drawCards','dealCard','dealCards','discardCard','discardSelectedCard',
-    // выбор/перетаскивание/цели
-    'selectCard','deselectCard','resetCardSelection','onCardDropped','setTargetCell','setTargetUnit',
-    // установка/направление
-    'placeUnit','placeUnitWithDirection','rotateUnit','setFacing','setDirection',
-    // бой/урон/смерть
-    'performBattleSequence','stagedAttack','applyDamage','killUnit','removeUnit','reviveUnit',
-    // контроль/победа
-    'captureCell','changeOwner','checkWinCondition',
-    // эффекты/ресурсы
-    'castSpell','playSpell','applySpell','resolveSpell','applyEffect','removeEffect','spendMana','gainMana','updateMana',
-    // UI триггеры
-    'updateUI','updateUnits','updateHand','createBoard','createMetaObjects','addLog'
-  ];
-  const GATED = [
-    'endTurn','placeUnit','placeUnitWithDirection','rotateUnit','performBattleSequence','stagedAttack',
-    'applyDamage','killUnit','onCardDropped','castSpell','playSpell','resolveSpell','setTargetCell','setTargetUnit','setFacing','setDirection'
-  ];
-  function wrap(name){
-    const fn = window[name];
-    if (typeof fn !== 'function') return;
-    window[name] = function(...args){
-      // Блокируем ключевые действия, если сейчас не наш ход
-      try {
-        if (NET_ACTIVE && GATED.includes(name)) {
-          const myTurn = (typeof gameState?.active === 'number') && (gameState.active === MY_SEAT);
-          if (!myTurn) { try { typeof showNotification==='function' && showNotification('Сейчас ход соперника', 'error'); } catch {} return; }
-        }
-      } catch {}
-      const r = fn.apply(this,args);
-      // Если функция возвращает промис (async) — шлём после завершения
-      if (r && typeof r.then === 'function') {
-        return r.then((val)=>{
-          // Ключевые события требуют обязательного пуша по завершении
-          if (name === 'endTurn' || name === 'initGame' || name === 'startGame') {
-            schedulePush(name, { force: true });
-          } else {
-            schedulePush(name);
-          }
-          return val;
-        });
-      }
-      if (name === 'endTurn' || name === 'initGame' || name === 'startGame') {
-        schedulePush(name, { force: true });
-      } else {
-        schedulePush(name);
-      }
-      return r;
-    };
-  }
-  TO_WRAP.forEach(wrap);
-
-  // digest: быстрый снимок значимых полей
-  function digest(state){
-    try {
-      if (!state) return '';
-      const compact = {
-        active: state.active,
-        turn: state.turn,
-        winner: state.winner ?? null,
-        players: (state.players||[]).map(p => ({
-          mana: p.mana, max: p.maxMana,
-          hand: (p.hand||[]).map(c=>c.id),
-          deckN: (p.deck||[]).length,
-          discardN: (p.discard||[]).length
-        })),
-        board: (state.board||[]).map(row => row.map(cell => {
-          const u = cell?.unit;
-          return u ? {o:u.owner,h:u.hp,a:u.atk,f:u.facing,t:u.tplId} : null;
-        }))
-      };
-      return JSON.stringify(compact);
-    } catch { return '';}
-  }
-
-  let lastDigest = '';
-  let pending = false;
-  function schedulePush(reason='auto', {force=false}={}){
-    if (!NET_ACTIVE || !gameState) return;
-    if (APPLYING && !force) return;              // не эхоим полученный снапшот
-    const myTurn = (typeof gameState.active === 'number') && (gameState.active === MY_SEAT);
-    if (!force && !myTurn) return;               // только активный игрок пушит
-    if (force) {
-      // немедленная отправка, игнорируя pending
-      try { socket.emit('pushState', { state: gameState, reason }); } catch{}
-      lastDigest = digest(gameState);
-      pending = false;
-      return;
-    }
-    if (pending) return;
-    pending = true;
-    requestAnimationFrame(()=>{
-      pending = false;
-      try { socket.emit('pushState', { state: gameState, reason }); } catch{}
-      lastDigest = digest(gameState);
-    });
-  }
-  // Экспортируем наружу, чтобы ранние функции (например, endTurn) могли вызвать schedulePush
-  try { window.schedulePush = schedulePush; } catch {}
-
-  // Периодическая отправка при любом изменении (подстраховка, если обёртка не сработала)
-  setInterval(()=>{
-    if (!NET_ACTIVE || !gameState) return;
-    // пушит только тот, у кого сейчас ХОД (чтобы оба могли делать свои ходы)
-    const myTurn = (typeof gameState.active === 'number') && (gameState.active === MY_SEAT);
-    if (!myTurn) return;
-    const d = digest(gameState);
-    if (d && d !== lastDigest) schedulePush('digest');
-  }, 250);
-
-  // --- RECEIVING: применяем снапшот и перерисовываем ---
-  socket.on('state', async (state)=>{
-    if (!state) return;
-    const prev = APPLYING ? null : (gameState ? JSON.parse(JSON.stringify(gameState)) : null);
-    APPLYING = true;
-    try {
-      gameState = state;
-      try { window.gameState = state; } catch {}
-      lastDigest = digest(state);
-      // Сначала переcоберём доску/мета-объекты, затем юниты и UI (исправляет мерцание рамок)
-      try{ createBoard && createBoard(); }catch{}
-      try{ createMetaObjects && createMetaObjects(); }catch{}
-      try{ updateUnits(); }catch{}
-      try { if (prev) playDeltaAnimations(prev, state); } catch {}
-      try{ updateUI(); }catch{}
-      // Анимация добора у приёмника (только для своей руки)
-      try {
-        const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
-        if (mySeat !== null && prev && prev.players && state.players) {
-          const prevHand = (prev.players[mySeat]?.hand) || [];
-          const nextHand = (state.players[mySeat]?.hand) || [];
-          const delta = Math.max(0, nextHand.length - prevHand.length);
-          if (delta > 0) {
-            // Спрячем последние delta карт на время анимации
-            pendingDrawCount = delta; updateHand();
-            // Определим какие именно шаблоны анимировать — возьмём последние delta карт
-            const newCards = nextHand.slice(-delta);
-            for (let i = 0; i < newCards.length; i++) {
-              const tpl = newCards[i];
-              await animateDrawnCardToHand(tpl);
-              // По одной открываем карту в руке
-              pendingDrawCount = Math.max(0, pendingDrawCount - 1);
-              updateHand();
-            }
-          } else {
-            updateHand();
-          }
-        } else {
-          updateHand();
-        }
-      } catch { updateHand(); }
-      updateIndicator();
-      updateInputLock();
-    } finally { APPLYING=false; }
-  });
-
-  // Явный сигнал о смене хода (ускоряет разблокировку у оппонента в заанимированных кейсах)
-  socket.on('turnSwitched', ({ activeSeat })=>{
-    try {
-      if (typeof activeSeat === 'number') {
-        if (!gameState) gameState = {};
-        const prevActive = gameState.active;
-        gameState.active = activeSeat;
-        // Если на приёмнике видим переход хода — проигрываем последовательность (Splash -> Mana)
-        if (typeof prevActive === 'number' && prevActive !== activeSeat) {
-          const p = gameState.players?.[activeSeat];
-          if (p) {
-            const beforeMana = (p.mana ?? 0) - 2; // оценка дельты +2 в начале хода
-            try { queueTurnSplash(''); } catch {}
-            setTimeout(()=>{ try { animateTurnManaGain(activeSeat, beforeMana, p.mana, 1190); } catch {} }, 50);
-          }
-        }
-      }
-    } catch {}
-    updateIndicator();
-    updateInputLock();
-  });
-
-  // ===== 5) Queue / start =====
-  function onFindMatchClick(){ showQueueModal(); socket.emit('joinQueue'); }
-  socket.on('matchFound', ({ seat })=>{
-    hideQueueModal();
-    MY_SEAT = seat; NET_ACTIVE = true;
-    try { window.MY_SEAT = seat; } catch {}
-    updateIndicator(); updateInputLock();
-    showStartCountdown(seat, 3);
-  });
-
-  async function onCountdownFinished(seat){
-    if (seat===0){
-      try{ typeof initGame==='function' && await initGame(); }catch{}
-      schedulePush('init-snapshot', {force:true}); // гарантированный первый снапшот
-    } else {
-      socket.emit('requestState');
-    }
-  }
-
-  socket.on('opponentLeft', ()=>{
-    NET_ACTIVE=false; updateIndicator(); updateInputLock();
-    showVictoryModal({ reason: 'opponentLeft' });
-  });
-
-  // ===== 6) Online indicator + whose turn =====
-  const ind = document.createElement('div');
-  ind.className='mp-ind';
-  ind.innerHTML = `<span class="mp-dot" id="mp-dot"></span>
-                   <span id="mp-net">offline</span>
-                   <span class="mp-tag" id="mp-seat">—</span>
-                   <span class="mp-turn" id="mp-turn"></span>`;
-  document.body.appendChild(ind);
-
-  function updateIndicator(){
-    const dot=document.getElementById('mp-dot');
-    const net=document.getElementById('mp-net');
-    const seat=document.getElementById('mp-seat');
-    const turn=document.getElementById('mp-turn');
-
-    const online = socket.connected && NET_ACTIVE;
-    dot.classList.toggle('on', online);
-    net.textContent = online ? 'online' : 'offline';
-    seat.textContent = (MY_SEAT===0)?'Игрок 1':(MY_SEAT===1)?'Игрок 2':'—';
-
-    if (gameState && (MY_SEAT===0 || MY_SEAT===1)){
-      turn.textContent = (gameState.active===MY_SEAT) ? 'ваш ход' : 'ход соперника';
-    } else turn.textContent='';
-  }
-  socket.on('connect', updateIndicator);
-  socket.on('disconnect', updateIndicator);
-  socket.on('matchFound', updateIndicator);
-  setInterval(updateIndicator, 500);
-  updateIndicator();
-
-  // ===== 7) Input lock: когда не твой ход — блокируем клики по сцене =====
-  const lock = document.createElement('div');
-  lock.className = 'mp-lock';
-  lock.innerHTML = `<div class="mp-card">Ход соперника…</div>`;
-  document.body.appendChild(lock);
-
-  function updateInputLock(){
-    const shouldLock = NET_ACTIVE && gameState && (gameState.active !== MY_SEAT);
-    lock.classList.toggle('on', !!shouldLock);
-  }
-
-  // Серверный таймер хода: только отображение и локальная анимация кнопки
-  socket.on('turnTimer', ({ seconds, activeSeat })=>{
-    try { window.__turnTimerSeconds = seconds; } catch {}
-    try { if (gameState && typeof activeSeat === 'number') gameState.active = activeSeat; } catch {}
-    try {
-      const btn = document.getElementById('end-turn-btn');
-      if (btn) {
-        const fill = btn.querySelector('.time-fill');
-        const txt = btn.querySelector('.sec-text');
-        if (txt) txt.textContent = `${Math.max(0, Math.min(100, seconds))}`;
-        const percent = Math.max(0, Math.min(100, seconds)) / 100;
-        if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
-        if (seconds <= 10) { btn.classList.add('urgent'); } else { btn.classList.remove('urgent'); }
-      }
-    } catch {}
-  });
-
-  // ===== 8) Победа/поражение и меню после матча =====
-  function showVictoryModal({ reason, winnerSeat }={}){
-    hideQueueModal(); hideStartCountdown();
-    const m = document.createElement('div');
-    m.className = 'mp-modal';
-    const title = reason==='opponentLeft' ? 'Противник отключился' : winnerSeat===MY_SEAT ? 'Победа!' : 'Поражение';
-    m.innerHTML = `<div class="mp-card" style="min-width:320px">
-      <div style="font-size:18px;margin-bottom:6px">${title}</div>
-      <div class="mp-subtle" style="margin-bottom:12px">Матч завершён</div>
-      <div style="display:flex;gap:8px;justify-content:center">
-        <button id="mp-offline" class="mp-btn">Оффлайн-игра</button>
-        <button id="mp-online" class="mp-btn">В новый онлайн-матч</button>
-      </div>
-    </div>`;
-    document.body.appendChild(m);
-    m.querySelector('#mp-offline').addEventListener('click', ()=>{ try{ location.reload(); }catch{} });
-    m.querySelector('#mp-online').addEventListener('click', ()=>{
-      try{ m.remove(); }catch{}
-      NET_ACTIVE=false; updateIndicator(); updateInputLock();
-      onFindMatchClick();
-    });
-  }
-
-  // Кнопка «Сдаться» рядом с остальными
-  function mountResignButton(){
-    if (document.getElementById('resign-btn')) return;
-    const host = document.querySelector('#corner-right .flex') || document.getElementById('corner-right');
-    if (!host) return;
-    const btn = document.createElement('button');
-    btn.id = 'resign-btn';
-    btn.className = 'overlay-panel px-3 py-1.5 text-xs bg-red-600 hover:bg-red-700 transition-colors';
-    btn.textContent = 'Сдаться';
-    host.appendChild(btn);
-    btn.addEventListener('click', ()=>{
-      const confirmModal = document.createElement('div');
-      confirmModal.className = 'mp-modal';
-      confirmModal.innerHTML = `<div class="mp-card">
-        <div>Вы уверены, что хотите сдаться?</div>
-        <div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
-          <button id="r-yes" class="mp-btn">Да</button>
-          <button id="r-no" class="mp-btn">Нет</button>
-        </div>
-      </div>`;
-      document.body.appendChild(confirmModal);
-      confirmModal.querySelector('#r-no').addEventListener('click', ()=> confirmModal.remove());
-      confirmModal.querySelector('#r-yes').addEventListener('click', ()=>{
-        try { socket.emit('resign'); } catch {}
-        try { confirmModal.remove(); } catch {}
-      });
-    });
-  }
-  mountResignButton();
-  setInterval(mountResignButton, 1000);
-
-  socket.on('matchEnded', ({ winnerSeat })=>{
-    NET_ACTIVE=false; updateIndicator(); updateInputLock();
-    showVictoryModal({ winnerSeat });
-  });
-
-})();
-</script>
 </body>
 </html>
