@@ -94,6 +94,7 @@ io.on("connection", (socket) => {
       if (typeof prevActive === 'number' && typeof m.lastState?.active === 'number' && prevActive !== m.lastState.active) {
         m.timerSeconds = 100;
         io.to(m.room).emit('turnTimer', { seconds: m.timerSeconds, activeSeat: m.lastState.active });
+        io.to(m.room).emit('turnSwitched', { activeSeat: m.lastState.active });
       }
     } catch {}
     io.to(m.room).emit("state", m.lastState);

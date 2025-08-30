@@ -2188,22 +2188,25 @@
       } catch {}
       gameState.active = gameState.active === 0 ? 1 : 0;
       gameState.turn += 1;
-      // Немедленно синхронизируем переключение хода, чтобы оппонент стал активным без ожидания анимаций
-      try { schedulePush('endTurn-switch', { force: true }); } catch {}
       
       const player = gameState.players[gameState.active];
       const before = player.mana;
       const manaAfter = capMana(before + 2);
-      // Карта для анимации: извлекаем, но пока не кладём в руку
+      // Карта для анимации: извлекаем
       const drawnTpl = drawOneNoAdd(gameState, gameState.active);
+      // ЛОГИКА: сразу применим ману и добор, затем синхронизируем состояние
+      player.mana = manaAfter;
+      if (drawnTpl) { try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {} }
+      updateHand();
+      try { schedulePush('endTurn-apply', { force: true }); } catch {}
       
       resetCardSelection();
       
       updateHand();
       updateUnits();
       updateUI();
-      // Показ заставки хода на каждый ход с резервом
-      try { await forceTurnSplashWithRetry(2); } catch {}
+      // Показ заставки хода на каждый ход с резервом (не блокируем синхронизацию хода)
+      try { forceTurnSplashWithRetry(2); } catch {}
       // Перезапустить таймер хода на 100 сек после заставки
       try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
       window.__turnTimerSeconds = 100;
@@ -2232,18 +2235,15 @@
           }
         } catch {}
       }, 1000);
-      // Дождаться завершения заставки хода, затем эффектная анимация маны (ускорена)
-      try { await animateTurnManaGain(gameState.active, before, manaAfter, 1190); } catch {}
+      // Эффектная анимация маны параллельно (состояние уже применено)
+      try { animateTurnManaGain(gameState.active, before, manaAfter, 1190); } catch {}
       // Минимальная задержка (<0.1с) перед началом проявления большой карты
       await sleep(80);
-      // Теперь зафиксируем новую ману в состоянии и отрисуем её появление
-      player.mana = manaAfter;
+      // ВИЗУАЛ: локально проигрываем анимации (состояние уже применено и синхронизировано)
       updateUI();
       if (drawnTpl) {
         refreshInputLockUI();
         await animateDrawnCardToHand(drawnTpl);
-        // После завершения полёта помещаем карту в руку официально
-        try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}
         updateHand();
       }
       
@@ -3489,6 +3489,13 @@
       updateIndicator();
       updateInputLock();
     } finally { APPLYING=false; }
+  });
+
+  // Явный сигнал о смене хода (ускоряет разблокировку у оппонента в заанимированных кейсах)
+  socket.on('turnSwitched', ({ activeSeat })=>{
+    try { if (typeof activeSeat === 'number') { /* уже в state, но этот сигнал быстрее */ } } catch {}
+    updateIndicator();
+    updateInputLock();
   });
 
   // ===== 5) Queue / start =====
