@@ -1611,9 +1611,13 @@
             if (unit) {
               // В онлайне: подсветка по владельцу относительно моего места (MY_SEAT)
               // Оффлайн: по владельцу (0 зелёный, 1 красный)
+              // Определяем место зрителя: онлайн — MY_SEAT, офлайн — текущий активный
               let viewerSeat = null;
-              try { if (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') viewerSeat = window.MY_SEAT; } catch {}
-              const isMine = (viewerSeat === null) ? (unit.owner === 0) : (unit.owner === viewerSeat);
+              try {
+                if (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') viewerSeat = window.MY_SEAT;
+                else viewerSeat = gameState.active;
+              } catch { viewerSeat = gameState.active; }
+              const isMine = (unit.owner === viewerSeat);
               const col = isMine ? 0x22c55e : 0xef4444;
               setFrame(0.95, col);
             } else {
@@ -3565,7 +3569,7 @@
   }, 250);
 
   // --- RECEIVING: применяем снапшот и перерисовываем ---
-  socket.on('state', (state)=>{
+  socket.on('state', async (state)=>{
     if (!state) return;
     const prev = APPLYING ? null : (gameState ? JSON.parse(JSON.stringify(gameState)) : null);
     APPLYING = true;
@@ -3573,12 +3577,38 @@
       gameState = state;
       try { window.gameState = state; } catch {}
       lastDigest = digest(state);
-      try{ updateUI(); }catch{}
-      try{ updateUnits(); }catch{}
-      try { if (prev) playDeltaAnimations(prev, state); } catch {}
-      try{ updateHand(); }catch{}
+      // Сначала переcоберём доску/мета-объекты, затем юниты и UI (исправляет мерцание рамок)
       try{ createBoard && createBoard(); }catch{}
       try{ createMetaObjects && createMetaObjects(); }catch{}
+      try{ updateUnits(); }catch{}
+      try { if (prev) playDeltaAnimations(prev, state); } catch {}
+      try{ updateUI(); }catch{}
+      // Анимация добора у приёмника (только для своей руки)
+      try {
+        const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
+        if (mySeat !== null && prev && prev.players && state.players) {
+          const prevHand = (prev.players[mySeat]?.hand) || [];
+          const nextHand = (state.players[mySeat]?.hand) || [];
+          const delta = Math.max(0, nextHand.length - prevHand.length);
+          if (delta > 0) {
+            // Спрячем последние delta карт на время анимации
+            pendingDrawCount = delta; updateHand();
+            // Определим какие именно шаблоны анимировать — возьмём последние delta карт
+            const newCards = nextHand.slice(-delta);
+            for (let i = 0; i < newCards.length; i++) {
+              const tpl = newCards[i];
+              await animateDrawnCardToHand(tpl);
+              // По одной открываем карту в руке
+              pendingDrawCount = Math.max(0, pendingDrawCount - 1);
+              updateHand();
+            }
+          } else {
+            updateHand();
+          }
+        } else {
+          updateHand();
+        }
+      } catch { updateHand(); }
       updateIndicator();
       updateInputLock();
     } finally { APPLYING=false; }
@@ -3594,15 +3624,8 @@
     } catch {}
     updateIndicator();
     updateInputLock();
-    // Небольшая анимационная подсказка для наблюдателя/оппонента
-    try {
-      const tb = document.getElementById('turn-banner');
-      if (tb) {
-        tb.classList.remove('hidden'); tb.classList.add('flex'); tb.style.display='';
-        tb.innerHTML = `<div class="ts-wrap"><div class="ts-bg"></div><div class="ts-title ts-title-solid">Turn</div></div>`;
-        setTimeout(()=>{ tb.classList.add('hidden'); tb.classList.remove('flex'); tb.style.display='none'; tb.innerHTML=''; }, 680);
-      }
-    } catch {}
+    // Полноценная красивая заставка Turn для обоих игроков
+    try { queueTurnSplash(''); } catch {}
   });
 
   // ===== 5) Queue / start =====
