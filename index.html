@@ -646,6 +646,8 @@
     let drawAnimationActive = false;
     let splashActive = false;
     let manaGainActive = false;
+    // Сколько последних добранных карт временно скрывать из моей руки (для красивой анимации влёта)
+    let pendingDrawCount = 0;
     function isInputLocked() {
       return __endTurnInProgress || drawAnimationActive || splashActive || manaGainActive;
     }
@@ -1382,9 +1384,15 @@
       const viewerSeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number')
         ? window.MY_SEAT
         : gameState.active;
-      const hand = (gameState.players && gameState.players[viewerSeat] && gameState.players[viewerSeat].hand)
-        ? gameState.players[viewerSeat].hand
+      let hand = (gameState.players && gameState.players[viewerSeat] && gameState.players[viewerSeat].hand)
+        ? gameState.players[viewerSeat].hand.slice()
         : [];
+      // В момент анимации добора скрываем N последних карт, чтобы не было дублирования
+      try {
+        if (viewerSeat === (typeof window !== 'undefined' ? window.MY_SEAT : viewerSeat) && pendingDrawCount > 0) {
+          hand = hand.slice(0, Math.max(0, hand.length - pendingDrawCount));
+        }
+      } catch {}
       const handSize = hand.length;
       
       if (handSize === 0) return;
@@ -1653,6 +1661,53 @@
           unitMeshes.push(unitMesh);
         }
       }
+    }
+
+    // Визуализировать изменения между предыдущим и новым состоянием (для наблюдателя/оппонента)
+    function playDeltaAnimations(prevState, nextState) {
+      try {
+        if (!prevState || !nextState) return;
+        const prevB = prevState.board || [];
+        const nextB = nextState.board || [];
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
+            const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
+            if (pu && nu) {
+              const pHP = (typeof pu.currentHP === 'number') ? pu.currentHP : pu.hp;
+              const nHP = (typeof nu.currentHP === 'number') ? nu.currentHP : nu.hp;
+              const delta = (typeof pHP === 'number' && typeof nHP === 'number') ? (nHP - pHP) : 0;
+              if (delta !== 0) {
+                try {
+                  const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
+                  if (tMesh) spawnDamageText(tMesh, `${delta > 0 ? '+' : ''}${delta}`, delta > 0 ? '#22c55e' : '#ef4444');
+                } catch {}
+              }
+            } else if (pu && !nu) {
+              // Юнит исчез — короткий импульс на клетке
+              try {
+                const tile = tileMeshes?.[r]?.[c]; if (!tile) continue;
+                const pulse = new THREE.Mesh(new THREE.RingGeometry(0.4, 0.8, 32), new THREE.MeshBasicMaterial({ color: 0x9ca3af, transparent: true, opacity: 0 }));
+                pulse.rotation.x = -Math.PI/2; pulse.position.copy(tile.position).add(new THREE.Vector3(0, 0.2, 0));
+                effectsGroup.add(pulse);
+                gsap.to(pulse.material, { opacity: 0.9, duration: 0.12 })
+                  .then(() => gsap.to(pulse.scale, { x: 2.2, y: 2.2, z: 2.2, duration: 0.35, ease: 'power2.out' }))
+                  .then(() => gsap.to(pulse.material, { opacity: 0, duration: 0.22, onComplete: ()=> effectsGroup.remove(pulse) }));
+              } catch {}
+            } else if (!pu && nu) {
+              // Юнит появился — лёгкий «поп» масштаба
+              try {
+                const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
+                if (tMesh) {
+                  const s = tMesh.scale.clone();
+                  tMesh.scale.set(s.x * 0.7, s.y * 0.7, s.z * 0.7);
+                  gsap.to(tMesh.scale, { x: s.x, y: s.y, z: s.z, duration: 0.28, ease: 'power2.out' });
+                }
+              } catch {}
+            }
+          }
+        }
+      } catch {}
     }
 
     // attachHpOverlay удалён, т.к. HP теперь перерисовывается на самой карте
@@ -2204,9 +2259,19 @@
       const manaAfter = capMana(before + 2);
       // Карта для анимации: извлекаем
       const drawnTpl = drawOneNoAdd(gameState, gameState.active);
-      // ЛОГИКА: сразу применим ману и добор, затем синхронизируем состояние
+      // ЛОГИКА: применим ману сразу, а карту добавим после анимации (у активного клиента)
       player.mana = manaAfter;
-      if (drawnTpl) { try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {} }
+      let shouldAnimateDraw = false;
+      try {
+        const amIActiveNow = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number')
+          ? (window.MY_SEAT === gameState.active)
+          : true;
+        shouldAnimateDraw = !!(amIActiveNow && drawnTpl);
+        if (!shouldAnimateDraw && drawnTpl) {
+          // Если это не наш клиент — добавим карту сразу (без анимации)
+          try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}
+        }
+      } catch {}
       updateHand();
       try { schedulePush('endTurn-apply', { force: true }); } catch {}
       
@@ -2245,27 +2310,23 @@
           }
         } catch {}
       }, 1000);
-      // Эффектная анимация маны параллельно (показываем только у активного игрока на его клиенте)
-      try {
-        const showManaAnim = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number')
-          ? (window.MY_SEAT === gameState.active)
-          : true;
-        if (showManaAnim) animateTurnManaGain(gameState.active, before, manaAfter, 1190);
-      } catch {}
+      // Эффектная анимация маны: показываем у обоих игроков, но для активного — анимируем его панель
+      try { animateTurnManaGain(gameState.active, before, manaAfter, 1190); } catch {}
       // Минимальная задержка (<0.1с) перед началом проявления большой карты
       await sleep(80);
       // ВИЗУАЛ: локально проигрываем анимации добора ТОЛЬКО если это наш клиент
       updateUI();
       try {
-        const amIActiveNow = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number')
-          ? (window.MY_SEAT === gameState.active)
-          : true;
-        if (amIActiveNow && drawnTpl) {
+        if (shouldAnimateDraw && drawnTpl) {
+          // Скрываем «задержанную» карту из руки, пока идёт полёт
+          pendingDrawCount = 1; updateHand();
           refreshInputLockUI();
           await animateDrawnCardToHand(drawnTpl);
-          updateHand();
+          // После полёта добавляем карту в руку и показываем её
+          try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}
+          pendingDrawCount = 0; updateHand();
         }
-      } catch {}
+      } catch { pendingDrawCount = 0; }
       
       addLog(`Ход ${gameState.turn}. ${player.name} получает +2 маны и добирает карту.`);
       
@@ -3506,6 +3567,7 @@
   // --- RECEIVING: применяем снапшот и перерисовываем ---
   socket.on('state', (state)=>{
     if (!state) return;
+    const prev = APPLYING ? null : (gameState ? JSON.parse(JSON.stringify(gameState)) : null);
     APPLYING = true;
     try {
       gameState = state;
@@ -3513,6 +3575,7 @@
       lastDigest = digest(state);
       try{ updateUI(); }catch{}
       try{ updateUnits(); }catch{}
+      try { if (prev) playDeltaAnimations(prev, state); } catch {}
       try{ updateHand(); }catch{}
       try{ createBoard && createBoard(); }catch{}
       try{ createMetaObjects && createMetaObjects(); }catch{}
@@ -3531,6 +3594,15 @@
     } catch {}
     updateIndicator();
     updateInputLock();
+    // Небольшая анимационная подсказка для наблюдателя/оппонента
+    try {
+      const tb = document.getElementById('turn-banner');
+      if (tb) {
+        tb.classList.remove('hidden'); tb.classList.add('flex'); tb.style.display='';
+        tb.innerHTML = `<div class="ts-wrap"><div class="ts-bg"></div><div class="ts-title ts-title-solid">Turn</div></div>`;
+        setTimeout(()=>{ tb.classList.add('hidden'); tb.classList.remove('flex'); tb.style.display='none'; tb.innerHTML=''; }, 680);
+      }
+    } catch {}
   });
 
   // ===== 5) Queue / start =====
