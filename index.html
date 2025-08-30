@@ -3493,7 +3493,12 @@
 
   // Явный сигнал о смене хода (ускоряет разблокировку у оппонента в заанимированных кейсах)
   socket.on('turnSwitched', ({ activeSeat })=>{
-    try { if (typeof activeSeat === 'number') { /* уже в state, но этот сигнал быстрее */ } } catch {}
+    try {
+      if (typeof activeSeat === 'number') {
+        if (!gameState) gameState = {};
+        gameState.active = activeSeat;
+      }
+    } catch {}
     updateIndicator();
     updateInputLock();
   });
@@ -3566,6 +3571,7 @@
   // Серверный таймер хода: только отображение и локальная анимация кнопки
   socket.on('turnTimer', ({ seconds, activeSeat })=>{
     try { window.__turnTimerSeconds = seconds; } catch {}
+    try { if (gameState && typeof activeSeat === 'number') gameState.active = activeSeat; } catch {}
     try {
       const btn = document.getElementById('end-turn-btn');
       if (btn) {
