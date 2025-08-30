@@ -2188,6 +2188,8 @@
       } catch {}
       gameState.active = gameState.active === 0 ? 1 : 0;
       gameState.turn += 1;
+      // Немедленно синхронизируем переключение хода, чтобы оппонент стал активным без ожидания анимаций
+      try { schedulePush('endTurn-switch', { force: true }); } catch {}
       
       const player = gameState.players[gameState.active];
       const before = player.mana;
@@ -3445,6 +3447,13 @@
     if (APPLYING && !force) return;              // не эхоим полученный снапшот
     const myTurn = (typeof gameState.active === 'number') && (gameState.active === MY_SEAT);
     if (!force && !myTurn) return;               // только активный игрок пушит
+    if (force) {
+      // немедленная отправка, игнорируя pending
+      try { socket.emit('pushState', { state: gameState, reason }); } catch{}
+      lastDigest = digest(gameState);
+      pending = false;
+      return;
+    }
     if (pending) return;
     pending = true;
     requestAnimationFrame(()=>{
@@ -3546,6 +3555,22 @@
     const shouldLock = NET_ACTIVE && gameState && (gameState.active !== MY_SEAT);
     lock.classList.toggle('on', !!shouldLock);
   }
+
+  // Серверный таймер хода: только отображение и локальная анимация кнопки
+  socket.on('turnTimer', ({ seconds, activeSeat })=>{
+    try { window.__turnTimerSeconds = seconds; } catch {}
+    try {
+      const btn = document.getElementById('end-turn-btn');
+      if (btn) {
+        const fill = btn.querySelector('.time-fill');
+        const txt = btn.querySelector('.sec-text');
+        if (txt) txt.textContent = `${Math.max(0, Math.min(100, seconds))}`;
+        const percent = Math.max(0, Math.min(100, seconds)) / 100;
+        if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
+        if (seconds <= 10) { btn.classList.add('urgent'); } else { btn.classList.remove('urgent'); }
+      }
+    } catch {}
+  });
 
   // ===== 8) Победа/поражение и меню после матча =====
   function showVictoryModal({ reason, winnerSeat }={}){
