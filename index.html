@@ -138,7 +138,7 @@
       <div class="flex gap-2 opacity-90">
         <button id="log-btn" class="overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors">Лог</button>
         <button id="help-btn" class="overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors">Помощь</button>
-        <button id="new-game-btn" class="overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors">Новая игра</button>
+        <button id="new-game-btn" class="overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors">Оффлайн-игра</button>
       </div>
     </div>
     
@@ -1377,8 +1377,14 @@
       hoveredHandCard = null;
       
       if (!gameState) return;
-      
-      const hand = gameState.players[gameState.active].hand;
+
+      // В онлайне всегда показываем СВОЮ руку, а не руку активного игрока
+      const viewerSeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number')
+        ? window.MY_SEAT
+        : gameState.active;
+      const hand = (gameState.players && gameState.players[viewerSeat] && gameState.players[viewerSeat].hand)
+        ? gameState.players[viewerSeat].hand
+        : [];
       const handSize = hand.length;
       
       if (handSize === 0) return;
@@ -3267,21 +3273,22 @@
 
     // (убраны несуществующие обработчики magic-btn и draw-btn)
   </script>
-<!-- === Multiplayer patch v2: sync + queue + countdown + lock input + indicator === -->
+<!-- серверный патч -->
+<!-- === Multiplayer patch v2: sync + queue + countdown + lock input + indicator === --> 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script>
+<script> 
 (() => {
   // ===== 0) Config =====
   const SERVER_URL = (location.hostname === "localhost")
     ? "http://localhost:3001"
-    : "https://eog-mp-server-production.up.railway.app"; // ← замени на свой домен
+    : "https://eog-mp-server-production.up.railway.app"; // ← домен сервера
 
   // ===== 1) Styles =====
   const css = `
   .mp-modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:9999}
   .mp-card{min-width:280px;padding:18px 20px;border-radius:12px;background:#0f172a;color:#e5e7eb;border:1px solid #334155;box-shadow:0 10px 30px rgba(0,0,0,.35);text-align:center}
-  .mp-btn{display:inline-flex;gap:8px;align-items:center;justify-content:center;padding:8px 12px;border:1px solid #334155;border-radius:8px;cursor:pointer;background:#14532d;color:#e5ffe5}
-  .mp-btn:hover{background:#166534}
+  .mp-btn{display:inline-flex;gap:8px;align-items:center;justify-content:center;padding:6px 10px;border-radius:6px;cursor:pointer;background:#475569;color:#e5e7eb;border:1px solid rgba(255,255,255,0.1);font-size:12px}
+  .mp-btn:hover{background:#64748b}
   .mp-subtle{color:#94a3b8;font-size:12px;margin-top:6px}
   .mp-spinner{width:16px;height:16px;border:2px solid #64748b;border-top-color:transparent;border-radius:50%;animation:mp-spin .8s linear infinite}
   @keyframes mp-spin{to{transform:rotate(360deg)}}
@@ -3298,16 +3305,14 @@
   `;
   const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
-  // ===== 2) Button «Online-матч» (само-восстанавливается при перерисовках) =====
+  // ===== 2) Кнопка «Онлайн-игра» — как стандартные overlay-кнопки рядом с остальными =====
   function mountOnlineButton() {
     if (document.getElementById('find-match-btn')) return;
     const btn = document.createElement('button');
     btn.id = 'find-match-btn';
-    btn.className = 'mp-btn';
-    btn.textContent = 'Online-матч';
-    const host = document.getElementById('corner-right')
-      || document.querySelector('#corner-right .flex')
-      || document.querySelector('.controls, .overlay, .hud');
+    btn.className = 'overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors';
+    btn.textContent = 'Онлайн-игра';
+    const host = document.querySelector('#corner-right .flex') || document.getElementById('corner-right');
     if (host) host.appendChild(btn);
     else {
       const wrap = document.getElementById('mp-floater') || (() => {
@@ -3372,12 +3377,39 @@
     // UI триггеры
     'updateUI','updateUnits','updateHand','createBoard','createMetaObjects','addLog'
   ];
+  const GATED = [
+    'endTurn','placeUnit','placeUnitWithDirection','rotateUnit','performBattleSequence','stagedAttack',
+    'applyDamage','killUnit','onCardDropped','castSpell','playSpell','resolveSpell','setTargetCell','setTargetUnit','setFacing','setDirection'
+  ];
   function wrap(name){
     const fn = window[name];
     if (typeof fn !== 'function') return;
     window[name] = function(...args){
+      // Блокируем ключевые действия, если сейчас не наш ход
+      try {
+        if (NET_ACTIVE && GATED.includes(name)) {
+          const myTurn = (typeof gameState?.active === 'number') && (gameState.active === MY_SEAT);
+          if (!myTurn) { try { typeof showNotification==='function' && showNotification('Сейчас ход соперника', 'error'); } catch {} return; }
+        }
+      } catch {}
       const r = fn.apply(this,args);
-      schedulePush(name);     // шлём сразу
+      // Если функция возвращает промис (async) — шлём после завершения
+      if (r && typeof r.then === 'function') {
+        return r.then((val)=>{
+          // Ключевые события требуют обязательного пуша по завершении
+          if (name === 'endTurn' || name === 'initGame' || name === 'startGame') {
+            schedulePush(name, { force: true });
+          } else {
+            schedulePush(name);
+          }
+          return val;
+        });
+      }
+      if (name === 'endTurn' || name === 'initGame' || name === 'startGame') {
+        schedulePush(name, { force: true });
+      } else {
+        schedulePush(name);
+      }
       return r;
     };
   }
@@ -3409,24 +3441,26 @@
   let lastDigest = '';
   let pending = false;
   function schedulePush(reason='auto', {force=false}={}){
-    if (!NET_ACTIVE || !window.gameState) return;
+    if (!NET_ACTIVE || !gameState) return;
     if (APPLYING && !force) return;              // не эхоим полученный снапшот
+    const myTurn = (typeof gameState.active === 'number') && (gameState.active === MY_SEAT);
+    if (!force && !myTurn) return;               // только активный игрок пушит
     if (pending) return;
     pending = true;
     requestAnimationFrame(()=>{
       pending = false;
-      try { socket.emit('pushState', { state: window.gameState, reason }); } catch{}
-      lastDigest = digest(window.gameState);
+      try { socket.emit('pushState', { state: gameState, reason }); } catch{}
+      lastDigest = digest(gameState);
     });
   }
 
   // Периодическая отправка при любом изменении (подстраховка, если обёртка не сработала)
   setInterval(()=>{
-    if (!NET_ACTIVE || !window.gameState) return;
+    if (!NET_ACTIVE || !gameState) return;
     // пушит только тот, у кого сейчас ХОД (чтобы оба могли делать свои ходы)
-    const myTurn = (typeof window.gameState.active === 'number') && (window.gameState.active === MY_SEAT);
+    const myTurn = (typeof gameState.active === 'number') && (gameState.active === MY_SEAT);
     if (!myTurn) return;
-    const d = digest(window.gameState);
+    const d = digest(gameState);
     if (d && d !== lastDigest) schedulePush('digest');
   }, 250);
 
@@ -3435,7 +3469,8 @@
     if (!state) return;
     APPLYING = true;
     try {
-      window.gameState = state;
+      gameState = state;
+      try { window.gameState = state; } catch {}
       lastDigest = digest(state);
       try{ updateUI(); }catch{}
       try{ updateUnits(); }catch{}
@@ -3452,6 +3487,7 @@
   socket.on('matchFound', ({ seat })=>{
     hideQueueModal();
     MY_SEAT = seat; NET_ACTIVE = true;
+    try { window.MY_SEAT = seat; } catch {}
     updateIndicator(); updateInputLock();
     showStartCountdown(seat, 3);
   });
@@ -3467,9 +3503,7 @@
 
   socket.on('opponentLeft', ()=>{
     NET_ACTIVE=false; updateIndicator(); updateInputLock();
-    const m=document.createElement('div'); m.className='mp-modal';
-    m.innerHTML=`<div class="mp-card">Противник отключился<br><div class="mp-subtle">Матч завершён</div></div>`;
-    document.body.appendChild(m); setTimeout(()=>m.remove(),1800);
+    showVictoryModal({ reason: 'opponentLeft' });
   });
 
   // ===== 6) Online indicator + whose turn =====
@@ -3492,8 +3526,8 @@
     net.textContent = online ? 'online' : 'offline';
     seat.textContent = (MY_SEAT===0)?'Игрок 1':(MY_SEAT===1)?'Игрок 2':'—';
 
-    if (window.gameState && (MY_SEAT===0 || MY_SEAT===1)){
-      turn.textContent = (window.gameState.active===MY_SEAT) ? 'ваш ход' : 'ход соперника';
+    if (gameState && (MY_SEAT===0 || MY_SEAT===1)){
+      turn.textContent = (gameState.active===MY_SEAT) ? 'ваш ход' : 'ход соперника';
     } else turn.textContent='';
   }
   socket.on('connect', updateIndicator);
@@ -3509,9 +3543,68 @@
   document.body.appendChild(lock);
 
   function updateInputLock(){
-    const shouldLock = NET_ACTIVE && window.gameState && (window.gameState.active !== MY_SEAT);
+    const shouldLock = NET_ACTIVE && gameState && (gameState.active !== MY_SEAT);
     lock.classList.toggle('on', !!shouldLock);
   }
+
+  // ===== 8) Победа/поражение и меню после матча =====
+  function showVictoryModal({ reason, winnerSeat }={}){
+    hideQueueModal(); hideStartCountdown();
+    const m = document.createElement('div');
+    m.className = 'mp-modal';
+    const title = reason==='opponentLeft' ? 'Противник отключился' : winnerSeat===MY_SEAT ? 'Победа!' : 'Поражение';
+    m.innerHTML = `<div class="mp-card" style="min-width:320px">
+      <div style="font-size:18px;margin-bottom:6px">${title}</div>
+      <div class="mp-subtle" style="margin-bottom:12px">Матч завершён</div>
+      <div style="display:flex;gap:8px;justify-content:center">
+        <button id="mp-offline" class="mp-btn">Оффлайн-игра</button>
+        <button id="mp-online" class="mp-btn">В новый онлайн-матч</button>
+      </div>
+    </div>`;
+    document.body.appendChild(m);
+    m.querySelector('#mp-offline').addEventListener('click', ()=>{ try{ location.reload(); }catch{} });
+    m.querySelector('#mp-online').addEventListener('click', ()=>{
+      try{ m.remove(); }catch{}
+      NET_ACTIVE=false; updateIndicator(); updateInputLock();
+      onFindMatchClick();
+    });
+  }
+
+  // Кнопка «Сдаться» рядом с остальными
+  function mountResignButton(){
+    if (document.getElementById('resign-btn')) return;
+    const host = document.querySelector('#corner-right .flex') || document.getElementById('corner-right');
+    if (!host) return;
+    const btn = document.createElement('button');
+    btn.id = 'resign-btn';
+    btn.className = 'overlay-panel px-3 py-1.5 text-xs bg-red-600 hover:bg-red-700 transition-colors';
+    btn.textContent = 'Сдаться';
+    host.appendChild(btn);
+    btn.addEventListener('click', ()=>{
+      const confirmModal = document.createElement('div');
+      confirmModal.className = 'mp-modal';
+      confirmModal.innerHTML = `<div class="mp-card">
+        <div>Вы уверены, что хотите сдаться?</div>
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
+          <button id="r-yes" class="mp-btn">Да</button>
+          <button id="r-no" class="mp-btn">Нет</button>
+        </div>
+      </div>`;
+      document.body.appendChild(confirmModal);
+      confirmModal.querySelector('#r-no').addEventListener('click', ()=> confirmModal.remove());
+      confirmModal.querySelector('#r-yes').addEventListener('click', ()=>{
+        try { socket.emit('resign'); } catch {}
+        try { confirmModal.remove(); } catch {}
+      });
+    });
+  }
+  mountResignButton();
+  setInterval(mountResignButton, 1000);
+
+  socket.on('matchEnded', ({ winnerSeat })=>{
+    NET_ACTIVE=false; updateIndicator(); updateInputLock();
+    showVictoryModal({ winnerSeat });
+  });
 
 })();
 </script>
