@@ -106,6 +106,22 @@ io.on("connection", (socket) => {
     if (m) socket.emit('turnTimer', { seconds: m.timerSeconds ?? 100, activeSeat: m.lastState?.active ?? 0 });
   });
 
+  // синхронизация анимаций боя (выпады/контратаки)
+  socket.on("battleAnim", (payload) => {
+    const matchId = socket.data.matchId;
+    if (!matchId || !matches.has(matchId)) return;
+    const m = matches.get(matchId);
+    io.to(m.room).emit("battleAnim", payload);
+  });
+
+  // синхронизация кроссфейда тайла (Fissures)
+  socket.on("tileCrossfade", (payload) => {
+    const matchId = socket.data.matchId;
+    if (!matchId || !matches.has(matchId)) return;
+    const m = matches.get(matchId);
+    io.to(m.room).emit("tileCrossfade", payload);
+  });
+
   // сдача матча
   socket.on("resign", () => {
     const matchId = socket.data.matchId;

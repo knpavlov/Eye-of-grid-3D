@@ -1407,7 +1407,13 @@
           hand = hand.slice(0, Math.max(0, hand.length - pendingDrawCount));
         }
       } catch {}
-      const handSize = hand.length;
+      // Скрыть один экземпляр ритуального спелла у активного игрока (во время выбора жертвы)
+      let indices = [];
+      for (let i = 0; i < hand.length; i++) {
+        if (viewerSeat === gameState.active && typeof pendingRitualSpellHandIndex === 'number' && i === pendingRitualSpellHandIndex) continue;
+        indices.push(i);
+      }
+      const handSize = indices.length;
       
       if (handSize === 0) return;
       
@@ -1417,12 +1423,13 @@
       const radius = 8.0;  // Разумный радиус для видимости
       const baseY = 6.0;   // Рука над полем, но не слишком высоко
       
-      for (let i = 0; i < handSize; i++) {
+      for (let k = 0; k < handSize; k++) {
+        const i = indices[k];
         const cardData = hand[i];
         const card = createCard3D(cardData, true);
         
         // Вычисляем позицию для веерного расположения
-        const angle = (i - (handSize - 1) / 2) * angleSpread;
+        const angle = (k - (handSize - 1) / 2) * angleSpread;
         const x = Math.sin(angle) * radius;
         const z = radius + Math.cos(angle) * radius * 0.3 - HAND_Z_OFFSET;
         const y = baseY + Math.sin(angle) * 1.5; // Небольшое изменение по Y для объема
@@ -2760,6 +2767,15 @@
           const tl = gsap.timeline({ onComplete: doStep1 });
           tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
             .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.3, ease: 'power2.inOut' });
+          // Онлайновая синхронизация выпадов (атакующий и цели)
+          try {
+            if (typeof socket !== 'undefined' && NET_ACTIVE && MY_SEAT === gameState.active) {
+              socket.emit('battleAnim', {
+                attacker: { r, c },
+                targets: hitsPrev.map(h => ({ r: h.r, c: h.c }))
+              });
+            }
+          } catch {}
         } else {
           gsap.to(aMesh.position, { y: aMesh.position.y + 0.25, yoyo: true, repeat: 1, duration: 0.2, onComplete: doStep1 });
         }
@@ -3421,16 +3437,10 @@
         // Визуальный «fieldquake»: шейдерное сгорание старого тайла и замена материала на противоположный
         try {
           const tile = tileMeshes[r][c];
-          // Простая вспышка/импульс
-          const pulse = new THREE.Mesh(new THREE.RingGeometry(0.6, 1.1, 48), new THREE.MeshBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0 }));
-          pulse.rotation.x = -Math.PI/2; pulse.position.copy(tile.position).add(new THREE.Vector3(0, 0.2, 0));
-          effectsGroup.add(pulse);
-          gsap.to(pulse.material, { opacity: 0.85, duration: 0.12 })
-            .then(() => gsap.to(pulse.scale, { x: 2.2, y: 2.2, z: 2.2, duration: 0.35, ease: 'power2.out' }))
-            .then(() => gsap.to(pulse.material, { opacity: 0, duration: 0.22, onComplete: ()=> effectsGroup.remove(pulse) }));
-          // Плавная шейдерная замена материала тайла
           const mat = getTileMaterial(nextEl);
           dissolveTileCrossfade(tile, getTileMaterial(prevEl), mat, 0.9);
+          // Онлайновая синхронизация эффекта
+          try { if (NET_ACTIVE && MY_SEAT === gameState.active) socket.emit('tileCrossfade', { r, c, prev: prevEl, next: nextEl }); } catch {}
         } catch {}
         // Юнит на клетке может изменить HP из-за смены элемента
         const u = gameState.board[r][c].unit;
@@ -3819,6 +3829,30 @@
     updateIndicator();
     updateInputLock();
     // Заставка хода будет показана при получении нового состояния (с правильным заголовком)
+  });
+
+  // ===== 9) Battle animation sync =====
+  socket.on('battleAnim', ({ attacker, targets }) => {
+    try {
+      if (!attacker || !Array.isArray(targets)) return;
+      const aMesh = unitMeshes.find(m => m.userData.row === attacker.r && m.userData.col === attacker.c);
+      const first = targets[0];
+      if (!aMesh || !first) return;
+      const targetPos = tileMeshes[first.r][first.c].position;
+      const dir = new THREE.Vector3().subVectors(targetPos, aMesh.position).normalize();
+      const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
+      const tl = gsap.timeline();
+      tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
+        .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.30, ease: 'power2.inOut' });
+    } catch {}
+  });
+
+  // ===== 10) Tile crossfade sync =====
+  socket.on('tileCrossfade', ({ r, c, prev, next }) => {
+    try {
+      const tile = tileMeshes?.[r]?.[c]; if (!tile) return;
+      dissolveTileCrossfade(tile, getTileMaterial(prev), getTileMaterial(next), 0.9);
+    } catch {}
   });
 
   // ===== 5) Queue / start =====
