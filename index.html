@@ -834,15 +834,13 @@
             targetIdx = Math.max(0, Math.min(9, currentMana - 1));
           }
         } catch {}
-        // Если это чисто визуальный прилёт (онлайн/наблюдатель), временно «держим» новый орб, чтобы не было эффекта «+1 уже появился»
+        // Блокируем появление орба в панели до завершения полета
         if (visualOnly && typeof ownerIndex === 'number') {
-          // Блокируем орбы только для наблюдателя (не для владельца панели)
           try {
             const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
-            if (mySeat !== ownerIndex) {
-              PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) + 1);
-              updateUI();
-            }
+            // Блокируем орб для всех игроков до завершения анимации полета
+            PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) + 1);
+            updateUI();
           } catch {}
         }
         const child = barEl.children && barEl.children[targetIdx];
@@ -867,14 +865,12 @@
         document.body.appendChild(orb);
         const tl = gsap.timeline({ onComplete: () => {
           if (orb && orb.parentNode) orb.parentNode.removeChild(orb);
-          // Визуальный эффект завершён. Изменение маны теперь выполняется в логике боя/спеллов, а не здесь
+          // Визуальный эффект завершён - теперь показываем орб в панели
           try {
             if (visualOnly && typeof ownerIndex === 'number') {
-              const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
-              if (mySeat !== ownerIndex) {
-                PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) - 1);
-                updateUI();
-              }
+              // Разблокируем орб для всех игроков когда анимация полета завершена
+              PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) - 1);
+              updateUI(); // Орб появится в панели именно в этот момент
             }
           } catch {}
         }});
@@ -2870,9 +2866,12 @@
                 const dirUp = new THREE.Vector3().subVectors(deadMesh.position, fromMesh.position).normalize().multiplyScalar(0.4);
                 dissolveAndAsh(deadMesh, dirUp, 0.9);
               }
-              const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.6, 0));
-              // Показать визуальный орб у обоих игроков; фактическое начисление маны уже в res.n1
-              animateManaGainFromWorld(p, d.owner, true);
+              // Орб маны появляется с задержкой 400мс после начала анимации смерти
+              setTimeout(() => {
+                const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.6, 0));
+                // Показать визуальный орб у обоих игроков; фактическое начисление маны уже в res.n1
+                animateManaGainFromWorld(p, d.owner, true);
+              }, 400);
             }
             setTimeout(() => { gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {} }, 1000);
           } else {
@@ -3249,9 +3248,12 @@
           try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
           const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
           if (deadMesh) { dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9); }
-          const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-          // Только визуальный орб; фактическое начисление — в res.n1
-          animateManaGainFromWorld(p, d.owner, true);
+          // Орб маны появляется с задержкой 400мс после начала анимации смерти
+          setTimeout(() => {
+            const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
+            // Только визуальный орб; фактическое начисление — в res.n1
+            animateManaGainFromWorld(p, d.owner, true);
+          }, 400);
         }
         setTimeout(() => {
           gameState = res.n1; updateUnits(); updateUI();
@@ -4209,9 +4211,10 @@
   }
 
   socket.on('opponentLeft', ()=>{
+    console.log('[MATCH] Opponent left, MY_SEAT:', MY_SEAT);
     NET_ACTIVE=false; updateIndicator(); updateInputLock();
     // Показываем победу оставшемуся в игре игроку
-    showVictoryModal({ reason: 'opponentLeft', winnerSeat: (typeof MY_SEAT==='number'?MY_SEAT:undefined) });
+    showVictoryModal({ reason: 'opponentLeft', winnerSeat: MY_SEAT });
     try { if (queueModal) hideQueueModal(); } catch {}
     try { hideStartCountdown(); } catch {}
   });
@@ -4350,10 +4353,17 @@
 
   // ===== 8) Победа/поражение и меню после матча =====
   function showVictoryModal({ reason, winnerSeat }={}){
+    console.log('[VICTORY] Showing victory modal', { reason, winnerSeat, MY_SEAT });
     hideQueueModal(); hideStartCountdown();
     const m = document.createElement('div');
     m.className = 'mp-modal';
-    const title = (reason==='opponentLeft') ? (winnerSeat===MY_SEAT ? 'Победа! Противник отключился' : 'Противник отключился') : (winnerSeat===MY_SEAT ? 'Победа!' : 'Поражение');
+    
+    let title;
+    if (reason === 'opponentLeft') {
+      title = (winnerSeat === MY_SEAT) ? 'Победа! Противник сдался' : 'Поражение! Вы отключились';
+    } else {
+      title = (winnerSeat === MY_SEAT) ? 'Победа!' : 'Поражение';
+    }
     m.innerHTML = `<div class="mp-card" style="min-width:320px">
       <div style="font-size:18px;margin-bottom:6px">${title}</div>
       <div class="mp-subtle" style="margin-bottom:12px">Матч завершён</div>
