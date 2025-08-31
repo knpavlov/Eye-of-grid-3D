@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="client-repo" content="knpavlov/Eye-of-grid-3D@alt">
   <title>Eye of Grid — Complete 3D</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
@@ -223,6 +224,9 @@
     <!-- Tooltip -->
     <div id="hover-tooltip" class="hidden overlay-panel px-2 py-1 text-xs"></div>
   </div>
+
+  <!-- Версия билда (слева внизу) -->
+  <div id="build-version" class="fixed left-4 bottom-4 z-20 text-xs text-slate-300 opacity-80"></div>
 
   <script>
     // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
@@ -549,6 +553,14 @@
       };
       const finish = () => {
         applyDeaths();
+        // Возврат 1 маны владельцам погибших существ
+        try {
+          for (const d of deaths) {
+            if (n1 && n1.players && n1.players[d.owner]) {
+              n1.players[d.owner].mana = capMana((n1.players[d.owner].mana || 0) + 1);
+            }
+          }
+        } catch {}
         return { n1, logLines, targets: hits.map(h => ({ r: h.r, c: h.c, dmg: h.dmg })), deaths };
       };
       return { step1, step2, finish, n1 };
@@ -570,6 +582,14 @@
       for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
         const u = n1.board[rr][cc].unit; if (u && u.currentHP <= 0) { deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId }); n1.board[rr][cc].unit = null; }
       }
+      // Возврат 1 маны владельцам погибших существ
+      try {
+        for (const d of deaths) {
+          if (n1 && n1.players && n1.players[d.owner]) {
+            n1.players[d.owner].mana = capMana((n1.players[d.owner].mana || 0) + 1);
+          }
+        }
+      } catch {}
       return { n1, logLines, dmg, deaths };
     }
     
@@ -2732,6 +2752,16 @@
             // После лунжей контратаки — тряска и числа урона по атакующему
             setTimeout(() => { const aLive = unitMeshes.find(m => m.userData.row === r && m.userData.col === c) || aMesh; if (aLive) { shakeMesh(aLive, 6, 0.14); spawnDamageText(aLive, `-${retaliation}`, '#ffd166'); } }, Math.max(0, maxDur * 1000 - 10));
             animDelayMs = Math.max(animDelayMs, Math.floor(maxDur * 1000) + 160);
+            // Синхронизация контратаки для наблюдателя
+            try {
+              if (typeof socket !== 'undefined' && NET_ACTIVE && MY_SEAT === gameState.active) {
+                socket.emit('battleRetaliation', {
+                  attacker: { r, c },
+                  retaliators: retaliators.map(x => ({ r: x.r, c: x.c })),
+                  total: retaliation
+                });
+              }
+            } catch {}
           }
           // Финализация: анимация смерти и орбы перед применением состояния
           const res = staged.finish();
@@ -2745,14 +2775,15 @@
                 dissolveAndAsh(deadMesh, dirUp, 0.9);
               }
               const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.6, 0));
-              // Только визуал; сама мана будет изменена в состоянии
+              // Начисляем владельцу погибшего существа +1 ману и показываем анимацию у обоих игроков
+              try { if (gameState && gameState.players) { gameState.players[d.owner].mana = capMana((gameState.players[d.owner].mana || 0) + 1); } } catch {}
               animateManaGainFromWorld(p, d.owner, true);
             }
-            setTimeout(() => { gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; }, 1000);
+            setTimeout(() => { gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {} }, 1000);
           } else {
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем применим состояние
             setTimeout(() => {
-              gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
+              gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {}
             }, Math.max(0, animDelayMs));
           }
         }, 420);
@@ -3112,16 +3143,20 @@
           const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
           if (deadMesh) { dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9); }
           const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
+          // Начисляем владельцу погибшего существа +1 ману (онлайн/офлайн одинаково)
+          try { if (gameState && gameState.players) { gameState.players[d.owner].mana = capMana((gameState.players[d.owner].mana || 0) + 1); } } catch {}
           animateManaGainFromWorld(p, d.owner);
         }
         setTimeout(() => {
           gameState = res.n1; updateUnits(); updateUI();
           const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
+          try { schedulePush('magic-battle-finish'); } catch {}
         }, 1000);
       } else {
         // Если смертей нет — применяем состояние сразу
         gameState = res.n1; updateUnits(); updateUI();
         const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
+        try { schedulePush('magic-battle-finish'); } catch {}
       }
     }
     // Вспомогательные утилиты: задержка и яркая заставка BATTLE на 3 секунды
@@ -3488,13 +3523,11 @@
           pendingRitualSpellHandIndex = idx;
         } catch {}
         showPrompt('Выберите существо из руки для ритуала', () => {
-          // Отмена ритуала — вернуть карту в руку и убрать временный меш
+          // Отмена ритуала — убрать временный меш и показать карту-спелл, без возврата в руку
           try { if (pendingRitualBoardMesh && pendingRitualBoardMesh.parent) pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {}
           pendingRitualBoardMesh = null;
           try { cardMesh.visible = true; } catch {}
-          // Показать скрытый экземпляр спелла и обновить руку
           pendingRitualSpellHandIndex = null; updateHand();
-          returnCardToHand(cardMesh);
           pendingDiscardSelection = null;
         });
         // Если карт несколько — ждём клика по карте в руке
@@ -3626,6 +3659,7 @@
 
   // ===== 4) Socket + sync =====
   const socket = io(SERVER_URL, { transports:['websocket'] });
+  try { window.socket = socket; } catch {}
   let NET_ACTIVE=false, MY_SEAT=null, APPLYING=false;
 
   // --- SENDING: «обёртки» + DIGEST-пуллер ---
@@ -3847,6 +3881,34 @@
     } catch {}
   });
 
+  // Доп. синхронизация: контратака (выпады контратакующих и удар по атакующему)
+  socket.on('battleRetaliation', ({ attacker, retaliators, total }) => {
+    try {
+      // На стороне активного игрока локальная анимация уже проиграна
+      if (typeof MY_SEAT === 'number' && gameState && MY_SEAT === gameState.active) return;
+      if (!attacker || !Array.isArray(retaliators)) return;
+      const aMesh = unitMeshes.find(m => m.userData.row === attacker.r && m.userData.col === attacker.c);
+      if (!aMesh) return;
+      let maxDur = 0;
+      for (const rrObj of retaliators) {
+        const rMesh = unitMeshes.find(m => m.userData.row === rrObj.r && m.userData.col === rrObj.c);
+        if (!rMesh) continue;
+        const dir2 = new THREE.Vector3().subVectors(aMesh.position, rMesh.position).normalize();
+        const push2 = { x: dir2.x * 0.6, z: dir2.z * 0.6 };
+        const tl2 = gsap.timeline();
+        tl2.to(rMesh.position, { x: `+=${push2.x}`, z: `+=${push2.z}`, duration: 0.22, ease: 'power2.out' })
+           .to(rMesh.position, { x: `-=${push2.x}`, z: `-=${push2.z}`, duration: 0.30, ease: 'power2.inOut' });
+        maxDur = Math.max(maxDur, 0.52);
+      }
+      if (typeof total === 'number' && total > 0) {
+        setTimeout(() => {
+          const aLive = unitMeshes.find(m => m.userData.row === attacker.r && m.userData.col === attacker.c) || aMesh;
+          if (aLive) { shakeMesh(aLive, 6, 0.14); spawnDamageText(aLive, `-${total}`, '#ffd166'); }
+        }, Math.max(0, maxDur * 1000 - 10));
+      }
+    } catch {}
+  });
+
   // ===== 10) Tile crossfade sync =====
   socket.on('tileCrossfade', ({ r, c, prev, next }) => {
     try {
@@ -3887,6 +3949,54 @@
                    <span class="mp-tag" id="mp-seat">—</span>
                    <span class="mp-turn" id="mp-turn"></span>`;
   document.body.appendChild(ind);
+
+  // Получение версии билда (в приоритете — коммит клиентского репозитория из GitHub API)
+  (async function fetchBuildVersion(){
+    const el = document.getElementById('build-version');
+    if (!el) return;
+    // 1) Пробуем GitHub API по window.CLIENT_REPO = { owner, repo, ref? }
+    try {
+      let cfg = (typeof window !== 'undefined' && window.CLIENT_REPO) ? window.CLIENT_REPO : null;
+      // Пробуем прочитать из <meta name="client-repo" content="owner/repo@ref">, либо из localStorage
+      if (!cfg) {
+        try {
+          const meta = document.querySelector('meta[name="client-repo"]');
+          const val = (meta && meta.getAttribute('content')) || (localStorage.getItem('CLIENT_REPO') || '');
+          if (val) {
+            // Форматы: owner/repo@ref | owner/repo
+            const [full, ref] = String(val).split('@');
+            const [owner, repo] = full.split('/');
+            if (owner && repo) cfg = { owner, repo, ref };
+          }
+        } catch {}
+      }
+      if (cfg && cfg.owner && cfg.repo) {
+        const ref = encodeURIComponent(cfg.ref || 'main');
+        const headers = {};
+        // Необязательный токен GitHub для повышенного лимита (например, положить в localStorage.GH_TOKEN)
+        try { const t = localStorage.getItem('GH_TOKEN'); if (t) headers['Authorization'] = `Bearer ${t}`; } catch {}
+        const gh = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/commits/${ref}`, { headers });
+        if (gh.ok) {
+          const data = await gh.json();
+          const shaShort = (data.sha || '').slice(0, 7);
+          let msg = (data.commit && data.commit.message) ? String(data.commit.message).trim() : '';
+          if (msg) { const parts = msg.split(/\s+/).slice(0, 7); msg = parts.join(' '); }
+          el.textContent = shaShort ? `${shaShort}${msg ? ' — ' + msg : ''}` : (msg || '');
+          return;
+        }
+      }
+    } catch {}
+    // 2) Фолбэк: серверный /build (покажет версию именно серверного репозитория)
+    try {
+      const res = await fetch('/build');
+      if (!res.ok) return;
+      const d = await res.json();
+      const shaShort = (d.sha || '').slice(0, 7);
+      let msg = (d.message || '').trim();
+      if (msg) { const parts = msg.split(/\s+/).slice(0, 7); msg = parts.join(' '); }
+      el.textContent = shaShort ? `${shaShort}${msg ? ' — ' + msg : ''}` : (msg || '');
+    } catch {}
+  })();
 
   function updateIndicator(){
     const dot=document.getElementById('mp-dot');

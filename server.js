@@ -114,6 +114,14 @@ io.on("connection", (socket) => {
     io.to(m.room).emit("battleAnim", payload);
   });
 
+  // синхронизация контратаки (второй этап боя)
+  socket.on("battleRetaliation", (payload) => {
+    const matchId = socket.data.matchId;
+    if (!matchId || !matches.has(matchId)) return;
+    const m = matches.get(matchId);
+    io.to(m.room).emit("battleRetaliation", payload);
+  });
+
   // синхронизация кроссфейда тайла (Fissures)
   socket.on("tileCrossfade", (payload) => {
     const matchId = socket.data.matchId;
@@ -148,6 +156,23 @@ io.on("connection", (socket) => {
       matches.delete(matchId);
     }
   });
+});
+
+// Служебный эндпоинт версии билда (используются переменные окружения популярных PaaS)
+app.get("/build", (req, res) => {
+  try {
+    const commitMessage = process.env.RAILWAY_GIT_COMMIT_MESSAGE || process.env.VERCEL_GIT_COMMIT_MESSAGE || process.env.COMMIT_MESSAGE || "";
+    const commitSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || process.env.COMMIT_SHA || "";
+    const branch = process.env.RAILWAY_GIT_BRANCH || process.env.VERCEL_GIT_COMMIT_REF || process.env.GIT_BRANCH || "";
+    res.json({
+      message: commitMessage,
+      sha: commitSha,
+      branch,
+      time: new Date().toISOString()
+    });
+  } catch (e) {
+    res.json({ message: "", sha: "", branch: "", time: new Date().toISOString() });
+  }
 });
 
 server.listen(PORT, () => console.log("MP server on", PORT));
