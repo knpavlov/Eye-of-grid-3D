@@ -282,7 +282,7 @@ io.on("connection", (socket) => {
     const m = matches.get(matchId);
     const loserSeat = socket.data.seat;
     const winnerSeat = loserSeat === 0 ? 1 : 0;
-    io.to(m.room).emit("matchEnded", { winnerSeat });
+    io.to(m.room).emit("matchEnded", { winnerSeat, reason: 'resign' });
     pushLog({ ev: 'resign', matchId, loserSeat, winnerSeat });
     try { m.sockets.forEach(s => { if (s) { s.leave(m.room); s.data.matchId = undefined; s.data.seat = undefined; s.data.queueing = false; } }); } catch {}
     if (m.timerId) clearInterval(m.timerId);

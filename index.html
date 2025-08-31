@@ -25,7 +25,7 @@
       background: rgba(255,255,255,0.06); 
       box-shadow: inset 0 2px 6px rgba(0,0,0,0.5); 
     }
-    /* Кнопка завершения хода с круговым таймером */
+    /* Кнопка завершения хода с круговым таймером **/
     .end-turn-btn { 
       position: relative; width: 84px; height: 84px; border-radius: 50%;
       background: radial-gradient(circle at 30% 30%, rgba(30,41,59,0.9), rgba(30,41,59,0.85) 45%, rgba(15,23,42,0.95));
@@ -319,7 +319,6 @@
       // Добавим новые спеллы в стартовую колоду для теста
       CARDS.SPELL_PARMTETIC_HOLY_FEAST,
       CARDS.SPELL_PARMTETIC_HOLY_FEAST,
-      CARDS.SPELL_PARMTETIC_HOLY_FEAST,
       CARDS.SPELL_GOGHLIE_ALTAR,
       CARDS.SPELL_BEGUILING_FOG,
       CARDS.SPELL_CLARE_WILS_BANNER,
@@ -601,6 +600,100 @@
       return { n1, logLines, dmg, deaths };
     }
     
+    // ====== БОЕВАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ ======
+    function performBattleSequence(r, c) {
+      const prevState = JSON.parse(JSON.stringify(gameState));
+      const staged = stagedAttack(gameState, r, c);
+      if (!staged || staged.empty) return;
+      
+      // Применяем шаг 1 (атака)
+      staged.step1();
+      const attackResult = staged.finish();
+      const attackerCell = { r, c };
+      const hitsPrev = attackResult.targets || [];
+      
+      // Отправляем данные об атаке в онлайн
+      try {
+        if (NET_ACTIVE && typeof window !== 'undefined' && window.socket) {
+          window.socket.emit('battleAnim', {
+            attacker: attackerCell,
+            targets: hitsPrev
+          });
+        }
+      } catch {}
+      
+      // Локальная анимация для активного игрока
+      try {
+        const aMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
+        if (aMesh && hitsPrev.length > 0) {
+          const first = hitsPrev[0];
+          if (tileMeshes?.[first.r]?.[first.c]) {
+            const targetPos = tileMeshes[first.r][first.c].position;
+            const dir = new THREE.Vector3().subVectors(targetPos, aMesh.position).normalize();
+            const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
+            const tl = gsap.timeline();
+            tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
+              .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.30, ease: 'power2.inOut' });
+            
+            // Показ урона по целям — после выпада
+            setTimeout(() => {
+              try {
+                for (const h of hitsPrev) {
+                  const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
+                  if (tMesh) { shakeMesh(tMesh, 6, 0.12); spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555'); }
+                }
+              } catch {}
+            }, 420);
+            
+            // Контратаки и урон по атакующему — после небольшой паузы
+            try {
+              const ret = staged && staged.step2 ? (staged.step2() || { total: 0, retaliators: [] }) : { total: 0, retaliators: [] };
+              const retaliators = (ret.retaliators || []);
+              let maxDur = 0;
+              
+              // Отправляем данные о контратаке в онлайн
+              if (NET_ACTIVE && typeof window !== 'undefined' && window.socket && retaliators.length > 0) {
+                window.socket.emit('battleRetaliation', {
+                  attacker: attackerCell,
+                  retaliators: retaliators,
+                  total: ret.total || 0
+                });
+              }
+              
+              retaliators.forEach(rrObj => {
+                const rMesh = unitMeshes.find(m => m.userData.row === rrObj.r && m.userData.col === rrObj.c);
+                if (!rMesh) return;
+                const dir2 = new THREE.Vector3().subVectors(aMesh.position, rMesh.position).normalize();
+                const push2 = { x: dir2.x * 0.6, z: dir2.z * 0.6 };
+                const tl2 = gsap.timeline();
+                tl2.to(rMesh.position, { x: `+=${push2.x}`, z: `+=${push2.z}`, duration: 0.22, ease: 'power2.out' })
+                   .to(rMesh.position, { x: `-=${push2.x}`, z: `-=${push2.z}`, duration: 0.30, ease: 'power2.inOut' });
+                maxDur = Math.max(maxDur, 0.52);
+              });
+              
+              if ((ret.total || 0) > 0) {
+                setTimeout(() => {
+                  const aLive = unitMeshes.find(m => m.userData.row === attackerCell.r && m.userData.col === attackerCell.c) || aMesh;
+                  if (aLive) { shakeMesh(aLive, 6, 0.14); spawnDamageText(aLive, `-${ret.total}`, '#ffd166'); }
+                }, Math.max(0, Math.floor(maxDur * 1000)));
+              }
+            } catch {}
+          }
+        }
+      } catch {}
+      
+      // Обновляем состояние игры
+      gameState = attackResult.n1;
+      
+      // Логирование
+      for (const line of attackResult.logLines) {
+        addLog(line);
+      }
+      
+      updateUI();
+      updateUnits();
+    }
+    
     // ====== THREE.JS СЦЕНА ======
     
     let scene, camera, renderer, raycaster, mouse;
@@ -640,6 +733,29 @@
       } catch {}
       return lastTurnSplashPromise;
     }
+    
+    // Функция показа заставки хода
+    async function showTurnSplash(title) {
+      splashActive = true;
+      refreshInputLockUI();
+      
+      const banner = document.getElementById('turn-banner');
+      if (banner) {
+        banner.innerHTML = `<div class="text-4xl font-bold bg-gradient-to-br from-blue-600/80 to-purple-500/80 px-8 py-4 rounded-2xl shadow-2xl ring-4 ring-blue-400/40">${title}</div>`;
+        banner.classList.remove('hidden');
+        banner.classList.add('flex');
+        
+        // Показываем заставку на 1 секунду <-- важно - длительность заставки боя!
+        setTimeout(() => {
+          banner.classList.add('hidden');
+          banner.classList.remove('flex');
+          splashActive = false;
+          refreshInputLockUI();
+        }, 1000);
+      }
+      
+      return new Promise(resolve => setTimeout(resolve, 1000));
+    }
     // Резерв: гарантированно показать заставку с повтором, если вдруг не отрисовалась
     async function forceTurnSplashWithRetry(maxRetries = 2) {
       let tries = 0;
@@ -655,7 +771,7 @@
         } catch {}
       }
       // Страховка от зависания блокировки ввода
-      setTimeout(() => { splashActive = false; refreshInputLockUI(); }, 2200);
+      setTimeout(() => { splashActive = false; refreshInputLockUI(); }, 1000);
     }
     async function requestTurnSplash() {
       if (!gameState) return;
@@ -4063,6 +4179,20 @@
       const tl = gsap.timeline();
       tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
         .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.30, ease: 'power2.inOut' });
+      
+      // Показываем урон по целям после выпада
+      setTimeout(() => {
+        try {
+          for (const target of targets) {
+            const tMesh = unitMeshes.find(m => m.userData.row === target.r && m.userData.col === target.c);
+            if (tMesh && target.dmg) { 
+              shakeMesh(tMesh, 6, 0.12); 
+              spawnDamageText(tMesh, `-${target.dmg}`, '#ff5555'); 
+            }
+          }
+        } catch {}
+      }, 420);
+      
       return true;
     } catch { return false; }
   }
@@ -4388,6 +4518,8 @@
     let title;
     if (reason === 'opponentLeft') {
       title = (winnerSeat === MY_SEAT) ? 'Победа! Противник сдался' : 'Поражение! Вы отключились';
+    } else if (reason === 'resign') {
+      title = (winnerSeat === MY_SEAT) ? 'Победа! Противник сдался' : 'Поражение! Вы сдались';
     } else {
       title = (winnerSeat === MY_SEAT) ? 'Победа!' : 'Поражение';
     }
@@ -4439,13 +4571,13 @@
   mountResignButton();
   setInterval(mountResignButton, 1000);
 
-  socket.on('matchEnded', ({ winnerSeat })=>{
+  socket.on('matchEnded', ({ winnerSeat, reason })=>{
     // Полный сброс клиентского онлайнового состояния и комнаты перед показом модалки
     try { (window.socket || socket).emit('requestState'); } catch {}
     NET_ACTIVE=false; MY_SEAT=null; APPLYING=false;
     try { window.MY_SEAT = null; } catch {}
     updateIndicator(); updateInputLock();
-    showVictoryModal({ winnerSeat });
+    showVictoryModal({ winnerSeat, reason: reason || 'resign' });
   });
 
 })();
