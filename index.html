@@ -819,8 +819,14 @@
         const targetIdx = Math.min(9, currentMana);
         // Если это чисто визуальный прилёт (онлайн/наблюдатель), временно «держим» новый орб, чтобы не было эффекта «+1 уже появился»
         if (visualOnly && typeof ownerIndex === 'number') {
-          try { PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) + 1); } catch {}
-          try { updateUI(); } catch {}
+          // Блокируем орбы только для наблюдателя (не для владельца панели)
+          try {
+            const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
+            if (mySeat !== ownerIndex) {
+              PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) + 1);
+              updateUI();
+            }
+          } catch {}
         }
         const child = barEl.children && barEl.children[targetIdx];
         let tx, ty;
@@ -847,8 +853,11 @@
           // Визуальный эффект завершён. Изменение маны теперь выполняется в логике боя/спеллов, а не здесь
           try {
             if (visualOnly && typeof ownerIndex === 'number') {
-              PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) - 1);
-              updateUI();
+              const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
+              if (mySeat !== ownerIndex) {
+                PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) - 1);
+                updateUI();
+              }
             }
           } catch {}
         }});
@@ -3985,10 +3994,13 @@
       return true;
     } catch { return false; }
   }
-  socket.on('battleAnim', ({ attacker, targets }) => {
+  socket.on('battleAnim', ({ attacker, targets, __id }) => {
+    // Активный уже видел выпад локально — проигрываем только у наблюдателя
+    if (typeof MY_SEAT === 'number' && gameState && MY_SEAT === gameState.active) return;
+    try { window.__LAST_BATTLE_ANIM_ID = __id || null; } catch {}
     if (!tryPlayBattleAnim(attacker, targets)) {
       // отложим до применения снапшота и построения мешей
-      PENDING_BATTLE_ANIMS.push({ attacker, targets, ts: Date.now() });
+      PENDING_BATTLE_ANIMS.push({ attacker, targets, ts: Date.now(), id: __id });
     }
   });
   // Визуальная поддержка: если пришло событие ритуала у оппонента — мягко отобразим +2 маны у него
@@ -4034,11 +4046,12 @@
       return true;
     } catch { return false; }
   }
-  socket.on('battleRetaliation', ({ attacker, retaliators, total }) => {
+  socket.on('battleRetaliation', ({ attacker, retaliators, total, __id }) => {
     // Активный уже видел анимацию локально
     if (typeof MY_SEAT === 'number' && gameState && MY_SEAT === gameState.active) return;
+    try { window.__LAST_RETAL_ID = __id || null; } catch {}
     if (!tryPlayRetaliation(attacker, retaliators, total)) {
-      PENDING_RETALIATIONS.push({ attacker, retaliators, total, ts: Date.now() });
+      PENDING_RETALIATIONS.push({ attacker, retaliators, total, ts: Date.now(), id: __id });
     }
   });
 
@@ -4102,6 +4115,26 @@
                    <span class="mp-tag" id="mp-seat">—</span>
                    <span class="mp-turn" id="mp-turn"></span>`;
   document.body.appendChild(ind);
+
+  // ===== 6.1) Debug log UI =====
+  (function mountDebugLog(){
+    try {
+      if (document.getElementById('debug-log-btn')) return;
+      const wrap = document.getElementById('mp-floater') || (()=>{ const d=document.createElement('div'); d.id='mp-floater'; d.className='mp-floater'; document.body.appendChild(d); return d; })();
+      const btn = document.createElement('button'); btn.id='debug-log-btn'; btn.className='mp-btn'; btn.textContent='Скачать лог';
+      btn.addEventListener('click', async ()=>{
+        try {
+          const res = await fetch('/debug-log?n=2000');
+          const data = await res.json();
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href=url; a.download = `eog-log-${Date.now()}.json`; a.click();
+          setTimeout(()=>URL.revokeObjectURL(url), 2000);
+        } catch{}
+      });
+      wrap.appendChild(btn);
+    } catch {}
+  })();
 
   // Получение версии билда (в приоритете — коммит клиентского репозитория из GitHub API)
   (async function fetchBuildVersion(){

@@ -6,6 +6,12 @@ import { Server } from "socket.io";
 const app = express();
 app.use(cors());
 app.get("/", (req, res) => res.send("MP server alive"));
+// ===== Debug log (in-memory) =====
+let LOG = [];
+const MAX_LOG = 2000;
+function pushLog(entry){ try { LOG.push({ t: Date.now(), ...entry }); if (LOG.length > MAX_LOG) LOG.splice(0, LOG.length - MAX_LOG); } catch {} }
+app.get('/debug-log', (req, res) => { try { const n = Math.max(1, Math.min(10000, Number(req.query.n) || 1000)); return res.json({ logs: LOG.slice(-n) }); } catch { return res.json({ logs: [] }); } });
+app.post('/debug-log/clear', (req, res) => { try { LOG.length = 0; } catch{} res.json({ ok: true }); });
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -35,6 +41,7 @@ function pairIfPossible() {
 
     s0.emit("matchFound", { matchId, seat: 0 });
     s1.emit("matchFound", { matchId, seat: 1 });
+    pushLog({ ev: 'matchFound', matchId, sids: [s0.id, s1.id] });
 
     // Старт серверного таймера тиков (без авто-энда)
     const m = matches.get(matchId);
@@ -50,6 +57,7 @@ function pairIfPossible() {
 }
 
 io.on("connection", (socket) => {
+  pushLog({ ev: 'connect', sid: socket.id });
   socket.on("joinQueue", () => {
     // если socket был в комнате завершённого матча — убедимся, что он вышел
     try {
@@ -64,11 +72,12 @@ io.on("connection", (socket) => {
     socket.data.queueing = true;
     socket.data.matchId = undefined;
     socket.data.seat = undefined;
+    pushLog({ ev: 'joinQueue', sid: socket.id });
     pairIfPossible();
   });
 
   // активный игрок присылает актуальный gameState
-  socket.on("pushState", ({ state }) => {
+  socket.on("pushState", ({ state, reason }) => {
     const matchId = socket.data.matchId;
     if (!matchId || !matches.has(matchId)) return;
     const m = matches.get(matchId);
@@ -80,6 +89,7 @@ io.on("connection", (socket) => {
       m.timerSeconds = 100;
       io.to(m.room).emit("state", m.lastState);
       io.to(m.room).emit('turnTimer', { seconds: m.timerSeconds, activeSeat: m.lastState?.active ?? 0 });
+      pushLog({ ev: 'pushState:first', sid: socket.id, matchId, reason: reason || '', ver: m.lastVer, active: m.lastState?.active, turn: m.lastState?.turn });
       return;
     }
     // Иначе принимаем только от игрока, чей seat совпадает с active в последнем состоянии
@@ -106,12 +116,14 @@ io.on("connection", (socket) => {
       }
     } catch {}
     io.to(m.room).emit("state", m.lastState);
+    pushLog({ ev: 'pushState:applied', sid: socket.id, matchId, reason: reason || '', ver: m.lastVer, active: m.lastState?.active, turn: m.lastState?.turn });
   });
 
   socket.on("requestState", () => {
     const m = matches.get(socket.data.matchId);
     if (m?.lastState) socket.emit("state", m.lastState);
     if (m) socket.emit('turnTimer', { seconds: m.timerSeconds ?? 100, activeSeat: m.lastState?.active ?? 0 });
+    pushLog({ ev: 'requestState', sid: socket.id, matchId: socket.data.matchId });
   });
 
   // синхронизация анимаций боя (выпады/контратаки)
@@ -122,6 +134,7 @@ io.on("connection", (socket) => {
     // Маркируем событие id и строго ретранслируем обоим, включая инициатора (на клиенте фильтруем по active)
     try { if (!payload.__id) payload.__id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`; } catch {}
     io.to(m.room).emit("battleAnim", payload);
+    pushLog({ ev: 'battleAnim', sid: socket.id, matchId, attacker: payload?.attacker, targetsN: Array.isArray(payload?.targets)?payload.targets.length:0 });
   });
 
   // синхронизация контратаки (второй этап боя)
@@ -131,6 +144,7 @@ io.on("connection", (socket) => {
     const m = matches.get(matchId);
     try { if (!payload.__id) payload.__id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`; } catch {}
     io.to(m.room).emit("battleRetaliation", payload);
+    pushLog({ ev: 'battleRetaliation', sid: socket.id, matchId, attacker: payload?.attacker, retaliatorsN: Array.isArray(payload?.retaliators)?payload.retaliators.length:0, total: payload?.total });
   });
 
   // синхронизация кроссфейда тайла (Fissures)
@@ -139,6 +153,7 @@ io.on("connection", (socket) => {
     if (!matchId || !matches.has(matchId)) return;
     const m = matches.get(matchId);
     io.to(m.room).emit("tileCrossfade", payload);
+    pushLog({ ev: 'tileCrossfade', sid: socket.id, matchId, r: payload?.r, c: payload?.c, prev: payload?.prev, next: payload?.next });
   });
 
   // ритуальные спеллы (Holy Feast): подтверждение и визуальная синхронизация
@@ -147,6 +162,7 @@ io.on("connection", (socket) => {
     if (!matchId || !matches.has(matchId)) return;
     const m = matches.get(matchId);
     io.to(m.room).emit("ritualResolve", payload);
+    pushLog({ ev: 'ritualResolve', sid: socket.id, matchId, payload });
   });
 
   // Авторитетная обработка Holy Feast (без доверия к полному снапшоту от клиента)
@@ -162,6 +178,7 @@ io.on("connection", (socket) => {
       if (seat !== expectedSeat) return;
     } catch { return; }
     const st = m.lastState;
+    pushLog({ ev: 'holyFeast:req', sid: socket.id, matchId, seat, spellIdx, creatureIdx });
     try {
       const pl = st.players?.[seat];
       if (!pl) return;
@@ -187,6 +204,7 @@ io.on("connection", (socket) => {
       try { st.__ver = (Number(st.__ver) || 0) + 1; m.lastVer = st.__ver; } catch { m.lastVer = m.lastVer || 0; }
       io.to(m.room).emit("ritualResolve", { kind: 'HOLY_FEAST', by: seat });
       io.to(m.room).emit("state", st);
+      pushLog({ ev: 'holyFeast:applied', matchId, seat, newMana: pl.mana, discardN: (pl.discard||[]).length, graveyardN: (pl.graveyard||[]).length, ver: m.lastVer });
     } catch {}
   });
 
@@ -198,12 +216,14 @@ io.on("connection", (socket) => {
     const loserSeat = socket.data.seat;
     const winnerSeat = loserSeat === 0 ? 1 : 0;
     io.to(m.room).emit("matchEnded", { winnerSeat });
+    pushLog({ ev: 'resign', matchId, loserSeat, winnerSeat });
     try { m.sockets.forEach(s => { if (s) { s.leave(m.room); s.data.matchId = undefined; s.data.seat = undefined; s.data.queueing = false; } }); } catch {}
     if (m.timerId) clearInterval(m.timerId);
     matches.delete(matchId);
   });
 
   socket.on("disconnect", () => {
+    pushLog({ ev: 'disconnect', sid: socket.id, matchId: socket.data.matchId });
     const i = queue.indexOf(socket);
     if (i >= 0) queue.splice(i, 1);
     const matchId = socket.data.matchId;
