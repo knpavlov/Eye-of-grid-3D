@@ -3386,6 +3386,8 @@
             if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
             pl.discard.push(tpl);
             resetCardSelection(); updateHand(); updateUI();
+            // Онлайновое подтверждение ритуала: для наблюдателя отрисовать локальные анимации
+            try { if (NET_ACTIVE) socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
             try { schedulePush('spell-holy-feast', { force: true }); } catch {}
           }
         };
@@ -3590,6 +3592,7 @@
             if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
             pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
             pl.discard.push(tpl); updateHand(); updateUI();
+            try { if (NET_ACTIVE) socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
             try { schedulePush('spell-holy-feast', { force: true }); } catch {}
             hidePrompt(); pendingDiscardSelection = null;
           } }; addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`); return;
@@ -3610,6 +3613,7 @@
           if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
           pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
           pl.discard.push(tpl); updateHand(); updateUI(); hidePrompt();
+          try { if (NET_ACTIVE) socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
           try { schedulePush('spell-holy-feast', { force: true }); } catch {}
         }
         return;
@@ -3962,6 +3966,22 @@
       PENDING_BATTLE_ANIMS.push({ attacker, targets, ts: Date.now() });
     }
   });
+  // Визуальная поддержка: если пришло событие ритуала у оппонента — мягко отобразим +2 маны у него
+  socket.on('ritualResolve', ({ kind, by, card, consumed }) => {
+    try {
+      if (kind === 'HOLY_FEAST' && typeof by === 'number') {
+        // Показать вспышку +2 маны у панели by (только визуально; фактическое значение придёт со снапшотом)
+        const barEl = document.getElementById(`mana-display-${by}`);
+        if (barEl) {
+          const rect = barEl.getBoundingClientRect();
+          const center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
+          // Две искры в панель — символически
+          animateManaGainFromWorld(new THREE.Vector3(0,0,0), by, true);
+          setTimeout(()=> animateManaGainFromWorld(new THREE.Vector3(0,0,0), by, true), 120);
+        }
+      }
+    } catch {}
+  });
 
   // Доп. синхронизация: контратака (выпады контратакующих и удар по атакующему)
   function tryPlayRetaliation(attacker, retaliators, total){
@@ -4020,6 +4040,14 @@
   function onFindMatchClick(){ showQueueModal(); socket.emit('joinQueue'); }
   socket.on('matchFound', ({ seat })=>{
     hideQueueModal();
+    // Полный сброс локального состояния предыдущего матча перед стартом нового
+    try { if (window.__pendingBattleFlushTimer) { clearInterval(window.__pendingBattleFlushTimer); window.__pendingBattleFlushTimer = null; } } catch {}
+    try { PENDING_BATTLE_ANIMS = []; PENDING_RETALIATIONS = []; } catch {}
+    try { PENDING_MANA_ANIM = null; PENDING_MANA_BLOCK = [0,0]; } catch {}
+    try { pendingDrawCount = 0; pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null; } catch {}
+    try { lastDigest = ''; } catch {}
+    APPLYING = false;
+    gameState = null;
     MY_SEAT = seat; NET_ACTIVE = true;
     try { window.MY_SEAT = seat; } catch {}
     updateIndicator(); updateInputLock();
@@ -4201,7 +4229,11 @@
   setInterval(mountResignButton, 1000);
 
   socket.on('matchEnded', ({ winnerSeat })=>{
-    NET_ACTIVE=false; updateIndicator(); updateInputLock();
+    // Полный сброс клиентского онлайнового состояния и комнаты перед показом модалки
+    try { if (typeof socket !== 'undefined') { socket.emit('requestState'); } } catch {}
+    NET_ACTIVE=false; MY_SEAT=null; APPLYING=false;
+    try { window.MY_SEAT = null; } catch {}
+    updateIndicator(); updateInputLock();
     showVictoryModal({ winnerSeat });
   });
 

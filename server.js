@@ -141,6 +141,14 @@ io.on("connection", (socket) => {
     io.to(m.room).emit("tileCrossfade", payload);
   });
 
+  // ритуальные спеллы (Holy Feast): подтверждение и визуальная синхронизация
+  socket.on("ritualResolve", (payload) => {
+    const matchId = socket.data.matchId;
+    if (!matchId || !matches.has(matchId)) return;
+    const m = matches.get(matchId);
+    io.to(m.room).emit("ritualResolve", payload);
+  });
+
   // сдача матча
   socket.on("resign", () => {
     const matchId = socket.data.matchId;
@@ -149,7 +157,7 @@ io.on("connection", (socket) => {
     const loserSeat = socket.data.seat;
     const winnerSeat = loserSeat === 0 ? 1 : 0;
     io.to(m.room).emit("matchEnded", { winnerSeat });
-    try { m.sockets.forEach(s => { if (s) { s.data.matchId = undefined; s.data.seat = undefined; s.data.queueing = false; } }); } catch {}
+    try { m.sockets.forEach(s => { if (s) { s.leave(m.room); s.data.matchId = undefined; s.data.seat = undefined; s.data.queueing = false; } }); } catch {}
     if (m.timerId) clearInterval(m.timerId);
     matches.delete(matchId);
   });
