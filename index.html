@@ -671,8 +671,11 @@
     let manaGainActive = false;
     // Ожидаемая анимация маны: диапазон новых орбов, которые должны появиться синхронно со вспышкой
     let PENDING_MANA_ANIM = null; // { ownerIndex, startIdx, endIdx }
+    // Блокировка появления N последних орбов маны на панели до завершения «полетевших» визуальных орбов (смерть/эффекты)
+    let PENDING_MANA_BLOCK = [0, 0]; // по игрокам: сколько последних слотов временно скрыть
     // Прячет один экземпляр ритуального спелла в руке активного игрока, пока ждём выбора жертвы
     let pendingRitualSpellHandIndex = null;
+    let pendingRitualSpellCard = null; // ссылка на сам объект карты-спелла, чтобы скрывать по идентичности
     // Сколько последних добранных карт временно скрывать из моей руки (для красивой анимации влёта)
     let pendingDrawCount = 0;
     function isInputLocked() {
@@ -814,6 +817,11 @@
         // определить целевую ячейку: текущая мана = индекс слота для влёта
         const currentMana = (gameState && gameState.players && gameState.players[ownerIndex]) ? (gameState.players[ownerIndex].mana || 0) : 0;
         const targetIdx = Math.min(9, currentMana);
+        // Если это чисто визуальный прилёт (онлайн/наблюдатель), временно «держим» новый орб, чтобы не было эффекта «+1 уже появился»
+        if (visualOnly && typeof ownerIndex === 'number') {
+          try { PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) + 1); } catch {}
+          try { updateUI(); } catch {}
+        }
         const child = barEl.children && barEl.children[targetIdx];
         let tx, ty;
         if (child) {
@@ -837,6 +845,12 @@
         const tl = gsap.timeline({ onComplete: () => {
           if (orb && orb.parentNode) orb.parentNode.removeChild(orb);
           // Визуальный эффект завершён. Изменение маны теперь выполняется в логике боя/спеллов, а не здесь
+          try {
+            if (visualOnly && typeof ownerIndex === 'number') {
+              PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) - 1);
+              updateUI();
+            }
+          } catch {}
         }});
         // 0.5с появление, затем 2.0с полёт к панели
         tl.to(orb, { duration: 0.5, ease: 'back.out(1.4)', opacity: 1, transform: 'translate(-50%, -50%) scale(1)' })
@@ -1854,7 +1868,11 @@
         const prev = manaDisplay.querySelectorAll('.mana-orb').length;
         const currentMana = gameState.players[p].mana;
         const pending = (PENDING_MANA_ANIM && PENDING_MANA_ANIM.ownerIndex === p) ? PENDING_MANA_ANIM : null;
-        const renderMana = pending ? Math.min(currentMana, Math.max(0, pending.startIdx)) : currentMana;
+        const block = Math.max(0, Number(PENDING_MANA_BLOCK?.[p]) || 0);
+        const blockAdjusted = Math.max(0, currentMana - block);
+        // Если идёт «полетевший» визуальный орб, не даём орбам проявляться раньше вспышки
+        const renderManaBase = pending ? Math.min(blockAdjusted, Math.max(0, pending.startIdx)) : blockAdjusted;
+        const renderMana = Math.max(0, Math.min(total, renderManaBase));
         manaDisplay.innerHTML = '';
         for (let i = 0; i < total; i++) {
           const orb = document.createElement('div');
@@ -3520,13 +3538,14 @@
           try { cardMesh.visible = false; } catch {}
           // Запомним индекс текущего спелла в руке
           pendingRitualSpellHandIndex = idx;
+          pendingRitualSpellCard = tpl;
         } catch {}
         showPrompt('Выберите существо из руки для ритуала', () => {
           // Отмена ритуала — убрать временный меш и показать карту-спелл, без возврата в руку
           try { if (pendingRitualBoardMesh && pendingRitualBoardMesh.parent) pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {}
           pendingRitualBoardMesh = null;
           try { cardMesh.visible = true; } catch {}
-          pendingRitualSpellHandIndex = null; updateHand();
+          pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null; updateHand();
           pendingDiscardSelection = null;
         });
         // Если карт несколько — ждём клика по карте в руке
@@ -3541,10 +3560,14 @@
             // Завершение ритуала: визуально сжечь временный меш спелла и убрать его, затем удалить карту из руки и положить в discard
             try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
             pl.mana = capMana(pl.mana - (tpl.cost || 0));
-            // Удаляем текущий разыгранный спелл с корректным индексом
-            const spellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl);
+            // Удаляем текущий разыгранный спелл с корректным индексом или по идентичности объекта
+            let spellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : -1;
+            if (spellIdx < 0) {
+              // пробуем найти по ссылке на объект
+              spellIdx = pl.hand.findIndex(x => x === pendingRitualSpellCard || x === tpl);
+            }
             if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
-            pendingRitualSpellHandIndex = null;
+            pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
             pl.discard.push(tpl); updateHand(); updateUI();
             try { schedulePush('spell-holy-feast', { force: true }); } catch {}
             hidePrompt(); pendingDiscardSelection = null;
@@ -3561,9 +3584,10 @@
           pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
           try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
           pl.mana = capMana(pl.mana - (tpl.cost || 0));
-          const spellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl);
+          let spellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : -1;
+          if (spellIdx < 0) { spellIdx = pl.hand.findIndex(x => x === pendingRitualSpellCard || x === tpl); }
           if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
-          pendingRitualSpellHandIndex = null;
+          pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
           pl.discard.push(tpl); updateHand(); updateUI(); hidePrompt();
           try { schedulePush('spell-holy-feast', { force: true }); } catch {}
         }
@@ -3750,7 +3774,12 @@
     if (!force && !myTurn) return;               // только активный игрок пушит
     if (force) {
       // немедленная отправка, игнорируя pending
-      try { socket.emit('pushState', { state: gameState, reason }); } catch{}
+      try {
+        // Версионируем состояние: защитимся от устаревших снапшотов, приходящих чуть позже
+        gameState.__ver = (Number(gameState.__ver) || 0) + 1;
+        try { window.__LAST_SENT_VER = gameState.__ver; } catch {}
+        socket.emit('pushState', { state: gameState, reason });
+      } catch{}
       lastDigest = digest(gameState);
       pending = false;
       return;
@@ -3759,7 +3788,11 @@
     pending = true;
     requestAnimationFrame(()=>{
       pending = false;
-      try { socket.emit('pushState', { state: gameState, reason }); } catch{}
+      try {
+        gameState.__ver = (Number(gameState.__ver) || 0) + 1;
+        try { window.__LAST_SENT_VER = gameState.__ver; } catch {}
+        socket.emit('pushState', { state: gameState, reason });
+      } catch{}
       lastDigest = digest(gameState);
     });
   }
@@ -3780,6 +3813,15 @@
   socket.on('state', async (state)=>{
     if (!state) return;
     const prev = APPLYING ? null : (gameState ? JSON.parse(JSON.stringify(gameState)) : null);
+    // Защита от поздних устаревших снапшотов: принимаем только если версия не меньше текущей
+    try {
+      const incomingVer = Number(state.__ver) || 0;
+      const currentVer = Number(gameState && gameState.__ver) || 0;
+      if (incomingVer < currentVer) {
+        // проигнорируем устаревший снапшот
+        return;
+      }
+    } catch {}
     APPLYING = true;
     try {
       gameState = state;
@@ -3792,6 +3834,17 @@
       // Попробуем доиграть отложенные анимации наблюдателя, если меши уже есть
       try { flushPendingBattleQueues && flushPendingBattleQueues(); } catch {}
       try { if (prev) playDeltaAnimations(prev, state); } catch {}
+      // Переодическая попытка доиграть отложенные боевые анимации, если меши подгрузились чуть позже
+      try {
+        if (typeof window !== 'undefined') {
+          if (window.__pendingBattleFlushTimer) clearInterval(window.__pendingBattleFlushTimer);
+          window.__pendingBattleFlushTimer = setInterval(()=>{
+            try { flushPendingBattleQueues && flushPendingBattleQueues(); } catch {}
+          }, 120);
+          // Автоостанов через короткое время, чтобы не крутилось бесконечно
+          setTimeout(()=>{ try { if (window.__pendingBattleFlushTimer) clearInterval(window.__pendingBattleFlushTimer); } catch {} }, 2500);
+        }
+      } catch {}
       // Если пришёл новый ход, заранее блокируем отображение новых орбов маны,
       // чтобы первая перерисовка UI не показывала их до вспышки
       try {
