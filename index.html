@@ -648,6 +648,8 @@
     let manaGainActive = false;
     // Ожидаемая анимация маны: диапазон новых орбов, которые должны появиться синхронно со вспышкой
     let PENDING_MANA_ANIM = null; // { ownerIndex, startIdx, endIdx }
+    // Прячет один экземпляр ритуального спелла в руке активного игрока, пока ждём выбора жертвы
+    let pendingRitualSpellHandIndex = null;
     // Сколько последних добранных карт временно скрывать из моей руки (для красивой анимации влёта)
     let pendingDrawCount = 0;
     function isInputLocked() {
@@ -1710,6 +1712,20 @@
               const tl = gsap.timeline();
               tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
                 .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.30, ease: 'power2.inOut' });
+              // Пробуем анимировать простой выпад контратакующих по предположению
+              try {
+                const staged = stagedAttack(prevState, attackerCell.r, attackerCell.c);
+                const ret = staged && staged.step2 ? (staged.step2() || { total: 0, retaliators: [] }) : { total: 0, retaliators: [] };
+                const retaliators = (ret.retaliators || []);
+                retaliators.forEach(rrObj => {
+                  const rMesh = unitMeshes.find(m => m.userData.row === rrObj.r && m.userData.col === rrObj.c);
+                  if (!rMesh) return;
+                  const dir2 = new THREE.Vector3().subVectors(aMesh.position, rMesh.position).normalize();
+                  const push2 = { x: dir2.x * 0.6, z: dir2.z * 0.6 };
+                  gsap.to(rMesh.position, { x: `+=${push2.x}`, z: `+=${push2.z}`, duration: 0.22, ease: 'power2.out' })
+                    .then(() => gsap.to(rMesh.position, { x: `-=${push2.x}`, z: `-=${push2.z}`, duration: 0.30, ease: 'power2.inOut' }));
+                });
+              } catch {}
             }
           } catch {}
         }
@@ -1740,6 +1756,8 @@
                 dissolveAndAsh(ghost, new THREE.Vector3(0,0,0.6), 0.9);
                 const p = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
                 animateManaGainFromWorld(p, pu.owner);
+                // Обновим UI панели маны сразу для наблюдателя (+1), серверный снапшот дойдёт позже
+                try { if (gameState && gameState.players && typeof pu.owner === 'number') { gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1); updateUI(); } } catch {}
               } catch {}
             } else if (!pu && nu) {
               // Юнит появился — лёгкий «поп» масштаба
@@ -3018,6 +3036,35 @@
       }
     }
 
+    // Кроссфейд между старым и новым материалом: старая текстура плавно растворяется, новая проявляется
+    function dissolveTileCrossfade(tileMesh, oldMaterial, newMaterial, durationSec = 0.9) {
+      try {
+        if (!tileMesh || !oldMaterial || !newMaterial) return dissolveTileSwap(tileMesh, newMaterial, durationSec);
+        const geom = tileMesh.geometry;
+        const group = new THREE.Group();
+        group.position.copy(tileMesh.position);
+        group.rotation.copy(tileMesh.rotation);
+        group.scale.copy(tileMesh.scale);
+        const oldMesh = new THREE.Mesh(geom.clone(), oldMaterial.clone());
+        const newMesh = new THREE.Mesh(geom.clone(), newMaterial.clone());
+        (boardGroup || scene).add(group);
+        group.add(oldMesh); group.add(newMesh);
+        // подготовка прозрачности
+        oldMesh.material.transparent = true; newMesh.material.transparent = true;
+        oldMesh.material.depthWrite = false; newMesh.material.depthWrite = false;
+        oldMesh.material.opacity = 1.0; newMesh.material.opacity = 0.0;
+        // запустить анимацию
+        const tl = gsap.timeline({ onComplete: () => {
+          try { tileMesh.material = newMaterial; tileMesh.material.needsUpdate = true; } catch {}
+          try { (boardGroup || scene).remove(group); } catch {}
+        }});
+        tl.to(oldMesh.material, { opacity: 0.0, duration: Math.max(0.4, durationSec), ease: 'power1.inOut' }, 0)
+          .to(newMesh.material, { opacity: 1.0, duration: Math.max(0.4, durationSec), ease: 'power1.inOut' }, 0);
+      } catch {
+        dissolveTileSwap(tileMesh, newMaterial, durationSec);
+      }
+    }
+
     function performMagicAttack(from, targetMesh) {
       const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
       const res = magicAttack(gameState, from.r, from.c, tr, tc);
@@ -3383,7 +3430,7 @@
             .then(() => gsap.to(pulse.material, { opacity: 0, duration: 0.22, onComplete: ()=> effectsGroup.remove(pulse) }));
           // Плавная шейдерная замена материала тайла
           const mat = getTileMaterial(nextEl);
-          dissolveTileSwap(tile, mat, 0.9);
+          dissolveTileCrossfade(tile, getTileMaterial(prevEl), mat, 0.9);
         } catch {}
         // Юнит на клетке может изменить HP из-за смены элемента
         const u = gameState.board[r][c].unit;
@@ -3427,12 +3474,16 @@
           spellDragHandled = true;
           // Спрячем перетягиваемую карту на время ритуала, чтобы не дублировалась в руке
           try { cardMesh.visible = false; } catch {}
+          // Запомним индекс текущего спелла в руке
+          pendingRitualSpellHandIndex = idx;
         } catch {}
         showPrompt('Выберите существо из руки для ритуала', () => {
           // Отмена ритуала — вернуть карту в руку и убрать временный меш
           try { if (pendingRitualBoardMesh && pendingRitualBoardMesh.parent) pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {}
           pendingRitualBoardMesh = null;
           try { cardMesh.visible = true; } catch {}
+          // Показать скрытый экземпляр спелла и обновить руку
+          pendingRitualSpellHandIndex = null; updateHand();
           returnCardToHand(cardMesh);
           pendingDiscardSelection = null;
         });
@@ -3449,8 +3500,9 @@
             try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
             pl.mana = capMana(pl.mana - (tpl.cost || 0));
             // Удаляем текущий разыгранный спелл с корректным индексом
-            const spellIdx = pl.hand.indexOf(tpl);
+            const spellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl);
             if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
+            pendingRitualSpellHandIndex = null;
             pl.discard.push(tpl); updateHand(); updateUI();
             try { schedulePush('spell-holy-feast', { force: true }); } catch {}
             hidePrompt(); pendingDiscardSelection = null;
@@ -3467,8 +3519,9 @@
           pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
           try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
           pl.mana = capMana(pl.mana - (tpl.cost || 0));
-          const spellIdx = pl.hand.indexOf(tpl);
+          const spellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl);
           if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
+          pendingRitualSpellHandIndex = null;
           pl.discard.push(tpl); updateHand(); updateUI(); hidePrompt();
           try { schedulePush('spell-holy-feast', { force: true }); } catch {}
         }
