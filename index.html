@@ -3536,7 +3536,7 @@
           const mat = getTileMaterial(nextEl);
           dissolveTileCrossfade(tile, getTileMaterial(prevEl), mat, 0.9);
           // Онлайновая синхронизация эффекта
-          try { if (NET_ACTIVE && MY_SEAT === gameState.active) socket.emit('tileCrossfade', { r, c, prev: prevEl, next: nextEl }); } catch {}
+          try { if (NET_ACTIVE && MY_SEAT === gameState.active && typeof window !== 'undefined' && window.socket) window.socket.emit('tileCrossfade', { r, c, prev: prevEl, next: nextEl }); } catch {}
         } catch {}
         // Юнит на клетке может изменить HP из-за смены элемента
         const u = gameState.board[r][c].unit;
@@ -3620,7 +3620,10 @@
               schedulePush('spell-holy-feast', { force: true });
             }
             hidePrompt(); pendingDiscardSelection = null;
-          } }; addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`); return;
+          } }; addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`);
+          // Доп. страховка: если по какой-то причине ритуал не завершился за 3 секунды — сбросить выбор
+          setTimeout(()=>{ try { if (pendingDiscardSelection) { hidePrompt(); pendingDiscardSelection = null; updateHand(); updateUI(); } } catch {} }, 3000);
+          return;
         }
         // Если ровно одна карта-сущность — сбрасываем её сразу
         const singleIdx = pl.hand.findIndex(x => x && x.type === 'UNIT');
@@ -4078,7 +4081,7 @@
   });
 
   // ===== 5) Queue / start =====
-  function onFindMatchClick(){ showQueueModal(); socket.emit('joinQueue'); }
+  function onFindMatchClick(){ showQueueModal(); try { (window.socket || socket).emit('joinQueue'); } catch {} }
   socket.on('matchFound', ({ seat })=>{
     hideQueueModal();
     // Полный сброс локального состояния предыдущего матча перед стартом нового
@@ -4100,7 +4103,7 @@
       try{ typeof initGame==='function' && await initGame(); }catch{}
       schedulePush('init-snapshot', {force:true}); // гарантированный первый снапшот
     } else {
-      socket.emit('requestState');
+      try { (window.socket || socket).emit('requestState'); } catch {}
     }
   }
 
@@ -4290,7 +4293,7 @@
       document.body.appendChild(confirmModal);
       confirmModal.querySelector('#r-no').addEventListener('click', ()=> confirmModal.remove());
       confirmModal.querySelector('#r-yes').addEventListener('click', ()=>{
-        try { socket.emit('resign'); } catch {}
+        try { (window.socket || socket).emit('resign'); } catch {}
         try { confirmModal.remove(); } catch {}
       });
     });
@@ -4300,7 +4303,7 @@
 
   socket.on('matchEnded', ({ winnerSeat })=>{
     // Полный сброс клиентского онлайнового состояния и комнаты перед показом модалки
-    try { if (typeof socket !== 'undefined') { socket.emit('requestState'); } } catch {}
+    try { (window.socket || socket).emit('requestState'); } catch {}
     NET_ACTIVE=false; MY_SEAT=null; APPLYING=false;
     try { window.MY_SEAT = null; } catch {}
     updateIndicator(); updateInputLock();
