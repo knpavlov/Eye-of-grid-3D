@@ -4059,7 +4059,16 @@
     } catch { return false; }
   }
   socket.on('battleAnim', ({ attacker, targets, __id, bySeat }) => {
-    console.log('[battleAnim] RAW EVENT RECEIVED', { MY_SEAT, bySeat, attacker, targets: targets?.length, __id, connected: socket.connected, NET_ACTIVE });
+    console.log('[battleAnim] RAW EVENT RECEIVED', { 
+      MY_SEAT, 
+      bySeat, 
+      attacker, 
+      targets: targets?.length, 
+      __id, 
+      connected: socket.connected, 
+      NET_ACTIVE,
+      shouldSkip: (typeof MY_SEAT === 'number' && typeof bySeat === 'number' && MY_SEAT === bySeat)
+    });
     // Проигрываем анимацию всем, кроме инициатора (bySeat). Это устойчивее, чем сверка active
     if (typeof MY_SEAT === 'number' && typeof bySeat === 'number' && MY_SEAT === bySeat) {
       console.log('[battleAnim] Skipping self-initiated animation', { MY_SEAT, bySeat, attacker, targets: targets?.length });
@@ -4174,6 +4183,7 @@
   function onFindMatchClick(){ showQueueModal(); try { (window.socket || socket).emit('joinQueue'); } catch {} }
   socket.on('matchFound', ({ seat })=>{
     hideQueueModal();
+    console.log('[MATCH] Match found, setting MY_SEAT to:', seat);
     // Полный сброс локального состояния предыдущего матча перед стартом нового
     try { if (window.__pendingBattleFlushTimer) { clearInterval(window.__pendingBattleFlushTimer); window.__pendingBattleFlushTimer = null; } } catch {}
     try { PENDING_BATTLE_ANIMS = []; PENDING_RETALIATIONS = []; } catch {}
@@ -4184,6 +4194,7 @@
     gameState = null;
     MY_SEAT = seat; NET_ACTIVE = true;
     try { window.MY_SEAT = seat; } catch {}
+    console.log('[MATCH] MY_SEAT set to:', MY_SEAT, 'NET_ACTIVE:', NET_ACTIVE);
     updateIndicator(); updateInputLock();
     showStartCountdown(seat, 3);
   });
