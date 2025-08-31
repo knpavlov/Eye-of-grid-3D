@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Railway Connection</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .warning { background: #fff3cd; color: #856404; }
+    </style>
+</head>
+<body>
+    <h1>Тест подключения к серверу</h1>
+    <div id="status"></div>
+    
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        const SERVER_URL = "https://eog-mp-server-production.up.railway.app";
+        const statusDiv = document.getElementById('status');
+        
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            statusDiv.appendChild(div);
+            console.log(message);
+        }
+        
+        log('Попытка подключения к ' + SERVER_URL);
+        
+        const socket = io(SERVER_URL, {
+            transports: ['websocket', 'polling'],
+            upgrade: true,
+            rememberUpgrade: true,
+            timeout: 20000,
+            forceNew: true
+        });
+        
+        socket.on('connect', () => {
+            log('✅ Успешно подключен! Socket ID: ' + socket.id, 'success');
+            
+            // Тест отправки сообщения
+            socket.emit('debugLog', { test: 'connection_test', timestamp: Date.now() });
+            log('📤 Отправлено тестовое сообщение');
+            
+            // Тест присоединения к очереди
+            setTimeout(() => {
+                socket.emit('joinQueue');
+                log('📤 Отправлен запрос на присоединение к очереди');
+            }, 1000);
+        });
+        
+        socket.on('connect_error', (error) => {
+            log('❌ Ошибка подключения: ' + error.message, 'error');
+        });
+        
+        socket.on('disconnect', (reason) => {
+            log('🔌 Отключен: ' + reason, 'warning');
+        });
+        
+        socket.on('matchFound', ({ matchId, seat }) => {
+            log(`🎮 Матч найден! ID: ${matchId}, место: ${seat}`, 'success');
+        });
+        
+        // Тест fetch запросов
+        async function testFetch() {
+            try {
+                const response = await fetch(SERVER_URL);
+                const text = await response.text();
+                log('✅ HTTP тест успешен: ' + text, 'success');
+            } catch (error) {
+                log('❌ HTTP тест провален: ' + error.message, 'error');
+            }
+            
+            try {
+                const response = await fetch(SERVER_URL + '/queue-status');
+                const data = await response.json();
+                log(`✅ Статус очереди: ${data.queueSize} игроков, ${data.activeMatches} матчей`, 'success');
+            } catch (error) {
+                log('❌ Ошибка получения статуса очереди: ' + error.message, 'error');
+            }
+        }
+        
+        testFetch();
+    </script>
+</body>
+</html>

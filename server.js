@@ -27,7 +27,16 @@ app.get('/queue-status', (req, res) => {
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] }
+  cors: { 
+    origin: "*", 
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"],
+    credentials: false
+  },
+  transports: ['websocket', 'polling'],
+  allowEIO3: true,
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
 const PORT = process.env.PORT || 3001;
 
@@ -79,7 +88,7 @@ function pairIfPossible() {
 }
 
 io.on("connection", (socket) => {
-  pushLog({ ev: 'connect', sid: socket.id });
+  pushLog({ ev: 'connect', sid: socket.id, transport: socket.conn.transport.name, remoteAddress: socket.conn.remoteAddress });
   // Клиентские произвольные заметки для отладки
   socket.on('debugLog', (payload = {}) => {
     try {

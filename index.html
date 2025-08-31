@@ -3806,7 +3806,13 @@
   function hideStartCountdown(){ startModal?.remove(); startModal=null; }
 
   // ===== 4) Socket + sync =====
-  const socket = io(SERVER_URL, { transports:['websocket'] });
+  const socket = io(SERVER_URL, { 
+    transports: ['websocket', 'polling'],
+    upgrade: true,
+    rememberUpgrade: true,
+    timeout: 20000,
+    forceNew: true
+  });
   try { window.socket = socket; } catch {}
   // NET_ACTIVE, MY_SEAT, APPLYING уже объявлены выше в глобальной области
 

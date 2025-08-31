@@ -26,7 +26,9 @@
     </div>
 
     <script>
-        const SERVER_URL = 'http://localhost:3001';
+        const SERVER_URL = (location.hostname === "localhost")
+            ? "http://localhost:3001"
+            : "https://eog-mp-server-production.up.railway.app";
         
         async function checkServerStatus() {
             try {
