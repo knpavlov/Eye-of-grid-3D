@@ -226,7 +226,7 @@
   </div>
 
   <!-- Версия билда (сверху слева) -->
-  <div id="build-version" class="fixed left-4 top-3 z-20 text-xs text-slate-300 opacity-80"></div>
+  <div id="build-version" class="fixed left-0 top-0 z-20 text-xs text-slate-300 opacity-80 p-1.5"></div>
 
   <script>
     // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
@@ -1229,7 +1229,6 @@
       plane.userData = { kind: 'illustrationPlane' };
       cardMesh.add(plane);
     }
-    
     function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
       const gradient = ctx.createLinearGradient(0, 0, 0, height);
       gradient.addColorStop(0, '#1e293b');
@@ -1801,7 +1800,6 @@
         }
       } catch {}
     }
-
     // attachHpOverlay удалён, т.к. HP теперь перерисовывается на самой карте
     
     function updateUI() {
@@ -2434,7 +2432,6 @@
       manaGainActive = false;
       refreshInputLockUI();
     }
-    
     function placeUnitWithDirection(direction) {
       if (!pendingPlacement) return;
       
@@ -3082,7 +3079,6 @@
         tileMesh.material = newMaterial; tileMesh.material.needsUpdate = true;
       }
     }
-
     // Кроссфейд между старым и новым материалом: старая текстура плавно растворяется, новая проявляется
     function dissolveTileCrossfade(tileMesh, oldMaterial, newMaterial, durationSec = 0.9) {
       try {
