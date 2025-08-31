@@ -229,6 +229,12 @@
   <div id="build-version" class="fixed left-0 top-0 z-20 text-xs text-slate-300 opacity-80 p-1.5"></div>
 
   <script>
+    // ====== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ======
+    // Переменные для мультиплеера (должны быть доступны везде)
+    let NET_ACTIVE = false;
+    let MY_SEAT = null;
+    let APPLYING = false;
+    
     // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
     
     const DIR_VECTORS = { N: [-1, 0], E: [0, 1], S: [1, 0], W: [0, -1] };
@@ -713,11 +719,7 @@
     let activePrompt = null; // { text: string, onCancel: function }
     let pendingRitualBoardMesh = null; // временный меш спелла на поле
     let spellDragHandled = false; // флаг, что возврат карты в руку уже не нужен
-    
-    // Глобальные переменные для мультиплеера
-    let NET_ACTIVE = false;
-    let MY_SEAT = null;
-    let APPLYING = false;
+
     
     function initThreeJS() {
       const canvas = document.getElementById('three-canvas');
@@ -2834,14 +2836,14 @@
             animDelayMs = Math.max(animDelayMs, Math.floor(maxDur * 1000) + 160);
             // Синхронизация контратаки для наблюдателя
             try {
-              const shouldSend = (typeof window !== 'undefined' && window.socket && NET_ACTIVE && MY_SEAT === gameState.active);
+              const shouldSend = (typeof window !== 'undefined' && window.socket && (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) && (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active);
               console.log('[battleRetaliation] Checking if should send:', {
                 hasWindow: typeof window !== 'undefined',
                 hasSocket: !!(typeof window !== 'undefined' && window.socket),
-                NET_ACTIVE,
-                MY_SEAT,
+                NET_ACTIVE: typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : 'undefined',
+                MY_SEAT: typeof MY_SEAT !== 'undefined' ? MY_SEAT : 'undefined',
                 gameStateActive: gameState.active,
-                seatMatches: MY_SEAT === gameState.active,
+                seatMatches: (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active,
                 shouldSend,
                 retaliation
               });
@@ -2893,14 +2895,14 @@
             .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.3, ease: 'power2.inOut' });
           // Онлайновая синхронизация выпадов (атакующий и цели)
           try {
-            const shouldSend = (typeof window !== 'undefined' && window.socket && NET_ACTIVE && MY_SEAT === gameState.active);
+            const shouldSend = (typeof window !== 'undefined' && window.socket && (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) && (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active);
             console.log('[battleAnim] Checking if should send:', {
               hasWindow: typeof window !== 'undefined',
               hasSocket: !!(typeof window !== 'undefined' && window.socket),
-              NET_ACTIVE,
-              MY_SEAT,
+              NET_ACTIVE: typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : 'undefined',
+              MY_SEAT: typeof MY_SEAT !== 'undefined' ? MY_SEAT : 'undefined',
               gameStateActive: gameState.active,
-              seatMatches: MY_SEAT === gameState.active,
+              seatMatches: (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active,
               shouldSend
             });
             if (shouldSend) {
@@ -3431,15 +3433,15 @@
         pendingDiscardSelection = {
           requiredType: 'UNIT',
           onPicked: (handIdx) => {
-            console.log('[HF:onPicked] Called onPicked (castSpellOnUnit)', { handIdx, NET_ACTIVE });
+            console.log('[HF:onPicked] Called onPicked (castSpellOnUnit)', { handIdx, NET_ACTIVE: typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : 'undefined' });
             const toDiscardTpl = pl.hand[handIdx]; if (!toDiscardTpl) return;
             const localSpellIdx = pl.hand.indexOf(tpl);
             // В онлайне не мутируем руку локально — только визуально скрываем выбранные карты и шлём команду с индексами ДО удаления
-            try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
+            try { if (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
             // Поднимем 3D-карту из руки и прожжём её через dissolve (визуально)
             const handMesh = handCardMeshes.find(m => m.userData?.handIndex === handIdx);
             if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
-            if (NET_ACTIVE) {
+            if (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) {
               try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: handIdx }); } catch {}
               // Закрываем prompt и очищаем выбор, чтобы не зависала панель
               hidePrompt(); pendingDiscardSelection = null;
@@ -3631,8 +3633,10 @@
           pendingRitualSpellHandIndex = idx;
           pendingRitualSpellCard = tpl;
         } catch {}
+        console.log('[HF:drag] Showing prompt for Holy Feast drag to field');
         showPrompt('Выберите существо из руки для ритуала', () => {
           // Отмена ритуала — убрать временный меш и показать карту-спелл, без возврата в руку
+          console.log('[HF:drag] Canceling Holy Feast ritual');
           try { if (pendingRitualBoardMesh && pendingRitualBoardMesh.parent) pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {}
           pendingRitualBoardMesh = null;
           try { cardMesh.visible = true; } catch {}
@@ -3646,10 +3650,10 @@
             console.log('[HF:onPicked] Called onPicked (handleSpellDrop)', { handIdx, NET_ACTIVE });
             const toDiscardTpl = pl.hand[handIdx]; if (!toDiscardTpl) return;
             const localSpellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl);
-            try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
+            try { if (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
             const handMesh = handCardMeshes.find(m => m.userData?.handIndex === handIdx);
             if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
-            if (NET_ACTIVE) {
+            if (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) {
               try { if (typeof window !== 'undefined') window.__HF_ACK = false; } catch {}
               try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('debugLog', { tag:'HF:onPicked', phase:'emit', localSpellIdx, handIdx, active: gameState.active }); } catch {}
               try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
@@ -3658,19 +3662,23 @@
               setTimeout(()=>{ try { if (typeof window !== 'undefined' && !window.__HF_ACK && window.socket) window.socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: handIdx }); } catch {} }, 350);
               pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
               // Закроем prompt немедленно, чтобы не зависал UI
+              console.log('[HF:onPicked] Hiding prompt and clearing selection (online)');
               hidePrompt(); pendingDiscardSelection = null;
               updateHand(); updateUI();
             } else {
+              console.log('[HF:onPicked] Processing offline (handleSpellDrop)');
               try { pl.graveyard.push(toDiscardTpl); } catch {}
               pl.hand.splice(handIdx, 1); updateHand();
               pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
               try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
               let spellIdx = localSpellIdx; if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
               pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
+              console.log('[HF:onPicked] Hiding prompt and clearing selection (offline)');
+              pendingDiscardSelection = null;
+              hidePrompt();
               pl.discard.push(tpl); updateHand(); updateUI();
               schedulePush('spell-holy-feast', { force: true });
             }
-            hidePrompt(); pendingDiscardSelection = null;
           } }; addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`);
           // Доп. страховка: если по какой-то причине ритуал не завершился за 3 секунды — сбросить выбор
           setTimeout(()=>{ try { if (pendingDiscardSelection) { hidePrompt(); pendingDiscardSelection = null; updateHand(); updateUI(); } } catch {} }, 3000);
@@ -3700,9 +3708,10 @@
             pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
             try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
             let spellIdx = localSpellIdx; if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
-            pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
-            pl.discard.push(tpl); updateHand(); updateUI(); hidePrompt();
-            schedulePush('spell-holy-feast', { force: true });
+                          pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
+              pendingDiscardSelection = null;
+              pl.discard.push(tpl); updateHand(); updateUI(); hidePrompt();
+              schedulePush('spell-holy-feast', { force: true });
           }
         }
         return;
