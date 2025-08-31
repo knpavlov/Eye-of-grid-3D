@@ -620,6 +620,7 @@
     // Очереди догоняющих анимаций боя для наблюдателя
     let PENDING_BATTLE_ANIMS = [];
     let PENDING_RETALIATIONS = [];
+    let PENDING_HIDE_HAND_CARDS = [];
     // Управление анимациями заставки хода и добора карты
     let lastTurnSplashPromise = Promise.resolve();
     let lastSplashTurnRequested = 0;
@@ -814,9 +815,16 @@
         const start = worldToScreen(pos);
         const barEl = document.getElementById(`mana-display-${ownerIndex}`);
         if (!barEl) return;
-        // определить целевую ячейку: текущая мана = индекс слота для влёта
+        // определить целевую ячейку
         const currentMana = (gameState && gameState.players && gameState.players[ownerIndex]) ? (gameState.players[ownerIndex].mana || 0) : 0;
-        const targetIdx = Math.min(9, currentMana);
+        let targetIdx = Math.min(9, currentMana);
+        // У наблюдателя орб летит в «скрытую» ячейку (currentMana - 1)
+        try {
+          const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
+          if (visualOnly && mySeat !== null && mySeat !== ownerIndex) {
+            targetIdx = Math.max(0, Math.min(9, currentMana - 1));
+          }
+        } catch {}
         // Если это чисто визуальный прилёт (онлайн/наблюдатель), временно «держим» новый орб, чтобы не было эффекта «+1 уже появился»
         if (visualOnly && typeof ownerIndex === 'number') {
           // Блокируем орбы только для наблюдателя (не для владельца панели)
@@ -1455,7 +1463,10 @@
       // Скрыть один экземпляр ритуального спелла у активного игрока (во время выбора жертвы)
       let indices = [];
       for (let i = 0; i < hand.length; i++) {
+        // Скрываем выбранный для ритуала спелл
         if (viewerSeat === gameState.active && typeof pendingRitualSpellHandIndex === 'number' && i === pendingRitualSpellHandIndex) continue;
+        // Скрываем карты, которые клиент пометил «спрятать» (например, выбранные для Holy Feast до прихода снапшота)
+        if (Array.isArray(PENDING_HIDE_HAND_CARDS) && PENDING_HIDE_HAND_CARDS.includes(i)) continue;
         indices.push(i);
       }
       const handSize = indices.length;
@@ -3374,6 +3385,8 @@
           requiredType: 'UNIT',
           onPicked: (handIdx) => {
             const toDiscardTpl = pl.hand[handIdx]; if (!toDiscardTpl) return;
+            // Сразу пометим индексы карт, которые надо скрыть до прихода снапшота от сервера
+            try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, pl.hand.indexOf(tpl)])).filter(i=>i>=0); } } catch {}
             // Поднимем 3D-карту из руки и прожжём её через dissolve
             const handMesh = handCardMeshes.find(m => m.userData?.handIndex === handIdx);
             if (handMesh) {
@@ -3593,6 +3606,7 @@
         if (handCreatures.length > 1) {
           pendingDiscardSelection = { requiredType: 'UNIT', onPicked: (handIdx) => {
             const toDiscardTpl = pl.hand[handIdx]; if (!toDiscardTpl) return;
+            try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, pendingRitualSpellHandIndex != null ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl)])).filter(i=>i>=0); } } catch {}
             const handMesh = handCardMeshes.find(m => m.userData?.handIndex === handIdx);
             if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
             try { pl.graveyard.push(toDiscardTpl); } catch {}
@@ -3628,6 +3642,7 @@
         if (singleIdx >= 0) {
           const toDiscardTpl = pl.hand[singleIdx];
           const handMesh = handCardMeshes.find(m => m.userData?.handIndex === singleIdx);
+          try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([singleIdx, pendingRitualSpellHandIndex != null ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl)])).filter(i=>i>=0); } } catch {}
           if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
           try { pl.graveyard.push(toDiscardTpl); } catch {}
           pl.hand.splice(singleIdx, 1); updateHand();
@@ -4105,6 +4120,8 @@
     NET_ACTIVE=false; updateIndicator(); updateInputLock();
     // Показываем победу оставшемуся в игре игроку
     showVictoryModal({ reason: 'opponentLeft', winnerSeat: (typeof MY_SEAT==='number'?MY_SEAT:undefined) });
+    try { if (queueModal) hideQueueModal(); } catch {}
+    try { hideStartCountdown(); } catch {}
   });
 
   // ===== 6) Online indicator + whose turn =====
