@@ -3601,10 +3601,13 @@
             const handMesh = handCardMeshes.find(m => m.userData?.handIndex === handIdx);
             if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
             if (NET_ACTIVE) {
+              try { if (typeof window !== 'undefined') window.__HF_ACK = false; } catch {}
               try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('debugLog', { tag:'HF:onPicked', phase:'emit', localSpellIdx, handIdx, active: gameState.active }); } catch {}
               try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
               try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
               try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: handIdx }); } catch {}
+              // Повторная отправка через 350мс, если сервер не ответил
+              setTimeout(()=>{ try { if (typeof window !== 'undefined' && !window.__HF_ACK && window.socket) window.socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: handIdx }); } catch {} }, 350);
               pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
               // Закроем prompt немедленно, чтобы не зависал UI
               hidePrompt(); pendingDiscardSelection = null;
@@ -3634,10 +3637,12 @@
           try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([singleIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
           if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
           if (NET_ACTIVE) {
-            try { socket.emit('debugLog', { tag:'HF:single', phase:'emit', localSpellIdx, singleIdx, active: gameState.active }); } catch {}
+            try { if (typeof window !== 'undefined') window.__HF_ACK = false; } catch {}
+            try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('debugLog', { tag:'HF:single', phase:'emit', localSpellIdx, singleIdx, active: gameState.active }); } catch {}
             try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
-            try { socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
-            socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: singleIdx });
+            try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
+            try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: singleIdx }); } catch {}
+            setTimeout(()=>{ try { if (typeof window !== 'undefined' && !window.__HF_ACK && window.socket) window.socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: singleIdx }); } catch {} }, 350);
             pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
             hidePrompt();
             updateHand(); updateUI();
@@ -4009,6 +4014,7 @@
   socket.on('ritualResolve', ({ kind, by, card, consumed, consumedIdx, spellIdx }) => {
     try {
       if (kind === 'HOLY_FEAST' && typeof by === 'number') {
+        try { if (typeof window !== 'undefined') window.__HF_ACK = true; } catch {}
         // На всякий случай закрываем любые локальные модалки выбора и сбрасываем скрытия
         try { hidePrompt(); } catch {}
         try { pendingDiscardSelection = null; } catch {}
