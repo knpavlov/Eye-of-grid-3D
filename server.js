@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3001;
 
 // очередь и активные матчи
 const queue = [];
-const matches = new Map(); // matchId -> { room, sockets:[s0,s1], lastState, timerSeconds, timerId }
+const matches = new Map(); // matchId -> { room, sockets:[s0,s1], lastState, lastVer, timerSeconds, timerId }
 
 function pairIfPossible() {
   while (queue.length >= 2) {
@@ -28,7 +28,7 @@ function pairIfPossible() {
     s0.join(room);
     s1.join(room);
 
-    matches.set(matchId, { room, sockets:[s0,s1], lastState:null, timerSeconds: 100, timerId: null });
+    matches.set(matchId, { room, sockets:[s0,s1], lastState:null, lastVer:0, timerSeconds: 100, timerId: null });
     s0.data.matchId = matchId; s0.data.seat = 0;
     s1.data.matchId = matchId; s1.data.seat = 1;
     s0.data.queueing = false; s1.data.queueing = false;
@@ -75,6 +75,7 @@ io.on("connection", (socket) => {
     // Если это первый снапшот — принимаем и рассылаем
     if (!m.lastState) {
       m.lastState = state ?? null;
+      try { m.lastVer = Number(state && state.__ver) || 0; } catch { m.lastVer = 0; }
       // сброс таймера на первый ход
       m.timerSeconds = 100;
       io.to(m.room).emit("state", m.lastState);
@@ -87,6 +88,13 @@ io.on("connection", (socket) => {
       if (expectedSeat === null) return;
       if (socket.data.seat !== expectedSeat) return;
     } catch { return; }
+    // Отбрасываем устаревшие снапшоты: версия должна расти монотонно
+    try {
+      const incomingVer = Number(state && state.__ver) || 0;
+      const lastVer = Number(m.lastVer) || 0;
+      if (incomingVer < lastVer) return;
+      m.lastVer = incomingVer;
+    } catch {}
     const prevActive = m.lastState?.active;
     m.lastState = state ?? m.lastState;
     // Если активный игрок сменился — сбрасываем таймер
@@ -111,6 +119,8 @@ io.on("connection", (socket) => {
     const matchId = socket.data.matchId;
     if (!matchId || !matches.has(matchId)) return;
     const m = matches.get(matchId);
+    // Маркируем событие id и строго ретранслируем обоим, включая инициатора (на клиенте фильтруем по active)
+    try { if (!payload.__id) payload.__id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`; } catch {}
     io.to(m.room).emit("battleAnim", payload);
   });
 
@@ -119,6 +129,7 @@ io.on("connection", (socket) => {
     const matchId = socket.data.matchId;
     if (!matchId || !matches.has(matchId)) return;
     const m = matches.get(matchId);
+    try { if (!payload.__id) payload.__id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`; } catch {}
     io.to(m.room).emit("battleRetaliation", payload);
   });
 

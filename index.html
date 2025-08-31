@@ -1746,28 +1746,47 @@
         if (attackerCell) {
           try {
             const aMesh = unitMeshes.find(m => m.userData.row === attackerCell.r && m.userData.col === attackerCell.c);
-            const hitsPrev = computeHits(prevState, attackerCell.r, attackerCell.c);
-            if (aMesh && hitsPrev && hitsPrev.length) {
+            const hitsPrev = computeHits(prevState, attackerCell.r, attackerCell.c) || [];
+            if (aMesh && hitsPrev.length) {
               const first = hitsPrev[0];
               const targetPos = tileMeshes[first.r][first.c].position;
               const dir = new THREE.Vector3().subVectors(targetPos, aMesh.position).normalize();
               const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
+              // Выпад атакующего
               const tl = gsap.timeline();
               tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
                 .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.30, ease: 'power2.inOut' });
-              // Пробуем анимировать простой выпад контратакующих по предположению
+              // Показ урона по целям — после выпада
+              setTimeout(() => {
+                try {
+                  for (const h of hitsPrev) {
+                    const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
+                    if (tMesh) { shakeMesh(tMesh, 6, 0.12); spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555'); }
+                  }
+                } catch {}
+              }, 420);
+              // Контратаки и урон по атакующему — после небольшой паузы
               try {
                 const staged = stagedAttack(prevState, attackerCell.r, attackerCell.c);
                 const ret = staged && staged.step2 ? (staged.step2() || { total: 0, retaliators: [] }) : { total: 0, retaliators: [] };
                 const retaliators = (ret.retaliators || []);
+                let maxDur = 0;
                 retaliators.forEach(rrObj => {
                   const rMesh = unitMeshes.find(m => m.userData.row === rrObj.r && m.userData.col === rrObj.c);
                   if (!rMesh) return;
                   const dir2 = new THREE.Vector3().subVectors(aMesh.position, rMesh.position).normalize();
                   const push2 = { x: dir2.x * 0.6, z: dir2.z * 0.6 };
-                  gsap.to(rMesh.position, { x: `+=${push2.x}`, z: `+=${push2.z}`, duration: 0.22, ease: 'power2.out' })
-                    .then(() => gsap.to(rMesh.position, { x: `-=${push2.x}`, z: `-=${push2.z}`, duration: 0.30, ease: 'power2.inOut' }));
+                  const tl2 = gsap.timeline();
+                  tl2.to(rMesh.position, { x: `+=${push2.x}`, z: `+=${push2.z}`, duration: 0.22, ease: 'power2.out' })
+                    .to(rMesh.position, { x: `-=${push2.x}`, z: `-=${push2.z}`, duration: 0.30, ease: 'power2.inOut' });
+                  maxDur = Math.max(maxDur, 0.52);
                 });
+                if ((ret.total || 0) > 0) {
+                  setTimeout(() => {
+                    const aLive = unitMeshes.find(m => m.userData.row === attackerCell.r && m.userData.col === attackerCell.c) || aMesh;
+                    if (aLive) { shakeMesh(aLive, 6, 0.14); spawnDamageText(aLive, `-${ret.total}`, '#ffd166'); }
+                  }, Math.max(0, Math.floor(maxDur * 1000)));
+                }
               } catch {}
             }
           } catch {}
@@ -1784,8 +1803,12 @@
                 try {
                   const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
                   if (tMesh) {
-                    spawnDamageText(tMesh, `${delta > 0 ? '+' : ''}${delta}`, delta > 0 ? '#22c55e' : '#ef4444');
-                    if (delta < 0) { shakeMesh(tMesh, 6, 0.12); }
+                    // Если это цель атакующего — задержим показ урона до конца выпада (дублирование предотвращает проверка выше)
+                    const delay = (attackerCell && hitsPrev && hitsPrev.some(h => h.r === r && h.c === c)) ? 420 : 0;
+                    setTimeout(() => {
+                      spawnDamageText(tMesh, `${delta > 0 ? '+' : ''}${delta}`, delta > 0 ? '#22c55e' : '#ef4444');
+                      if (delta < 0) { shakeMesh(tMesh, 6, 0.12); }
+                    }, delay);
                   }
                 } catch {}
               }
@@ -1798,7 +1821,7 @@
                 try { effectsGroup.add(ghost); } catch { cardGroup.add(ghost); }
                 dissolveAndAsh(ghost, new THREE.Vector3(0,0,0.6), 0.9);
                 const p = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
-                animateManaGainFromWorld(p, pu.owner);
+                animateManaGainFromWorld(p, pu.owner, true);
                 // Не трогаем gameState в онлайне, чтобы не было двойного учёта. В офлайне можно подвинуть UI сразу.
                 try { if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') { gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1); updateUI(); } } catch {}
               } catch {}
@@ -2793,8 +2816,7 @@
                 dissolveAndAsh(deadMesh, dirUp, 0.9);
               }
               const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.6, 0));
-              // Начисляем владельцу погибшего существа +1 ману и показываем анимацию у обоих игроков
-              try { if (gameState && gameState.players) { gameState.players[d.owner].mana = capMana((gameState.players[d.owner].mana || 0) + 1); } } catch {}
+              // Показать визуальный орб у обоих игроков; фактическое начисление маны уже в res.n1
               animateManaGainFromWorld(p, d.owner, true);
             }
             setTimeout(() => { gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {} }, 1000);
@@ -3160,9 +3182,8 @@
           const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
           if (deadMesh) { dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9); }
           const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-          // Начисляем владельцу погибшего существа +1 ману (онлайн/офлайн одинаково)
-          try { if (gameState && gameState.players) { gameState.players[d.owner].mana = capMana((gameState.players[d.owner].mana || 0) + 1); } } catch {}
-          animateManaGainFromWorld(p, d.owner);
+          // Только визуальный орб; фактическое начисление — в res.n1
+          animateManaGainFromWorld(p, d.owner, true);
         }
         setTimeout(() => {
           gameState = res.n1; updateUnits(); updateUI();
