@@ -1,0 +1,411 @@
+{
+  "logs": [
+    {
+      "t": 1756639349139,
+      "ev": "connect",
+      "sid": "SK_WqEqgNYsSUOjFAAAB"
+    },
+    {
+      "t": 1756639349626,
+      "ev": "connect",
+      "sid": "ENtVLi5CYUacRYmYAAAD"
+    },
+    {
+      "t": 1756639530939,
+      "ev": "disconnect",
+      "sid": "SK_WqEqgNYsSUOjFAAAB"
+    },
+    {
+      "t": 1756639531749,
+      "ev": "connect",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF"
+    },
+    {
+      "t": 1756639535994,
+      "ev": "disconnect",
+      "sid": "ENtVLi5CYUacRYmYAAAD"
+    },
+    {
+      "t": 1756639536781,
+      "ev": "connect",
+      "sid": "CaqBdn269NEV1VvLAAAH"
+    },
+    {
+      "t": 1756639539044,
+      "ev": "joinQueue",
+      "sid": "CaqBdn269NEV1VvLAAAH"
+    },
+    {
+      "t": 1756639540315,
+      "ev": "joinQueue",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF"
+    },
+    {
+      "t": 1756639540316,
+      "ev": "matchFound",
+      "matchId": "m_1756639540315_16o8qg",
+      "sids": [
+        "CaqBdn269NEV1VvLAAAH",
+        "7_jFXQwZ-sJzRmEsAAAF"
+      ]
+    },
+    {
+      "t": 1756639543472,
+      "ev": "requestState",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF",
+      "matchId": "m_1756639540315_16o8qg"
+    },
+    {
+      "t": 1756639543497,
+      "ev": "pushState:first",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639540315_16o8qg",
+      "reason": "createBoard",
+      "ver": 1,
+      "active": 0,
+      "turn": 1
+    },
+    {
+      "t": 1756639543635,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639540315_16o8qg",
+      "reason": "initGame",
+      "ver": 2,
+      "active": 0,
+      "turn": 1
+    },
+    {
+      "t": 1756639543636,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639540315_16o8qg",
+      "reason": "init-snapshot",
+      "ver": 3,
+      "active": 0,
+      "turn": 1
+    },
+    {
+      "t": 1756639543713,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639540315_16o8qg",
+      "reason": "addLog",
+      "ver": 4,
+      "active": 0,
+      "turn": 1
+    },
+    {
+      "t": 1756639549500,
+      "ev": "resign",
+      "matchId": "m_1756639540315_16o8qg",
+      "loserSeat": 0,
+      "winnerSeat": 1
+    },
+    {
+      "t": 1756639549639,
+      "ev": "requestState",
+      "sid": "CaqBdn269NEV1VvLAAAH"
+    },
+    {
+      "t": 1756639549644,
+      "ev": "requestState",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF"
+    },
+    {
+      "t": 1756639551250,
+      "ev": "joinQueue",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF"
+    },
+    {
+      "t": 1756639551837,
+      "ev": "joinQueue",
+      "sid": "CaqBdn269NEV1VvLAAAH"
+    },
+    {
+      "t": 1756639551837,
+      "ev": "matchFound",
+      "matchId": "m_1756639551837_gjide9",
+      "sids": [
+        "7_jFXQwZ-sJzRmEsAAAF",
+        "CaqBdn269NEV1VvLAAAH"
+      ]
+    },
+    {
+      "t": 1756639554981,
+      "ev": "requestState",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639551837_gjide9"
+    },
+    {
+      "t": 1756639554997,
+      "ev": "pushState:first",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "createBoard",
+      "ver": 1,
+      "active": 0,
+      "turn": 1
+    },
+    {
+      "t": 1756639555140,
+      "ev": "pushState:applied",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "initGame",
+      "ver": 2,
+      "active": 0,
+      "turn": 1
+    },
+    {
+      "t": 1756639555140,
+      "ev": "pushState:applied",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "init-snapshot",
+      "ver": 3,
+      "active": 0,
+      "turn": 1
+    },
+    {
+      "t": 1756639555206,
+      "ev": "pushState:applied",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "addLog",
+      "ver": 4,
+      "active": 0,
+      "turn": 1
+    },
+    {
+      "t": 1756639560620,
+      "ev": "pushState:applied",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "addLog",
+      "ver": 5,
+      "active": 0,
+      "turn": 1
+    },
+    {
+      "t": 1756639561123,
+      "ev": "pushState:applied",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "updateHand",
+      "ver": 6,
+      "active": 0,
+      "turn": 1
+    },
+    {
+      "t": 1756639562725,
+      "ev": "pushState:applied",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "endTurn-apply",
+      "ver": 7,
+      "active": 1,
+      "turn": 2
+    },
+    {
+      "t": 1756639569739,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "addLog",
+      "ver": 8,
+      "active": 1,
+      "turn": 2
+    },
+    {
+      "t": 1756639577715,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "updateHand",
+      "ver": 9,
+      "active": 1,
+      "turn": 2
+    },
+    {
+      "t": 1756639579871,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "addLog",
+      "ver": 10,
+      "active": 1,
+      "turn": 2
+    },
+    {
+      "t": 1756639583107,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "updateHand",
+      "ver": 11,
+      "active": 1,
+      "turn": 2
+    },
+    {
+      "t": 1756639585272,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "addLog",
+      "ver": 12,
+      "active": 1,
+      "turn": 2
+    },
+    {
+      "t": 1756639589823,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "updateHand",
+      "ver": 13,
+      "active": 1,
+      "turn": 2
+    },
+    {
+      "t": 1756639597922,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "addLog",
+      "ver": 14,
+      "active": 1,
+      "turn": 2
+    },
+    {
+      "t": 1756639598424,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "updateHand",
+      "ver": 15,
+      "active": 1,
+      "turn": 2
+    },
+    {
+      "t": 1756639599755,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "performBattleSequence",
+      "ver": 16,
+      "active": 1,
+      "turn": 2
+    },
+    {
+      "t": 1756639601423,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "updateUI",
+      "ver": 16,
+      "active": 1,
+      "turn": 2
+    },
+    {
+      "t": 1756639602425,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "updateUnits",
+      "ver": 17,
+      "active": 1,
+      "turn": 2
+    },
+    {
+      "t": 1756639603822,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "updateUI",
+      "ver": 18,
+      "active": 1,
+      "turn": 2
+    },
+    {
+      "t": 1756639607377,
+      "ev": "pushState:applied",
+      "sid": "CaqBdn269NEV1VvLAAAH",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "endTurn-apply",
+      "ver": 19,
+      "active": 0,
+      "turn": 3
+    },
+    {
+      "t": 1756639619124,
+      "ev": "pushState:applied",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "addLog",
+      "ver": 20,
+      "active": 0,
+      "turn": 3
+    },
+    {
+      "t": 1756639619643,
+      "ev": "pushState:applied",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "updateHand",
+      "ver": 21,
+      "active": 0,
+      "turn": 3
+    },
+    {
+      "t": 1756639620970,
+      "ev": "pushState:applied",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "performBattleSequence",
+      "ver": 22,
+      "active": 0,
+      "turn": 3
+    },
+    {
+      "t": 1756639622623,
+      "ev": "pushState:applied",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "updateUI",
+      "ver": 22,
+      "active": 0,
+      "turn": 3
+    },
+    {
+      "t": 1756639623641,
+      "ev": "pushState:applied",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "updateUnits",
+      "ver": 23,
+      "active": 0,
+      "turn": 3
+    },
+    {
+      "t": 1756639625024,
+      "ev": "pushState:applied",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "updateUI",
+      "ver": 24,
+      "active": 0,
+      "turn": 3
+    },
+    {
+      "t": 1756639630791,
+      "ev": "pushState:applied",
+      "sid": "7_jFXQwZ-sJzRmEsAAAF",
+      "matchId": "m_1756639551837_gjide9",
+      "reason": "endTurn-apply",
+      "ver": 25,
+      "active": 1,
+      "turn": 4
+    }
+  ]
+}

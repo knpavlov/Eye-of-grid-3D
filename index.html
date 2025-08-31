@@ -2815,8 +2815,8 @@
             animDelayMs = Math.max(animDelayMs, Math.floor(maxDur * 1000) + 160);
             // Синхронизация контратаки для наблюдателя
             try {
-              if (typeof socket !== 'undefined' && NET_ACTIVE && MY_SEAT === gameState.active) {
-                socket.emit('battleRetaliation', {
+              if (typeof window !== 'undefined' && window.socket && NET_ACTIVE && MY_SEAT === gameState.active) {
+                window.socket.emit('battleRetaliation', {
                   attacker: { r, c },
                   retaliators: retaliators.map(x => ({ r: x.r, c: x.c })),
                   total: retaliation
@@ -2860,8 +2860,8 @@
             .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.3, ease: 'power2.inOut' });
           // Онлайновая синхронизация выпадов (атакующий и цели)
           try {
-            if (typeof socket !== 'undefined' && NET_ACTIVE && MY_SEAT === gameState.active) {
-              socket.emit('battleAnim', {
+            if (typeof window !== 'undefined' && window.socket && NET_ACTIVE && MY_SEAT === gameState.active) {
+              window.socket.emit('battleAnim', {
                 attacker: { r, c },
                 targets: hitsPrev.map(h => ({ r: h.r, c: h.c }))
               });
