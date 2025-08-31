@@ -136,13 +136,21 @@ io.on("connection", (socket) => {
   // синхронизация анимаций боя (выпады/контратаки)
   socket.on("battleAnim", (payload) => {
     const matchId = socket.data.matchId;
-    if (!matchId || !matches.has(matchId)) return;
+    if (!matchId || !matches.has(matchId)) {
+      pushLog({ ev: 'battleAnim:reject', sid: socket.id, reason: 'noMatch', matchId });
+      return;
+    }
     const m = matches.get(matchId);
     // Маркируем событие id и строго ретранслируем обоим, включая инициатора (на клиенте фильтруем по active)
     try { if (!payload.__id) payload.__id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`; } catch {}
     try { payload.bySeat = socket.data.seat; } catch {}
+    
+    // Логируем кому отправляем
+    const roomSockets = Array.from(io.sockets.adapter.rooms.get(m.room) || []);
+    pushLog({ ev: 'battleAnim:broadcast', sid: socket.id, matchId, room: m.room, roomSocketsCount: roomSockets.length, bySeat: socket.data.seat, attacker: payload?.attacker, targetsN: Array.isArray(payload?.targets)?payload.targets.length:0 });
+    
     io.to(m.room).emit("battleAnim", payload);
-    pushLog({ ev: 'battleAnim', sid: socket.id, matchId, bySeat: socket.data.seat, attacker: payload?.attacker, targetsN: Array.isArray(payload?.targets)?payload.targets.length:0 });
+    pushLog({ ev: 'battleAnim:sent', sid: socket.id, matchId, bySeat: socket.data.seat, attacker: payload?.attacker, targetsN: Array.isArray(payload?.targets)?payload.targets.length:0 });
   });
 
   // синхронизация контратаки (второй этап боя)

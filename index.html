@@ -4059,6 +4059,7 @@
     } catch { return false; }
   }
   socket.on('battleAnim', ({ attacker, targets, __id, bySeat }) => {
+    console.log('[battleAnim] RAW EVENT RECEIVED', { MY_SEAT, bySeat, attacker, targets: targets?.length, __id, connected: socket.connected, NET_ACTIVE });
     // Проигрываем анимацию всем, кроме инициатора (bySeat). Это устойчивее, чем сверка active
     if (typeof MY_SEAT === 'number' && typeof bySeat === 'number' && MY_SEAT === bySeat) {
       console.log('[battleAnim] Skipping self-initiated animation', { MY_SEAT, bySeat, attacker, targets: targets?.length });
