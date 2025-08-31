@@ -714,6 +714,11 @@
     let pendingRitualBoardMesh = null; // временный меш спелла на поле
     let spellDragHandled = false; // флаг, что возврат карты в руку уже не нужен
     
+    // Глобальные переменные для мультиплеера
+    let NET_ACTIVE = false;
+    let MY_SEAT = null;
+    let APPLYING = false;
+    
     function initThreeJS() {
       const canvas = document.getElementById('three-canvas');
       renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -2085,10 +2090,22 @@
         const cardData = card.userData.cardData;
         // Если ждём ритуального дискарда — перехват клика по руке
         if (pendingDiscardSelection && cardData && cardData.type === (pendingDiscardSelection.requiredType || cardData.type)) {
+          console.log('[HF:click] Clicked on creature card for Holy Feast', {
+            cardType: cardData.type,
+            requiredType: pendingDiscardSelection.requiredType,
+            handIdx: card.userData.handIndex,
+            NET_ACTIVE
+          });
           const owner = gameState.players[gameState.active];
           const handIdx = card.userData.handIndex;
-          try { pendingDiscardSelection.onPicked(handIdx); } catch {}
+          try { 
+            console.log('[HF:click] Calling onPicked with handIdx:', handIdx);
+            pendingDiscardSelection.onPicked(handIdx); 
+          } catch (e) {
+            console.error('[HF:click] Error in onPicked:', e);
+          }
           pendingDiscardSelection = null;
+          console.log('[HF:click] Reset pendingDiscardSelection to null');
           return;
         }
         
@@ -3410,9 +3427,11 @@
         // Ритуал: требуется сбросить существо из руки -> применить анимацию dissolve для выбранной карты из руки
         const handCreatures = pl.hand.filter(x => x && x.type === 'UNIT');
         if (handCreatures.length === 0) { showNotification('Нет существ в руке для ритуала', 'error'); return; }
+        console.log('[HF:setup] Setting up pendingDiscardSelection for Holy Feast (castSpellOnUnit)');
         pendingDiscardSelection = {
           requiredType: 'UNIT',
           onPicked: (handIdx) => {
+            console.log('[HF:onPicked] Called onPicked (castSpellOnUnit)', { handIdx, NET_ACTIVE });
             const toDiscardTpl = pl.hand[handIdx]; if (!toDiscardTpl) return;
             const localSpellIdx = pl.hand.indexOf(tpl);
             // В онлайне не мутируем руку локально — только визуально скрываем выбранные карты и шлём команду с индексами ДО удаления
@@ -3622,7 +3641,9 @@
         });
         // Если карт несколько — ждём клика по карте в руке
         if (handCreatures.length > 1) {
+          console.log('[HF:setup] Setting up pendingDiscardSelection for Holy Feast (handleSpellDrop)');
           pendingDiscardSelection = { requiredType: 'UNIT', onPicked: (handIdx) => {
+            console.log('[HF:onPicked] Called onPicked (handleSpellDrop)', { handIdx, NET_ACTIVE });
             const toDiscardTpl = pl.hand[handIdx]; if (!toDiscardTpl) return;
             const localSpellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl);
             try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
@@ -3776,7 +3797,7 @@
   // ===== 4) Socket + sync =====
   const socket = io(SERVER_URL, { transports:['websocket'] });
   try { window.socket = socket; } catch {}
-  let NET_ACTIVE=false, MY_SEAT=null, APPLYING=false;
+  // NET_ACTIVE, MY_SEAT, APPLYING уже объявлены выше в глобальной области
 
   // --- SENDING: «обёртки» + DIGEST-пуллер ---
   const TO_WRAP = [
