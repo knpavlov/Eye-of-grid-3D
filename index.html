@@ -4137,11 +4137,13 @@
   (function mountDebugLog(){
     try {
       if (document.getElementById('debug-log-btn')) return;
-      const wrap = document.getElementById('mp-floater') || (()=>{ const d=document.createElement('div'); d.id='mp-floater'; d.className='mp-floater'; document.body.appendChild(d); return d; })();
+      // Размещаем отдельно слева над индикатором, чтобы не перекрывать «Сдаться»
+      let host = document.getElementById('mp-debug');
+      if (!host) { host = document.createElement('div'); host.id='mp-debug'; host.style.position='fixed'; host.style.left='12px'; host.style.bottom='52px'; host.style.zIndex='9998'; document.body.appendChild(host); }
       const btn = document.createElement('button'); btn.id='debug-log-btn'; btn.className='mp-btn'; btn.textContent='Скачать лог';
       btn.addEventListener('click', async ()=>{
         try {
-          const res = await fetch('/debug-log?n=2000');
+          const res = await fetch(`${SERVER_URL}/debug-log?n=2000`);
           const data = await res.json();
           const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
           const url = URL.createObjectURL(blob);
@@ -4149,7 +4151,7 @@
           setTimeout(()=>URL.revokeObjectURL(url), 2000);
         } catch{}
       });
-      wrap.appendChild(btn);
+      host.appendChild(btn);
     } catch {}
   })();
 
@@ -4255,7 +4257,7 @@
     hideQueueModal(); hideStartCountdown();
     const m = document.createElement('div');
     m.className = 'mp-modal';
-    const title = reason==='opponentLeft' ? 'Противник отключился' : winnerSeat===MY_SEAT ? 'Победа!' : 'Поражение';
+    const title = (reason==='opponentLeft') ? (winnerSeat===MY_SEAT ? 'Победа! Противник отключился' : 'Противник отключился') : (winnerSeat===MY_SEAT ? 'Победа!' : 'Поражение');
     m.innerHTML = `<div class="mp-card" style="min-width:320px">
       <div style="font-size:18px;margin-bottom:6px">${title}</div>
       <div class="mp-subtle" style="margin-bottom:12px">Матч завершён</div>
