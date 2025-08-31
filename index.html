@@ -781,7 +781,7 @@
       return { x, y };
     }
 
-    function animateManaGainFromWorld(pos, ownerIndex) {
+    function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true) {
       try {
         const start = worldToScreen(pos);
         const barEl = document.getElementById(`mana-display-${ownerIndex}`);
@@ -811,10 +811,7 @@
         document.body.appendChild(orb);
         const tl = gsap.timeline({ onComplete: () => {
           if (orb && orb.parentNode) orb.parentNode.removeChild(orb);
-          if (gameState && gameState.players && gameState.players[ownerIndex]) {
-            gameState.players[ownerIndex].mana = capMana((gameState.players[ownerIndex].mana || 0) + 1);
-            updateUI();
-          }
+          // Визуальный эффект завершён. Изменение маны теперь выполняется в логике боя/спеллов, а не здесь
         }});
         // 0.5с появление, затем 2.0с полёт к панели
         tl.to(orb, { duration: 0.5, ease: 'back.out(1.4)', opacity: 1, transform: 'translate(-50%, -50%) scale(1)' })
@@ -2723,7 +2720,8 @@
                 dissolveAndAsh(deadMesh, dirUp, 0.9);
               }
               const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.6, 0));
-              animateManaGainFromWorld(p, d.owner);
+              // Только визуал; сама мана будет изменена в состоянии
+              animateManaGainFromWorld(p, d.owner, true);
             }
             setTimeout(() => { gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; }, 1000);
           } else {
@@ -3427,13 +3425,14 @@
           (boardGroup || scene).add(big);
           pendingRitualBoardMesh = big;
           spellDragHandled = true;
-          // Вернём визуально перетягиваемую карту в руку сразу (сама карта пока остаётся в руке логически)
-          try { returnCardToHand(cardMesh); } catch {}
+          // Спрячем перетягиваемую карту на время ритуала, чтобы не дублировалась в руке
+          try { cardMesh.visible = false; } catch {}
         } catch {}
         showPrompt('Выберите существо из руки для ритуала', () => {
           // Отмена ритуала — вернуть карту в руку и убрать временный меш
           try { if (pendingRitualBoardMesh && pendingRitualBoardMesh.parent) pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {}
           pendingRitualBoardMesh = null;
+          try { cardMesh.visible = true; } catch {}
           returnCardToHand(cardMesh);
           pendingDiscardSelection = null;
         });
