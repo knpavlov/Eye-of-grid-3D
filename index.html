@@ -3385,41 +3385,29 @@
           requiredType: 'UNIT',
           onPicked: (handIdx) => {
             const toDiscardTpl = pl.hand[handIdx]; if (!toDiscardTpl) return;
-            // Сразу пометим индексы карт, которые надо скрыть до прихода снапшота от сервера
-            try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, pl.hand.indexOf(tpl)])).filter(i=>i>=0); } } catch {}
-            // Поднимем 3D-карту из руки и прожжём её через dissolve
+            const localSpellIdx = pl.hand.indexOf(tpl);
+            // В онлайне не мутируем руку локально — только визуально скрываем выбранные карты и шлём команду с индексами ДО удаления
+            try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
+            // Поднимем 3D-карту из руки и прожжём её через dissolve (визуально)
             const handMesh = handCardMeshes.find(m => m.userData?.handIndex === handIdx);
-            if (handMesh) {
-              // Снимем из руки визуально перед анимацией
-              try { handMesh.userData.isInHand = false; } catch {}
-              dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9);
+            if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
+            if (NET_ACTIVE) {
+              try { socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
+              try { socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: handIdx }); } catch {}
+              resetCardSelection(); updateHand(); updateUI();
+            } else {
+              // Оффлайн: применяем сразу локально
+              try { pl.graveyard.push(toDiscardTpl); } catch {}
+              pl.hand.splice(handIdx, 1);
+              updateHand();
+              pl.mana = capMana(pl.mana + 2); updateUI();
+              addLog(`${tpl.name}: сбрасываете существо из руки и получаете +2 маны (\`${toDiscardTpl.name}\`).`);
+              pl.mana = capMana(pl.mana - (tpl.cost || 0));
+              const spellIdx2 = pl.hand.indexOf(tpl); if (spellIdx2 >= 0) { pl.hand.splice(spellIdx2, 1); }
+              pl.discard.push(tpl);
+              resetCardSelection(); updateHand(); updateUI();
+              schedulePush('spell-holy-feast', { force: true });
             }
-            // Состояние: переносим карту в graveyard и удаляем из руки
-            try { pl.graveyard.push(toDiscardTpl); } catch {}
-            pl.hand.splice(handIdx, 1);
-            updateHand();
-            // Вознаграждение ритуала: +2 маны
-            const beforeM = pl.mana; pl.mana = capMana(pl.mana + 2); updateUI();
-            addLog(`${tpl.name}: сбрасываете существо из руки и получаете +2 маны (\`${toDiscardTpl.name}\`).`);
-            // Списать стоимость спелла (если будет >0 в будущем) и отправить сам спелл в discard
-            pl.mana = capMana(pl.mana - (tpl.cost || 0));
-            // Удаляем ИМЕННО разыгранный экземпляр спелла, с учётом сдвигов индексов
-            const spellIdx = pl.hand.indexOf(tpl);
-            if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
-            pl.discard.push(tpl);
-            resetCardSelection(); updateHand(); updateUI();
-            // Онлайновое подтверждение ритуала: для наблюдателя отрисовать локальные анимации
-            try { if (NET_ACTIVE) socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
-            // Отправим авторитетную команду на сервер, чтобы он изменил состояние сам
-            try {
-              if (NET_ACTIVE) {
-                const spellIdx = pl.hand.indexOf(tpl);
-                const creatureIdx = handIdx;
-                socket.emit('holyFeast', { seat: gameState.active, spellIdx, creatureIdx });
-              } else {
-                schedulePush('spell-holy-feast', { force: true });
-              }
-            } catch {}
           }
         };
         addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`);
@@ -3606,34 +3594,26 @@
         if (handCreatures.length > 1) {
           pendingDiscardSelection = { requiredType: 'UNIT', onPicked: (handIdx) => {
             const toDiscardTpl = pl.hand[handIdx]; if (!toDiscardTpl) return;
-            try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, pendingRitualSpellHandIndex != null ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl)])).filter(i=>i>=0); } } catch {}
+            const localSpellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl);
+            try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
             const handMesh = handCardMeshes.find(m => m.userData?.handIndex === handIdx);
             if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
-            try { pl.graveyard.push(toDiscardTpl); } catch {}
-            pl.hand.splice(handIdx, 1); updateHand();
-            pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
-            // Завершение ритуала: визуально сжечь временный меш спелла и убрать его, затем удалить карту из руки и положить в discard
-            try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
-            pl.mana = capMana(pl.mana - (tpl.cost || 0));
-            // Удаляем текущий разыгранный спелл с корректным индексом или по идентичности объекта
-            let spellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : -1;
-            if (spellIdx < 0) {
-              // пробуем найти по ссылке на объект
-              spellIdx = pl.hand.findIndex(x => x === pendingRitualSpellCard || x === tpl);
+            if (NET_ACTIVE) {
+              try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
+              try { socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
+              socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: handIdx });
+              pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
+              updateHand(); updateUI();
+            } else {
+              try { pl.graveyard.push(toDiscardTpl); } catch {}
+              pl.hand.splice(handIdx, 1); updateHand();
+              pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
+              try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
+              let spellIdx = localSpellIdx; if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
+              pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
+              pl.discard.push(tpl); updateHand(); updateUI();
+              schedulePush('spell-holy-feast', { force: true });
             }
-            if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
-            pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
-            pl.discard.push(tpl); updateHand(); updateUI();
-            try { if (NET_ACTIVE) socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
-            try {
-              if (NET_ACTIVE) {
-                const spellIdx2 = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.findIndex(x => x === pendingRitualSpellCard || x === tpl);
-                const creatureIdx2 = handIdx;
-                socket.emit('holyFeast', { seat: gameState.active, spellIdx: spellIdx2, creatureIdx: creatureIdx2 });
-              } else {
-                schedulePush('spell-holy-feast', { force: true });
-              }
-            } catch {}
             hidePrompt(); pendingDiscardSelection = null;
           } }; addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`); return;
         }
@@ -3642,28 +3622,25 @@
         if (singleIdx >= 0) {
           const toDiscardTpl = pl.hand[singleIdx];
           const handMesh = handCardMeshes.find(m => m.userData?.handIndex === singleIdx);
-          try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([singleIdx, pendingRitualSpellHandIndex != null ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl)])).filter(i=>i>=0); } } catch {}
+          const localSpellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl);
+          try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([singleIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
           if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
-          try { pl.graveyard.push(toDiscardTpl); } catch {}
-          pl.hand.splice(singleIdx, 1); updateHand();
-          pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
-          try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
-          pl.mana = capMana(pl.mana - (tpl.cost || 0));
-          let spellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : -1;
-          if (spellIdx < 0) { spellIdx = pl.hand.findIndex(x => x === pendingRitualSpellCard || x === tpl); }
-          if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
-          pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
-          pl.discard.push(tpl); updateHand(); updateUI(); hidePrompt();
-          try { if (NET_ACTIVE) socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
-          try {
-            if (NET_ACTIVE) {
-              const spellIdx3 = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.findIndex(x => x === pendingRitualSpellCard || x === tpl);
-              const creatureIdx3 = singleIdx;
-              socket.emit('holyFeast', { seat: gameState.active, spellIdx: spellIdx3, creatureIdx: creatureIdx3 });
-            } else {
-              schedulePush('spell-holy-feast', { force: true });
-            }
-          } catch {}
+          if (NET_ACTIVE) {
+            try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
+            try { socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
+            socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: singleIdx });
+            pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
+            updateHand(); updateUI(); hidePrompt();
+          } else {
+            try { pl.graveyard.push(toDiscardTpl); } catch {}
+            pl.hand.splice(singleIdx, 1); updateHand();
+            pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
+            try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
+            let spellIdx = localSpellIdx; if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
+            pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
+            pl.discard.push(tpl); updateHand(); updateUI(); hidePrompt();
+            schedulePush('spell-holy-feast', { force: true });
+          }
         }
         return;
       }
@@ -4009,9 +3986,9 @@
       return true;
     } catch { return false; }
   }
-  socket.on('battleAnim', ({ attacker, targets, __id }) => {
-    // Активный уже видел выпад локально — проигрываем только у наблюдателя
-    if (typeof MY_SEAT === 'number' && gameState && MY_SEAT === gameState.active) return;
+  socket.on('battleAnim', ({ attacker, targets, __id, bySeat }) => {
+    // Проигрываем анимацию всем, кроме инициатора (bySeat). Это устойчивее, чем сверка active
+    if (typeof MY_SEAT === 'number' && typeof bySeat === 'number' && MY_SEAT === bySeat) return;
     try { window.__LAST_BATTLE_ANIM_ID = __id || null; } catch {}
     if (!tryPlayBattleAnim(attacker, targets)) {
       // отложим до применения снапшота и построения мешей
@@ -4061,9 +4038,9 @@
       return true;
     } catch { return false; }
   }
-  socket.on('battleRetaliation', ({ attacker, retaliators, total, __id }) => {
-    // Активный уже видел анимацию локально
-    if (typeof MY_SEAT === 'number' && gameState && MY_SEAT === gameState.active) return;
+  socket.on('battleRetaliation', ({ attacker, retaliators, total, __id, bySeat }) => {
+    // Проигрываем всем, кроме инициатора
+    if (typeof MY_SEAT === 'number' && typeof bySeat === 'number' && MY_SEAT === bySeat) return;
     try { window.__LAST_RETAL_ID = __id || null; } catch {}
     if (!tryPlayRetaliation(attacker, retaliators, total)) {
       PENDING_RETALIATIONS.push({ attacker, retaliators, total, ts: Date.now(), id: __id });
@@ -4144,12 +4121,16 @@
       btn.addEventListener('click', async ()=>{
         try {
           const res = await fetch(`${SERVER_URL}/debug-log?n=2000`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a'); a.href=url; a.download = `eog-log-${Date.now()}.json`; a.click();
           setTimeout(()=>URL.revokeObjectURL(url), 2000);
-        } catch{}
+        } catch(err){
+          console.error('Download log error', err);
+          showNotification('Не удалось скачать лог', 'error');
+        }
       });
       host.appendChild(btn);
     } catch {}

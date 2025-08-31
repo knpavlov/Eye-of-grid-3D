@@ -133,8 +133,9 @@ io.on("connection", (socket) => {
     const m = matches.get(matchId);
     // Маркируем событие id и строго ретранслируем обоим, включая инициатора (на клиенте фильтруем по active)
     try { if (!payload.__id) payload.__id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`; } catch {}
+    try { payload.bySeat = socket.data.seat; } catch {}
     io.to(m.room).emit("battleAnim", payload);
-    pushLog({ ev: 'battleAnim', sid: socket.id, matchId, attacker: payload?.attacker, targetsN: Array.isArray(payload?.targets)?payload.targets.length:0 });
+    pushLog({ ev: 'battleAnim', sid: socket.id, matchId, bySeat: socket.data.seat, attacker: payload?.attacker, targetsN: Array.isArray(payload?.targets)?payload.targets.length:0 });
   });
 
   // синхронизация контратаки (второй этап боя)
@@ -143,8 +144,9 @@ io.on("connection", (socket) => {
     if (!matchId || !matches.has(matchId)) return;
     const m = matches.get(matchId);
     try { if (!payload.__id) payload.__id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`; } catch {}
+    try { payload.bySeat = socket.data.seat; } catch {}
     io.to(m.room).emit("battleRetaliation", payload);
-    pushLog({ ev: 'battleRetaliation', sid: socket.id, matchId, attacker: payload?.attacker, retaliatorsN: Array.isArray(payload?.retaliators)?payload.retaliators.length:0, total: payload?.total });
+    pushLog({ ev: 'battleRetaliation', sid: socket.id, matchId, bySeat: socket.data.seat, attacker: payload?.attacker, retaliatorsN: Array.isArray(payload?.retaliators)?payload.retaliators.length:0, total: payload?.total });
   });
 
   // синхронизация кроссфейда тайла (Fissures)
@@ -173,23 +175,23 @@ io.on("connection", (socket) => {
     // Проверим право хода
     try {
       const expectedSeat = typeof m.lastState?.active === 'number' ? m.lastState.active : null;
-      if (expectedSeat === null) return;
-      if (socket.data.seat !== expectedSeat) return;
-      if (seat !== expectedSeat) return;
+      if (expectedSeat === null) { pushLog({ ev:'holyFeast:reject', matchId, reason:'noActive', seat, sid: socket.id }); return; }
+      if (socket.data.seat !== expectedSeat) { pushLog({ ev:'holyFeast:reject', matchId, reason:'notTurnOwner', seat, sid: socket.id, expectedSeat, gotSeat: socket.data.seat }); return; }
+      if (seat !== expectedSeat) { pushLog({ ev:'holyFeast:reject', matchId, reason:'seatMismatch', seat, sid: socket.id, expectedSeat }); return; }
     } catch { return; }
     const st = m.lastState;
     pushLog({ ev: 'holyFeast:req', sid: socket.id, matchId, seat, spellIdx, creatureIdx });
     try {
       const pl = st.players?.[seat];
-      if (!pl) return;
+      if (!pl) { pushLog({ ev:'holyFeast:reject', matchId, reason:'noPlayer', seat }); return; }
       const hand = pl.hand || [];
-      if (typeof spellIdx !== 'number' || typeof creatureIdx !== 'number') return;
-      if (creatureIdx < 0 || creatureIdx >= hand.length) return;
-      if (spellIdx < 0 || spellIdx >= hand.length) return;
+      if (typeof spellIdx !== 'number' || typeof creatureIdx !== 'number') { pushLog({ ev:'holyFeast:reject', matchId, reason:'badIndexesType', seat, spellIdx, creatureIdx, handN: hand.length }); return; }
+      if (creatureIdx < 0 || creatureIdx >= hand.length) { pushLog({ ev:'holyFeast:reject', matchId, reason:'creatureIdxOutOfRange', seat, creatureIdx, handN: hand.length }); return; }
+      if (spellIdx < 0 || spellIdx >= hand.length) { pushLog({ ev:'holyFeast:reject', matchId, reason:'spellIdxOutOfRange', seat, spellIdx, handN: hand.length }); return; }
       const spell = hand[spellIdx];
       const creature = hand[creatureIdx];
-      if (!spell || spell.type !== 'SPELL' || spell.id !== 'SPELL_PARMTETIC_HOLY_FEAST') return;
-      if (!creature || creature.type !== 'UNIT') return;
+      if (!spell || spell.type !== 'SPELL' || spell.id !== 'SPELL_PARMTETIC_HOLY_FEAST') { pushLog({ ev:'holyFeast:reject', matchId, reason:'spellInvalid', seat, spell }); return; }
+      if (!creature || creature.type !== 'UNIT') { pushLog({ ev:'holyFeast:reject', matchId, reason:'creatureInvalid', seat, creature }); return; }
       // Удаляем сначала больший индекс, чтобы не сдвинулся меньший
       const i1 = Math.max(spellIdx, creatureIdx);
       const i2 = Math.min(spellIdx, creatureIdx);
@@ -199,12 +201,13 @@ io.on("connection", (socket) => {
       try { pl.graveyard = Array.isArray(pl.graveyard) ? pl.graveyard : []; pl.graveyard.push(removed1.id !== 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1 : removed2); } catch {}
       // +2 маны
       const cap = (m) => Math.min(10, m);
-      pl.mana = cap((pl.mana || 0) + 2);
+      const beforeMana = (pl.mana || 0);
+      pl.mana = cap(beforeMana + 2);
       // Обновим версию состояния и разошлём
       try { st.__ver = (Number(st.__ver) || 0) + 1; m.lastVer = st.__ver; } catch { m.lastVer = m.lastVer || 0; }
       io.to(m.room).emit("ritualResolve", { kind: 'HOLY_FEAST', by: seat });
       io.to(m.room).emit("state", st);
-      pushLog({ ev: 'holyFeast:applied', matchId, seat, newMana: pl.mana, discardN: (pl.discard||[]).length, graveyardN: (pl.graveyard||[]).length, ver: m.lastVer });
+      pushLog({ ev: 'holyFeast:applied', matchId, seat, manaBefore: beforeMana, newMana: pl.mana, removed: { spell: removed1?.id === 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1?.id : removed2?.id, creature: removed1?.id !== 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1?.id : removed2?.id }, discardN: (pl.discard||[]).length, graveyardN: (pl.graveyard||[]).length, ver: m.lastVer });
     } catch {}
   });
 
