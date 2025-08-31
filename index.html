@@ -1692,6 +1692,30 @@
         if (!prevState || !nextState) return;
         const prevB = prevState.board || [];
         const nextB = nextState.board || [];
+        // Попробуем определить атакующего этого хода (у него lastAttackTurn === nextState.turn)
+        let attackerCell = null;
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            const u = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
+            if (u && u.lastAttackTurn === nextState.turn) { attackerCell = { r, c }; break; }
+          }
+          if (attackerCell) break;
+        }
+        if (attackerCell) {
+          try {
+            const aMesh = unitMeshes.find(m => m.userData.row === attackerCell.r && m.userData.col === attackerCell.c);
+            const hitsPrev = computeHits(prevState, attackerCell.r, attackerCell.c);
+            if (aMesh && hitsPrev && hitsPrev.length) {
+              const first = hitsPrev[0];
+              const targetPos = tileMeshes[first.r][first.c].position;
+              const dir = new THREE.Vector3().subVectors(targetPos, aMesh.position).normalize();
+              const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
+              const tl = gsap.timeline();
+              tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
+                .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.30, ease: 'power2.inOut' });
+            }
+          } catch {}
+        }
         for (let r = 0; r < 3; r++) {
           for (let c = 0; c < 3; c++) {
             const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
@@ -1703,19 +1727,22 @@
               if (delta !== 0) {
                 try {
                   const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-                  if (tMesh) spawnDamageText(tMesh, `${delta > 0 ? '+' : ''}${delta}`, delta > 0 ? '#22c55e' : '#ef4444');
+                  if (tMesh) {
+                    spawnDamageText(tMesh, `${delta > 0 ? '+' : ''}${delta}`, delta > 0 ? '#22c55e' : '#ef4444');
+                    if (delta < 0) { shakeMesh(tMesh, 6, 0.12); }
+                  }
                 } catch {}
               }
             } else if (pu && !nu) {
-              // Юнит исчез — короткий импульс на клетке
+              // Юнит исчез — проигрываем шейдерное «исчезновение» фантома и орб маны
               try {
                 const tile = tileMeshes?.[r]?.[c]; if (!tile) continue;
-                const pulse = new THREE.Mesh(new THREE.RingGeometry(0.4, 0.8, 32), new THREE.MeshBasicMaterial({ color: 0x9ca3af, transparent: true, opacity: 0 }));
-                pulse.rotation.x = -Math.PI/2; pulse.position.copy(tile.position).add(new THREE.Vector3(0, 0.2, 0));
-                effectsGroup.add(pulse);
-                gsap.to(pulse.material, { opacity: 0.9, duration: 0.12 })
-                  .then(() => gsap.to(pulse.scale, { x: 2.2, y: 2.2, z: 2.2, duration: 0.35, ease: 'power2.out' }))
-                  .then(() => gsap.to(pulse.material, { opacity: 0, duration: 0.22, onComplete: ()=> effectsGroup.remove(pulse) }));
+                const ghost = createCard3D(CARDS[pu.tplId], false);
+                ghost.position.copy(tile.position).add(new THREE.Vector3(0, 0.28, 0));
+                try { effectsGroup.add(ghost); } catch { cardGroup.add(ghost); }
+                dissolveAndAsh(ghost, new THREE.Vector3(0,0,0.6), 0.9);
+                const p = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+                animateManaGainFromWorld(p, pu.owner);
               } catch {}
             } else if (!pu && nu) {
               // Юнит появился — лёгкий «поп» масштаба
@@ -2940,6 +2967,59 @@
         .to(mats, { opacity: 0, duration: 1.5 }, 0);
     }
     
+    // Плавная шейдерная замена материала тайла (для Fissures)
+    function dissolveTileSwap(tileMesh, newMaterial, durationSec = 0.9) {
+      if (!tileMesh || !newMaterial) return;
+      try {
+        const old = tileMesh.material;
+        // Обёртка над onBeforeCompile аналогично dissolveAndAsh, но для плоского тайла
+        const uniforms = {
+          uTime: { value: 0.0 },
+          uThreshold: { value: 0.0 },
+          uEdgeWidth: { value: 0.10 },
+          uEdgeColor: { value: new THREE.Color(0.95, 0.85, 0.4) },
+          uNoiseScale: { value: 5.0 },
+          uNoiseMove: { value: new THREE.Vector2(0.2, -0.12) }
+        };
+        const matClone = old.clone();
+        matClone.transparent = true; matClone.depthWrite = false;
+        matClone.onBeforeCompile = (shader) => {
+          shader.uniforms.uTime = uniforms.uTime;
+          shader.uniforms.uThreshold = uniforms.uThreshold;
+          shader.uniforms.uEdgeWidth = uniforms.uEdgeWidth;
+          shader.uniforms.uEdgeColor = uniforms.uEdgeColor;
+          shader.uniforms.uNoiseScale = uniforms.uNoiseScale;
+          shader.uniforms.uNoiseMove = uniforms.uNoiseMove;
+          const header = `
+            uniform float uTime; uniform float uThreshold; uniform float uEdgeWidth; uniform vec3 uEdgeColor; uniform float uNoiseScale; uniform vec2 uNoiseMove;
+            float hashf(vec2 p){ p = fract(p * vec2(123.34, 345.45)); p += dot(p, p + 34.345); return fract(p.x * p.y); }
+            float noisef(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); float a=hashf(i); float b=hashf(i+vec2(1.,0.)); float c=hashf(i+vec2(0.,1.)); float d=hashf(i+vec2(1.,1.)); vec2 u=f*f*(3.-2.*f); return mix(a,b,u.x)+(c-a)*u.y*(1.-u.x)+(d-b)*u.x*u.y; }
+            float fbmf(vec2 p){ float v=0., a=0.5; for(int i=0;i<5;i++){ v+=a*noisef(p); p*=2.02; a*=0.5; } return v; }
+          `;
+          shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n'+header);
+          shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', `#include <dithering_fragment>\n{
+            vec2 uv = gl_FragCoord.xy * (uNoiseScale/512.0) + uNoiseMove * uTime;
+            float n = fbmf(uv);
+            float d = n - uThreshold; if (d < 0.0) discard; 
+            float edge = smoothstep(0.0, uEdgeWidth, d) - smoothstep(uEdgeWidth, uEdgeWidth*2.0, d);
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, uEdgeColor, edge);
+          }`);
+        };
+        tileMesh.material = matClone; tileMesh.material.needsUpdate = true;
+        const start = performance.now(); let rafId=0, alive=true;
+        (function tick(){ if(!alive) return; const t=(performance.now()-start)/1000; uniforms.uTime.value=t; rafId=requestAnimationFrame(tick); })();
+        gsap.to({ th: 0.0 }, { th: 1.0, duration: Math.max(0.5, durationSec), ease: 'power1.inOut', onUpdate: function(){ uniforms.uThreshold.value=this.targets()[0].th; }, onComplete: ()=>{
+          alive=false; try{ cancelAnimationFrame(rafId);}catch{}
+          // Устанавливаем новый материал после растворения старого
+          try { old.dispose && old.dispose(); } catch {}
+          tileMesh.material = newMaterial; tileMesh.material.needsUpdate = true;
+        }});
+      } catch {
+        // Фоллбек: мгновенная замена
+        tileMesh.material = newMaterial; tileMesh.material.needsUpdate = true;
+      }
+    }
+
     function performMagicAttack(from, targetMesh) {
       const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
       const res = magicAttack(gameState, from.r, from.c, tr, tc);
@@ -3167,7 +3247,10 @@
             addLog(`${tpl.name}: сбрасываете существо из руки и получаете +2 маны (\`${toDiscardTpl.name}\`).`);
             // Списать стоимость спелла (если будет >0 в будущем) и отправить сам спелл в discard
             pl.mana = capMana(pl.mana - (tpl.cost || 0));
-            pl.discard.push(tpl); pl.hand.splice(idx, 1);
+            // Удаляем ИМЕННО разыгранный экземпляр спелла, с учётом сдвигов индексов
+            const spellIdx = pl.hand.indexOf(tpl);
+            if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
+            pl.discard.push(tpl);
             resetCardSelection(); updateHand(); updateUI();
             try { schedulePush('spell-holy-feast', { force: true }); } catch {}
           }
@@ -3300,10 +3383,9 @@
           gsap.to(pulse.material, { opacity: 0.85, duration: 0.12 })
             .then(() => gsap.to(pulse.scale, { x: 2.2, y: 2.2, z: 2.2, duration: 0.35, ease: 'power2.out' }))
             .then(() => gsap.to(pulse.material, { opacity: 0, duration: 0.22, onComplete: ()=> effectsGroup.remove(pulse) }));
-          // Замена материала тайла
+          // Плавная шейдерная замена материала тайла
           const mat = getTileMaterial(nextEl);
-          try { tile.material.dispose && tile.material.dispose(); } catch {}
-          tile.material = mat; tile.material.needsUpdate = true;
+          dissolveTileSwap(tile, mat, 0.9);
         } catch {}
         // Юнит на клетке может изменить HP из-за смены элемента
         const u = gameState.board[r][c].unit;
@@ -3367,7 +3449,10 @@
             // Завершение ритуала: визуально сжечь временный меш спелла и убрать его, затем удалить карту из руки и положить в discard
             try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
             pl.mana = capMana(pl.mana - (tpl.cost || 0));
-            pl.hand.splice(idx, 1); pl.discard.push(tpl); updateHand(); updateUI();
+            // Удаляем текущий разыгранный спелл с корректным индексом
+            const spellIdx = pl.hand.indexOf(tpl);
+            if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
+            pl.discard.push(tpl); updateHand(); updateUI();
             try { schedulePush('spell-holy-feast', { force: true }); } catch {}
             hidePrompt(); pendingDiscardSelection = null;
           } }; addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`); return;
@@ -3383,7 +3468,9 @@
           pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
           try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
           pl.mana = capMana(pl.mana - (tpl.cost || 0));
-          pl.hand.splice(idx, 1); pl.discard.push(tpl); updateHand(); updateUI(); hidePrompt();
+          const spellIdx = pl.hand.indexOf(tpl);
+          if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
+          pl.discard.push(tpl); updateHand(); updateUI(); hidePrompt();
           try { schedulePush('spell-holy-feast', { force: true }); } catch {}
         }
         return;
