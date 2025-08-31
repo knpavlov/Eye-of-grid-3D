@@ -617,6 +617,9 @@
     };
     let CARD_IMAGES = {};
     let CARD_PENDING = {};
+    // Очереди догоняющих анимаций боя для наблюдателя
+    let PENDING_BATTLE_ANIMS = [];
+    let PENDING_RETALIATIONS = [];
     // Управление анимациями заставки хода и добора карты
     let lastTurnSplashPromise = Promise.resolve();
     let lastSplashTurnRequested = 0;
@@ -1782,8 +1785,8 @@
                 dissolveAndAsh(ghost, new THREE.Vector3(0,0,0.6), 0.9);
                 const p = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
                 animateManaGainFromWorld(p, pu.owner);
-                // Обновим UI панели маны сразу для наблюдателя (+1), серверный снапшот дойдёт позже
-                try { if (gameState && gameState.players && typeof pu.owner === 'number') { gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1); updateUI(); } } catch {}
+                // Не трогаем gameState в онлайне, чтобы не было двойного учёта. В офлайне можно подвинуть UI сразу.
+                try { if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') { gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1); updateUI(); } } catch {}
               } catch {}
             } else if (!pu && nu) {
               // Юнит появился — лёгкий «поп» масштаба
@@ -3786,6 +3789,8 @@
       try{ createBoard && createBoard(); }catch{}
       try{ createMetaObjects && createMetaObjects(); }catch{}
       try{ updateUnits(); }catch{}
+      // Попробуем доиграть отложенные анимации наблюдателя, если меши уже есть
+      try { flushPendingBattleQueues && flushPendingBattleQueues(); } catch {}
       try { if (prev) playDeltaAnimations(prev, state); } catch {}
       // Если пришёл новый ход, заранее блокируем отображение новых орбов маны,
       // чтобы первая перерисовка UI не показывала их до вспышки
@@ -3862,29 +3867,34 @@
   });
 
   // ===== 9) Battle animation sync =====
-  socket.on('battleAnim', ({ attacker, targets }) => {
+  function tryPlayBattleAnim(attacker, targets){
     try {
-      if (!attacker || !Array.isArray(targets)) return;
+      if (!attacker || !Array.isArray(targets) || targets.length===0) return false;
       const aMesh = unitMeshes.find(m => m.userData.row === attacker.r && m.userData.col === attacker.c);
       const first = targets[0];
-      if (!aMesh || !first) return;
+      if (!aMesh || !tileMeshes?.[first.r]?.[first.c]) return false;
       const targetPos = tileMeshes[first.r][first.c].position;
       const dir = new THREE.Vector3().subVectors(targetPos, aMesh.position).normalize();
       const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
       const tl = gsap.timeline();
       tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
         .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.30, ease: 'power2.inOut' });
-    } catch {}
+      return true;
+    } catch { return false; }
+  }
+  socket.on('battleAnim', ({ attacker, targets }) => {
+    if (!tryPlayBattleAnim(attacker, targets)) {
+      // отложим до применения снапшота и построения мешей
+      PENDING_BATTLE_ANIMS.push({ attacker, targets, ts: Date.now() });
+    }
   });
 
   // Доп. синхронизация: контратака (выпады контратакующих и удар по атакующему)
-  socket.on('battleRetaliation', ({ attacker, retaliators, total }) => {
+  function tryPlayRetaliation(attacker, retaliators, total){
     try {
-      // На стороне активного игрока локальная анимация уже проиграна
-      if (typeof MY_SEAT === 'number' && gameState && MY_SEAT === gameState.active) return;
-      if (!attacker || !Array.isArray(retaliators)) return;
+      if (!attacker || !Array.isArray(retaliators)) return false;
       const aMesh = unitMeshes.find(m => m.userData.row === attacker.r && m.userData.col === attacker.c);
-      if (!aMesh) return;
+      if (!aMesh) return false;
       let maxDur = 0;
       for (const rrObj of retaliators) {
         const rMesh = unitMeshes.find(m => m.userData.row === rrObj.r && m.userData.col === rrObj.c);
@@ -3902,8 +3912,27 @@
           if (aLive) { shakeMesh(aLive, 6, 0.14); spawnDamageText(aLive, `-${total}`, '#ffd166'); }
         }, Math.max(0, maxDur * 1000 - 10));
       }
-    } catch {}
+      return true;
+    } catch { return false; }
+  }
+  socket.on('battleRetaliation', ({ attacker, retaliators, total }) => {
+    // Активный уже видел анимацию локально
+    if (typeof MY_SEAT === 'number' && gameState && MY_SEAT === gameState.active) return;
+    if (!tryPlayRetaliation(attacker, retaliators, total)) {
+      PENDING_RETALIATIONS.push({ attacker, retaliators, total, ts: Date.now() });
+    }
   });
+
+  function flushPendingBattleQueues(){
+    try {
+      if (PENDING_BATTLE_ANIMS.length) {
+        PENDING_BATTLE_ANIMS = PENDING_BATTLE_ANIMS.filter(ev => !tryPlayBattleAnim(ev.attacker, ev.targets));
+      }
+      if (PENDING_RETALIATIONS.length) {
+        PENDING_RETALIATIONS = PENDING_RETALIATIONS.filter(ev => !tryPlayRetaliation(ev.attacker, ev.retaliators, ev.total));
+      }
+    } catch {}
+  }
 
   // ===== 10) Tile crossfade sync =====
   socket.on('tileCrossfade', ({ r, c, prev, next }) => {
