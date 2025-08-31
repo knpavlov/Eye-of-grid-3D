@@ -12,6 +12,18 @@ const MAX_LOG = 2000;
 function pushLog(entry){ try { LOG.push({ t: Date.now(), ...entry }); if (LOG.length > MAX_LOG) LOG.splice(0, LOG.length - MAX_LOG); } catch {} }
 app.get('/debug-log', (req, res) => { try { const n = Math.max(1, Math.min(10000, Number(req.query.n) || 1000)); return res.json({ logs: LOG.slice(-n) }); } catch { return res.json({ logs: [] }); } });
 app.post('/debug-log/clear', (req, res) => { try { LOG.length = 0; } catch{} res.json({ ok: true }); });
+app.get('/queue-status', (req, res) => { 
+  try { 
+    return res.json({ 
+      queueSize: queue.length, 
+      queueSocketIds: queue.map(s => s.id), 
+      activeMatches: matches.size,
+      matchIds: Array.from(matches.keys())
+    }); 
+  } catch { 
+    return res.json({ error: 'Failed to get queue status' }); 
+  } 
+});
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -24,10 +36,18 @@ const queue = [];
 const matches = new Map(); // matchId -> { room, sockets:[s0,s1], lastState, lastVer, timerSeconds, timerId }
 
 function pairIfPossible() {
+  pushLog({ ev: 'pairIfPossible:start', queueSize: queue.length });
+  
   while (queue.length >= 2) {
     const s0 = queue.shift();
     const s1 = queue.shift();
-    if (!s0?.connected || !s1?.connected) continue;
+    
+    pushLog({ ev: 'pairIfPossible:attempt', s0: s0?.id, s1: s1?.id, s0Connected: s0?.connected, s1Connected: s1?.connected });
+    
+    if (!s0?.connected || !s1?.connected) {
+      pushLog({ ev: 'pairIfPossible:skipDisconnected', s0: s0?.id, s1: s1?.id });
+      continue;
+    }
 
     const matchId = `m_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
     const room = `room_${matchId}`;
@@ -54,6 +74,8 @@ function pairIfPossible() {
       io.to(m.room).emit('turnTimer', { seconds: m.timerSeconds, activeSeat: m.lastState.active });
     }, 1000);
   }
+  
+  pushLog({ ev: 'pairIfPossible:end', queueSize: queue.length });
 }
 
 io.on("connection", (socket) => {
@@ -66,20 +88,37 @@ io.on("connection", (socket) => {
     } catch {}
   });
   socket.on("joinQueue", () => {
+    pushLog({ ev: 'joinQueue:start', sid: socket.id, currentQueueSize: queue.length });
+    
     // если socket был в комнате завершённого матча — убедимся, что он вышел
     try {
       const matchId = socket.data.matchId;
       if (matchId && matches.has(matchId)) {
         const m = matches.get(matchId);
         socket.leave(m.room);
+        pushLog({ ev: 'joinQueue:leftPrevMatch', sid: socket.id, matchId });
       }
     } catch {}
-    // не добавляем дубликаты в очередь
-    if (!queue.includes(socket)) queue.push(socket);
-    socket.data.queueing = true;
+    
+    // Очищаем состояние сокета
+    socket.data.queueing = false;
     socket.data.matchId = undefined;
     socket.data.seat = undefined;
-    pushLog({ ev: 'joinQueue', sid: socket.id });
+    
+    // Удаляем из очереди если уже есть (очистка дубликатов)
+    const existingIndex = queue.indexOf(socket);
+    if (existingIndex >= 0) {
+      queue.splice(existingIndex, 1);
+      pushLog({ ev: 'joinQueue:removedDuplicate', sid: socket.id });
+    }
+    
+    // Добавляем в очередь
+    queue.push(socket);
+    socket.data.queueing = true;
+    
+    pushLog({ ev: 'joinQueue:added', sid: socket.id, newQueueSize: queue.length });
+    
+    // Пытаемся создать матч
     pairIfPossible();
   });
 
@@ -242,17 +281,26 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    pushLog({ ev: 'disconnect', sid: socket.id, matchId: socket.data.matchId });
+    pushLog({ ev: 'disconnect', sid: socket.id, matchId: socket.data.matchId, queueing: socket.data.queueing });
+    
+    // Удаляем из очереди
     const i = queue.indexOf(socket);
-    if (i >= 0) queue.splice(i, 1);
+    if (i >= 0) {
+      queue.splice(i, 1);
+      pushLog({ ev: 'disconnect:removedFromQueue', sid: socket.id, newQueueSize: queue.length });
+    }
+    
     const matchId = socket.data.matchId;
     if (matchId && matches.has(matchId)) {
       const m = matches.get(matchId);
       io.to(m.room).emit("opponentLeft");
+      pushLog({ ev: 'disconnect:notifyOpponent', matchId, sid: socket.id });
+      
       // очистить метаданные у обоих сокетов
       try { m.sockets.forEach(s => { if (s) { s.leave(m.room); s.data.matchId = undefined; s.data.seat = undefined; s.data.queueing = false; } }); } catch {}
       if (m.timerId) clearInterval(m.timerId);
       matches.delete(matchId);
+      pushLog({ ev: 'disconnect:matchDeleted', matchId, sid: socket.id });
     }
   });
 });

@@ -4182,10 +4182,22 @@
   });
 
   // ===== 5) Queue / start =====
-  function onFindMatchClick(){ showQueueModal(); try { (window.socket || socket).emit('joinQueue'); } catch {} }
-  socket.on('matchFound', ({ seat })=>{
+  function onFindMatchClick(){ 
+    console.log('[QUEUE] Attempting to join queue, socket connected:', socket.connected);
+    showQueueModal(); 
+    try { 
+      (window.socket || socket).emit('joinQueue'); 
+      (window.socket || socket).emit('debugLog', { event: 'joinQueue_sent', connected: socket.connected });
+    } catch(err) {
+      console.error('[QUEUE] Error joining queue:', err);
+    }
+  }
+  socket.on('matchFound', ({ matchId, seat })=>{
     hideQueueModal();
-    console.log('[MATCH] Match found, setting MY_SEAT to:', seat);
+    console.log('[MATCH] Match found, setting MY_SEAT to:', seat, 'matchId:', matchId);
+    // Логирование для отладки
+    try { (window.socket || socket).emit('debugLog', { event: 'matchFound_received', seat, matchId }); } catch {}
+    
     // Полный сброс локального состояния предыдущего матча перед стартом нового
     try { if (window.__pendingBattleFlushTimer) { clearInterval(window.__pendingBattleFlushTimer); window.__pendingBattleFlushTimer = null; } } catch {}
     try { PENDING_BATTLE_ANIMS = []; PENDING_RETALIATIONS = []; } catch {}
@@ -4317,8 +4329,17 @@
       turn.textContent = (gameState.active===MY_SEAT) ? 'ваш ход' : 'ход соперника';
     } else turn.textContent='';
   }
-  socket.on('connect', updateIndicator);
-  socket.on('disconnect', updateIndicator);
+  socket.on('connect', () => {
+    console.log('[SOCKET] Connected to server');
+    updateIndicator();
+  });
+  socket.on('disconnect', (reason) => {
+    console.log('[SOCKET] Disconnected from server:', reason);
+    updateIndicator();
+  });
+  socket.on('connect_error', (error) => {
+    console.error('[SOCKET] Connection error:', error);
+  });
   socket.on('matchFound', updateIndicator);
   setInterval(updateIndicator, 500);
   updateIndicator();
