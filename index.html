@@ -4005,22 +4005,42 @@
   }
   socket.on('battleAnim', ({ attacker, targets, __id, bySeat }) => {
     // Проигрываем анимацию всем, кроме инициатора (bySeat). Это устойчивее, чем сверка active
-    if (typeof MY_SEAT === 'number' && typeof bySeat === 'number' && MY_SEAT === bySeat) return;
+    if (typeof MY_SEAT === 'number' && typeof bySeat === 'number' && MY_SEAT === bySeat) {
+      console.log('[battleAnim] Skipping self-initiated animation', { MY_SEAT, bySeat, attacker, targets: targets?.length });
+      return;
+    }
+    console.log('[battleAnim] Received animation from opponent', { MY_SEAT, bySeat, attacker, targets: targets?.length });
     try { window.__LAST_BATTLE_ANIM_ID = __id || null; } catch {}
-    if (!tryPlayBattleAnim(attacker, targets)) {
+    const success = tryPlayBattleAnim(attacker, targets);
+    console.log('[battleAnim] Animation play result:', success);
+    if (!success) {
       // отложим до применения снапшота и построения мешей
       PENDING_BATTLE_ANIMS.push({ attacker, targets, ts: Date.now(), id: __id });
+      console.log('[battleAnim] Animation deferred, pending count:', PENDING_BATTLE_ANIMS.length);
     }
   });
   // Визуальная поддержка: если пришло событие ритуала у оппонента — мягко отобразим +2 маны у него
-  socket.on('ritualResolve', ({ kind, by, card, consumed, consumedIdx, spellIdx }) => {
+  socket.on('ritualResolve', ({ kind, by, card, consumed, consumedIdx, spellIdx, consumedCard, spellCard }) => {
     try {
       if (kind === 'HOLY_FEAST' && typeof by === 'number') {
         try { if (typeof window !== 'undefined') window.__HF_ACK = true; } catch {}
-        // На всякий случай закрываем любые локальные модалки выбора и сбрасываем скрытия
+        // Полностью сбрасываем все состояния Holy Feast
         try { hidePrompt(); } catch {}
         try { pendingDiscardSelection = null; } catch {}
+        try { pendingRitualSpellHandIndex = null; } catch {}
+        try { pendingRitualSpellCard = null; } catch {}
         try { PENDING_HIDE_HAND_CARDS = []; } catch {}
+        try { resetCardSelection(); } catch {}
+        // Убираем карту-спелл с поля если она там есть
+        try { 
+          if (pendingRitualBoardMesh) { 
+            dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); 
+            setTimeout(()=>{ 
+              try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} 
+              pendingRitualBoardMesh = null; 
+            }, 950); 
+          } 
+        } catch {}
         // Показать вспышку +2 маны у панели by (только визуально; фактическое значение придёт со снапшотом)
         const barEl = document.getElementById(`mana-display-${by}`);
         if (barEl) {
@@ -4030,6 +4050,9 @@
           animateManaGainFromWorld(new THREE.Vector3(0,0,0), by, true);
           setTimeout(()=> animateManaGainFromWorld(new THREE.Vector3(0,0,0), by, true), 120);
         }
+        // Принудительно обновляем UI для полного сброса состояний
+        try { updateHand(); } catch {}
+        try { updateUI(); } catch {}
       }
     } catch {}
   });
@@ -4061,11 +4084,14 @@
     } catch { return false; }
   }
   socket.on('battleRetaliation', ({ attacker, retaliators, total, __id, bySeat }) => {
-    // Проигрываем всем, кроме инициатора
-    if (typeof MY_SEAT === 'number' && typeof bySeat === 'number' && MY_SEAT === bySeat) return;
+    // Контратаки должны быть видны всем игрокам, поэтому убираем фильтрацию по bySeat
+    console.log('[battleRetaliation] Received retaliation', { MY_SEAT, bySeat, attacker, retaliators: retaliators?.length, total });
     try { window.__LAST_RETAL_ID = __id || null; } catch {}
-    if (!tryPlayRetaliation(attacker, retaliators, total)) {
+    const success = tryPlayRetaliation(attacker, retaliators, total);
+    console.log('[battleRetaliation] Retaliation play result:', success);
+    if (!success) {
       PENDING_RETALIATIONS.push({ attacker, retaliators, total, ts: Date.now(), id: __id });
+      console.log('[battleRetaliation] Retaliation deferred, pending count:', PENDING_RETALIATIONS.length);
     }
   });
 

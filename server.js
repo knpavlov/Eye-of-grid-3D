@@ -213,8 +213,7 @@ io.on("connection", (socket) => {
       // Обновим версию состояния и разошлём
       try { st.__ver = (Number(st.__ver) || 0) + 1; m.lastVer = st.__ver; } catch { m.lastVer = m.lastVer || 0; }
       // ЯВНО сообщим клиентам, что ритуал завершён — чтобы они закрыли локальные UI-состояния
-      io.to(m.room).emit("ritualResolve", { kind: 'HOLY_FEAST', by: seat, consumedIdx: creatureIdx, spellIdx });
-      io.to(m.room).emit("ritualResolve", { kind: 'HOLY_FEAST', by: seat });
+      io.to(m.room).emit("ritualResolve", { kind: 'HOLY_FEAST', by: seat, consumedIdx: creatureIdx, spellIdx, consumedCard: removed1?.id !== 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1?.id : removed2?.id, spellCard: removed1?.id === 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1?.id : removed2?.id });
       io.to(m.room).emit("state", st);
       pushLog({ ev: 'holyFeast:applied', matchId, seat, manaBefore: beforeMana, newMana: pl.mana, removed: { spell: removed1?.id === 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1?.id : removed2?.id, creature: removed1?.id !== 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1?.id : removed2?.id }, discardN: (pl.discard||[]).length, graveyardN: (pl.graveyard||[]).length, ver: m.lastVer });
     } catch {}
