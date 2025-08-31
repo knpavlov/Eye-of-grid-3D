@@ -3394,6 +3394,8 @@
             if (NET_ACTIVE) {
               try { socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
               try { socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: handIdx }); } catch {}
+              // Закрываем prompt и очищаем выбор, чтобы не зависала панель
+              hidePrompt(); pendingDiscardSelection = null;
               resetCardSelection(); updateHand(); updateUI();
             } else {
               // Оффлайн: применяем сразу локально
@@ -3599,10 +3601,13 @@
             const handMesh = handCardMeshes.find(m => m.userData?.handIndex === handIdx);
             if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
             if (NET_ACTIVE) {
+              try { socket.emit('debugLog', { tag:'HF:onPicked', phase:'emit', localSpellIdx, handIdx, active: gameState.active }); } catch {}
               try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
               try { socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
               socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: handIdx });
               pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
+              // Закроем prompt немедленно, чтобы не зависал UI
+              hidePrompt(); pendingDiscardSelection = null;
               updateHand(); updateUI();
             } else {
               try { pl.graveyard.push(toDiscardTpl); } catch {}
@@ -3626,11 +3631,13 @@
           try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([singleIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
           if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
           if (NET_ACTIVE) {
+            try { socket.emit('debugLog', { tag:'HF:single', phase:'emit', localSpellIdx, singleIdx, active: gameState.active }); } catch {}
             try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
             try { socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
             socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: singleIdx });
             pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
-            updateHand(); updateUI(); hidePrompt();
+            hidePrompt();
+            updateHand(); updateUI();
           } else {
             try { pl.graveyard.push(toDiscardTpl); } catch {}
             pl.hand.splice(singleIdx, 1); updateHand();
@@ -3996,9 +4003,13 @@
     }
   });
   // Визуальная поддержка: если пришло событие ритуала у оппонента — мягко отобразим +2 маны у него
-  socket.on('ritualResolve', ({ kind, by, card, consumed }) => {
+  socket.on('ritualResolve', ({ kind, by, card, consumed, consumedIdx, spellIdx }) => {
     try {
       if (kind === 'HOLY_FEAST' && typeof by === 'number') {
+        // На всякий случай закрываем любые локальные модалки выбора и сбрасываем скрытия
+        try { hidePrompt(); } catch {}
+        try { pendingDiscardSelection = null; } catch {}
+        try { PENDING_HIDE_HAND_CARDS = []; } catch {}
         // Показать вспышку +2 маны у панели by (только визуально; фактическое значение придёт со снапшотом)
         const barEl = document.getElementById(`mana-display-${by}`);
         if (barEl) {

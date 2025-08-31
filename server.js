@@ -58,6 +58,13 @@ function pairIfPossible() {
 
 io.on("connection", (socket) => {
   pushLog({ ev: 'connect', sid: socket.id });
+  // Клиентские произвольные заметки для отладки
+  socket.on('debugLog', (payload = {}) => {
+    try {
+      const matchId = socket.data?.matchId;
+      pushLog({ ev: 'client', sid: socket.id, matchId, ...payload });
+    } catch {}
+  });
   socket.on("joinQueue", () => {
     // если socket был в комнате завершённого матча — убедимся, что он вышел
     try {
@@ -205,6 +212,8 @@ io.on("connection", (socket) => {
       pl.mana = cap(beforeMana + 2);
       // Обновим версию состояния и разошлём
       try { st.__ver = (Number(st.__ver) || 0) + 1; m.lastVer = st.__ver; } catch { m.lastVer = m.lastVer || 0; }
+      // ЯВНО сообщим клиентам, что ритуал завершён — чтобы они закрыли локальные UI-состояния
+      io.to(m.room).emit("ritualResolve", { kind: 'HOLY_FEAST', by: seat, consumedIdx: creatureIdx, spellIdx });
       io.to(m.room).emit("ritualResolve", { kind: 'HOLY_FEAST', by: seat });
       io.to(m.room).emit("state", st);
       pushLog({ ev: 'holyFeast:applied', matchId, seat, manaBefore: beforeMana, newMana: pl.mana, removed: { spell: removed1?.id === 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1?.id : removed2?.id, creature: removed1?.id !== 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1?.id : removed2?.id }, discardN: (pl.discard||[]).length, graveyardN: (pl.graveyard||[]).length, ver: m.lastVer });
