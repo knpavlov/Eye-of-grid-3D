@@ -149,6 +149,47 @@ io.on("connection", (socket) => {
     io.to(m.room).emit("ritualResolve", payload);
   });
 
+  // Авторитетная обработка Holy Feast (без доверия к полному снапшоту от клиента)
+  socket.on("holyFeast", ({ seat, spellIdx, creatureIdx }) => {
+    const matchId = socket.data.matchId;
+    if (!matchId || !matches.has(matchId)) return;
+    const m = matches.get(matchId);
+    // Проверим право хода
+    try {
+      const expectedSeat = typeof m.lastState?.active === 'number' ? m.lastState.active : null;
+      if (expectedSeat === null) return;
+      if (socket.data.seat !== expectedSeat) return;
+      if (seat !== expectedSeat) return;
+    } catch { return; }
+    const st = m.lastState;
+    try {
+      const pl = st.players?.[seat];
+      if (!pl) return;
+      const hand = pl.hand || [];
+      if (typeof spellIdx !== 'number' || typeof creatureIdx !== 'number') return;
+      if (creatureIdx < 0 || creatureIdx >= hand.length) return;
+      if (spellIdx < 0 || spellIdx >= hand.length) return;
+      const spell = hand[spellIdx];
+      const creature = hand[creatureIdx];
+      if (!spell || spell.type !== 'SPELL' || spell.id !== 'SPELL_PARMTETIC_HOLY_FEAST') return;
+      if (!creature || creature.type !== 'UNIT') return;
+      // Удаляем сначала больший индекс, чтобы не сдвинулся меньший
+      const i1 = Math.max(spellIdx, creatureIdx);
+      const i2 = Math.min(spellIdx, creatureIdx);
+      const removed1 = hand.splice(i1, 1)[0];
+      const removed2 = hand.splice(i2, 1)[0];
+      try { pl.discard = Array.isArray(pl.discard) ? pl.discard : []; pl.discard.push(removed1.id === 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1 : removed2); } catch {}
+      try { pl.graveyard = Array.isArray(pl.graveyard) ? pl.graveyard : []; pl.graveyard.push(removed1.id !== 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1 : removed2); } catch {}
+      // +2 маны
+      const cap = (m) => Math.min(10, m);
+      pl.mana = cap((pl.mana || 0) + 2);
+      // Обновим версию состояния и разошлём
+      try { st.__ver = (Number(st.__ver) || 0) + 1; m.lastVer = st.__ver; } catch { m.lastVer = m.lastVer || 0; }
+      io.to(m.room).emit("ritualResolve", { kind: 'HOLY_FEAST', by: seat });
+      io.to(m.room).emit("state", st);
+    } catch {}
+  });
+
   // сдача матча
   socket.on("resign", () => {
     const matchId = socket.data.matchId;

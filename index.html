@@ -3388,7 +3388,16 @@
             resetCardSelection(); updateHand(); updateUI();
             // Онлайновое подтверждение ритуала: для наблюдателя отрисовать локальные анимации
             try { if (NET_ACTIVE) socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
-            try { schedulePush('spell-holy-feast', { force: true }); } catch {}
+            // Отправим авторитетную команду на сервер, чтобы он изменил состояние сам
+            try {
+              if (NET_ACTIVE) {
+                const spellIdx = pl.hand.indexOf(tpl);
+                const creatureIdx = handIdx;
+                socket.emit('holyFeast', { seat: gameState.active, spellIdx, creatureIdx });
+              } else {
+                schedulePush('spell-holy-feast', { force: true });
+              }
+            } catch {}
           }
         };
         addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`);
@@ -3593,7 +3602,15 @@
             pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
             pl.discard.push(tpl); updateHand(); updateUI();
             try { if (NET_ACTIVE) socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
-            try { schedulePush('spell-holy-feast', { force: true }); } catch {}
+            try {
+              if (NET_ACTIVE) {
+                const spellIdx2 = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.findIndex(x => x === pendingRitualSpellCard || x === tpl);
+                const creatureIdx2 = handIdx;
+                socket.emit('holyFeast', { seat: gameState.active, spellIdx: spellIdx2, creatureIdx: creatureIdx2 });
+              } else {
+                schedulePush('spell-holy-feast', { force: true });
+              }
+            } catch {}
             hidePrompt(); pendingDiscardSelection = null;
           } }; addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`); return;
         }
@@ -3614,7 +3631,15 @@
           pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
           pl.discard.push(tpl); updateHand(); updateUI(); hidePrompt();
           try { if (NET_ACTIVE) socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
-          try { schedulePush('spell-holy-feast', { force: true }); } catch {}
+          try {
+            if (NET_ACTIVE) {
+              const spellIdx3 = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.findIndex(x => x === pendingRitualSpellCard || x === tpl);
+              const creatureIdx3 = singleIdx;
+              socket.emit('holyFeast', { seat: gameState.active, spellIdx: spellIdx3, creatureIdx: creatureIdx3 });
+            } else {
+              schedulePush('spell-holy-feast', { force: true });
+            }
+          } catch {}
         }
         return;
       }
@@ -4065,7 +4090,8 @@
 
   socket.on('opponentLeft', ()=>{
     NET_ACTIVE=false; updateIndicator(); updateInputLock();
-    showVictoryModal({ reason: 'opponentLeft' });
+    // Показываем победу оставшемуся в игре игроку
+    showVictoryModal({ reason: 'opponentLeft', winnerSeat: (typeof MY_SEAT==='number'?MY_SEAT:undefined) });
   });
 
   // ===== 6) Online indicator + whose turn =====
