@@ -1947,7 +1947,7 @@
         // Вторая половина - через 1300мс (после контратаки)
         const halfCount = Math.ceil(hpChanges.length / 2);
         
-        // Первая волна чисел (урон по атакованным целям)
+        // Первая волна чисел (урон по атакованным целям) <-- важно
         setTimeout(() => {
           for (let i = 0; i < halfCount && i < hpChanges.length; i++) {
             const change = hpChanges[i];
@@ -1961,7 +1961,7 @@
           }
         }, 500);
         
-        // Вторая волна чисел (урон по атакующему от контратаки)
+        // Вторая волна чисел (урон по атакующему от контратаки) <-- важно
         if (hpChanges.length > halfCount) {
           setTimeout(() => {
             for (let i = halfCount; i < hpChanges.length; i++) {
