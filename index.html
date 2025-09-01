@@ -728,6 +728,9 @@
     // Очереди догоняющих анимаций боя для наблюдателя
     let PENDING_BATTLE_ANIMS = [];
     let PENDING_RETALIATIONS = [];
+    // Recently shown remote damage (to avoid duplicate delta popups)
+    let RECENT_REMOTE_DAMAGE = new Map();
+    try { window.RECENT_REMOTE_DAMAGE = RECENT_REMOTE_DAMAGE; } catch {}
     let PENDING_HIDE_HAND_CARDS = [];
     // Управление анимациями заставки хода и добора карты
     let lastTurnSplashPromise = Promise.resolve();
@@ -1945,12 +1948,24 @@
         // Показываем HP изменения последовательно
         // Первая половина изменений - через 500мс (после первой атаки)
         // Вторая половина - через 1300мс (после контратаки)
-        const halfCount = Math.ceil(hpChanges.length / 2);
+        // Filter out recent remote damage already shown during battleAnim/retaliation
+        const __now = Date.now();
+        const pendingHpChanges = (typeof window !== 'undefined' && window.RECENT_REMOTE_DAMAGE && window.RECENT_REMOTE_DAMAGE.size)
+          ? hpChanges.filter(change => {
+              try {
+                const key = `${change.r},${change.c}`;
+                const rec = window.RECENT_REMOTE_DAMAGE.get(key);
+                return !(rec && rec.delta === change.delta && (__now - rec.ts) < 2000);
+              } catch { return true; }
+            })
+          : hpChanges;
+
+        const halfCount = Math.ceil(pendingHpChanges.length / 2);
         
         // Первая волна чисел (урон по атакованным целям) <-- важно
         setTimeout(() => {
-          for (let i = 0; i < halfCount && i < hpChanges.length; i++) {
-            const change = hpChanges[i];
+          for (let i = 0; i < halfCount && i < pendingHpChanges.length; i++) {
+            const change = pendingHpChanges[i];
             try {
               const tMesh = unitMeshes.find(m => m.userData.row === change.r && m.userData.col === change.c);
               if (tMesh) {
@@ -1962,10 +1977,10 @@
         }, 500);
         
         // Вторая волна чисел (урон по атакующему от контратаки) <-- важно
-        if (hpChanges.length > halfCount) {
+        if (pendingHpChanges.length > halfCount) {
           setTimeout(() => {
-            for (let i = halfCount; i < hpChanges.length; i++) {
-              const change = hpChanges[i];
+            for (let i = halfCount; i < pendingHpChanges.length; i++) {
+              const change = pendingHpChanges[i];
               try {
                 const tMesh = unitMeshes.find(m => m.userData.row === change.r && m.userData.col === change.c);
                 if (tMesh) {
@@ -4190,14 +4205,18 @@
       tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
         .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.30, ease: 'power2.inOut' });
       
-      // Только тряска, без чисел урона (числа показывает playDeltaAnimations)
+      // Тряска цели и синхронный урон для неинициатора
       setTimeout(() => {
         try {
           for (const target of targets) {
             const tMesh = unitMeshes.find(m => m.userData.row === target.r && m.userData.col === target.c);
-            if (tMesh && typeof target.dmg === 'number' && target.dmg > 0) { 
-              shakeMesh(tMesh, 6, 0.12); 
-              // spawnDamageText убран - числа показывает playDeltaAnimations
+            if (tMesh && typeof target.dmg === 'number' && target.dmg > 0) {
+              shakeMesh(tMesh, 6, 0.12);
+              try { spawnDamageText(tMesh, `-${target.dmg}`, '#ff5555'); } catch {}
+              try {
+                const key = `${target.r},${target.c}`;
+                RECENT_REMOTE_DAMAGE.set(key, { delta: -target.dmg, ts: Date.now() });
+              } catch {}
             }
           }
         } catch {}
@@ -4280,9 +4299,13 @@
       if (typeof total === 'number' && total > 0) {
         setTimeout(() => {
           const aLive = unitMeshes.find(m => m.userData.row === attacker.r && m.userData.col === attacker.c) || aMesh;
-          if (aLive) { 
-            shakeMesh(aLive, 6, 0.14); 
-            // spawnDamageText убран - числа показывает playDeltaAnimations
+          if (aLive) {
+            shakeMesh(aLive, 6, 0.14);
+            try { spawnDamageText(aLive, `-${total}`, '#ffd166'); } catch {}
+            try {
+              const key = `${attacker.r},${attacker.c}`;
+              RECENT_REMOTE_DAMAGE.set(key, { delta: -total, ts: Date.now() });
+            } catch {}
           }
         }, Math.max(0, maxDur * 1000 - 10));
       }
