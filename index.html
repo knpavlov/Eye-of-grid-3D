@@ -213,7 +213,7 @@
       </div>
     </div>
     
-    <!-- Уведомления -->
+    <!-- Уведомленчиния -->
     <div id="notifications" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none"></div>
 
     <!-- Баннеры: Turn и Battle -->
@@ -1877,161 +1877,7 @@
         if (!prevState || !nextState) return;
         const prevB = prevState.board || [];
         const nextB = nextState.board || [];
-        // Попробуем определить атакующего этого хода - ищем изменения HP у существ
-        let attackerCell = null;
-        let hitsPrev = [];
-        
-        // Сначала попробуем найти по lastAttackTurn
-        for (let r = 0; r < 3; r++) {
-          for (let c = 0; c < 3; c++) {
-            const u = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
-            if (u && u.lastAttackTurn === nextState.turn) { 
-              attackerCell = { r, c }; 
-              hitsPrev = computeHits(prevState, r, c) || [];
-              console.log('[playDeltaAnimations] Found attacker by lastAttackTurn:', { r, c, hitsPrev: hitsPrev.length });
-              break; 
-            }
-          }
-          if (attackerCell) break;
-        }
-        
-        // Если не нашли по lastAttackTurn, попробуем найти по изменениям HP
-        if (!attackerCell) {
-          console.log('[playDeltaAnimations] Trying to find attacker by HP changes...');
-          for (let r = 0; r < 3; r++) {
-            for (let c = 0; c < 3; c++) {
-              const prevUnit = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
-              const nextUnit = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
-              
-              if (prevUnit && nextUnit && prevUnit.owner === nextUnit.owner) {
-                // Проверим, есть ли потенциальные цели этого существа с уменьшенным HP
-                const potentialHits = computeHits(prevState, r, c) || [];
-                let foundDamage = false;
-                
-                for (const hit of potentialHits) {
-                  const prevTarget = (prevB[hit.r] && prevB[hit.r][hit.c] && prevB[hit.r][hit.c].unit) ? prevB[hit.r][hit.c].unit : null;
-                  const nextTarget = (nextB[hit.r] && nextB[hit.r][hit.c] && nextB[hit.r][hit.c].unit) ? nextB[hit.r][hit.c].unit : null;
-                  
-                  if (prevTarget && nextTarget) {
-                    const prevHP = (typeof prevTarget.currentHP === 'number') ? prevTarget.currentHP : prevTarget.hp;
-                    const nextHP = (typeof nextTarget.currentHP === 'number') ? nextTarget.currentHP : nextTarget.hp;
-                    if (nextHP < prevHP) {
-                      foundDamage = true;
-                      break;
-                    }
-                  } else if (prevTarget && !nextTarget) {
-                    // Цель умерла
-                    foundDamage = true;
-                    break;
-                  }
-                }
-                
-                // Также проверим, получил ли сам юнит урон (возможно от контратаки)
-                if (!foundDamage) {
-                  const prevHP = (typeof prevUnit.currentHP === 'number') ? prevUnit.currentHP : prevUnit.hp;
-                  const nextHP = (typeof nextUnit.currentHP === 'number') ? nextUnit.currentHP : nextUnit.hp;
-                  if (nextHP < prevHP && potentialHits.length > 0) {
-                    // Юнит получил урон и имеет потенциальные цели - вероятно атаковал и получил контратаку
-                    foundDamage = true;
-                  }
-                }
-                
-                if (foundDamage) {
-                  attackerCell = { r, c };
-                  hitsPrev = potentialHits;
-                  console.log('[playDeltaAnimations] Found attacker by HP changes:', { r, c, hitsPrev: hitsPrev.length });
-                  break;
-                }
-              }
-            }
-            if (attackerCell) break;
-          }
-        }
-        
-        // ВСЕГДА показываем анимацию атаки у неактивного игрока
-        // Проверяем, является ли этот клиент неактивным игроком
-        const myIsActivePlayer = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number' && window.MY_SEAT === nextState.active);
-        
-        console.log('[playDeltaAnimations] Debug info:', { 
-          attackerCell, 
-          hitsPrev: hitsPrev.length,
-          myIsActivePlayer, 
-          MY_SEAT: typeof window !== 'undefined' ? window.MY_SEAT : 'undefined', 
-          active: nextState.active,
-          NET_ACTIVE: typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : 'undefined',
-          isOnline: typeof NET_ACTIVE !== 'undefined' && NET_ACTIVE,
-          shouldShowAnimation: attackerCell && (!(typeof NET_ACTIVE !== 'undefined' && NET_ACTIVE) || !myIsActivePlayer)
-        });
-        
-        // Показываем анимацию атаки для неактивного игрока в онлайне, или всегда в офлайне
-        const isOnline = (typeof NET_ACTIVE !== 'undefined' && NET_ACTIVE);
-        const shouldShowAnimation = attackerCell && (!isOnline || !myIsActivePlayer);
-        
-        if (shouldShowAnimation) {
-          console.log('[playDeltaAnimations] Showing attack animation for inactive player');
-          try {
-            const aMesh = unitMeshes.find(m => m.userData.row === attackerCell.r && m.userData.col === attackerCell.c);
-            console.log('[playDeltaAnimations] Found attacker mesh:', !!aMesh, 'hits:', hitsPrev.length);
-            if (aMesh && hitsPrev.length) {
-              const first = hitsPrev[0];
-              const targetPos = tileMeshes[first.r][first.c].position;
-              const dir = new THREE.Vector3().subVectors(targetPos, aMesh.position).normalize();
-              const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
-              // Выпад атакующего
-              console.log('[playDeltaAnimations] Starting lunge animation:', { push, attackerPos: aMesh.position });
-              const tl = gsap.timeline();
-              tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
-                .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.30, ease: 'power2.inOut' });
-              // Показ урона по целям — после выпада
-              setTimeout(() => {
-                try {
-                  for (const h of hitsPrev) {
-                    const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
-                    if (tMesh && typeof h.dmg === 'number' && h.dmg > 0) { 
-                      shakeMesh(tMesh, 6, 0.12); 
-                      spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555'); 
-                    }
-                  }
-                } catch {}
-              }, 420);
-              // Контратаки — после паузы, как в офлайне
-              setTimeout(async () => {
-                try {
-                  await new Promise(resolve => setTimeout(resolve, 700)); // Пауза как в офлайне
-                  const staged = stagedAttack(prevState, attackerCell.r, attackerCell.c);
-                  const ret = staged && staged.step2 ? (staged.step2() || { total: 0, retaliators: [] }) : { total: 0, retaliators: [] };
-                  const retaliators = (ret.retaliators || []);
-                  let maxDur = 0;
-                  
-                  // Выпады контратакующих
-                  retaliators.forEach(rrObj => {
-                    const rMesh = unitMeshes.find(m => m.userData.row === rrObj.r && m.userData.col === rrObj.c);
-                    if (!rMesh) return;
-                    const aMeshLive = unitMeshes.find(m => m.userData.row === attackerCell.r && m.userData.col === attackerCell.c) || aMesh;
-                    if (!aMeshLive) return;
-                    const dir2 = new THREE.Vector3().subVectors(aMeshLive.position, rMesh.position).normalize();
-                    const push2 = { x: dir2.x * 0.6, z: dir2.z * 0.6 };
-                    const tl2 = gsap.timeline();
-                    tl2.to(rMesh.position, { x: `+=${push2.x}`, z: `+=${push2.z}`, duration: 0.22, ease: 'power2.out' })
-                      .to(rMesh.position, { x: `-=${push2.x}`, z: `-=${push2.z}`, duration: 0.30, ease: 'power2.inOut' });
-                    maxDur = Math.max(maxDur, 0.52);
-                  });
-                  
-                  // Урон по атакующему после контратак
-                  if ((ret.total || 0) > 0) {
-                    setTimeout(() => {
-                      const aLive = unitMeshes.find(m => m.userData.row === attackerCell.r && m.userData.col === attackerCell.c) || aMesh;
-                      if (aLive) { shakeMesh(aLive, 6, 0.14); spawnDamageText(aLive, `-${ret.total}`, '#ffd166'); }
-                    }, Math.max(0, Math.floor(maxDur * 1000)));
-                  }
-                } catch {}
-              }, 420); // Начинаем контратаки после завершения основной атаки
-            }
-          } catch {}
-        }
-        // Задержка перед обработкой остальных HP изменений, чтобы анимация выпада была видна
-        const hpChangesDelay = shouldShowAnimation ? 1500 : 0; // Задержка только если показана анимация атаки
-        
+        // Обрабатываем только изменения HP, анимации атак идут через WebSocket
         setTimeout(() => {
           for (let r = 0; r < 3; r++) {
             for (let c = 0; c < 3; c++) {
@@ -2045,15 +1891,7 @@
                   try {
                     const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
                     if (tMesh) {
-                      const isPrimaryHit = !!(attackerCell && hitsPrev && hitsPrev.some(h => h.r === r && h.c === c));
-                      const isRetaliationTarget = attackerCell && attackerCell.r === r && attackerCell.c === c;
-                      
-                      // Пропускаем HP анимации, которые уже показаны в блоке атаки выше
-                      // Для активного игрока уже есть локальная анимация, для неактивного - анимация выше
-                      if (isPrimaryHit || (isRetaliationTarget && shouldShowAnimation)) {
-                        // Числа урона уже показаны в блоке атаки выше, пропускаем
-                        continue;
-                      }
+                      // Показываем все изменения HP - WebSocket анимации покажут только выпады
                       
                       // Показываем только изменения HP, которые не связаны с основной атакой/контратакой этого хода
                       const color = delta > 0 ? '#22c55e' : '#ef4444';
@@ -2088,7 +1926,7 @@
               }
             }
           }
-        }, hpChangesDelay);
+        }, 0);
       } catch {}
     }
     // attachHpOverlay удалён, т.к. HP теперь перерисовывается на самой карте
@@ -4191,9 +4029,19 @@
       try{ createBoard && createBoard(); }catch{}
       try{ createMetaObjects && createMetaObjects(); }catch{}
       try{ updateUnits(); }catch{}
-      // WebSocket анимации отключены - используем только playDeltaAnimations
+      // Обрабатываем отложенные WebSocket анимации
+      try { flushPendingBattleQueues && flushPendingBattleQueues(); } catch {}
       try { if (prev) playDeltaAnimations(prev, state); } catch {}
-      // WebSocket анимации отключены, таймер не нужен
+      // Периодически пробуем воспроизвести отложенные анимации
+      try {
+        if (typeof window !== 'undefined') {
+          if (window.__pendingBattleFlushTimer) clearInterval(window.__pendingBattleFlushTimer);
+          window.__pendingBattleFlushTimer = setInterval(()=>{
+            try { flushPendingBattleQueues && flushPendingBattleQueues(); } catch {}
+          }, 120);
+          setTimeout(()=>{ try { if (window.__pendingBattleFlushTimer) clearInterval(window.__pendingBattleFlushTimer); } catch {} }, 2500);
+        }
+      } catch {}
       // Если пришёл новый ход, заранее блокируем отображение новых орбов маны,
       // чтобы первая перерисовка UI не показывала их до вспышки
       try {
@@ -4299,10 +4147,20 @@
     } catch { return false; }
   }
   socket.on('battleAnim', ({ attacker, targets, __id, bySeat }) => {
-    // Отключаем WebSocket анимации - используем только playDeltaAnimations
-    console.log('[battleAnim] Event received but animation disabled - using playDeltaAnimations instead', { 
-      MY_SEAT, bySeat, attacker, targets: targets?.length 
-    });
+    console.log('[battleAnim] Received battle animation', { MY_SEAT, bySeat, attacker, targets: targets?.length });
+    
+    // Показываем анимацию всем игрокам КРОМЕ инициатора
+    if (typeof MY_SEAT === 'number' && typeof bySeat === 'number' && MY_SEAT === bySeat) {
+      console.log('[battleAnim] Skipping animation for initiator');
+      return;
+    }
+    
+    const success = tryPlayBattleAnim(attacker, targets);
+    console.log('[battleAnim] Animation result:', success);
+    if (!success) {
+      // Отложим анимацию
+      PENDING_BATTLE_ANIMS.push({ attacker, targets, ts: Date.now(), id: __id });
+    }
   });
   // Визуальная поддержка: если пришло событие ритуала у оппонента — мягко отобразим +2 маны у него
   socket.on('ritualResolve', ({ kind, by, card, consumed, consumedIdx, spellIdx, consumedCard, spellCard }) => {
@@ -4369,10 +4227,19 @@
     } catch { return false; }
   }
   socket.on('battleRetaliation', ({ attacker, retaliators, total, __id, bySeat }) => {
-    // Отключаем WebSocket анимации контратак - используем только playDeltaAnimations
-    console.log('[battleRetaliation] Event received but animation disabled - using playDeltaAnimations instead', { 
-      MY_SEAT, bySeat, attacker, retaliators: retaliators?.length, total 
-    });
+    console.log('[battleRetaliation] Received retaliation animation', { MY_SEAT, bySeat, attacker, retaliators: retaliators?.length, total });
+    
+    // Показываем анимацию всем игрокам КРОМЕ инициатора
+    if (typeof MY_SEAT === 'number' && typeof bySeat === 'number' && MY_SEAT === bySeat) {
+      console.log('[battleRetaliation] Skipping animation for initiator');
+      return;
+    }
+    
+    const success = tryPlayRetaliation(attacker, retaliators, total);
+    console.log('[battleRetaliation] Animation result:', success);
+    if (!success) {
+      PENDING_RETALIATIONS.push({ attacker, retaliators, total, ts: Date.now(), id: __id });
+    }
   });
 
   function flushPendingBattleQueues(){
