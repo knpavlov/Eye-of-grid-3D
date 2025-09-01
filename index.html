@@ -712,6 +712,30 @@
     let gameState = null;
     let logEntries = [];
     let TILE_TEXTURES = {};
+    // Card textures cache (front/back/deck sides)
+    let CARD_TEX = { front: null, back: null, deckSide: null };
+    function getCachedTexture(url){
+      try {
+        if (!getCachedTexture.cache) getCachedTexture.cache = new Map();
+        if (getCachedTexture.cache.has(url)) return getCachedTexture.cache.get(url);
+        const tex = new THREE.TextureLoader().load(url, (t)=>{
+          try { t.anisotropy = renderer.capabilities.getMaxAnisotropy(); } catch {}
+          try { if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace; } catch {}
+          try { requestCardsRedraw && requestCardsRedraw(); } catch {}
+        });
+        try { tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); } catch {}
+        try { if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace; } catch {}
+        getCachedTexture.cache.set(url, tex);
+        return tex;
+      } catch { return null; }
+    }
+    function preloadCardTextures(){
+      try {
+        CARD_TEX.front   = getCachedTexture('textures/card_front_final.jpeg');
+        CARD_TEX.back    = getCachedTexture('textures/card_back_main.jpeg');
+        CARD_TEX.deckSide= getCachedTexture('textures/card_deck_side_view.jpeg');
+      } catch {}
+    }
     let PROC_TILE_TEXTURES = {};
     // Настройки показа большой карты при доборе — можно править из консоли
     window.DRAW_CARD_TUNE = {
@@ -1238,6 +1262,7 @@
     }
     
     function createBoard() {
+      try { preloadCardTextures(); } catch {}
       tileMeshes.forEach(row => row.forEach(tile => {
         if (tile) boardGroup.remove(tile);
       }));
@@ -1315,9 +1340,9 @@
       texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
       if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
       
-      const faceMaterial = new THREE.MeshStandardMaterial({ 
-        map: texture, 
-        metalness: 0.1, 
+      const faceMaterial = new THREE.MeshStandardMaterial({
+        map: texture,
+        metalness: 0.1,
         roughness: 0.7,
         side: THREE.DoubleSide
       });
@@ -1328,9 +1353,11 @@
         roughness: 0.8 
       });
       
-      const backMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x0f172a, 
-        metalness: 0.2, 
+      const backMap = (CARD_TEX && CARD_TEX.back) ? CARD_TEX.back : getCachedTexture('textures/card_back_main.jpeg');
+      const backMaterial = new THREE.MeshStandardMaterial({
+        map: backMap,
+        color: 0xffffff,
+        metalness: 0.2,
         roughness: 0.9,
         side: THREE.DoubleSide
       });
@@ -1426,11 +1453,25 @@
       cardMesh.add(plane);
     }
     function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
-      const gradient = ctx.createLinearGradient(0, 0, 0, height);
-      gradient.addColorStop(0, '#1e293b');
-      gradient.addColorStop(1, '#0f172a');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, width, height);
+      // Draw textured front background if available, else fallback gradient
+      try {
+        const imgFront = (CARD_TEX && CARD_TEX.front && CARD_TEX.front.image) ? CARD_TEX.front.image : null;
+        if (imgFront && imgFront.width && imgFront.height) {
+          ctx.drawImage(imgFront, 0, 0, width, height);
+        } else {
+          const gradient = ctx.createLinearGradient(0, 0, 0, height);
+          gradient.addColorStop(0, '#1e293b');
+          gradient.addColorStop(1, '#0f172a');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, width, height);
+        }
+      } catch {
+        const gradient = ctx.createLinearGradient(0, 0, 0, height);
+        gradient.addColorStop(0, '#1e293b');
+        gradient.addColorStop(1, '#0f172a');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+      }
       
       ctx.strokeStyle = getElementColor(cardData.element);
       ctx.lineWidth = 4;
@@ -1447,9 +1488,9 @@
       
       // Иллюстрация
       const illX = 16, illY = 70, illW = width - 32, illH = 120;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
       ctx.fillRect(illX, illY, illW, illH);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
       ctx.lineWidth = 2;
       ctx.strokeRect(illX, illY, illW, illH);
       let img = CARD_IMAGES[cardData.id] || CARD_IMAGES[cardData.id?.toLowerCase?.()] || CARD_IMAGES[(cardData.name||'').toLowerCase().replace(/[^a-z0-9\s_-]/g,'').replace(/\s+/g,'_')];
@@ -2808,9 +2849,12 @@
       const zA = -5.2 - META_Z_AWAY; const zB = 0.2 + META_Z_AWAY; // Важно (смещение колоды/кладбища от камеры)
       function buildDeck(player, z) {
         const g = new THREE.Group(); g.position.set(baseX, 0.5, z); g.userData = { metaType: 'deck', player };
-        const body = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.8, 5.0), new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.3, roughness: 0.8 }));
+        const sideMap = (CARD_TEX && CARD_TEX.deckSide) ? CARD_TEX.deckSide : getCachedTexture('textures/card_deck_side_view.jpeg');
+        const backMap = (CARD_TEX && CARD_TEX.back) ? CARD_TEX.back : getCachedTexture('textures/card_back_main.jpeg');
+        const sideMat = new THREE.MeshStandardMaterial({ map: sideMap, color: 0xffffff, metalness: 0.3, roughness: 0.85 });
+        const body = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.8, 5.0), sideMat);
         body.castShadow = true; body.receiveShadow = true; body.userData = { metaType: 'deck', player };
-        const top = new THREE.Mesh(new THREE.BoxGeometry(3.62, 0.04, 5.02), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+        const top = new THREE.Mesh(new THREE.BoxGeometry(3.62, 0.04, 5.02), new THREE.MeshStandardMaterial({ map: backMap, color: 0xffffff }));
         top.position.y = 0.42; top.userData = { metaType: 'deck', player };
         g.add(body); g.add(top); metaGroup.add(g); deckMeshes.push(g);
       }
