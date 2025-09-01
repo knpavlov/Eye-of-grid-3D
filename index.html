@@ -2540,11 +2540,28 @@
         hasAdjacentGuard = window.hasAdjacentGuard; computeHits = window.computeHits; stagedAttack = window.stagedAttack; magicAttack = window.magicAttack;
         shuffle = window.shuffle; drawOne = window.drawOne; drawOneNoAdd = window.drawOneNoAdd; countControlled = window.countControlled; startGame = window.startGame;
       } catch {}
+      // Fallbacks to ensure offline scene renders even if module failed to load
+      try {
+        if (!startGame || typeof startGame !== 'function') {
+          startGame = (deck0, deck1) => ({
+            board: randomBoard(),
+            players: [
+              { name: 'Player 1', deck: Array.isArray(deck0)?deck0.slice():[], hand: [], discard: [], graveyard: [], mana: 2 },
+              { name: 'Player 2', deck: Array.isArray(deck1)?deck1.slice():[], hand: [], discard: [], graveyard: [], mana: 0 }
+            ],
+            active: 0,
+            turn: 1,
+            winner: null
+          });
+        }
+      } catch {}
     }
     
     function init() {
       wireModules();
       initThreeJS();
+      // Start render loop early so scene is visible even if game init fails
+      animate();
       initGame();
       preloadCardImages();
       
@@ -2560,7 +2577,6 @@
       });
       window.addEventListener('resize', onWindowResize);
       
-      animate();
     }
 
     function createMetaObjects() {
