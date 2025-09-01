@@ -149,30 +149,23 @@
     
     // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
     
-    const DIR_VECTORS = window.DIR_VECTORS;
-    const OPPOSITE_ELEMENT = window.OPPOSITE_ELEMENT;
-    const elementEmoji = window.elementEmoji;
-    const turnCW = window.turnCW;
-    const turnCCW = window.turnCCW;
+    let DIR_VECTORS, OPPOSITE_ELEMENT, elementEmoji, turnCW, turnCCW;
     // Переопределяем ориентации: N должен смотреть к верхнему краю (−Z), S — к нижнему (+Z)
     // В three.js «вперёд» меша по умолчанию это +Z (0°), поэтому:
     // S: 0°, E: -90°, W: 90°, N: 180°
     // Исправление: N (стрелка вверх) = 0°, S (стрелка вниз) = 180°; E/W оставляем как есть
-    const facingDeg = window.facingDeg;
+    let facingDeg;
     
-    const uid = window.uid;
-    const inBounds = window.inBounds;
-    const capMana = window.capMana;
-    const attackCost = window.attackCost;
+    let uid, inBounds, capMana, attackCost;
     
     // Карты
-    const CARDS = window.CARDS;
+    let CARDS;
     
     // Стартер: только Fire Set + несколько спеллов
-    const STARTER_FIRESET = (window.STARTER_FIRESET || []);
+    let STARTER_FIRESET;
     
     // Функции игровой логики
-    const dirsForPattern = window.dirsForPattern;
+    let dirsForPattern;
     
     const computeCellBuff = (cellElement, unitElement) => {
       if (cellElement === unitElement) return { atk: 0, hp: 2 };
@@ -182,7 +175,7 @@
       return { atk: 0, hp: 0 };
     };
     
-    const effectiveStats = window.effectiveStats;
+    let effectiveStats;
     };
     
     const randomBoard = () => {
@@ -202,23 +195,23 @@
       return board;
     };
     
-    const shuffle = window.shuffle;
+    let shuffle;
     
-    const drawOne = window.drawOne;
+    let drawOne;
 
     // Специальная версия: вынуть верхнюю карту, но НЕ класть в руку (для эффектной анимации)
-    const drawOneNoAdd = window.drawOneNoAdd;
+    let drawOneNoAdd;
     
-    const countControlled = window.countControlled;
+    let countControlled;
     
-    const startGame = window.startGame;
+    let startGame;
     
     // ====== БОЕВАЯ СИСТЕМА (порт из 2D) ======
-    const hasAdjacentGuard = window.hasAdjacentGuard;
+    let hasAdjacentGuard;
       return false;
     }
     
-    const computeHits = window.computeHits;
+    let computeHits;
           const backDir = turnCW[turnCW[B.facing]];
           const [bdr, bdc] = DIR_VECTORS[backDir];
           const isBack = (nr + bdr === r && nc + bdc === c);
@@ -246,7 +239,7 @@
       return hits;
     }
     
-    const stagedAttack = window.stagedAttack;
+    let stagedAttack;
       };
       const step1 = () => {
         for (const h of hits) {
@@ -306,7 +299,7 @@
       return { step1, step2, finish, n1 };
     }
     
-    const magicAttack = window.magicAttack;
+    let magicAttack;
       // Возврат 1 маны владельцам погибших существ
       try {
         for (const d of deaths) {
@@ -2536,8 +2529,21 @@
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
+
+    function wireModules() {
+      try {
+        DIR_VECTORS = window.DIR_VECTORS; OPPOSITE_ELEMENT = window.OPPOSITE_ELEMENT; elementEmoji = window.elementEmoji;
+        turnCW = window.turnCW; turnCCW = window.turnCCW; facingDeg = window.facingDeg;
+        uid = window.uid; inBounds = window.inBounds; capMana = window.capMana; attackCost = window.attackCost;
+        CARDS = window.CARDS; STARTER_FIRESET = window.STARTER_FIRESET || [];
+        dirsForPattern = window.dirsForPattern; effectiveStats = window.effectiveStats;
+        hasAdjacentGuard = window.hasAdjacentGuard; computeHits = window.computeHits; stagedAttack = window.stagedAttack; magicAttack = window.magicAttack;
+        shuffle = window.shuffle; drawOne = window.drawOne; drawOneNoAdd = window.drawOneNoAdd; countControlled = window.countControlled; startGame = window.startGame;
+      } catch {}
+    }
     
     function init() {
+      wireModules();
       initThreeJS();
       initGame();
       preloadCardImages();
