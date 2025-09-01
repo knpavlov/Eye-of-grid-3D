@@ -943,10 +943,14 @@
         // определить целевую ячейку
         const currentMana = (gameState && gameState.players && gameState.players[ownerIndex]) ? (gameState.players[ownerIndex].mana || 0) : 0;
         let targetIdx = Math.min(9, currentMana);
-        // У наблюдателя орб летит в «скрытую» ячейку (currentMana - 1)
+        // У наблюдателя орб летит в «скрытую» ячейку (currentMana - 1) // Важно. Определяет куда летит мана орб
         try {
           const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
           if (visualOnly && mySeat !== null && mySeat !== ownerIndex) {
+            // Если у владельца уже учтена мана в state (т.е. currentMana включает +1),
+            // то наблюдателю нужно целиться в индекс currentMana - 1 (последний реально появившийся орб).
+            // Но если по каким-то причинам снапшот ещё не обновил мана-бар у наблюдателя,
+            // подстрахуемся и не уйдём левее нуля.
             targetIdx = Math.max(0, Math.min(9, currentMana - 1));
           }
         } catch {}
@@ -1902,7 +1906,8 @@
                 try {
                   for (const h of hitsPrev) {
                     const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
-                    if (tMesh) { shakeMesh(tMesh, 6, 0.12); spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555'); }
+                    // Убираем дубликаты: показываем красный урон только здесь, а ниже в delta-анимациях — подавим для этих клеток
+                    if (tMesh && typeof h.dmg === 'number' && h.dmg > 0) { shakeMesh(tMesh, 6, 0.12); spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555'); }
                   }
                 } catch {}
               }, 420);
@@ -1945,10 +1950,15 @@
                   const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
                   if (tMesh) {
                     // Если это цель атакующего — задержим показ урона до конца выпада (дублирование предотвращает проверка выше)
-                    const delay = (attackerCell && hitsPrev && hitsPrev.some(h => h.r === r && h.c === c)) ? 420 : 0;
+                    const isPrimaryHit = !!(attackerCell && hitsPrev && hitsPrev.some(h => h.r === r && h.c === c));
+                    const delay = isPrimaryHit ? 420 : 0;
+                    // Избежать дубля красного числа: для первичных целей красный уже показан выше. Здесь показываем только зелёный хил/прочие изменения.
+                    const color = delta > 0 ? '#22c55e' : (isPrimaryHit ? null : '#ef4444');
                     setTimeout(() => {
-                      spawnDamageText(tMesh, `${delta > 0 ? '+' : ''}${delta}`, delta > 0 ? '#22c55e' : '#ef4444');
-                      if (delta < 0) { shakeMesh(tMesh, 6, 0.12); }
+                      if (color) {
+                        spawnDamageText(tMesh, `${delta > 0 ? '+' : ''}${delta}`, color);
+                        if (delta < 0) { shakeMesh(tMesh, 6, 0.12); }
+                      }
                     }, delay);
                   }
                 } catch {}
@@ -1963,7 +1973,7 @@
                 dissolveAndAsh(ghost, new THREE.Vector3(0,0,0.6), 0.9);
                 const p = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
                 animateManaGainFromWorld(p, pu.owner, true);
-                // Не трогаем gameState в онлайне, чтобы не было двойного учёта. В офлайне можно подвинуть UI сразу.
+                // Не трогаем gameState в онлайне, чтобы не было двойного учёта. В офлайне можно подвинуть UI сразу. <-- Важно. Определяет куда прилетают орбы маны
                 try { if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') { gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1); updateUI(); } } catch {}
               } catch {}
             } else if (!pu && nu) {
@@ -3023,7 +3033,7 @@
             if (shouldSend) {
               window.socket.emit('battleAnim', {
                 attacker: { r, c },
-                targets: hitsPrev.map(h => ({ r: h.r, c: h.c }))
+                targets: hitsPrev.map(h => ({ r: h.r, c: h.c, dmg: h.dmg }))
               });
               console.log('[battleAnim] Sent battleAnim event', { attacker: { r, c }, targets: hitsPrev.length });
             }
@@ -4185,7 +4195,7 @@
         try {
           for (const target of targets) {
             const tMesh = unitMeshes.find(m => m.userData.row === target.r && m.userData.col === target.c);
-            if (tMesh && target.dmg) { 
+            if (tMesh && typeof target.dmg === 'number' && target.dmg > 0) { 
               shakeMesh(tMesh, 6, 0.12); 
               spawnDamageText(tMesh, `-${target.dmg}`, '#ff5555'); 
             }
@@ -4574,10 +4584,13 @@
   socket.on('matchEnded', ({ winnerSeat, reason })=>{
     // Полный сброс клиентского онлайнового состояния и комнаты перед показом модалки
     try { (window.socket || socket).emit('requestState'); } catch {}
-    NET_ACTIVE=false; MY_SEAT=null; APPLYING=false;
-    try { window.MY_SEAT = null; } catch {}
-    updateIndicator(); updateInputLock();
+    // ВАЖНО: сначала показываем модалку, используя актуальный MY_SEAT,
+    // затем уже сбрасываем локальные флаги. Иначе у обоих будет "Поражение".
     showVictoryModal({ winnerSeat, reason: reason || 'resign' });
+    NET_ACTIVE=false; APPLYING=false;
+    // Сбрасываем seat после показа модалки
+    MY_SEAT=null; try { window.MY_SEAT = null; } catch {}
+    updateIndicator(); updateInputLock();
   });
 
 })();
