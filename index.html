@@ -731,6 +731,35 @@
     // Recently shown remote damage (to avoid duplicate delta popups)
     let RECENT_REMOTE_DAMAGE = new Map();
     try { window.RECENT_REMOTE_DAMAGE = RECENT_REMOTE_DAMAGE; } catch {}
+    // Pending HP popups scheduled by playDeltaAnimations, so we can cancel if battleAnim shows earlier
+    let PENDING_HP_POPUPS = [];
+    function cancelPendingHpPopup(key, delta){
+      try {
+        if (!PENDING_HP_POPUPS || !PENDING_HP_POPUPS.length) return;
+        for (const item of PENDING_HP_POPUPS) {
+          if (!item.canceled && item.key === key && item.delta === delta) {
+            try { clearTimeout(item.timerId); } catch {}
+            item.canceled = true;
+          }
+        }
+        PENDING_HP_POPUPS = PENDING_HP_POPUPS.filter(x => !x.canceled);
+      } catch {}
+    }
+    function scheduleHpPopup(r,c,delta,delayMs){
+      try {
+        const key = `${r},${c}`;
+        const timerId = setTimeout(()=>{
+          try {
+            const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
+            if (tMesh) {
+              const color = delta > 0 ? '#22c55e' : '#ef4444';
+              spawnDamageText(tMesh, `${delta > 0 ? '+' : ''}${delta}`, color);
+            }
+          } catch {}
+        }, Math.max(0, delayMs));
+        PENDING_HP_POPUPS.push({ key, delta, timerId, scheduledAt: Date.now() + Math.max(0, delayMs), canceled: false });
+      } catch {}
+    }
     let PENDING_HIDE_HAND_CARDS = [];
     // Управление анимациями заставки хода и добора карты
     let lastTurnSplashPromise = Promise.resolve();
@@ -1959,6 +1988,23 @@
               } catch { return true; }
             })
           : hpChanges;
+
+        // Schedule HP popups in a cancelable way to sync with remote battle shakes
+        try {
+          const halfCount = Math.ceil(pendingHpChanges.length / 2);
+          for (let i = 0; i < halfCount && i < pendingHpChanges.length; i++) {
+            const change = pendingHpChanges[i];
+            scheduleHpPopup(change.r, change.c, change.delta, 800);
+          }
+          if (pendingHpChanges.length > halfCount) {
+            for (let i = halfCount; i < pendingHpChanges.length; i++) {
+              const change = pendingHpChanges[i];
+              scheduleHpPopup(change.r, change.c, change.delta, 1600);
+            }
+          }
+          // Prevent legacy fallback from double-displaying numbers
+          return;
+        } catch {}
 
         const halfCount = Math.ceil(pendingHpChanges.length / 2);
         
@@ -4212,6 +4258,7 @@
             const tMesh = unitMeshes.find(m => m.userData.row === target.r && m.userData.col === target.c);
             if (tMesh && typeof target.dmg === 'number' && target.dmg > 0) {
               shakeMesh(tMesh, 6, 0.12);
+              try { cancelPendingHpPopup(`${target.r},${target.c}`, -target.dmg); } catch {}
               try { spawnDamageText(tMesh, `-${target.dmg}`, '#ff5555'); } catch {}
               try {
                 const key = `${target.r},${target.c}`;
@@ -4301,6 +4348,7 @@
           const aLive = unitMeshes.find(m => m.userData.row === attacker.r && m.userData.col === attacker.c) || aMesh;
           if (aLive) {
             shakeMesh(aLive, 6, 0.14);
+            try { cancelPendingHpPopup(`${attacker.r},${attacker.c}`, -total); } catch {}
             try { spawnDamageText(aLive, `-${total}`, '#ffd166'); } catch {}
             try {
               const key = `${attacker.r},${attacker.c}`;
