@@ -1,0 +1,109 @@
+// Game state: reducer + helpers
+import { capMana } from './constants.js';
+import { CARDS, STARTER_FIRESET } from './cards.js';
+
+// Utilities
+export function shuffle(array) {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+export function drawOne(state, player) {
+  const pl = state.players[player];
+  if (!pl.deck.length) return null;
+  const card = pl.deck.shift();
+  if (card) pl.hand.push(card);
+  return card || null;
+}
+
+export function drawOneNoAdd(state, player) {
+  const pl = state.players[player];
+  if (!pl.deck.length) return null;
+  const card = pl.deck.shift();
+  return card || null;
+}
+
+export function countControlled(state, player) {
+  let count = 0;
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+    if (state.board[r][c].unit?.owner === player) count++;
+  }
+  return count;
+}
+
+export function randomBoard() {
+  // Keep simple: just empty 3x3 with default elements (use EARTH as neutral placeholder)
+  const elements = ['FIRE','WATER','EARTH','FOREST','MECH'];
+  const pick = (i) => elements[i % elements.length];
+  const board = [];
+  for (let r = 0; r < 3; r++) {
+    const row = [];
+    for (let c = 0; c < 3; c++) {
+      row.push({ element: pick(r*3 + c), unit: null });
+    }
+    board.push(row);
+  }
+  return board;
+}
+
+export function startGame(deck0 = STARTER_FIRESET, deck1 = STARTER_FIRESET) {
+  const state = {
+    board: randomBoard(),
+    players: [
+      { name: 'Player 1', deck: shuffle(deck0.filter(Boolean)), hand: [], discard: [], graveyard: [], mana: 2, maxMana: 10 },
+      { name: 'Player 2', deck: shuffle(deck1.filter(Boolean)), hand: [], discard: [], graveyard: [], mana: 0, maxMana: 10 },
+    ],
+    active: 0,
+    turn: 1,
+    winner: null,
+    __ver: 0,
+  };
+  for (let i = 0; i < 5; i++) { drawOne(state, 0); drawOne(state, 1); }
+  return state;
+}
+
+// Actions
+export const A = {
+  INIT: 'INIT',
+  REPLACE_STATE: 'REPLACE_STATE',
+  END_TURN: 'END_TURN',
+};
+
+export function reducer(state, action) {
+  switch (action.type) {
+    case A.INIT: {
+      const s = startGame(action.deck0, action.deck1);
+      s.__ver = (state?.__ver || 0) + 1;
+      return s;
+    }
+    case A.REPLACE_STATE: {
+      const incoming = action.payload;
+      const incomingVer = Number(incoming?.__ver) || 0;
+      const currentVer = Number(state?.__ver) || 0;
+      if (incomingVer < currentVer) return state;
+      return { ...incoming };
+    }
+    case A.END_TURN: {
+      if (!state || state.winner != null) return state;
+      const s = JSON.parse(JSON.stringify(state));
+      const controlled = countControlled(s, s.active);
+      if (controlled >= 5) { s.winner = s.active; s.__ver = (s.__ver || 0) + 1; return s; }
+      s.active = s.active === 0 ? 1 : 0;
+      s.turn += 1;
+      const pl = s.players[s.active];
+      const before = pl.mana || 0;
+      pl.mana = capMana(before + 2);
+      // Optional draw: only enqueue for animation elsewhere; here push straight for logic
+      const drawn = drawOneNoAdd(s, s.active);
+      if (drawn) pl.hand.push(drawn);
+      s.__ver = (s.__ver || 0) + 1;
+      return s;
+    }
+    default: return state || startGame();
+  }
+}
+
