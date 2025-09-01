@@ -617,7 +617,8 @@
         if (NET_ACTIVE && typeof window !== 'undefined' && window.socket) {
           window.socket.emit('battleAnim', {
             attacker: attackerCell,
-            targets: hitsPrev
+            targets: hitsPrev,
+            bySeat: typeof window.MY_SEAT === 'number' ? window.MY_SEAT : null
           });
         }
       } catch {}
@@ -640,7 +641,10 @@
               try {
                 for (const h of hitsPrev) {
                   const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
-                  if (tMesh) { shakeMesh(tMesh, 6, 0.12); spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555'); }
+                  if (tMesh) { 
+                    shakeMesh(tMesh, 6, 0.12); 
+                    // spawnDamageText убран - числа показывает playDeltaAnimations
+                  }
                 }
               } catch {}
             }, 420);
@@ -674,7 +678,10 @@
               if ((ret.total || 0) > 0) {
                 setTimeout(() => {
                   const aLive = unitMeshes.find(m => m.userData.row === attackerCell.r && m.userData.col === attackerCell.c) || aMesh;
-                  if (aLive) { shakeMesh(aLive, 6, 0.14); spawnDamageText(aLive, `-${ret.total}`, '#ffd166'); }
+                  if (aLive) { 
+                    shakeMesh(aLive, 6, 0.14); 
+                    // spawnDamageText убран - числа показывает playDeltaAnimations
+                  }
                 }, Math.max(0, Math.floor(maxDur * 1000)));
               }
             } catch {}
@@ -1878,6 +1885,7 @@
         const prevB = prevState.board || [];
         const nextB = nextState.board || [];
         // Обрабатываем только изменения HP, анимации атак идут через WebSocket
+        // Небольшая задержка, чтобы числа появлялись после анимаций выпадов
         setTimeout(() => {
           for (let r = 0; r < 3; r++) {
             for (let c = 0; c < 3; c++) {
@@ -1926,7 +1934,7 @@
               }
             }
           }
-        }, 0);
+        }, 800); // Задержка для правильного порядка анимаций
       } catch {}
     }
     // attachHpOverlay удалён, т.к. HP теперь перерисовывается на самой карте
@@ -2866,7 +2874,10 @@
         // Тряска и всплывающий урон — уже по актуальным мешам после обновления
         for (const h of hitsPrev) {
           const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
-          if (tMesh) { shakeMesh(tMesh, 6, 0.12); spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555'); }
+          if (tMesh) { 
+            shakeMesh(tMesh, 6, 0.12); 
+            // spawnDamageText убран - числа показывает playDeltaAnimations
+          }
         }
         setTimeout(async () => {
           // Сокращённая пауза перед контратакой
@@ -2892,7 +2903,13 @@
               }
             }
             // После лунжей контратаки — тряска и числа урона по атакующему
-            setTimeout(() => { const aLive = unitMeshes.find(m => m.userData.row === r && m.userData.col === c) || aMesh; if (aLive) { shakeMesh(aLive, 6, 0.14); spawnDamageText(aLive, `-${retaliation}`, '#ffd166'); } }, Math.max(0, maxDur * 1000 - 10));
+            setTimeout(() => { 
+              const aLive = unitMeshes.find(m => m.userData.row === r && m.userData.col === c) || aMesh; 
+              if (aLive) { 
+                shakeMesh(aLive, 6, 0.14); 
+                // spawnDamageText убран - числа показывает playDeltaAnimations
+              } 
+            }, Math.max(0, maxDur * 1000 - 10));
             animDelayMs = Math.max(animDelayMs, Math.floor(maxDur * 1000) + 160);
             // Синхронизация контратаки для наблюдателя
             try {
@@ -2911,7 +2928,8 @@
                 window.socket.emit('battleRetaliation', {
                   attacker: { r, c },
                   retaliators: retaliators.map(x => ({ r: x.r, c: x.c })),
-                  total: retaliation
+                  total: retaliation,
+                  bySeat: typeof window.MY_SEAT === 'number' ? window.MY_SEAT : null
                 });
                 console.log('[battleRetaliation] Sent battleRetaliation event', { attacker: { r, c }, retaliators: retaliators.length, total: retaliation });
               }
@@ -2971,7 +2989,8 @@
             if (shouldSend) {
               window.socket.emit('battleAnim', {
                 attacker: { r, c },
-                targets: hitsPrev.map(h => ({ r: h.r, c: h.c, dmg: h.dmg }))
+                targets: hitsPrev.map(h => ({ r: h.r, c: h.c, dmg: h.dmg })),
+                bySeat: typeof window.MY_SEAT === 'number' ? window.MY_SEAT : null
               });
               console.log('[battleAnim] Sent battleAnim event', { attacker: { r, c }, targets: hitsPrev.length });
             }
@@ -3302,9 +3321,7 @@
         gsap.to(flash.material, { opacity: 0, duration: 0.3, onComplete: ()=> effectsGroup.remove(flash) });
         // тряска цели и всплывающий урон для магии
         shakeMesh(tMesh, 6, 0.12);
-        if (typeof res.dmg === 'number' && res.dmg > 0) {
-          spawnDamageText(tMesh, `-${res.dmg}`, '#ff5555');
-        }
+        // spawnDamageText убран - числа показывает playDeltaAnimations
       }
       // Манасфера и кладбище для погибших от магии; откладываем перерисовку до конца дизолва
       if (res.deaths && res.deaths.length) {
@@ -4130,14 +4147,14 @@
       tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
         .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.30, ease: 'power2.inOut' });
       
-      // Показываем урон по целям после выпада
+      // Только тряска, без чисел урона (числа показывает playDeltaAnimations)
       setTimeout(() => {
         try {
           for (const target of targets) {
             const tMesh = unitMeshes.find(m => m.userData.row === target.r && m.userData.col === target.c);
             if (tMesh && typeof target.dmg === 'number' && target.dmg > 0) { 
               shakeMesh(tMesh, 6, 0.12); 
-              spawnDamageText(tMesh, `-${target.dmg}`, '#ff5555'); 
+              // spawnDamageText убран - числа показывает playDeltaAnimations
             }
           }
         } catch {}
@@ -4220,7 +4237,10 @@
       if (typeof total === 'number' && total > 0) {
         setTimeout(() => {
           const aLive = unitMeshes.find(m => m.userData.row === attacker.r && m.userData.col === attacker.c) || aMesh;
-          if (aLive) { shakeMesh(aLive, 6, 0.14); spawnDamageText(aLive, `-${total}`, '#ffd166'); }
+          if (aLive) { 
+            shakeMesh(aLive, 6, 0.14); 
+            // spawnDamageText убран - числа показывает playDeltaAnimations
+          }
         }, Math.max(0, maxDur * 1000 - 10));
       }
       return true;
