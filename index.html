@@ -643,7 +643,7 @@
                   const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
                   if (tMesh) { 
                     shakeMesh(tMesh, 6, 0.12); 
-                    // spawnDamageText убран - числа показывает playDeltaAnimations
+                    spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555');
                   }
                 }
               } catch {}
@@ -680,7 +680,7 @@
                   const aLive = unitMeshes.find(m => m.userData.row === attackerCell.r && m.userData.col === attackerCell.c) || aMesh;
                   if (aLive) { 
                     shakeMesh(aLive, 6, 0.14); 
-                    // spawnDamageText убран - числа показывает playDeltaAnimations
+                    spawnDamageText(aLive, `-${ret.total}`, '#ffd166');
                   }
                 }, Math.max(0, Math.floor(maxDur * 1000)));
               }
@@ -1882,59 +1882,100 @@
     function playDeltaAnimations(prevState, nextState) {
       try {
         if (!prevState || !nextState) return;
+        
+        // Для активного игрока не показываем числа HP из playDeltaAnimations - они идут из локальных анимаций
+        const isActivePlayer = (typeof MY_SEAT === 'number' && typeof gameState !== 'undefined' && gameState && typeof gameState.active === 'number' && MY_SEAT === gameState.active);
+        
         const prevB = prevState.board || [];
         const nextB = nextState.board || [];
-        // Обрабатываем только изменения HP, анимации атак идут через WebSocket
-        // Небольшая задержка, чтобы числа появлялись после анимаций выпадов
-        setTimeout(() => {
-          for (let r = 0; r < 3; r++) {
-            for (let c = 0; c < 3; c++) {
-              const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
-              const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
-              if (pu && nu) {
-                const pHP = (typeof pu.currentHP === 'number') ? pu.currentHP : pu.hp;
-                const nHP = (typeof nu.currentHP === 'number') ? nu.currentHP : nu.hp;
-                const delta = (typeof pHP === 'number' && typeof nHP === 'number') ? (nHP - pHP) : 0;
-                if (delta !== 0) {
-                  try {
-                    const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-                    if (tMesh) {
-                      // Показываем все изменения HP - WebSocket анимации покажут только выпады
-                      
-                      // Показываем только изменения HP, которые не связаны с основной атакой/контратакой этого хода
-                      const color = delta > 0 ? '#22c55e' : '#ef4444';
-                      spawnDamageText(tMesh, `${delta > 0 ? '+' : ''}${delta}`, color);
-                      if (delta < 0) { shakeMesh(tMesh, 6, 0.12); }
-                    }
-                  } catch {}
+        
+        // Обрабатываем появление/исчезновение юнитов для всех игроков
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
+            const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
+            if (pu && !nu) {
+              // Юнит исчез — проигрываем шейдерное «исчезновение» фантома и орб маны
+              try {
+                const tile = tileMeshes?.[r]?.[c]; if (!tile) continue;
+                const ghost = createCard3D(CARDS[pu.tplId], false);
+                ghost.position.copy(tile.position).add(new THREE.Vector3(0, 0.28, 0));
+                try { effectsGroup.add(ghost); } catch { cardGroup.add(ghost); }
+                dissolveAndAsh(ghost, new THREE.Vector3(0,0,0.6), 0.9);
+                const p = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+                animateManaGainFromWorld(p, pu.owner, true);
+                try { if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') { gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1); updateUI(); } } catch {}
+              } catch {}
+            } else if (!pu && nu) {
+              // Юнит появился — лёгкий «поп» масштаба
+              try {
+                const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
+                if (tMesh) {
+                  const s = tMesh.scale.clone();
+                  tMesh.scale.set(s.x * 0.7, s.y * 0.7, s.z * 0.7);
+                  gsap.to(tMesh.scale, { x: s.x, y: s.y, z: s.z, duration: 0.28, ease: 'power2.out' });
                 }
-              } else if (pu && !nu) {
-                // Юнит исчез — проигрываем шейдерное «исчезновение» фантома и орб маны
-                try {
-                  const tile = tileMeshes?.[r]?.[c]; if (!tile) continue;
-                  const ghost = createCard3D(CARDS[pu.tplId], false);
-                  ghost.position.copy(tile.position).add(new THREE.Vector3(0, 0.28, 0));
-                  try { effectsGroup.add(ghost); } catch { cardGroup.add(ghost); }
-                  dissolveAndAsh(ghost, new THREE.Vector3(0,0,0.6), 0.9);
-                  const p = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
-                  animateManaGainFromWorld(p, pu.owner, true);
-                  // Не трогаем gameState в онлайне, чтобы не было двойного учёта. В офлайне можно подвинуть UI сразу. <-- Важно. Определяет куда прилетают орбы маны
-                  try { if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') { gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1); updateUI(); } } catch {}
-                } catch {}
-              } else if (!pu && nu) {
-                // Юнит появился — лёгкий «поп» масштаба
-                try {
-                  const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-                  if (tMesh) {
-                    const s = tMesh.scale.clone();
-                    tMesh.scale.set(s.x * 0.7, s.y * 0.7, s.z * 0.7);
-                    gsap.to(tMesh.scale, { x: s.x, y: s.y, z: s.z, duration: 0.28, ease: 'power2.out' });
-                  }
-                } catch {}
+              } catch {}
+            }
+          }
+        }
+        
+        // Для активного игрока не показываем числа HP - они есть в локальных анимациях
+        if (isActivePlayer) {
+          return;
+        }
+
+        // Для неактивного игрока показываем числа HP с последовательными задержками
+        const hpChanges = [];
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
+            const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
+            if (pu && nu) {
+              const pHP = (typeof pu.currentHP === 'number') ? pu.currentHP : pu.hp;
+              const nHP = (typeof nu.currentHP === 'number') ? nu.currentHP : nu.hp;
+              const delta = (typeof pHP === 'number' && typeof nHP === 'number') ? (nHP - pHP) : 0;
+              if (delta !== 0) {
+                hpChanges.push({ r, c, delta });
               }
             }
           }
-        }, 800); // Задержка для правильного порядка анимаций
+        }
+
+        // Показываем HP изменения последовательно
+        // Первая половина изменений - через 500мс (после первой атаки)
+        // Вторая половина - через 1300мс (после контратаки)
+        const halfCount = Math.ceil(hpChanges.length / 2);
+        
+        // Первая волна чисел (урон по атакованным целям)
+        setTimeout(() => {
+          for (let i = 0; i < halfCount && i < hpChanges.length; i++) {
+            const change = hpChanges[i];
+            try {
+              const tMesh = unitMeshes.find(m => m.userData.row === change.r && m.userData.col === change.c);
+              if (tMesh) {
+                const color = change.delta > 0 ? '#22c55e' : '#ef4444';
+                spawnDamageText(tMesh, `${change.delta > 0 ? '+' : ''}${change.delta}`, color);
+              }
+            } catch {}
+          }
+        }, 500);
+        
+        // Вторая волна чисел (урон по атакующему от контратаки)
+        if (hpChanges.length > halfCount) {
+          setTimeout(() => {
+            for (let i = halfCount; i < hpChanges.length; i++) {
+              const change = hpChanges[i];
+              try {
+                const tMesh = unitMeshes.find(m => m.userData.row === change.r && m.userData.col === change.c);
+                if (tMesh) {
+                  const color = change.delta > 0 ? '#22c55e' : '#ef4444';
+                  spawnDamageText(tMesh, `${change.delta > 0 ? '+' : ''}${change.delta}`, color);
+                }
+              } catch {}
+            }
+          }, 1300);
+        }
       } catch {}
     }
     // attachHpOverlay удалён, т.к. HP теперь перерисовывается на самой карте
@@ -2876,7 +2917,7 @@
           const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
           if (tMesh) { 
             shakeMesh(tMesh, 6, 0.12); 
-            // spawnDamageText убран - числа показывает playDeltaAnimations
+            spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555');
           }
         }
         setTimeout(async () => {
@@ -2907,7 +2948,7 @@
               const aLive = unitMeshes.find(m => m.userData.row === r && m.userData.col === c) || aMesh; 
               if (aLive) { 
                 shakeMesh(aLive, 6, 0.14); 
-                // spawnDamageText убран - числа показывает playDeltaAnimations
+                spawnDamageText(aLive, `-${retaliation}`, '#ffd166');
               } 
             }, Math.max(0, maxDur * 1000 - 10));
             animDelayMs = Math.max(animDelayMs, Math.floor(maxDur * 1000) + 160);
@@ -3321,7 +3362,9 @@
         gsap.to(flash.material, { opacity: 0, duration: 0.3, onComplete: ()=> effectsGroup.remove(flash) });
         // тряска цели и всплывающий урон для магии
         shakeMesh(tMesh, 6, 0.12);
-        // spawnDamageText убран - числа показывает playDeltaAnimations
+        if (typeof res.dmg === 'number' && res.dmg > 0) {
+          spawnDamageText(tMesh, `-${res.dmg}`, '#ff5555');
+        }
       }
       // Манасфера и кладбище для погибших от магии; откладываем перерисовку до конца дизолва
       if (res.deaths && res.deaths.length) {
