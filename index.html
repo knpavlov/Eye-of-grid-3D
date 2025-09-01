@@ -943,14 +943,12 @@
         // определить целевую ячейку
         const currentMana = (gameState && gameState.players && gameState.players[ownerIndex]) ? (gameState.players[ownerIndex].mana || 0) : 0;
         let targetIdx = Math.min(9, currentMana);
-        // У наблюдателя орб летит в «скрытую» ячейку (currentMana - 1) // Важно. Определяет куда летит мана орб
+        // В visualOnly режиме орб всегда летит в позицию currentMana - 1 (последний свободный слот)
         try {
-          const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
-          if (visualOnly && mySeat !== null && mySeat !== ownerIndex) {
-            // Если у владельца уже учтена мана в state (т.е. currentMana включает +1),
-            // то наблюдателю нужно целиться в индекс currentMana - 1 (последний реально появившийся орб).
-            // Но если по каким-то причинам снапшот ещё не обновил мана-бар у наблюдателя,
-            // подстрахуемся и не уйдём левее нуля.
+          if (visualOnly) {
+            // Если мана уже учтена в state (т.е. currentMana включает +1 от только что убитого существа),
+            // то орб должен лететь в индекс currentMana - 1 (последний реально свободный орб).
+            // Подстрахуемся и не уйдём левее нуля.
             targetIdx = Math.max(0, Math.min(9, currentMana - 1));
           }
         } catch {}
@@ -1923,29 +1921,38 @@
                   }
                 } catch {}
               }, 420);
-              // Контратаки и урон по атакующему — после небольшой паузы
-              try {
-                const staged = stagedAttack(prevState, attackerCell.r, attackerCell.c);
-                const ret = staged && staged.step2 ? (staged.step2() || { total: 0, retaliators: [] }) : { total: 0, retaliators: [] };
-                const retaliators = (ret.retaliators || []);
-                let maxDur = 0;
-                retaliators.forEach(rrObj => {
-                  const rMesh = unitMeshes.find(m => m.userData.row === rrObj.r && m.userData.col === rrObj.c);
-                  if (!rMesh) return;
-                  const dir2 = new THREE.Vector3().subVectors(aMesh.position, rMesh.position).normalize();
-                  const push2 = { x: dir2.x * 0.6, z: dir2.z * 0.6 };
-                  const tl2 = gsap.timeline();
-                  tl2.to(rMesh.position, { x: `+=${push2.x}`, z: `+=${push2.z}`, duration: 0.22, ease: 'power2.out' })
-                    .to(rMesh.position, { x: `-=${push2.x}`, z: `-=${push2.z}`, duration: 0.30, ease: 'power2.inOut' });
-                  maxDur = Math.max(maxDur, 0.52);
-                });
-                if ((ret.total || 0) > 0) {
-                  setTimeout(() => {
-                    const aLive = unitMeshes.find(m => m.userData.row === attackerCell.r && m.userData.col === attackerCell.c) || aMesh;
-                    if (aLive) { shakeMesh(aLive, 6, 0.14); spawnDamageText(aLive, `-${ret.total}`, '#ffd166'); }
-                  }, Math.max(0, Math.floor(maxDur * 1000)));
-                }
-              } catch {}
+              // Контратаки — после паузы, как в офлайне
+              setTimeout(async () => {
+                try {
+                  await new Promise(resolve => setTimeout(resolve, 700)); // Пауза как в офлайне
+                  const staged = stagedAttack(prevState, attackerCell.r, attackerCell.c);
+                  const ret = staged && staged.step2 ? (staged.step2() || { total: 0, retaliators: [] }) : { total: 0, retaliators: [] };
+                  const retaliators = (ret.retaliators || []);
+                  let maxDur = 0;
+                  
+                  // Выпады контратакующих
+                  retaliators.forEach(rrObj => {
+                    const rMesh = unitMeshes.find(m => m.userData.row === rrObj.r && m.userData.col === rrObj.c);
+                    if (!rMesh) return;
+                    const aMeshLive = unitMeshes.find(m => m.userData.row === attackerCell.r && m.userData.col === attackerCell.c) || aMesh;
+                    if (!aMeshLive) return;
+                    const dir2 = new THREE.Vector3().subVectors(aMeshLive.position, rMesh.position).normalize();
+                    const push2 = { x: dir2.x * 0.6, z: dir2.z * 0.6 };
+                    const tl2 = gsap.timeline();
+                    tl2.to(rMesh.position, { x: `+=${push2.x}`, z: `+=${push2.z}`, duration: 0.22, ease: 'power2.out' })
+                      .to(rMesh.position, { x: `-=${push2.x}`, z: `-=${push2.z}`, duration: 0.30, ease: 'power2.inOut' });
+                    maxDur = Math.max(maxDur, 0.52);
+                  });
+                  
+                  // Урон по атакующему после контратак
+                  if ((ret.total || 0) > 0) {
+                    setTimeout(() => {
+                      const aLive = unitMeshes.find(m => m.userData.row === attackerCell.r && m.userData.col === attackerCell.c) || aMesh;
+                      if (aLive) { shakeMesh(aLive, 6, 0.14); spawnDamageText(aLive, `-${ret.total}`, '#ffd166'); }
+                    }, Math.max(0, Math.floor(maxDur * 1000)));
+                  }
+                } catch {}
+              }, 420); // Начинаем контратаки после завершения основной атаки
             }
           } catch {}
         }
