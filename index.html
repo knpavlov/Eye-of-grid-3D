@@ -125,8 +125,8 @@
     <!-- Верхний центр: номер хода и круглая кнопка с таймером -->
     <div id="top-center" class="ui-panel fixed top-3 left-1/2 -translate-x-1/2 z-20">
       <div class="overlay-panel px-4 py-3 flex flex-col items-center gap-2">
-        <div id="turn-info" class="text-sm tracking-wide">Ход: 1</div>
-        <button id="end-turn-btn" class="end-turn-btn" aria-label="Завершить ход">
+        <div id="turn-info" class="text-sm tracking-wide">Turn: 1</div>
+        <button id="end-turn-btn" class="end-turn-btn" aria-label="End Turn">
           <span class="time-fill"></span>
           <span class="label-text">Конец хода</span>
           <span class="sec-text">100</span>
@@ -266,7 +266,7 @@
       FIRE_PURSUER: { id:'FIRE_PURSUER', name:'Pursuer of Saint Dhees', type:'UNIT', cost:6, activation:3, element:'FIRE', atk:5, hp:4, pattern:'FRONT', range:1, blindspots:['S'], dynamicAtk:'OTHERS_ON_BOARD', desc:'ATK = 5 + number of other creatures on board.' },
       // Спеллы из других наборов (из 2D)
       // FREEZE_STREAM удалён
-      RAISE_STONE: { id:'RAISE_STONE', name:'Подъём породы', type:'SPELL', cost:2, element:'EARTH', text:'+2 HP дружественному юниту.' },
+      RAISE_STONE: { id:'RAISE_STONE', name:'Raise Stone', type:'SPELL', cost:2, element:'EARTH', text:'+2 HP to a friendly unit.' },
       // WIND_SHIFT удалён,
       SPELL_FISSURES_OF_GOGHLIE: {
         id: 'SPELL_FISSURES_OF_GOGHLIE', name: 'Fissures of Goghlie', type: 'SPELL',
@@ -409,7 +409,7 @@
         board: randomBoard(),
         players: [
           { 
-            name: 'Игрок 1', 
+            name: 'Player 1', 
             deck: shuffle(deck0.filter(Boolean)), 
             hand: [], 
             discard: [], 
@@ -417,7 +417,7 @@
             mana: 2 
           },
           { 
-            name: 'Игрок 2', 
+            name: 'Player 2', 
             deck: shuffle(deck1.filter(Boolean)), 
             hand: [], 
             discard: [], 
@@ -525,7 +525,7 @@
           const dealt = dodge ? 0 : h.dmg;
           B.currentHP = Math.max(0, B.currentHP - dealt);
           const afterHP = B.currentHP;
-          logLines.push(`${CARDS[attacker.tplId].name} → ${CARDS[B.tplId].name}: ${dealt} урона${h.backstab ? ' (+1 в спину)' : ''}${dodge ? ' (уклонение)' : ''} (HP ${before}→${afterHP})`);
+          logLines.push(`${CARDS[attacker.tplId].name} → ${CARDS[B.tplId].name}: ${dealt} damage${h.backstab ? ' (+1 to the blindspot)' : ''}${dodge ? ' (dodge)' : ''} (HP ${before}→${afterHP})`);
         }
       };
       const step2 = () => {
@@ -922,7 +922,7 @@
           undefined,
           () => {
             // если не удалось — оставим процедурную текстуру как фолбэк
-            try { console.warn('Не удалось загрузить текстуру тайла', k, path); } catch {}
+            try { console.warn('Could not load tile texture', k, path); } catch {}
           }
         );
       }
@@ -2121,10 +2121,10 @@
       const ci1 = document.getElementById('control-info-1'); if (ci1) ci1.textContent = `Контроль: ${controlB}`;
       
       if (controlA >= 5) {
-        showNotification('Игрок 1 побеждает!', 'success');
+        showNotification('Player 1 wins!', 'success');
         gameState.winner = 0;
       } else if (controlB >= 5) {
-        showNotification('Игрок 2 побеждает!', 'success');
+        showNotification('Player 2 wins!', 'success');
         gameState.winner = 1;
       }
     }
@@ -2227,7 +2227,7 @@
             if (tip) {
               const deckCount = gameState?.players?.[p]?.deck?.length ?? 0;
               const gyCount = gameState?.players?.[p]?.graveyard?.length ?? 0;
-              tip.textContent = data.metaType === 'deck' ? `Колода Игрок ${p===0? '1':'2'}: ${deckCount}` : `Кладбище Игрок ${p===0? '1':'2'}: ${gyCount}`;
+              tip.textContent = data.metaType === 'deck' ? `Deck - Player ${p===0? '1':'2'}: ${deckCount}` : `Graveyard - Player ${p===0? '1':'2'}: ${gyCount}`;
               tip.style.left = (event.clientX + 16) + 'px';
               tip.style.top = (event.clientY + 16) + 'px';
               tip.classList.remove('hidden');
@@ -2350,7 +2350,7 @@
             const row = hoveredTile.userData.row;
             const col = hoveredTile.userData.col;
             if (gameState.board[row][col].unit) {
-              showNotification('Клетка уже занята!', 'error');
+              showNotification('Cell is already occupied!', 'error');
               returnCardToHand(draggedCard);
             } else {
               pendingPlacement = {
@@ -2464,7 +2464,7 @@
       const attackBtn = document.getElementById('attack-btn');
       attackBtn.disabled = alreadyAttacked;
       const cost = attackCost(cardData);
-      attackBtn.textContent = alreadyAttacked ? 'Уже атаковал' : `Атаковать (−${cost})`;
+      attackBtn.textContent = alreadyAttacked ? 'Already attacked' : `Attack (−${cost})`;
       // Ротация: платное действие, 1 раз за ход
       const rotateCost = attackCost(cardData);
       const alreadyRotated = unitData.lastRotateTurn === gameState.turn;
@@ -2473,8 +2473,8 @@
       if (rCw && rCcw) {
         rCw.disabled = !!alreadyRotated;
         rCcw.disabled = !!alreadyRotated;
-        rCw.textContent = alreadyRotated ? 'Уже поворачивался' : `Повернуть ↻ (−${rotateCost})`;
-        rCcw.textContent = alreadyRotated ? 'Уже поворачивался' : `Повернуть ↺ (−${rotateCost})`;
+        rCw.textContent = alreadyRotated ? 'Already rotated' : `Rotate ↻ (−${rotateCost})`;
+        rCcw.textContent = alreadyRotated ? 'Already rotated' : `Rotate ↺ (−${rotateCost})`;
       }
       // Подсветка потенциальных целей в панели действий
       const hits = computeHits(gameState, selectedUnit.userData.row, selectedUnit.userData.col);
@@ -2537,8 +2537,8 @@
         } catch {}
       }, 1000);
       
-      addLog('Игра началась! Игрок 1 ходит первым.');
-      addLog('Перетаскивайте карты существ на поле, используйте заклинания кликом.');
+      addLog('The game has begun! Player 1 goes first.');
+      addLog('Drag units to the field, use spells by clicking.');
     }
     
     async function endTurn() {
@@ -2547,7 +2547,7 @@
       // Онлайн-гейт: не позволяем завершить ход, если сейчас не ваш ход
       try {
         if (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') {
-          if (gameState.active !== window.MY_SEAT) { showNotification('Сейчас ход соперника', 'error'); return; }
+          if (gameState.active !== window.MY_SEAT) { showNotification('Opponent\'s turn', 'error'); return; }
         }
       } catch {}
       __endTurnInProgress = true;
@@ -2691,7 +2691,7 @@
       const player = gameState.players[gameState.active];
       
       if (cardData.cost > player.mana) {
-        showNotification('Недостаточно маны!', 'error');
+        showNotification('Insufficient mana!', 'error');
         returnCardToHand(card);
         hideOrientationPanel();
         return;
@@ -2917,11 +2917,11 @@
       if (isInputLocked()) return;
       const u = unitMesh.userData.unitData;
       if (!u) return;
-      if (u.owner !== gameState.active) { showNotification('Нельзя поворачивать чужое существо', 'error'); return; }
-      if (u.lastRotateTurn === gameState.turn) { showNotification('Уже поворачивался в этот ход', 'error'); return; }
+      if (u.owner !== gameState.active) { showNotification('You can\'t rotate the other player\'s unit', 'error'); return; }
+      if (u.lastRotateTurn === gameState.turn) { showNotification('The unit has already rotated in this turn', 'error'); return; }
       const tpl = CARDS[u.tplId];
       const cost = attackCost(tpl);
-      if (gameState.players[gameState.active].mana < cost) { showNotification(`Нужно ${cost} маны для поворота`, 'error'); return; }
+      if (gameState.players[gameState.active].mana < cost) { showNotification(`${cost} mana is required to rotate`, 'error'); return; }
       gameState.players[gameState.active].mana -= cost; updateUI();
       u.facing = dir === 'cw' ? turnCW[u.facing] : turnCCW[u.facing];
       u.lastRotateTurn = gameState.turn;
@@ -2937,17 +2937,17 @@
       const tpl = CARDS[unit.tplId];
       const cost = attackCost(tpl);
       if (tpl.attackType === 'MAGIC') {
-        if (gameState.players[gameState.active].mana < cost) { showNotification(`Нужно ${cost} маны для атаки`, 'error'); return; }
+        if (gameState.players[gameState.active].mana < cost) { showNotification(`${cost} mana is required to attack`, 'error'); return; }
         gameState.players[gameState.active].mana -= cost;
         updateUI();
         magicFrom = { r, c };
-        addLog(`${tpl.name}: выберите цель для магической атаки.`);
+        addLog(`${tpl.name}: select a target for the magical attack.`);
         hideUnitActionPanel();
         return;
       }
       const hits = computeHits(gameState, r, c);
-      if (!hits.length) { showNotification('Нет доступных целей для атаки', 'error'); hideUnitActionPanel(); return; }
-      if (gameState.players[gameState.active].mana < cost) { showNotification(`Нужно ${cost} маны для атаки`, 'error'); hideUnitActionPanel(); return; }
+      if (!hits.length) { showNotification('No available targets for attack', 'error'); hideUnitActionPanel(); return; }
+      if (gameState.players[gameState.active].mana < cost) { showNotification(`${cost} mana is required to attack`, 'error'); hideUnitActionPanel(); return; }
       gameState.players[gameState.active].mana -= cost;
       updateUI();
       performBattleSequence(r, c, true);
@@ -3391,7 +3391,7 @@
     function performMagicAttack(from, targetMesh) {
       const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
       const res = magicAttack(gameState, from.r, from.c, tr, tc);
-      if (!res) { showNotification('Цель некорректна', 'error'); return; }
+      if (!res) { showNotification('Incorrect target', 'error'); return; }
       // Не обновляем состояние немедленно, чтобы дать пройти анимации смерти
       for (const l of res.logLines.reverse()) addLog(l);
       const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
@@ -3521,7 +3521,7 @@
       const pl = gameState.players[gameState.active];
       if (idx == null || idx < 0 || idx >= pl.hand.length) { resetCardSelection(); return; }
       const tpl = pl.hand[idx]; if (!tpl || tpl.type !== 'SPELL') { resetCardSelection(); return; }
-      if (tpl.cost > pl.mana) { showNotification('Недостаточно маны', 'error'); resetCardSelection(); return; }
+      if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); resetCardSelection(); return; }
       const r = unitMesh.userData.row; const c = unitMesh.userData.col; const u = gameState.board[r][c].unit;
       let delayedApply = false;
       // Новые спеллы
@@ -3534,7 +3534,7 @@
         return; // завершим, остальная логика применения выполнится после выбора направления
       }
       if (tpl.id === 'SPELL_CLARE_WILS_BANNER') {
-        if (!u || u.owner !== gameState.active) { showNotification('Цель: только дружественное существо', 'error'); return; }
+        if (!u || u.owner !== gameState.active) { showNotification('Target: friendly unit', 'error'); return; }
         // Применяем временный баф атаки до конца хода кастера
         u.tempAtkBuff = (u.tempAtkBuff || 0) + 2;
         u.tempBuffOwner = gameState.active;
@@ -3558,7 +3558,7 @@
       }
       if (tpl.id === 'SPELL_SUMMONER_MESMERS_ERRAND') {
         // Добор двух карт с существующей анимацией
-        if (tpl.cost > pl.mana) { showNotification('Недостаточно маны', 'error'); resetCardSelection(); return; }
+        if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); resetCardSelection(); return; }
         pl.mana -= tpl.cost;
         (async () => {
           for (let i = 0; i < 2; i++) {
@@ -3600,7 +3600,7 @@
       if (tpl.id === 'SPELL_PARMTETIC_HOLY_FEAST') {
         // Ритуал: требуется сбросить существо из руки -> применить анимацию dissolve для выбранной карты из руки
         const handCreatures = pl.hand.filter(x => x && x.type === 'UNIT');
-        if (handCreatures.length === 0) { showNotification('Нет существ в руке для ритуала', 'error'); return; }
+        if (handCreatures.length === 0) { showNotification('No units available', 'error'); return; }
         console.log('[HF:setup] Setting up pendingDiscardSelection for Holy Feast (castSpellOnUnit)');
         pendingDiscardSelection = {
           requiredType: 'UNIT',
@@ -3657,8 +3657,8 @@
         }
       }
       if (tpl.id === 'RAISE_STONE') {
-        if (!u) { showNotification('Нужно перетащить на существо', 'error'); return; }
-        if (u.owner !== gameState.active) { showNotification('Только союзное существо', 'error'); return; }
+        if (!u) { showNotification('Need to drag this card to a unit', 'error'); return; }
+        if (u.owner !== gameState.active) { showNotification('Only friendly unit', 'error'); return; }
         const before = u.currentHP; u.currentHP += 2; addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает +2 HP (HP ${before}→${u.currentHP})`);
         try { const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c); if (tMesh) spawnDamageText(tMesh, `+2`, '#22c55e'); } catch {}
       }
@@ -3673,12 +3673,12 @@
       const pl = gameState.players[gameState.active];
       if (idx == null || idx < 0 || idx >= pl.hand.length) { return; }
       const tpl = pl.hand[idx]; if (!tpl || tpl.type !== 'SPELL') { return; }
-      if (tpl.cost > pl.mana) { showNotification('Недостаточно маны', 'error'); return; }
+      if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); return; }
       // Для спеллов без цели — позволяем дроп на любую клетку поля
       const id = tpl.id;
       const requiresUnitTarget = (/*'FREEZE_STREAM' removed*/ id === 'RAISE_STONE' || /*'WIND_SHIFT' removed*/ id === 'SPELL_BEGUILING_FOG' || id === 'SPELL_CLARE_WILS_BANNER');
       if (requiresUnitTarget) {
-        if (!unitMesh) { showNotification('Нужно перетащить на существо', 'error'); return; }
+        if (!unitMesh) { showNotification('Drag this card on a unit', 'error'); return; }
         // Спецэффект баффа/дебаффа перед применением
         try {
           const glow = new THREE.Mesh(new THREE.RingGeometry(0.4, 0.6, 32), new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.0 }));
@@ -3693,7 +3693,7 @@
       // Спеллы без цели
       if (id === 'SPELL_SUMMONER_MESMERS_ERRAND') {
         // Добор двух карт
-        if (tpl.cost > pl.mana) { showNotification('Недостаточно маны', 'error'); return; }
+        if (tpl.cost > pl.mana) { showNotification('Insuffcient mana', 'error'); return; }
         pl.mana -= tpl.cost;
         // Немедленно «сожжём» карту спелла на месте броска и пометим, что карту не надо возвращать в руку
         try {
@@ -3743,11 +3743,11 @@
         return;
       }
       if (id === 'SPELL_FISSURES_OF_GOGHLIE') {
-        if (!tileMesh) { showNotification('Перетащите на клетку поля', 'error'); return; }
+        if (!tileMesh) { showNotification('Drag this card to a board cell', 'error'); return; }
         const r = tileMesh.userData.row, c = tileMesh.userData.col;
         const cell = gameState.board[r][c];
         if (!cell) return;
-        if (cell.element === 'MECH') { showNotification('Mech поле не меняется', 'error'); return; }
+        if (cell.element === 'MECH') { showNotification('This cell can\'t be changed', 'error'); return; }
         const oppMap = { FIRE:'WATER', WATER:'FIRE', EARTH:'FOREST', FOREST:'EARTH' };
         const prevEl = cell.element; const nextEl = oppMap[prevEl] || prevEl;
         cell.element = nextEl;
@@ -3790,7 +3790,7 @@
       }
       if (id === 'SPELL_PARMTETIC_HOLY_FEAST') {
         const handCreatures = pl.hand.filter(x => x && x.type === 'UNIT');
-        if (handCreatures.length === 0) { showNotification('Нет существ в руке для ритуала', 'error'); return; }
+        if (handCreatures.length === 0) { showNotification('No unit in hand for this action', 'error'); return; }
         // Визуально «оставим» карту на поле: создаём временный меш спелла и не возвращаем перетянутую карту
         try {
           const big = createCard3D(tpl, false);
@@ -3806,7 +3806,7 @@
           pendingRitualSpellCard = tpl;
         } catch {}
         console.log('[HF:drag] Showing prompt for Holy Feast drag to field');
-        showPrompt('Выберите существо из руки для ритуала', () => {
+        showPrompt('Select a unit for this action', () => {
           // Отмена ритуала — убрать временный меш и показать карту-спелл, без возврата в руку
           console.log('[HF:drag] Canceling Holy Feast ritual');
           try { if (pendingRitualBoardMesh && pendingRitualBoardMesh.parent) pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {}
@@ -3889,7 +3889,7 @@
         return;
       }
       // Если сюда попали — нераспознанная цель/спелл
-      showNotification('Неверная цель для заклинания', 'error');
+      showNotification('Incorrect target', 'error');
     }
 
     // (убраны несуществующие обработчики magic-btn и draw-btn)
@@ -3932,7 +3932,7 @@
     const btn = document.createElement('button');
     btn.id = 'find-match-btn';
     btn.className = 'overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors';
-    btn.textContent = 'Онлайн-игра';
+    btn.textContent = 'Play Online';
     const host = document.querySelector('#corner-right .flex') || document.getElementById('corner-right');
     if (host) host.appendChild(btn);
     else {
@@ -3966,9 +3966,9 @@
     startModal.className='mp-modal';
     startModal.innerHTML = `<div class="mp-card">
       <div>Матч найден!</div>
-      <div class="mp-seat">Вы играете за: <b>${seat===0?'Игрок 1':'Игрок 2'}</b></div>
+      <div class="mp-seat">You play as: <b>${seat===0?'Player 1':'Player 2'}</b></div>
       <div class="mp-count" id="mp-count">${secs}</div>
-      <div class="mp-subtle">Старт через секунды…</div></div>`;
+      <div class="mp-subtle">Game is starting soon...</div></div>`;
     document.body.appendChild(startModal);
     let t=secs; const el=startModal.querySelector('#mp-count');
     const timer=setInterval(()=>{ t--; if(t<=0){ clearInterval(timer); hideStartCountdown(); onCountdownFinished(seat); } else el.textContent=t; },1000);
@@ -4017,7 +4017,7 @@
       try {
         if (NET_ACTIVE && GATED.includes(name)) {
           const myTurn = (typeof gameState?.active === 'number') && (gameState.active === MY_SEAT);
-          if (!myTurn) { try { typeof showNotification==='function' && showNotification('Сейчас ход соперника', 'error'); } catch {} return; }
+          if (!myTurn) { try { typeof showNotification==='function' && showNotification('Opponent\'s turn', 'error'); } catch {} return; }
         }
       } catch {}
       const r = fn.apply(this,args);
@@ -4404,7 +4404,7 @@
       // Размещаем отдельно слева над индикатором, чтобы не перекрывать «Сдаться»
       let host = document.getElementById('mp-debug');
       if (!host) { host = document.createElement('div'); host.id='mp-debug'; host.style.position='fixed'; host.style.left='12px'; host.style.bottom='52px'; host.style.zIndex='9998'; document.body.appendChild(host); }
-      const btn = document.createElement('button'); btn.id='debug-log-btn'; btn.className='mp-btn'; btn.textContent='Скачать лог';
+      const btn = document.createElement('button'); btn.id='debug-log-btn'; btn.className='mp-btn'; btn.textContent='Download log';
       btn.addEventListener('click', async ()=>{
         try {
           const res = await fetch(`${SERVER_URL}/debug-log?n=2000`);
@@ -4416,7 +4416,7 @@
           setTimeout(()=>URL.revokeObjectURL(url), 2000);
         } catch(err){
           console.error('Download log error', err);
-          showNotification('Не удалось скачать лог', 'error');
+          showNotification('Could not download log', 'error');
         }
       });
       host.appendChild(btn);
@@ -4480,10 +4480,10 @@
     const online = socket.connected && NET_ACTIVE;
     dot.classList.toggle('on', online);
     net.textContent = online ? 'online' : 'offline';
-    seat.textContent = (MY_SEAT===0)?'Игрок 1':(MY_SEAT===1)?'Игрок 2':'—';
+    seat.textContent = (MY_SEAT===0)?'Player 1':(MY_SEAT===1)?'Player 2':'—';
 
     if (gameState && (MY_SEAT===0 || MY_SEAT===1)){
-      turn.textContent = (gameState.active===MY_SEAT) ? 'ваш ход' : 'ход соперника';
+      turn.textContent = (gameState.active===MY_SEAT) ? 'your turn' : 'opponent\'s turn';
     } else turn.textContent='';
   }
   socket.on('connect', () => {
@@ -4538,18 +4538,18 @@
     
     let title;
     if (reason === 'opponentLeft') {
-      title = (winnerSeat === MY_SEAT) ? 'Победа! Противник сдался' : 'Поражение! Вы отключились';
+      title = (winnerSeat === MY_SEAT) ? 'Victory! Opponent resigned' : 'Defeat! You disconnected';
     } else if (reason === 'resign') {
-      title = (winnerSeat === MY_SEAT) ? 'Победа! Противник сдался' : 'Поражение! Вы сдались';
+      title = (winnerSeat === MY_SEAT) ? 'Victory! Opponent resigned' : 'Defeat! You resigned';
     } else {
-      title = (winnerSeat === MY_SEAT) ? 'Победа!' : 'Поражение';
+      title = (winnerSeat === MY_SEAT) ? 'Victory!' : 'Defeat';
     }
     m.innerHTML = `<div class="mp-card" style="min-width:320px">
       <div style="font-size:18px;margin-bottom:6px">${title}</div>
-      <div class="mp-subtle" style="margin-bottom:12px">Матч завершён</div>
+      <div class="mp-subtle" style="margin-bottom:12px">Match ended</div>
       <div style="display:flex;gap:8px;justify-content:center">
-        <button id="mp-offline" class="mp-btn">Оффлайн-игра</button>
-        <button id="mp-online" class="mp-btn">В новый онлайн-матч</button>
+        <button id="mp-offline" class="mp-btn">Offline game</button>
+        <button id="mp-online" class="mp-btn">New online match</button>
       </div>
     </div>`;
     document.body.appendChild(m);
@@ -4569,7 +4569,7 @@
     const btn = document.createElement('button');
     btn.id = 'resign-btn';
     btn.className = 'overlay-panel px-3 py-1.5 text-xs bg-red-600 hover:bg-red-700 transition-colors';
-    btn.textContent = 'Сдаться';
+    btn.textContent = 'Surrender';
     host.appendChild(btn);
     btn.addEventListener('click', ()=>{
       const confirmModal = document.createElement('div');
