@@ -2596,12 +2596,64 @@
       ].join(' · ');
     }
     
+    // Bridge helpers for gradual migration to modules
+    function initThreeJSBridge(){
+      if (window.__scene && typeof window.__scene.initThreeJS === 'function') {
+        try {
+          const ctx = window.__scene.initThreeJS({ canvasId: 'three-canvas' });
+          renderer = ctx.renderer; scene = ctx.scene; camera = ctx.camera;
+          raycaster = ctx.raycaster; mouse = ctx.mouse;
+          boardGroup = ctx.boardGroup; cardGroup = ctx.cardGroup; effectsGroup = ctx.effectsGroup; metaGroup = ctx.metaGroup;
+          try { window.renderer = renderer; window.scene = scene; window.camera = camera; window.boardGroup = boardGroup; } catch {}
+          return true;
+        } catch (e) { console.error('[bridge] initThreeJS via module failed, fallback', e); }
+      }
+      try { initThreeJS(); return true; } catch (e) { console.error('[bridge] legacy initThreeJS failed', e); return false; }
+    }
+    let __sceneLoopStarted = false;
+    function animateBridge(){
+      if (window.__scene && typeof window.__scene.animate === 'function') {
+        if (!__sceneLoopStarted) { __sceneLoopStarted = true; try { window.__scene.animate(); } catch (e) { console.error('[bridge] animate via module failed', e); } }
+        return;
+      }
+      try { animate(); } catch (e) { console.error('[bridge] legacy animate failed', e); }
+    }
+    function createBoardBridge(){
+      if (window.__board && typeof window.__board.createBoard === 'function' && window.__scene && typeof window.__scene.getCtx === 'function') {
+        try {
+          window.__board.createBoard(gameState);
+          const ctx = window.__scene.getCtx();
+          tileMeshes = ctx.tileMeshes || []; tileFrames = ctx.tileFrames || [];
+          try { window.tileMeshes = tileMeshes; window.tileFrames = tileFrames; } catch {}
+          return true;
+        } catch (e) { console.error('[bridge] createBoard via module failed, fallback', e); }
+      }
+      try { createBoard(); return true; } catch (e) { console.error('[bridge] legacy createBoard failed', e); return false; }
+    }
+
+    // Override legacy createBoard to route through bridge when modules are present
+    try {
+      const __legacyCreateBoard = createBoard;
+      createBoard = function() {
+        if (window.__board && window.__scene && typeof window.__board.createBoard === 'function') {
+          try {
+            window.__board.createBoard(gameState);
+            const ctx = window.__scene.getCtx();
+            tileMeshes = ctx.tileMeshes || []; tileFrames = ctx.tileFrames || [];
+            try { window.tileMeshes = tileMeshes; window.tileFrames = tileFrames; } catch {}
+            return;
+          } catch (e) { console.error('[bridge] override createBoard failed, fallback', e); }
+        }
+        return __legacyCreateBoard.apply(this, arguments);
+      };
+    } catch {}
+
     function init() {
       wireModules();
       mountModuleStatusChip();
-      initThreeJS();
+      initThreeJSBridge();
       // Start render loop early so scene is visible even if game init fails
-      animate();
+      animateBridge();
       initGame();
       preloadCardImages();
       
