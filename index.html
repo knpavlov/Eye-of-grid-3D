@@ -4439,7 +4439,9 @@
   document.body.appendChild(lock);
 
   function updateInputLock(){
-    const shouldLock = NET_ON() && gameState && (gameState.active !== MY_SEAT);
+    // Lock only when seat is known; otherwise do not block input
+    const myKnown = (typeof MY_SEAT === 'number');
+    const shouldLock = NET_ON() && gameState && myKnown && (gameState.active !== MY_SEAT);
     lock.classList.toggle('on', !!shouldLock);
   }
 
