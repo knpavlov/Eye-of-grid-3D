@@ -273,6 +273,7 @@ export function stagedAttack(state, r, c) {
     step2,
     finish,
     get n1() { ensureStep1(); return n1; },
+    get targetsPreview() { return step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 })); },
   };
 }
 

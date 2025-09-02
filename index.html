@@ -307,7 +307,8 @@
 
     
     // ====== БОЕВАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ ======
-    function performBattleSequence(r, c) {
+    function performBattleSequence_OLD(r, c) {
+      return; // legacy removed
       const prevState = JSON.parse(JSON.stringify(gameState));
       const staged = stagedAttack(gameState, r, c);
       if (!staged || staged.empty) return;
@@ -2790,7 +2791,7 @@
       await showBattleSplash();
       // небольшая анимация выпада/толчка
       const aMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-      const hitsPrev = computeHits(gameState, r, c);
+      const hitsPrev = (staged.targetsPreview || computeHits(gameState, r, c));
       const fromPos = (aMesh ? aMesh.position.clone() : tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 0.8, 0)));
 
       const doStep1 = () => {
