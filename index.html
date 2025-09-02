@@ -216,9 +216,6 @@
     
     // ====== БОЕВАЯ СИСТЕМА (порт из 2D) ======
     let hasAdjacentGuard;
-      return false;
-    }
-    
     let computeHits;
 /*          const backDir = turnCW[turnCW[B.facing]];
           const [bdr, bdc] = DIR_VECTORS[backDir];
@@ -248,7 +245,7 @@
     */
     
     let stagedAttack;
-      };
+/*      };
       const step1 = () => {
         for (const h of hits) {
           const B = n1.board[h.r][h.c].unit; if (!B) continue;
@@ -306,6 +303,7 @@
       };
       return { step1, step2, finish, n1 };
     }
+*/
     
     let magicAttack;
 /* orphan magicAttack tail
@@ -319,6 +317,7 @@
       } catch {}
       return { n1, logLines, dmg, deaths };
     }
+*/
     
     // ====== БОЕВАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ ======
     function performBattleSequence(r, c) {
@@ -1043,6 +1042,7 @@
       }
       try { window.tileMeshes = tileMeshes; window.tileFrames = tileFrames; } catch {}
     }
+*/
     
     function createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
       const cardWidth = 4.8;  // увеличено ~в 2-3 раза

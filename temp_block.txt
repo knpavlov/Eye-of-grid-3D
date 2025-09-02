@@ -1,0 +1,121 @@
+﻿    let drawOneNoAdd;
+    
+    let countControlled;
+    
+    let startGame;
+    
+    // ====== БОЕВАЯ СИСТЕМА (порт из 2D) ======
+    let hasAdjacentGuard;
+    let computeHits;
+          const backDir = turnCW[turnCW[B.facing]];
+          const [bdr, bdc] = DIR_VECTORS[backDir];
+          const isBack = (nr + bdr === r && nc + bdc === c);
+          // Определяем направление на атакующего относительно ПОВОРОТА цели
+          const dirAbs = (() => {
+            if (r === nr - 1 && c === nc) return 'N';
+            if (r === nr + 1 && c === nc) return 'S';
+            if (r === nr && c === nc - 1) return 'W';
+            return 'E';
+          })();
+          const ORDER = ['N','E','S','W'];
+          const absIdx = ORDER.indexOf(dirAbs);
+          const faceIdx = ORDER.indexOf(B.facing);
+          const relIdx = (absIdx - faceIdx + 4) % 4;
+          const dirRel = ORDER[relIdx];
+          const blind = CARDS[B.tplId].blindspots || ['S'];
+          const inBlind = blind.includes(dirRel);
+          // Исключаем двойное начисление за спину: максимум +1
+          const extraTotal = isBack ? 1 : (inBlind ? 1 : 0);
+          const dmg = Math.max(0, atk + extraTotal);
+          hits.push({ r: nr, c: nc, dmg, backstab: isBack });
+          break; // первая цель по лучу
+        }
+      }
+      return hits;
+    }
+    
+    let stagedAttack;
+      };
+      const step1 = () => {
+        for (const h of hits) {
+          const B = n1.board[h.r][h.c].unit; if (!B) continue;
+          const before = B.currentHP;
+          const attackerTpl = CARDS[attacker.tplId];
+          const isMagic = attackerTpl.attackType === 'MAGIC';
+          const dodge = CARDS[B.tplId].dodge50 && !isMagic && Math.random() < 0.5;
+          const dealt = dodge ? 0 : h.dmg;
+          B.currentHP = Math.max(0, B.currentHP - dealt);
+          const afterHP = B.currentHP;
+          logLines.push(`${CARDS[attacker.tplId].name} → ${CARDS[B.tplId].name}: ${dealt} damage${h.backstab ? ' (+1 to the blindspot)' : ''}${dodge ? ' (dodge)' : ''} (HP ${before}→${afterHP})`);
+        }
+      };
+      const step2 = () => {
+        const still = hits.map(h => ({ h, B: n1.board[h.r][h.c].unit })).filter(x => x.B && x.B.currentHP > 0);
+        if (!still.length) return 0;
+        let totalRetaliation = 0;
+        const retaliators = [];
+        for (const { h, B } of still) {
+          const tplB = CARDS[B.tplId];
+          const dirsB = dirsForPattern(B.facing, tplB.pattern || 'FRONT');
+          let retaliates = false;
+          for (const d of dirsB) {
+            const [dr, dc] = DIR_VECTORS[d];
+            if (h.r + dr === r && h.c + dc === c) { retaliates = true; break; }
+          }
+          if (retaliates) {
+            const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B);
+            totalRetaliation += Math.max(0, batk);
+            retaliators.push({ r: h.r, c: h.c });
+          }
+        }
+        const attackerTpl = CARDS[attacker.tplId];
+        const preventRetaliation = attackerTpl.attackType === 'MAGIC';
+        if (!preventRetaliation && totalRetaliation > 0 && n1.board[r][c].unit) {
+          const A = n1.board[r][c].unit;
+          const before = A.currentHP;
+          A.currentHP = Math.max(0, A.currentHP - totalRetaliation);
+          const afterHP = A.currentHP;
+          logLines.push(`Ответный урон по ${CARDS[A.tplId].name}: ${totalRetaliation} (HP ${before}→${afterHP})`);
+        }
+        return { total: totalRetaliation, retaliators };
+      };
+      const finish = () => {
+        applyDeaths();
+        // Возврат 1 маны владельцам погибших существ
+        try {
+          for (const d of deaths) {
+            if (n1 && n1.players && n1.players[d.owner]) {
+              n1.players[d.owner].mana = capMana((n1.players[d.owner].mana || 0) + 1);
+            }
+          }
+        } catch {}
+        return { n1, logLines, targets: hits.map(h => ({ r: h.r, c: h.c, dmg: h.dmg })), deaths };
+      };
+      return { step1, step2, finish, n1 };
+    }
+    
+    let magicAttack;
+      // Возврат 1 маны владельцам погибших существ
+      try {
+        for (const d of deaths) {
+          if (n1 && n1.players && n1.players[d.owner]) {
+            n1.players[d.owner].mana = capMana((n1.players[d.owner].mana || 0) + 1);
+          }
+        }
+      } catch {}
+      return { n1, logLines, dmg, deaths };
+    }
+    
+    // ====== БОЕВАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ ======
+    function performBattleSequence(r, c) {
+      const prevState = JSON.parse(JSON.stringify(gameState));
+      const staged = stagedAttack(gameState, r, c);
+      if (!staged || staged.empty) return;
+      
+      // Применяем шаг 1 (атака)
+      staged.step1();
+      const attackResult = staged.finish();
+      const attackerCell = { r, c };
+      const hitsPrev = attackResult.targets || [];
+      
+      // Отправляем данные об атаке в онлайн
