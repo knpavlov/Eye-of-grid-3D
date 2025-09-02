@@ -4,6 +4,10 @@ import { CARDS, STARTER_FIRESET } from './core/cards.js';
 import * as Rules from './core/rules.js';
 import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled } from './core/state.js';
 import { createStore, makeMiddleware } from './lib/store.js';
+// Scene modules (new)
+import { initThreeJS as sceneInitThreeJS, worldToScreen as sceneWorldToScreen, animate as sceneAnimate } from './scene/index.js';
+import * as Board from './scene/board.js';
+import { getCtx as getSceneCtx } from './scene/context.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -52,3 +56,18 @@ if (typeof window !== 'undefined' && !window.gameState) {
   try { window.gameState = s; } catch {}
 }
 
+// Expose new scene/board API for gradual migration from inline script
+try {
+  window.__scene = {
+    initThreeJS: sceneInitThreeJS,
+    worldToScreen: sceneWorldToScreen,
+    animate: sceneAnimate,
+    getCtx: getSceneCtx,
+  };
+  window.__board = {
+    createBoard: Board.createBoard,
+    getTileMaterial: Board.getTileMaterial,
+    updateTileMaterialsFor: Board.updateTileMaterialsFor,
+    createProceduralTileTexture: Board.createProceduralTileTexture,
+  };
+} catch {}
