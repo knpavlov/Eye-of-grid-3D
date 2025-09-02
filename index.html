@@ -4123,6 +4123,9 @@
   });
 
   // ===== 9) Battle animation sync =====
+  // Small guard to delay unit rebuild during remote lunge
+  let __REMOTE_BATTLE_ANIM_UNTIL = 0; try { window.__REMOTE_BATTLE_ANIM_UNTIL = __REMOTE_BATTLE_ANIM_UNTIL; } catch {}
+
   function tryPlayBattleAnim(attacker, targets){
     try {
       if (!attacker || !Array.isArray(targets) || targets.length===0) return false;
@@ -4132,11 +4135,20 @@
       const targetPos = tileMeshes[first.r][first.c].position;
       const dir = new THREE.Vector3().subVectors(targetPos, aMesh.position).normalize();
       const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
+      // Wrap target mesh into a transient group to ensure movement is visible
+      const parent = aMesh.parent; if (!parent) return false;
       const fromPos = aMesh.position.clone();
-      const toPos = fromPos.clone(); toPos.x += push.x; toPos.z += push.z;
-      const tl = gsap.timeline();
-      tl.to(aMesh.position, { x: toPos.x, z: toPos.z, duration: 0.22, ease: 'power2.out' })
-        .to(aMesh.position, { x: fromPos.x, z: fromPos.z, duration: 0.30, ease: 'power2.inOut' });
+      const fromRot = aMesh.rotation.clone();
+      const wrapper = new THREE.Group();
+      wrapper.position.copy(fromPos); wrapper.rotation.copy(fromRot);
+      try { parent.add(wrapper); parent.remove(aMesh); aMesh.position.set(0,0,0); aMesh.rotation.set(0,0,0); wrapper.add(aMesh); } catch {}
+      const toPos = wrapper.position.clone(); toPos.x += push.x; toPos.z += push.z;
+      const tl = gsap.timeline({ onComplete: () => {
+        try { parent.add(aMesh); parent.remove(wrapper); aMesh.position.copy(fromPos); aMesh.rotation.copy(fromRot); } catch {}
+      }});
+      tl.to(wrapper.position, { x: toPos.x, z: toPos.z, duration: 0.22, ease: 'power2.out' })
+        .to(wrapper.position, { x: fromPos.x, z: fromPos.z, duration: 0.30, ease: 'power2.inOut' });
+      __REMOTE_BATTLE_ANIM_UNTIL = Date.now() + 720; try { window.__REMOTE_BATTLE_ANIM_UNTIL = __REMOTE_BATTLE_ANIM_UNTIL; } catch {}
       
       // Тряска цели и синхронный урон для неинициатора
       setTimeout(() => {
