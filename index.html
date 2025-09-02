@@ -10,6 +10,15 @@
   <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
   <script type="module" src="./src/main.js"></script>
+  <script>
+    // Early globals so later scripts never crash if earlier code aborted
+    (function(){
+      try { if (typeof window.NET_ACTIVE === 'undefined') window.NET_ACTIVE = false; } catch(e){}
+      try { if (typeof window.MY_SEAT === 'undefined') window.MY_SEAT = null; } catch(e){}
+      try { if (typeof window.APPLYING === 'undefined') window.APPLYING = false; } catch(e){}
+      try { if (typeof window.NET_ON === 'undefined') window.NET_ON = function(){ try { return !!window.NET_ACTIVE; } catch(e){ return false; } }; } catch(e){}
+    })();
+  </script>
 </head>
 <body>
   <canvas id="three-canvas"></canvas>
@@ -325,7 +334,7 @@
       
       // Отправляем данные об атаке в онлайн
       try {
-        if (NET_ACTIVE && typeof window !== 'undefined' && window.socket) {
+        if (NET_ON() && typeof window !== 'undefined' && window.socket) {
           window.socket.emit('battleAnim', {
             attacker: attackerCell,
             targets: hitsPrev,
@@ -367,7 +376,7 @@
               let maxDur = 0;
               
               // Отправляем данные о контратаке в онлайн
-              if (NET_ACTIVE && typeof window !== 'undefined' && window.socket && retaliators.length > 0) {
+              if (NET_ON() && typeof window !== 'undefined' && window.socket && retaliators.length > 0) {
                 window.socket.emit('battleRetaliation', {
                   attacker: attackerCell,
                   retaliators: retaliators,
@@ -3592,7 +3601,7 @@
           const mat = getTileMaterial(nextEl);
           dissolveTileCrossfade(tile, getTileMaterial(prevEl), mat, 0.9);
           // Онлайновая синхронизация эффекта
-          try { if (NET_ACTIVE && MY_SEAT === gameState.active && typeof window !== 'undefined' && window.socket) window.socket.emit('tileCrossfade', { r, c, prev: prevEl, next: nextEl }); } catch {}
+          try { if (NET_ON() && MY_SEAT === gameState.active && typeof window !== 'undefined' && window.socket) window.socket.emit('tileCrossfade', { r, c, prev: prevEl, next: nextEl }); } catch {}
         } catch {}
         // Юнит на клетке может изменить HP из-за смены элемента
         const u = gameState.board[r][c].unit;
@@ -3697,9 +3706,9 @@
           const toDiscardTpl = pl.hand[singleIdx];
           const handMesh = handCardMeshes.find(m => m.userData?.handIndex === singleIdx);
           const localSpellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl);
-          try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([singleIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
+          try { if (NET_ON()) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([singleIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
           if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
-          if (NET_ACTIVE) {
+          if (NET_ON()) {
             try { if (typeof window !== 'undefined') window.__HF_ACK = false; } catch {}
             try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('debugLog', { tag:'HF:single', phase:'emit', localSpellIdx, singleIdx, active: gameState.active }); } catch {}
             try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
@@ -3850,7 +3859,7 @@
     window[name] = function(...args){
       // Блокируем ключевые действия, если сейчас не наш ход
       try {
-        if (NET_ACTIVE && GATED.includes(name)) {
+        if (NET_ON() && GATED.includes(name)) {
           const myTurn = (typeof gameState?.active === 'number') && (gameState.active === MY_SEAT);
           if (!myTurn) { try { typeof showNotification==='function' && showNotification('Opponent\'s turn', 'error'); } catch {} return; }
         }
@@ -3904,7 +3913,7 @@
   let lastDigest = '';
   let pending = false;
   function schedulePush(reason='auto', {force=false}={}){
-    if (!NET_ACTIVE || !gameState) return;
+    if (!NET_ON() || !gameState) return;
     if (APPLYING && !force) return;              // не эхоим полученный снапшот
     const myTurn = (typeof gameState.active === 'number') && (gameState.active === MY_SEAT);
     if (!force && !myTurn) return;               // только активный игрок пушит
@@ -3937,7 +3946,7 @@
 
   // Периодическая отправка при любом изменении (подстраховка, если обёртка не сработала)
   setInterval(()=>{
-    if (!NET_ACTIVE || !gameState) return;
+    if (!NET_ON() || !gameState) return;
     // пушит только тот, у кого сейчас ХОД (чтобы оба могли делать свои ходы)
     const myTurn = (typeof gameState.active === 'number') && (gameState.active === MY_SEAT);
     if (!myTurn) return;
@@ -4354,7 +4363,7 @@
     const seat=document.getElementById('mp-seat');
     const turn=document.getElementById('mp-turn');
 
-    const online = socket.connected && NET_ACTIVE;
+    const online = socket.connected && NET_ON();
     dot.classList.toggle('on', online);
     net.textContent = online ? 'online' : 'offline';
     seat.textContent = (MY_SEAT===0)?'Player 1':(MY_SEAT===1)?'Player 2':'—';
@@ -4385,7 +4394,7 @@
   document.body.appendChild(lock);
 
   function updateInputLock(){
-    const shouldLock = NET_ACTIVE && gameState && (gameState.active !== MY_SEAT);
+    const shouldLock = NET_ON() && gameState && (gameState.active !== MY_SEAT);
     lock.classList.toggle('on', !!shouldLock);
   }
 
@@ -4483,5 +4492,49 @@
 
 })();
 </script>
+  <!-- Minimal always-on status chip (safe even if above scripts fail) -->
+  <script>
+  (function(){
+    function mount(){
+      if (document.getElementById('mod-status')) return;
+      var el = document.createElement('div'); el.id='mod-status';
+      el.style.cssText='position:fixed;left:8px;top:8px;z-index:9999;font:12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#cbd5e1;background:rgba(15,23,42,.85);border:1px solid #334155;border-radius:8px;padding:6px 8px;pointer-events:none;';
+      el.textContent='status…'; document.body.appendChild(el);
+      function ok(b){ return '<span style="color:'+(b?'#22c55e':'#ef4444')+'">●</span>'; }
+      function upd(){
+        var cardsOk = !!(window.CARDS && Object.keys(window.CARDS||{}).length);
+        var starterLen = (window.STARTER_FIRESET && window.STARTER_FIRESET.length) || 0;
+        var rulesOk = ['dirsForPattern','effectiveStats','computeHits','stagedAttack','magicAttack'].every(function(k){return typeof window[k]==='function';});
+        var stateOk = ['startGame','drawOne','drawOneNoAdd','shuffle','countControlled'].every(function(k){return typeof window[k]==='function';});
+        var threeOk = !!(window.renderer && window.scene && window.camera);
+        var boardOk = !!(window.tileMeshes && window.tileMeshes.length && window.tileMeshes[0] && window.tileMeshes[0].length);
+        var gsOk = !!(window.gameState && Array.isArray(window.gameState.board));
+        var net = (typeof window.NET_ACTIVE!=='undefined' && window.NET_ACTIVE) ? 'online' : 'offline';
+        el.innerHTML = ok(cardsOk)+' cards ('+starterLen+') · '+ok(rulesOk)+' rules · '+ok(stateOk)+' state · '+ok(threeOk)+' three · '+ok(boardOk)+' board · '+ok(gsOk)+' gState · '+ok(net==='online')+' net:'+net;
+      }
+      upd(); setInterval(upd, 1000);
+      // Try to kick init if earlier script failed to hook DOMContentLoaded
+      function kick(){
+        try {
+          if (!(window.renderer && window.scene && window.camera)) {
+            if (typeof window.init === 'function') { window.init(); return; }
+            if (typeof window.initThreeJS === 'function') {
+              try { window.initThreeJS(); } catch(e){}
+              if (typeof window.animate === 'function') try { window.requestAnimationFrame(window.animate); } catch(e){}
+            }
+            if (typeof window.initGame === 'function') { try { window.initGame(); } catch(e){} }
+          }
+        } catch(e){}
+      }
+      setTimeout(kick, 200);
+      setTimeout(kick, 1200);
+      setTimeout(kick, 3000);
+    }
+    if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', mount); else mount();
+  })();
+  </script>
+
 </body>
 </html>
+
+
