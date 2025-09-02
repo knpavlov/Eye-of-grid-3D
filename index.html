@@ -1229,85 +1229,12 @@
       }
     }
     
-    function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-      if (!text) return;
-      const words = text.split(' ');
-      let line = '';
-      
-      for (let n = 0; n < words.length; n++) {
-        const testLine = line + words[n] + ' ';
-        const metrics = ctx.measureText(testLine);
-        const testWidth = metrics.width;
-        
-        if (testWidth > maxWidth && n > 0) {
-          ctx.fillText(line, x, y);
-          line = words[n] + ' ';
-          y += lineHeight;
-        } else {
-          line = testLine;
-        }
-      }
-      ctx.fillText(line, x, y);
-    }
+    function wrapText() { /* removed: handled in modules */ }
     
-    function getElementColor(element) {
-      const colors = {
-        FIRE: '#dc2626',
-        WATER: '#0369a1', 
-        EARTH: '#525252',
-        FOREST: '#166534'
-      };
-      return colors[element] || '#64748b';
-    }
+    function getElementColor() { return '#64748b'; }
     
-    function drawPatternGrid(ctx, cardData, x, y, cell, gap) {
-      const pattern = cardData.pattern || 'FRONT';
-      const range = cardData.range || 1;
-      // grid 3x3
-      for (let r = 0; r < 3; r++) {
-        for (let c = 0; c < 3; c++) {
-          const cx = x + c * (cell + gap);
-          const cy = y + r * (cell + gap);
-          ctx.fillStyle = 'rgba(148,163,184,0.35)';
-          // center
-          if (r === 1 && c === 1) ctx.fillStyle = 'rgba(250,204,21,0.7)';
-          ctx.fillRect(cx, cy, cell, cell);
-          // highlight directions from facing N
-          const dirs = dirsForPattern('N', pattern);
-          const isN = (r === 0 && c === 1);
-          const isE = (r === 1 && c === 2);
-          const isS = (r === 2 && c === 1);
-          const isW = (r === 1 && c === 0);
-          if ((isN && dirs.includes('N')) || (isE && dirs.includes('E')) || (isS && dirs.includes('S')) || (isW && dirs.includes('W'))) {
-            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5; ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
-          }
-        }
-      }
-      // push center slightly if range>1
-      if (range > 1) {
-        ctx.fillStyle = 'rgba(148,163,184,0.5)';
-        ctx.fillRect(x + 1*(cell+gap) + 0.5, y + 1*(cell+gap) + 2, cell-1, cell-1);
-      }
-    }
-    function drawBlindspotGrid(ctx, cardData, x, y, cell, gap) {
-      const blind = (cardData.blindspots && cardData.blindspots.length) ? cardData.blindspots : ['S'];
-      for (let r = 0; r < 3; r++) {
-        for (let c = 0; c < 3; c++) {
-          const cx = x + c * (cell + gap);
-          const cy = y + r * (cell + gap);
-          ctx.fillStyle = 'rgba(148,163,184,0.35)';
-          if (r === 1 && c === 1) ctx.fillStyle = 'rgba(250,204,21,0.7)';
-          ctx.fillRect(cx, cy, cell, cell);
-          const isN = (r === 0 && c === 1);
-          const isE = (r === 1 && c === 2);
-          const isS = (r === 2 && c === 1);
-          const isW = (r === 1 && c === 0);
-          if ((isN && blind.includes('N')) || (isE && blind.includes('E')) || (isS && blind.includes('S')) || (isW && blind.includes('W'))) {
-            ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1.5; ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
-          }
-        }
-      }
-    }
+    function drawPatternGrid() { /* removed */ }
+    function drawBlindspotGrid() { /* removed */ }
     
     function updateHand() {
       // Во время полёта карты не перерисовываем руку, чтобы не ломать предраскладку
