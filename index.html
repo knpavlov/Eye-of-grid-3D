@@ -4023,7 +4023,18 @@
       // Сначала переcоберём доску/мета-объекты, затем юниты и UI (исправляет мерцание рамок)
       try{ createBoard && createBoard(); }catch{}
       try{ createMetaObjects && createMetaObjects(); }catch{}
-      try{ updateUnits(); }catch{}
+      // Defer unit rebuild during remote lunge animation to avoid canceling the push
+      try {
+        const now = Date.now();
+        const until = (typeof window !== 'undefined' && typeof window.__REMOTE_BATTLE_ANIM_UNTIL === 'number') ? window.__REMOTE_BATTLE_ANIM_UNTIL : __REMOTE_BATTLE_ANIM_UNTIL;
+        if (until && now < until) {
+          const delay = Math.min(900, Math.max(30, until - now + 20));
+          if (window.__deferredUnitsTimer) { try { clearTimeout(window.__deferredUnitsTimer); } catch {} }
+          window.__deferredUnitsTimer = setTimeout(()=>{ try { updateUnits(); } catch {} }, delay);
+        } else {
+          updateUnits();
+        }
+      } catch { updateUnits(); }
       // Обрабатываем отложенные WebSocket анимации
       try { flushPendingBattleQueues && flushPendingBattleQueues(); } catch {}
       try { if (prev) playDeltaAnimations(prev, state); } catch {}
