@@ -989,6 +989,8 @@
     }
 
     function __legacy_createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
+      // disabled legacy body
+      return null;
       // Delegated to module implementation; legacy body below is unreachable
       if (window.__cards && typeof window.__cards.createCard3D === 'function') {
         return window.__cards.createCard3D(cardData, isInHand, hpOverride, atkOverride);
@@ -1082,6 +1084,8 @@
 
     // Legacy kept only for offline file:// fallback (modules handle normally)
     function __legacy_attachIllustrationPlane(cardMesh, cardData) {
+      // disabled legacy body
+      return;
       if (!cardMesh || !cardData) return;
       // Удалим прошлую
       const prev = cardMesh.children?.find(ch => ch.userData && ch.userData.kind === 'illustrationPlane');
@@ -1137,6 +1141,8 @@
     }
 
     function __legacy_drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
+      // disabled legacy body
+      return;
       // Delegated to module implementation; legacy body below is unreachable
       if (window.__cards && typeof window.__cards.drawCardFace === 'function') {
         return window.__cards.drawCardFace(ctx, cardData, width, height, hpOverride, atkOverride);
@@ -2546,6 +2552,25 @@
         }
         console.error('[bridge] __board.createBoard not available; modules must be loaded.');
         throw new Error('Module board missing');
+      };
+    } catch {}
+    // Board material helpers: delegate to window.__board
+    try {
+      const __legacyCreateProc = createProceduralTileTexture;
+      createProceduralTileTexture = function(element) {
+        if (window.__board && typeof window.__board.createProceduralTileTexture === 'function') {
+          return window.__board.createProceduralTileTexture(element);
+        }
+        return __legacyCreateProc ? __legacyCreateProc(element) : null;
+      };
+    } catch {}
+    try {
+      const __legacyGetTileMat = getTileMaterial;
+      getTileMaterial = function(element) {
+        if (window.__board && typeof window.__board.getTileMaterial === 'function') {
+          return window.__board.getTileMaterial(element);
+        }
+        return __legacyGetTileMat ? __legacyGetTileMat(element) : new THREE.MeshStandardMaterial({ color: 0x64748b });
       };
     } catch {}
 
