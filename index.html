@@ -980,6 +980,10 @@
     }
     
     function createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
+      // Delegated to module implementation; legacy body below is unreachable
+      if (window.__cards && typeof window.__cards.createCard3D === 'function') {
+        return window.__cards.createCard3D(cardData, isInHand, hpOverride, atkOverride);
+      }
       const cardWidth = 4.8;  // увеличено ~в 2-3 раза
       const cardHeight = 5.6; // почти вся ячейка
       const cardThickness = 0.12;
@@ -1115,6 +1119,10 @@
       cardMesh.add(plane);
     }
     function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
+      // Delegated to module implementation; legacy body below is unreachable
+      if (window.__cards && typeof window.__cards.drawCardFace === 'function') {
+        return window.__cards.drawCardFace(ctx, cardData, width, height, hpOverride, atkOverride);
+      }
       // Draw textured front background if available, else fallback gradient
       try {
         const imgFront = (CARD_TEX && CARD_TEX.front && CARD_TEX.front.image) ? CARD_TEX.front.image : null;
