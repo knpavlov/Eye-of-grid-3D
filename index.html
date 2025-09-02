@@ -220,7 +220,7 @@
     }
     
     let computeHits;
-          const backDir = turnCW[turnCW[B.facing]];
+/*          const backDir = turnCW[turnCW[B.facing]];
           const [bdr, bdc] = DIR_VECTORS[backDir];
           const isBack = (nr + bdr === r && nc + bdc === c);
           // Определяем направление на атакующего относительно ПОВОРОТА цели
@@ -245,7 +245,7 @@
         }
       }
       return hits;
-    }
+    */
     
     let stagedAttack;
       };
@@ -308,6 +308,7 @@
     }
     
     let magicAttack;
+/* orphan magicAttack tail
       // Возврат 1 маны владельцам погибших существ
       try {
         for (const d of deaths) {
