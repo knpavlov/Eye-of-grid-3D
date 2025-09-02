@@ -7,6 +7,8 @@ import { createStore, makeMiddleware } from './lib/store.js';
 // Scene modules (new)
 import { initThreeJS as sceneInitThreeJS, worldToScreen as sceneWorldToScreen, animate as sceneAnimate } from './scene/index.js';
 import * as Board from './scene/board.js';
+import * as Cards from './scene/cards.js';
+import * as Units from './scene/units.js';
 import { getCtx as getSceneCtx } from './scene/context.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
@@ -69,5 +71,14 @@ try {
     getTileMaterial: Board.getTileMaterial,
     updateTileMaterialsFor: Board.updateTileMaterialsFor,
     createProceduralTileTexture: Board.createProceduralTileTexture,
+  };
+  window.__cards = {
+    getCachedTexture: Cards.getCachedTexture,
+    preloadCardTextures: Cards.preloadCardTextures,
+    createCard3D: Cards.createCard3D,
+    drawCardFace: Cards.drawCardFace,
+  };
+  window.__units = {
+    updateUnits: Units.updateUnits,
   };
 } catch {}
