@@ -143,9 +143,9 @@
   <script>
     // ====== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ======
     // Переменные для мультиплеера (должны быть доступны везде)
-    let NET_ACTIVE = false;
-    let MY_SEAT = null;
-    let APPLYING = false;
+    var NET_ACTIVE = false;
+    var MY_SEAT = null;
+    var APPLYING = false;
     
     // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
     
@@ -2556,9 +2556,45 @@
         }
       } catch {}
     }
+
+    // ---- Lightweight on-screen diagnostics for module/scene wiring ----
+    function mountModuleStatusChip(){
+      if (document.getElementById('mod-status')) return;
+      const el = document.createElement('div');
+      el.id = 'mod-status';
+      el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:9999;font:12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#cbd5e1;background:rgba(15,23,42,.85);border:1px solid #334155;border-radius:8px;padding:6px 8px;pointer-events:none;';
+      el.textContent = 'status…';
+      document.body.appendChild(el);
+      updateModuleStatus();
+      try { if (!window.__modStatusTimer) window.__modStatusTimer = setInterval(updateModuleStatus, 1000); } catch {}
+      window.addEventListener('error', (e)=>{ try { el.setAttribute('data-last', String(e.message||'error')); updateModuleStatus(); } catch {} });
+    }
+    function okBadge(ok){ return `<span style="color:${ok?'#22c55e':'#ef4444'}">●</span>`; }
+    function updateModuleStatus(){
+      const el = document.getElementById('mod-status'); if (!el) return;
+      const hasCards = !!(CARDS && Object.keys(CARDS||{}).length);
+      const starterLen = (STARTER_FIRESET && STARTER_FIRESET.length) || 0;
+      const rulesOk = [dirsForPattern, effectiveStats, computeHits, stagedAttack, magicAttack].every(fn => typeof fn === 'function');
+      const stateOk = [startGame, drawOne, drawOneNoAdd, shuffle, countControlled].every(fn => typeof fn === 'function');
+      const threeOk = !!(renderer && scene && camera);
+      const boardOk = !!(tileMeshes && tileMeshes.length && tileMeshes[0] && tileMeshes[0].length);
+      const gs = (typeof gameState === 'object' && gameState && Array.isArray(gameState.board)) ? 'ok' : 'none';
+      const net = (typeof NET_ACTIVE !== 'undefined' && NET_ACTIVE) ? 'online' : 'offline';
+      const last = el.getAttribute('data-last') || '';
+      el.innerHTML = [
+        `${okBadge(hasCards)} cards (${starterLen})`,
+        `${okBadge(rulesOk)} rules`,
+        `${okBadge(stateOk)} state`,
+        `${okBadge(threeOk)} three`,
+        `${okBadge(boardOk)} board`,
+        `${okBadge(gs==='ok')} gState`,
+        `${okBadge(net==='online')} net:${net}`,
+        last ? `<div style="color:#fca5a5;margin-top:4px;max-width:240px;">${last}</div>` : ''
+      ].join(' · ');
+    }
     
     function init() {
-      wireModules();
+      wireModules();\n      mountModuleStatusChip();
       initThreeJS();
       // Start render loop early so scene is visible even if game init fails
       animate();
