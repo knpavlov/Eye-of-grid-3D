@@ -979,7 +979,16 @@
       try { window.tileMeshes = tileMeshes; window.tileFrames = tileFrames; } catch {}
     }
     
+    // Delegator: module cards implementation
     function createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
+      if (window.__cards && typeof window.__cards.createCard3D === 'function') {
+        return window.__cards.createCard3D(cardData, isInHand, hpOverride, atkOverride);
+      }
+      // Fallback to legacy if module is missing
+      return __legacy_createCard3D(cardData, isInHand, hpOverride, atkOverride);
+    }
+
+    function __legacy_createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
       // Delegated to module implementation; legacy body below is unreachable
       if (window.__cards && typeof window.__cards.createCard3D === 'function') {
         return window.__cards.createCard3D(cardData, isInHand, hpOverride, atkOverride);
@@ -1071,7 +1080,8 @@
       return card;
     }
 
-    function attachIllustrationPlane(cardMesh, cardData) {
+    // Legacy kept only for offline file:// fallback (modules handle normally)
+    function __legacy_attachIllustrationPlane(cardMesh, cardData) {
       if (!cardMesh || !cardData) return;
       // Удалим прошлую
       const prev = cardMesh.children?.find(ch => ch.userData && ch.userData.kind === 'illustrationPlane');
@@ -1118,7 +1128,15 @@
       plane.userData = { kind: 'illustrationPlane' };
       cardMesh.add(plane);
     }
+    // Delegator: module cards implementation
     function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
+      if (window.__cards && typeof window.__cards.drawCardFace === 'function') {
+        return window.__cards.drawCardFace(ctx, cardData, width, height, hpOverride, atkOverride);
+      }
+      return __legacy_drawCardFace(ctx, cardData, width, height, hpOverride, atkOverride);
+    }
+
+    function __legacy_drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
       // Delegated to module implementation; legacy body below is unreachable
       if (window.__cards && typeof window.__cards.drawCardFace === 'function') {
         return window.__cards.drawCardFace(ctx, cardData, width, height, hpOverride, atkOverride);
