@@ -27,6 +27,8 @@ function loadBaseTileTextures() {
             tex.anisotropy = renderer?.capabilities?.getMaxAnisotropy?.() || 1;
             if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
             ctx.TILE_TEXTURES[k] = tex; tex.needsUpdate = true;
+            // Update any tiles of this element key once the texture is ready
+            try { updateTileMaterialsFor(k); } catch {}
           } catch {}
         },
         undefined,
@@ -165,4 +167,3 @@ export function createBoard(gameState) {
 
   return ctx.tileMeshes;
 }
-

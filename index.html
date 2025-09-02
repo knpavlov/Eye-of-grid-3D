@@ -2636,67 +2636,64 @@
       const __legacyCreateBoard = createBoard;
       createBoard = function() {
         if (window.__board && window.__scene && typeof window.__board.createBoard === 'function') {
-          try {
-            window.__board.createBoard(gameState);
-            const ctx = window.__scene.getCtx();
-            tileMeshes = ctx.tileMeshes || []; tileFrames = ctx.tileFrames || [];
-            try { window.tileMeshes = tileMeshes; window.tileFrames = tileFrames; } catch {}
-            return;
-          } catch (e) { console.error('[bridge] override createBoard failed, fallback', e); }
+          window.__board.createBoard(gameState);
+          const ctx = window.__scene.getCtx();
+          tileMeshes = ctx.tileMeshes || []; tileFrames = ctx.tileFrames || [];
+          try { window.tileMeshes = tileMeshes; window.tileFrames = tileFrames; } catch {}
+          return;
         }
-        return __legacyCreateBoard.apply(this, arguments);
+        console.error('[bridge] __board.createBoard not available; modules must be loaded.');
+        throw new Error('Module board missing');
       };
     } catch {}
 
     // Bridge card helpers to module implementations when available
     try {
-      const __legacyGetCachedTexture = getCachedTexture;
       getCachedTexture = function(url) {
         if (window.__cards && typeof window.__cards.getCachedTexture === 'function') {
-          try { return window.__cards.getCachedTexture(url); } catch (e) { console.error('[bridge] getCachedTexture failed', e); }
+          return window.__cards.getCachedTexture(url);
         }
-        return __legacyGetCachedTexture.apply(this, arguments);
+        console.error('[bridge] __cards.getCachedTexture not available; modules must be loaded.');
+        throw new Error('Module cards missing');
       };
     } catch {}
     try {
-      const __legacyPreloadCardTextures = preloadCardTextures;
       preloadCardTextures = function() {
         if (window.__cards && typeof window.__cards.preloadCardTextures === 'function') {
-          try { return window.__cards.preloadCardTextures(); } catch (e) { console.error('[bridge] preloadCardTextures failed', e); }
+          return window.__cards.preloadCardTextures();
         }
-        return __legacyPreloadCardTextures.apply(this, arguments);
+        console.error('[bridge] __cards.preloadCardTextures not available; modules must be loaded.');
+        throw new Error('Module cards missing');
       };
     } catch {}
     try {
-      const __legacyCreateCard3D = createCard3D;
       createCard3D = function() {
         if (window.__cards && typeof window.__cards.createCard3D === 'function') {
-          try { return window.__cards.createCard3D.apply(null, arguments); } catch (e) { console.error('[bridge] createCard3D failed', e); }
+          return window.__cards.createCard3D.apply(null, arguments);
         }
-        return __legacyCreateCard3D.apply(this, arguments);
+        console.error('[bridge] __cards.createCard3D not available; modules must be loaded.');
+        throw new Error('Module cards missing');
       };
     } catch {}
     try {
-      const __legacyDrawCardFace = drawCardFace;
       drawCardFace = function() {
         if (window.__cards && typeof window.__cards.drawCardFace === 'function') {
-          try { return window.__cards.drawCardFace.apply(null, arguments); } catch (e) { console.error('[bridge] drawCardFace failed', e); }
+          return window.__cards.drawCardFace.apply(null, arguments);
         }
-        return __legacyDrawCardFace.apply(this, arguments);
+        console.error('[bridge] __cards.drawCardFace not available; modules must be loaded.');
+        throw new Error('Module cards missing');
       };
     } catch {}
     try {
-      const __legacyUpdateUnits = updateUnits;
       updateUnits = function() {
         if (window.__units && typeof window.__units.updateUnits === 'function') {
-          try {
-            window.__units.updateUnits(gameState);
-            const ctx = (window.__scene && typeof window.__scene.getCtx === 'function') ? window.__scene.getCtx() : null;
-            if (ctx && ctx.unitMeshes) { unitMeshes = ctx.unitMeshes; try { window.unitMeshes = unitMeshes; } catch {} }
-            return;
-          } catch (e) { console.error('[bridge] updateUnits failed', e); }
+          window.__units.updateUnits(gameState);
+          const ctx = (window.__scene && typeof window.__scene.getCtx === 'function') ? window.__scene.getCtx() : null;
+          if (ctx && ctx.unitMeshes) { unitMeshes = ctx.unitMeshes; try { window.unitMeshes = unitMeshes; } catch {} }
+          return;
         }
-        return __legacyUpdateUnits.apply(this, arguments);
+        console.error('[bridge] __units.updateUnits not available; modules must be loaded.');
+        throw new Error('Module units missing');
       };
     } catch {}
 
