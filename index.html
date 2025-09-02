@@ -302,20 +302,9 @@
         return { n1, logLines, targets: hits.map(h => ({ r: h.r, c: h.c, dmg: h.dmg })), deaths };
       };
       return { step1, step2, finish, n1 };
-    }
-    
+    */
     let magicAttack;
-/* orphan magicAttack tail
-      // Возврат 1 маны владельцам погибших существ
-      try {
-        for (const d of deaths) {
-          if (n1 && n1.players && n1.players[d.owner]) {
-            n1.players[d.owner].mana = capMana((n1.players[d.owner].mana || 0) + 1);
-          }
-        }
-      } catch {}
-      return { n1, logLines, dmg, deaths };
-    }
+
     
     // ====== БОЕВАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ ======
     function performBattleSequence(r, c) {
@@ -1082,7 +1071,12 @@
       });
       
       const materials = [
-        edgeMaterial, edgeMaterial, /* +Y top (лицо) */ faceMaterial, /* -Y bottom (рубашка) */ backMaterial, edgeMaterial, edgeMaterial
+        edgeMaterial,  // +X
+        edgeMaterial,  // -X
+        faceMaterial,  // +Y (top/front face)
+        backMaterial,  // -Y (bottom/back face)
+        edgeMaterial,  // +Z
+        edgeMaterial   // -Z
       ];
       
       const card = new THREE.Mesh(geometry, materials);
