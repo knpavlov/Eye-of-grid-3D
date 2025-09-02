@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
@@ -9,16 +9,6 @@
   <link rel="stylesheet" href="styles/main.css">
   <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-  <script type="module" src="./src/main.js"></script>
-  <script>
-    // Early globals so later scripts never crash if earlier code aborted
-    (function(){
-      try { if (typeof window.NET_ACTIVE === 'undefined') window.NET_ACTIVE = false; } catch(e){}
-      try { if (typeof window.MY_SEAT === 'undefined') window.MY_SEAT = null; } catch(e){}
-      try { if (typeof window.APPLYING === 'undefined') window.APPLYING = false; } catch(e){}
-      try { if (typeof window.NET_ON === 'undefined') window.NET_ON = function(){ try { return !!window.NET_ACTIVE; } catch(e){ return false; } }; } catch(e){}
-    })();
-  </script>
 </head>
 <body>
   <canvas id="three-canvas"></canvas>
@@ -152,29 +142,109 @@
   <script>
     // ====== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ======
     // Переменные для мультиплеера (должны быть доступны везде)
-    var NET_ACTIVE = false;
-    var MY_SEAT = null;
-    var APPLYING = false;
+    let NET_ACTIVE = false;
+    let MY_SEAT = null;
+    let APPLYING = false;
     
     // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
     
-    let DIR_VECTORS, OPPOSITE_ELEMENT, elementEmoji, turnCW, turnCCW;
+    const DIR_VECTORS = { N: [-1, 0], E: [0, 1], S: [1, 0], W: [0, -1] };
+    const OPPOSITE_ELEMENT = { FIRE: 'WATER', WATER: 'FIRE', EARTH: 'FOREST', FOREST: 'EARTH' };
+    const elementEmoji = { FIRE: '🔥', WATER: '💧', EARTH: '🪨', FOREST: '🌲', MECH: '⚙️' };
+    const turnCW = { N: 'E', E: 'S', S: 'W', W: 'N' };
+    const turnCCW = { N: 'W', W: 'S', S: 'E', E: 'N' };
     // Переопределяем ориентации: N должен смотреть к верхнему краю (−Z), S — к нижнему (+Z)
     // В three.js «вперёд» меша по умолчанию это +Z (0°), поэтому:
     // S: 0°, E: -90°, W: 90°, N: 180°
     // Исправление: N (стрелка вверх) = 0°, S (стрелка вниз) = 180°; E/W оставляем как есть
-    let facingDeg;
+    const facingDeg = { N: 0, E: -90, S: 180, W: 90 };
     
-    let uid, inBounds, capMana, attackCost;
+    const uid = () => Math.random().toString(36).slice(2, 9);
+    const inBounds = (r, c) => r >= 0 && r < 3 && c >= 0 && c < 3;
+    const capMana = (m) => Math.min(10, m);
+    const attackCost = (tpl) => (tpl.activation != null ? tpl.activation : Math.max(0, (tpl.cost || 0) - 1));
     
     // Карты
-    let CARDS;
+    const CARDS = {
+      // Fire Set (юниты)
+      FIRE_FLAME_MAGUS: { id:'FIRE_FLAME_MAGUS', name:'Flame Magus', type:'UNIT', cost:1, activation:1, element:'FIRE', atk:1, hp:1, pattern:'FRONT', range:3, attackType:'MAGIC', blindspots:['N','E','S','W'], desc:'Magic Attack: target any creature; no retaliation.' },
+      FIRE_HELLFIRE_SPITTER: { id:'FIRE_HELLFIRE_SPITTER', name:'Hellfire Spitter', type:'UNIT', cost:1, activation:1, element:'FIRE', atk:1, hp:1, pattern:'ALL', range:1, firstStrike:true, blindspots:[], desc:'Quickness: always strikes first.' },
+      FIRE_FREEDONIAN: { id:'FIRE_FREEDONIAN', name:'Freedonian Wanderer', type:'UNIT', cost:2, activation:1, element:'FIRE', atk:1, hp:2, pattern:'FRONT', range:1, blindspots:['S'], auraGainManaOnSummon:true, desc:'While not on Fire tile, you gain 1 mana on allied summon.' },
+      FIRE_FLAME_LIZARD: { id:'FIRE_FLAME_LIZARD', name:'Partmole Flame Lizard', type:'UNIT', cost:2, activation:1, element:'FIRE', atk:2, hp:2, pattern:'FRONT', range:1, blindspots:['S'], firstStrike:true, desc:'Quickness.' },
+      FIRE_GREAT_MINOS: { id:'FIRE_GREAT_MINOS', name:'Great Minos of Sciondar', type:'UNIT', cost:3, activation:2, element:'FIRE', atk:2, hp:1, pattern:'FRONT', range:2, blindspots:['S'], dodge50:true, diesOffElement:'FIRE', desc:'Dodge 50% (non-magic). Destroy if not on Fire tile.' },
+      FIRE_FLAME_ASCETIC: { id:'FIRE_FLAME_ASCETIC', name:'Flame Ascetic', type:'UNIT', cost:3, activation:2, element:'FIRE', atk:2, hp:3, pattern:'FRONT', range:1, blindspots:['S'], randomPlus2:true, desc:'Attack +2 half the time.' },
+      FIRE_TRICEPTAUR: { id:'FIRE_TRICEPTAUR', name:'Triceptaur Behemoth', type:'UNIT', cost:5, activation:4, element:'FIRE', atk:5, hp:4, pattern:'FRONT_SIDES', range:1, blindspots:['S'], penaltyByTargets:true, desc:'If attacks 2 creatures, -2 ATK; if 3 creatures, -4 ATK.' },
+      FIRE_PURSUER: { id:'FIRE_PURSUER', name:'Pursuer of Saint Dhees', type:'UNIT', cost:6, activation:3, element:'FIRE', atk:5, hp:4, pattern:'FRONT', range:1, blindspots:['S'], dynamicAtk:'OTHERS_ON_BOARD', desc:'ATK = 5 + number of other creatures on board.' },
+      // Спеллы из других наборов (из 2D)
+      // FREEZE_STREAM удалён
+      RAISE_STONE: { id:'RAISE_STONE', name:'Raise Stone', type:'SPELL', cost:2, element:'EARTH', text:'+2 HP to a friendly unit.' },
+      // WIND_SHIFT удалён,
+      SPELL_FISSURES_OF_GOGHLIE: {
+        id: 'SPELL_FISSURES_OF_GOGHLIE', name: 'Fissures of Goghlie', type: 'SPELL',
+        element: 'NEUTRAL', spellType: 'CONJURATION', cost: 2,
+        text: 'Fieldquake any one field.'
+      },
+      // Новые спеллы
+      SPELL_PARMTETIC_HOLY_FEAST: {
+        id: 'SPELL_PARMTETIC_HOLY_FEAST', name: 'Parmetic Holy Feast', type: 'SPELL',
+        element: 'NEUTRAL', spellType: 'RITUAL', cost: 0, ritualCost: 'discard 1 creature',
+        text: 'Discard a creature from hand and gain 2 mana.'
+      },
+      SPELL_GOGHLIE_ALTAR: {
+        id: 'SPELL_GOGHLIE_ALTAR', name: 'Goghlie Altar', type: 'SPELL',
+        element: 'NEUTRAL', spellType: 'RITUAL', cost: 0, ritualCost: 'none',
+        text: 'Both players gain mana equal to the number of enemy creatures on the board.'
+      },
+      SPELL_BEGUILING_FOG: {
+        id: 'SPELL_BEGUILING_FOG', name: 'Beguiling Fog', type: 'SPELL',
+        element: 'NEUTRAL', spellType: 'CONJURATION', cost: 0,
+        text: 'Rotate any one creature in any direction.'
+      },
+      SPELL_CLARE_WILS_BANNER: {
+        id: 'SPELL_CLARE_WILS_BANNER', name: "Clare Wil's Banner", type: 'SPELL',
+        element: 'NEUTRAL', spellType: 'CONJURATION', cost: 1,
+        text: "Targeted allied creature gains +2 Attack until the end of the spellcaster's turn."
+      },
+      SPELL_SUMMONER_MESMERS_ERRAND: {
+        id: 'SPELL_SUMMONER_MESMERS_ERRAND', name: "Summoner Mesmer's Errand", type: 'SPELL',
+        element: 'NEUTRAL', spellType: 'CONJURATION', cost: 1,
+        text: 'Draw two cards.'
+      }
+    };
     
     // Стартер: только Fire Set + несколько спеллов
-    let STARTER_FIRESET;
+    const STARTER_FIRESET = [
+      CARDS.FIRE_FLAME_MAGUS,
+      CARDS.FIRE_HELLFIRE_SPITTER,
+      CARDS.FIRE_FREEDONIAN,
+      CARDS.FIRE_FLAME_LIZARD,
+      CARDS.FIRE_GREAT_MINOS,
+      CARDS.FIRE_FLAME_ASCETIC,
+      CARDS.FIRE_TRICEPTAUR,
+      CARDS.FIRE_PURSUER,
+      CARDS.FIRE_FLAME_MAGUS,
+      CARDS.FIRE_HELLFIRE_SPITTER,
+      CARDS.FIRE_FLAME_LIZARD,
+      CARDS.FIRE_FREEDONIAN,
+      CARDS.RAISE_STONE,
+      // Добавим новые спеллы в стартовую колоду для теста
+      CARDS.SPELL_PARMTETIC_HOLY_FEAST,
+      CARDS.SPELL_PARMTETIC_HOLY_FEAST,
+      CARDS.SPELL_GOGHLIE_ALTAR,
+      CARDS.SPELL_BEGUILING_FOG,
+      CARDS.SPELL_CLARE_WILS_BANNER,
+      CARDS.SPELL_SUMMONER_MESMERS_ERRAND,
+      CARDS.SPELL_FISSURES_OF_GOGHLIE
+    ];
     
     // Функции игровой логики
-    let dirsForPattern;
+    const dirsForPattern = (facing, pattern) => {
+      const f = facing, l = turnCCW[f], r = turnCW[f];
+      if (pattern === 'FRONT') return [f];
+      if (pattern === 'SIDES') return [l, r];
+      if (pattern === 'ALL') return ['N', 'E', 'S', 'W'];
+      return [f, l, r];
+    };
     
     const computeCellBuff = (cellElement, unitElement) => {
       if (cellElement === unitElement) return { atk: 0, hp: 2 };
@@ -184,7 +254,16 @@
       return { atk: 0, hp: 0 };
     };
     
-    let effectiveStats;
+    const effectiveStats = (cell, unit) => {
+      const tpl = CARDS[unit.tplId];
+      const buff = computeCellBuff(cell.element, tpl.element);
+      // Временный баф атаки (например, от Clare Wil's Banner)
+      const tempAtk = (typeof unit.tempAtkBuff === 'number') ? unit.tempAtkBuff : 0;
+      return { 
+        atk: (tpl.atk || 0) + buff.atk + tempAtk, 
+        hp: (tpl.hp || 0) + buff.hp 
+      };
+    };
     
     const randomBoard = () => {
       // 5 элементов: FIRE, WATER, EARTH, FOREST, MECH
@@ -203,23 +282,108 @@
       return board;
     };
     
-    let shuffle;
+    const shuffle = (array) => {
+      const result = [...array];
+      for (let i = result.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [result[i], result[j]] = [result[j], result[i]];
+      }
+      return result;
+    };
     
-    let drawOne;
+    const drawOne = (gameState, player) => {
+      if (!gameState.players[player].deck.length) return null;
+      const card = gameState.players[player].deck.shift();
+      if (card) gameState.players[player].hand.push(card);
+      return card || null;
+    };
 
     // Специальная версия: вынуть верхнюю карту, но НЕ класть в руку (для эффектной анимации)
-    let drawOneNoAdd;
+    const drawOneNoAdd = (gameState, player) => {
+      if (!gameState.players[player].deck.length) return null;
+      const card = gameState.players[player].deck.shift();
+      return card || null;
+    };
     
-    let countControlled;
+    const countControlled = (gameState, player) => {
+      let count = 0;
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          if (gameState.board[r][c].unit?.owner === player) count++;
+        }
+      }
+      return count;
+    };
     
-    let startGame;
+    const startGame = (deck0, deck1) => {
+      const gameState = {
+        board: randomBoard(),
+        players: [
+          { 
+            name: 'Player 1', 
+            deck: shuffle(deck0.filter(Boolean)), 
+            hand: [], 
+            discard: [], 
+            graveyard: [],
+            mana: 2 
+          },
+          { 
+            name: 'Player 2', 
+            deck: shuffle(deck1.filter(Boolean)), 
+            hand: [], 
+            discard: [], 
+            graveyard: [],
+            mana: 0 
+          }
+        ],
+        active: 0,
+        turn: 1,
+        selectedCard: null,
+        pending: null,
+        winner: null
+      };
+      
+      for (let i = 0; i < 5; i++) {
+        drawOne(gameState, 0);
+        drawOne(gameState, 1);
+      }
+      
+      return gameState;
+    };
     
     // ====== БОЕВАЯ СИСТЕМА (порт из 2D) ======
-    let hasAdjacentGuard;
+    function hasAdjacentGuard(state, r, c) {
+      const target = state.board[r][c].unit;
+      if (!target) return false;
+      for (const [dr, dc] of Object.values(DIR_VECTORS)) {
+        const nr = r + dr, nc = c + dc;
+        if (!inBounds(nr, nc)) continue;
+        const u = state.board[nr][nc].unit;
+        if (u && u.owner === target.owner && (CARDS[u.tplId].keywords || []).includes('GUARD')) return true;
+      }
       return false;
     }
     
-    let computeHits;
+    function computeHits(state, r, c) {
+      const attacker = state.board[r][c].unit;
+      if (!attacker) return [];
+      const tplA = CARDS[attacker.tplId];
+      const dirs = dirsForPattern(attacker.facing, tplA.pattern || 'FRONT');
+      const { atk } = effectiveStats(state.board[r][c], attacker);
+      const hits = [];
+      for (const d of dirs) {
+        const [dr, dc] = DIR_VECTORS[d];
+        const maxRange = Math.max(1, tplA.range || 1);
+        for (let step = 1; step <= maxRange; step++) {
+          const nr = r + dr * step, nc = c + dc * step;
+          if (!inBounds(nr, nc)) break;
+          const B = state.board[nr][nc].unit;
+          if (!B) continue;
+          if (B.owner === attacker.owner) break;
+          const aFlying = (tplA.keywords || []).includes('FLYING');
+          if (!aFlying && hasAdjacentGuard(state, nr, nc) && !(CARDS[B.tplId].keywords || []).includes('GUARD')) {
+            break;
+          }
           const backDir = turnCW[turnCW[B.facing]];
           const [bdr, bdc] = DIR_VECTORS[backDir];
           const isBack = (nr + bdr === r && nc + bdc === c);
@@ -247,7 +411,20 @@
       return hits;
     }
     
-    let stagedAttack;
+    function stagedAttack(state, r, c) {
+      const n1 = structuredClone(state);
+      const attacker = n1.board[r][c].unit;
+      if (!attacker) return null;
+      const tplA = CARDS[attacker.tplId];
+      const hits = computeHits(n1, r, c);
+      if (!hits.length) return { empty: true };
+      const logLines = [];
+      const deaths = [];
+      const applyDeaths = () => {
+        for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
+          const u = n1.board[rr][cc].unit;
+          if (u && u.currentHP <= 0) { deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId }); n1.board[rr][cc].unit = null; }
+        }
       };
       const step1 = () => {
         for (const h of hits) {
@@ -307,7 +484,22 @@
       return { step1, step2, finish, n1 };
     }
     
-    let magicAttack;
+    function magicAttack(state, fr, fc, tr, tc) {
+      const n1 = structuredClone(state);
+      const attacker = n1.board[fr][fc].unit; const target = n1.board[tr][tc].unit;
+      if (!attacker || !target || target.owner === attacker.owner) return null;
+      const atkStats = effectiveStats(n1.board[fr][fc], attacker, n1);
+      const tplA = CARDS[attacker.tplId];
+      const dmg = Math.max(0, (atkStats.atk || 0) + (tplA.randomPlus2 && Math.random() < 0.5 ? 2 : 0));
+      const before = target.currentHP;
+      target.currentHP = Math.max(0, target.currentHP - dmg);
+      const afterHP = target.currentHP;
+      const logLines = [`${CARDS[attacker.tplId].name} (Magic) → ${CARDS[target.tplId].name}: ${dmg} dmg (HP ${before}→${afterHP})`];
+      // cleanup + сбор смертей
+      const deaths = [];
+      for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
+        const u = n1.board[rr][cc].unit; if (u && u.currentHP <= 0) { deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId }); n1.board[rr][cc].unit = null; }
+      }
       // Возврат 1 маны владельцам погибших существ
       try {
         for (const d of deaths) {
@@ -333,7 +525,7 @@
       
       // Отправляем данные об атаке в онлайн
       try {
-        if (NET_ON() && typeof window !== 'undefined' && window.socket) {
+        if (NET_ACTIVE && typeof window !== 'undefined' && window.socket) {
           window.socket.emit('battleAnim', {
             attacker: attackerCell,
             targets: hitsPrev,
@@ -375,7 +567,7 @@
               let maxDur = 0;
               
               // Отправляем данные о контратаке в онлайн
-              if (NET_ON() && typeof window !== 'undefined' && window.socket && retaliators.length > 0) {
+              if (NET_ACTIVE && typeof window !== 'undefined' && window.socket && retaliators.length > 0) {
                 window.socket.emit('battleRetaliation', {
                   attacker: attackerCell,
                   retaliators: retaliators,
@@ -652,7 +844,6 @@
       scene.add(cardGroup);
       scene.add(effectsGroup);
       scene.add(metaGroup);
-      try { window.renderer = renderer; window.scene = scene; window.camera = camera; window.boardGroup = boardGroup; } catch {}
       
       // Освещение
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
@@ -1040,7 +1231,6 @@
         tileMeshes.push(row);
         tileFrames.push(frameRow);
       }
-      try { window.tileMeshes = tileMeshes; window.tileFrames = tileFrames; } catch {}
     }
     
     function createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
@@ -2266,7 +2456,6 @@
     
     async function initGame() {
       gameState = startGame(STARTER_FIRESET, STARTER_FIRESET);
-      try { window.gameState = gameState; } catch {}
       
       // Сразу строим сцену и мета-объекты, без задержки появления
       createBoard();
@@ -2540,76 +2729,9 @@
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
-
-    function wireModules() {
-      try {
-        DIR_VECTORS = window.DIR_VECTORS; OPPOSITE_ELEMENT = window.OPPOSITE_ELEMENT; elementEmoji = window.elementEmoji;
-        turnCW = window.turnCW; turnCCW = window.turnCCW; facingDeg = window.facingDeg;
-        uid = window.uid; inBounds = window.inBounds; capMana = window.capMana; attackCost = window.attackCost;
-        CARDS = window.CARDS; STARTER_FIRESET = window.STARTER_FIRESET || [];
-        dirsForPattern = window.dirsForPattern; effectiveStats = window.effectiveStats;
-        hasAdjacentGuard = window.hasAdjacentGuard; computeHits = window.computeHits; stagedAttack = window.stagedAttack; magicAttack = window.magicAttack;
-        shuffle = window.shuffle; drawOne = window.drawOne; drawOneNoAdd = window.drawOneNoAdd; countControlled = window.countControlled; startGame = window.startGame;
-      } catch {}
-      // Fallbacks to ensure offline scene renders even if module failed to load
-      try {
-        if (!startGame || typeof startGame !== 'function') {
-          startGame = (deck0, deck1) => ({
-            board: randomBoard(),
-            players: [
-              { name: 'Player 1', deck: Array.isArray(deck0)?deck0.slice():[], hand: [], discard: [], graveyard: [], mana: 2 },
-              { name: 'Player 2', deck: Array.isArray(deck1)?deck1.slice():[], hand: [], discard: [], graveyard: [], mana: 0 }
-            ],
-            active: 0,
-            turn: 1,
-            winner: null
-          });
-        }
-      } catch {}
-    }
-
-    // ---- Lightweight on-screen diagnostics for module/scene wiring ----
-    function mountModuleStatusChip(){
-      if (document.getElementById('mod-status')) return;
-      const el = document.createElement('div');
-      el.id = 'mod-status';
-      el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:9999;font:12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#cbd5e1;background:rgba(15,23,42,.85);border:1px solid #334155;border-radius:8px;padding:6px 8px;pointer-events:none;';
-      el.textContent = 'status…';
-      document.body.appendChild(el);
-      updateModuleStatus();
-      try { if (!window.__modStatusTimer) window.__modStatusTimer = setInterval(updateModuleStatus, 1000); } catch {}
-      window.addEventListener('error', (e)=>{ try { el.setAttribute('data-last', String(e.message||'error')); updateModuleStatus(); } catch {} });
-    }
-    function okBadge(ok){ return `<span style="color:${ok?'#22c55e':'#ef4444'}">●</span>`; }
-    function updateModuleStatus(){
-      const el = document.getElementById('mod-status'); if (!el) return;
-      const hasCards = !!(CARDS && Object.keys(CARDS||{}).length);
-      const starterLen = (STARTER_FIRESET && STARTER_FIRESET.length) || 0;
-      const rulesOk = [dirsForPattern, effectiveStats, computeHits, stagedAttack, magicAttack].every(fn => typeof fn === 'function');
-      const stateOk = [startGame, drawOne, drawOneNoAdd, shuffle, countControlled].every(fn => typeof fn === 'function');
-      const threeOk = !!(renderer && scene && camera);
-      const boardOk = !!(tileMeshes && tileMeshes.length && tileMeshes[0] && tileMeshes[0].length);
-      const gs = (typeof gameState === 'object' && gameState && Array.isArray(gameState.board)) ? 'ok' : 'none';
-      const net = (typeof NET_ACTIVE !== 'undefined' && NET_ACTIVE) ? 'online' : 'offline';
-      const last = el.getAttribute('data-last') || '';
-      el.innerHTML = [
-        `${okBadge(hasCards)} cards (${starterLen})`,
-        `${okBadge(rulesOk)} rules`,
-        `${okBadge(stateOk)} state`,
-        `${okBadge(threeOk)} three`,
-        `${okBadge(boardOk)} board`,
-        `${okBadge(gs==='ok')} gState`,
-        `${okBadge(net==='online')} net:${net}`,
-        last ? `<div style="color:#fca5a5;margin-top:4px;max-width:240px;">${last}</div>` : ''
-      ].join(' · ');
-    }
     
     function init() {
-      wireModules();
-      mountModuleStatusChip();
       initThreeJS();
-      // Start render loop early so scene is visible even if game init fails
-      animate();
       initGame();
       preloadCardImages();
       
@@ -2625,8 +2747,8 @@
       });
       window.addEventListener('resize', onWindowResize);
       
+      animate();
     }
-    try { window.init = init; window.initThreeJS = initThreeJS; window.initGame = initGame; window.animate = animate; } catch {}
 
     function createMetaObjects() {
       // Очистить предыдущие
@@ -3605,7 +3727,7 @@
           const mat = getTileMaterial(nextEl);
           dissolveTileCrossfade(tile, getTileMaterial(prevEl), mat, 0.9);
           // Онлайновая синхронизация эффекта
-          try { if (NET_ON() && MY_SEAT === gameState.active && typeof window !== 'undefined' && window.socket) window.socket.emit('tileCrossfade', { r, c, prev: prevEl, next: nextEl }); } catch {}
+          try { if (NET_ACTIVE && MY_SEAT === gameState.active && typeof window !== 'undefined' && window.socket) window.socket.emit('tileCrossfade', { r, c, prev: prevEl, next: nextEl }); } catch {}
         } catch {}
         // Юнит на клетке может изменить HP из-за смены элемента
         const u = gameState.board[r][c].unit;
@@ -3710,9 +3832,9 @@
           const toDiscardTpl = pl.hand[singleIdx];
           const handMesh = handCardMeshes.find(m => m.userData?.handIndex === singleIdx);
           const localSpellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl);
-          try { if (NET_ON()) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([singleIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
+          try { if (NET_ACTIVE) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([singleIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
           if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
-          if (NET_ON()) {
+          if (NET_ACTIVE) {
             try { if (typeof window !== 'undefined') window.__HF_ACK = false; } catch {}
             try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('debugLog', { tag:'HF:single', phase:'emit', localSpellIdx, singleIdx, active: gameState.active }); } catch {}
             try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
@@ -3863,7 +3985,7 @@
     window[name] = function(...args){
       // Блокируем ключевые действия, если сейчас не наш ход
       try {
-        if (NET_ON() && GATED.includes(name)) {
+        if (NET_ACTIVE && GATED.includes(name)) {
           const myTurn = (typeof gameState?.active === 'number') && (gameState.active === MY_SEAT);
           if (!myTurn) { try { typeof showNotification==='function' && showNotification('Opponent\'s turn', 'error'); } catch {} return; }
         }
@@ -3917,7 +4039,7 @@
   let lastDigest = '';
   let pending = false;
   function schedulePush(reason='auto', {force=false}={}){
-    if (!NET_ON() || !gameState) return;
+    if (!NET_ACTIVE || !gameState) return;
     if (APPLYING && !force) return;              // не эхоим полученный снапшот
     const myTurn = (typeof gameState.active === 'number') && (gameState.active === MY_SEAT);
     if (!force && !myTurn) return;               // только активный игрок пушит
@@ -3950,7 +4072,7 @@
 
   // Периодическая отправка при любом изменении (подстраховка, если обёртка не сработала)
   setInterval(()=>{
-    if (!NET_ON() || !gameState) return;
+    if (!NET_ACTIVE || !gameState) return;
     // пушит только тот, у кого сейчас ХОД (чтобы оба могли делать свои ходы)
     const myTurn = (typeof gameState.active === 'number') && (gameState.active === MY_SEAT);
     if (!myTurn) return;
@@ -4367,7 +4489,7 @@
     const seat=document.getElementById('mp-seat');
     const turn=document.getElementById('mp-turn');
 
-    const online = socket.connected && NET_ON();
+    const online = socket.connected && NET_ACTIVE;
     dot.classList.toggle('on', online);
     net.textContent = online ? 'online' : 'offline';
     seat.textContent = (MY_SEAT===0)?'Player 1':(MY_SEAT===1)?'Player 2':'—';
@@ -4398,7 +4520,7 @@
   document.body.appendChild(lock);
 
   function updateInputLock(){
-    const shouldLock = NET_ON() && gameState && (gameState.active !== MY_SEAT);
+    const shouldLock = NET_ACTIVE && gameState && (gameState.active !== MY_SEAT);
     lock.classList.toggle('on', !!shouldLock);
   }
 
@@ -4496,49 +4618,5 @@
 
 })();
 </script>
-  <!-- Minimal always-on status chip (safe even if above scripts fail) -->
-  <script>
-  (function(){
-    function mount(){
-      if (document.getElementById('mod-status')) return;
-      var el = document.createElement('div'); el.id='mod-status';
-      el.style.cssText='position:fixed;left:8px;top:8px;z-index:9999;font:12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#cbd5e1;background:rgba(15,23,42,.85);border:1px solid #334155;border-radius:8px;padding:6px 8px;pointer-events:none;';
-      el.textContent='status…'; document.body.appendChild(el);
-      function ok(b){ return '<span style="color:'+(b?'#22c55e':'#ef4444')+'">●</span>'; }
-      function upd(){
-        var cardsOk = !!(window.CARDS && Object.keys(window.CARDS||{}).length);
-        var starterLen = (window.STARTER_FIRESET && window.STARTER_FIRESET.length) || 0;
-        var rulesOk = ['dirsForPattern','effectiveStats','computeHits','stagedAttack','magicAttack'].every(function(k){return typeof window[k]==='function';});
-        var stateOk = ['startGame','drawOne','drawOneNoAdd','shuffle','countControlled'].every(function(k){return typeof window[k]==='function';});
-        var threeOk = !!(window.renderer && window.scene && window.camera);
-        var boardOk = !!(window.tileMeshes && window.tileMeshes.length && window.tileMeshes[0] && window.tileMeshes[0].length);
-        var gsOk = !!(window.gameState && Array.isArray(window.gameState.board));
-        var net = (typeof window.NET_ACTIVE!=='undefined' && window.NET_ACTIVE) ? 'online' : 'offline';
-        el.innerHTML = ok(cardsOk)+' cards ('+starterLen+') · '+ok(rulesOk)+' rules · '+ok(stateOk)+' state · '+ok(threeOk)+' three · '+ok(boardOk)+' board · '+ok(gsOk)+' gState · '+ok(net==='online')+' net:'+net;
-      }
-      upd(); setInterval(upd, 1000);
-      // Try to kick init if earlier script failed to hook DOMContentLoaded
-      function kick(){
-        try {
-          if (!(window.renderer && window.scene && window.camera)) {
-            if (typeof window.init === 'function') { window.init(); return; }
-            if (typeof window.initThreeJS === 'function') {
-              try { window.initThreeJS(); } catch(e){}
-              if (typeof window.animate === 'function') try { window.requestAnimationFrame(window.animate); } catch(e){}
-            }
-            if (typeof window.initGame === 'function') { try { window.initGame(); } catch(e){} }
-          }
-        } catch(e){}
-      }
-      setTimeout(kick, 200);
-      setTimeout(kick, 1200);
-      setTimeout(kick, 3000);
-    }
-    if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', mount); else mount();
-  })();
-  </script>
-
 </body>
 </html>
-
-
