@@ -4155,6 +4155,12 @@
       return;
     }
     
+    // Defer during state apply to avoid losing animation due to re-render
+    if (typeof APPLYING !== 'undefined' && APPLYING) {
+      try { PENDING_BATTLE_ANIMS.push({ attacker, targets, ts: Date.now(), id: __id }); } catch {}
+      return;
+    }
+    
     const success = tryPlayBattleAnim(attacker, targets);
     console.log('[battleAnim] Animation result:', success);
     if (!success) {
