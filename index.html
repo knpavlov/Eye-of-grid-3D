@@ -307,8 +307,7 @@
 
     
     // ====== БОЕВАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ ======
-    function performBattleSequence_OLD(r, c) {
-      return; // legacy removed
+    /* LEGACY REMOVED: performBattleSequence_OLD(r, c) {
       const prevState = JSON.parse(JSON.stringify(gameState));
       const staged = stagedAttack(gameState, r, c);
       if (!staged || staged.empty) return;
@@ -406,7 +405,7 @@
       
       updateUI();
       updateUnits();
-    }
+    } */
     
     // ====== THREE.JS СЦЕНА ======
     
