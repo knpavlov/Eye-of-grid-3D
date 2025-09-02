@@ -108,6 +108,8 @@ export function updateTileMaterialsFor(elementKey) {
     const row = tileMeshes[r] || [];
     for (let c = 0; c < row.length; c++) {
       const tile = row[c]; if (!tile) continue;
+      const el = tile.userData && tile.userData.element;
+      if (el !== elementKey) continue;
       try { tile.material.dispose && tile.material.dispose(); } catch {}
       tile.material = new THREE.MeshBasicMaterial({ map: tex });
       tile.material.needsUpdate = true;
