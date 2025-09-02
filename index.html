@@ -418,30 +418,8 @@
     let gameState = null;
     let logEntries = [];
     let TILE_TEXTURES = {};
-    // Card textures cache (front/back/deck sides)
-    let CARD_TEX = { front: null, back: null, deckSide: null };
-    function getCachedTexture(url){
-      try {
-        if (!getCachedTexture.cache) getCachedTexture.cache = new Map();
-        if (getCachedTexture.cache.has(url)) return getCachedTexture.cache.get(url);
-        const tex = new THREE.TextureLoader().load(url, (t)=>{
-          try { t.anisotropy = renderer.capabilities.getMaxAnisotropy(); } catch {}
-          try { if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace; } catch {}
-          try { requestCardsRedraw && requestCardsRedraw(); } catch {}
-        });
-        try { tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); } catch {}
-        try { if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace; } catch {}
-        getCachedTexture.cache.set(url, tex);
-        return tex;
-      } catch { return null; }
-    }
-    function preloadCardTextures(){
-      try {
-        CARD_TEX.front   = getCachedTexture('textures/card_front_final.jpeg');
-        CARD_TEX.back    = getCachedTexture('textures/card_back_main.jpeg');
-        CARD_TEX.deckSide= getCachedTexture('textures/card_deck_side_view.jpeg');
-      } catch {}
-    }
+    // Legacy CARD_TEX placeholder: modules expose window.CARD_TEX when preloaded
+    var CARD_TEX;
     let PROC_TILE_TEXTURES = {};
     // Настройки показа большой карты при доборе — можно править из консоли
     window.DRAW_CARD_TUNE = {
@@ -453,8 +431,7 @@
       yawDeg: 0,    // поворот влево/вправо (ось Y)
       rollDeg: 0    // крен (ось Z)
     };
-    let CARD_IMAGES = {};
-    let CARD_PENDING = {};
+    // Legacy CARD_IMAGES/CARD_PENDING removed (handled in modules)
     // Очереди догоняющих анимаций боя для наблюдателя
     let PENDING_BATTLE_ANIMS = [];
     let PENDING_RETALIATIONS = [];
@@ -839,35 +816,7 @@
       return new Promise(resolve => tl.eventCallback('onComplete', () => { cleanup(); resolve(); }));
     }
 
-    function preloadCardImages() {
-      const exts = ['png'];
-      const basenameCandidates = (tpl) => {
-        const safe = (s) => s
-          .toLowerCase()
-          .replace(/[^a-z0-9\s_-]/g, '')
-          .replace(/\s+/g, '_');
-        return [tpl.id, tpl.id.toLowerCase(), safe(tpl.name), safe(tpl.name).replace(/_/g,'-')];
-      };
-      const scheduleUpdate = (() => {
-        let t = null; return () => { clearTimeout(t); t = setTimeout(()=>{ updateHand(); updateUnits(); }, 10); };
-      })();
-      for (const tpl of Object.values(CARDS)) {
-        if (!tpl || tpl.type !== 'UNIT') continue;
-        const bases = basenameCandidates(tpl);
-        (function tryNextBase(iBase) {
-          if (iBase >= bases.length) return;
-          (function tryExt(iExt) {
-            if (iExt >= exts.length) { tryNextBase(iBase + 1); return; }
-            const key = bases[iBase];
-            const url = `card images/${bases[iBase]}.${exts[iExt]}`;
-            const img = new Image();
-            img.onload = () => { CARD_IMAGES[tpl.id] = img; CARD_IMAGES[bases[iBase]] = img; scheduleUpdate(); };
-            img.onerror = () => tryExt(iExt + 1);
-            img.src = encodeURI(url);
-          })(0);
-        })(0);
-      }
-    }
+    // preloadCardImages removed (module handles lazy loading)
 
     function requestCardsRedraw() {
       clearTimeout(window.__cardsRedrawT);
@@ -2704,7 +2653,6 @@
       // Start render loop early so scene is visible even if game init fails
       animateBridge();
       initGame();
-      preloadCardImages();
       
       renderer.domElement.addEventListener('mousemove', onMouseMove);
       renderer.domElement.addEventListener('mousedown', onMouseDown);
