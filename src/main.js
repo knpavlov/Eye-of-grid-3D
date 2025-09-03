@@ -10,6 +10,9 @@ import * as Board from './scene/board.js';
 import * as Cards from './scene/cards.js';
 import * as Units from './scene/units.js';
 import { getCtx as getSceneCtx } from './scene/context.js';
+// UI modules
+import * as TurnTimer from './ui/turnTimer.js';
+import * as Banner from './ui/banner.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -81,4 +84,7 @@ try {
   window.__units = {
     updateUnits: Units.updateUnits,
   };
+  window.__ui = window.__ui || {};
+  window.__ui.turnTimer = TurnTimer;
+  window.__ui.banner = Banner;
 } catch {}

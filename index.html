@@ -2217,6 +2217,46 @@
       };
     } catch {}
 
+    // Bridge UI banner helpers to module implementations when available
+    try {
+      const __legacyShowTurnSplash = showTurnSplash;
+      showTurnSplash = function(title) {
+        if (window.__ui && window.__ui.banner && typeof window.__ui.banner.showTurnSplash === 'function') {
+          return window.__ui.banner.showTurnSplash(title);
+        }
+        return __legacyShowTurnSplash ? __legacyShowTurnSplash(title) : Promise.resolve();
+      };
+    } catch {}
+    try {
+      const __legacyQueueTurnSplash = queueTurnSplash;
+      queueTurnSplash = function(title) {
+        if (window.__ui && window.__ui.banner && typeof window.__ui.banner.queueTurnSplash === 'function') {
+          return window.__ui.banner.queueTurnSplash(title);
+        }
+        return __legacyQueueTurnSplash ? __legacyQueueTurnSplash(title) : Promise.resolve();
+      };
+    } catch {}
+    try {
+      const __legacyRequestTurnSplash = requestTurnSplash;
+      requestTurnSplash = function() {
+        if (window.__ui && window.__ui.banner && typeof window.__ui.banner.requestTurnSplash === 'function') {
+          const t = (typeof gameState?.turn === 'number') ? gameState.turn : null;
+          return window.__ui.banner.requestTurnSplash(t);
+        }
+        return __legacyRequestTurnSplash ? __legacyRequestTurnSplash() : Promise.resolve();
+      };
+    } catch {}
+    try {
+      const __legacyForceTurnSplashWithRetry = forceTurnSplashWithRetry;
+      forceTurnSplashWithRetry = function(maxRetries) {
+        if (window.__ui && window.__ui.banner && typeof window.__ui.banner.forceTurnSplashWithRetry === 'function') {
+          const t = (typeof gameState?.turn === 'number') ? gameState.turn : null;
+          return window.__ui.banner.forceTurnSplashWithRetry(maxRetries, t);
+        }
+        return __legacyForceTurnSplashWithRetry ? __legacyForceTurnSplashWithRetry(maxRetries) : Promise.resolve();
+      };
+    } catch {}
+
     function init() {
       wireModules();
       mountModuleStatusChip();
