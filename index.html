@@ -4138,10 +4138,10 @@
         tt.stop();
         tt.set(Math.max(0, Math.min(100, Number(seconds)||0)));
       }
-      // Skip redundant re-apply when digest hasn't changed
-      try { const incD = digest(state); if (incD && incD === lastDigest) return; } catch {}
     } catch {}
-    // Do not call full updateUI here to avoid flicker; button already updated
+    // Refresh small UI bits without heavy re-render
+    try { updateIndicator(); } catch {}
+    try { updateInputLock(); } catch {}
   });
 
   // ===== 8) Победа/поражение и меню после матча =====
