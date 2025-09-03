@@ -3647,7 +3647,7 @@
     try {
       const incomingVer = Number(state.__ver) || 0;
       const currentVer = Number(gameState && gameState.__ver) || 0;
-      if (incomingVer < currentVer) {
+      if (incomingVer <= currentVer) {
         // проигнорируем устаревший снапшот
         return;
       }
@@ -4126,8 +4126,10 @@
         tt.stop();
         tt.set(Math.max(0, Math.min(100, Number(seconds)||0)));
       }
+      // Skip redundant re-apply when digest hasn't changed
+      try { const incD = digest(state); if (incD && incD === lastDigest) return; } catch {}
     } catch {}
-    try { updateUI(); } catch {}
+    // Do not call full updateUI here to avoid flicker; button already updated
   });
 
   // ===== 8) Победа/поражение и меню после матча =====
