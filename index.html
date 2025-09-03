@@ -17,7 +17,25 @@
       try { if (typeof window.MY_SEAT === 'undefined') window.MY_SEAT = null; } catch(e){}
       try { if (typeof window.APPLYING === 'undefined') window.APPLYING = false; } catch(e){}
       try { if (typeof window.NET_ON === 'undefined') window.NET_ON = function(){ try { return !!window.NET_ACTIVE; } catch(e){ return false; } }; } catch(e){}
+
+      // Define core UI lock flags upfront to avoid ReferenceError on first access
+      try { if (typeof window.__endTurnInProgress === 'undefined') window.__endTurnInProgress = false; } catch(e){}
+      try { if (typeof window.drawAnimationActive === 'undefined') window.drawAnimationActive = false; } catch(e){}
+      try { if (typeof window.splashActive === 'undefined') window.splashActive = false; } catch(e){}
+
+      // nothing else inside IIFE
     })();
+    // Also create global bindings (var) so bare identifiers work in this file
+    try {
+      /* eslint-disable no-var */
+      var __endTurnInProgress = window.__endTurnInProgress;
+      var drawAnimationActive = window.drawAnimationActive;
+      var splashActive = window.splashActive;
+      // keep window properties in sync (assign again just in case)
+      window.__endTurnInProgress = __endTurnInProgress;
+      window.drawAnimationActive = drawAnimationActive;
+      window.splashActive = splashActive;
+    } catch(e){}
   </script>
 </head>
 <body>
