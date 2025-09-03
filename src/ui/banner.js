@@ -71,7 +71,12 @@ export async function requestTurnSplash(currentTurn){
   if (_lastShownTurn >= currentTurn) return _lastTurnSplashPromise;
   if (_lastRequestedTurn === currentTurn) return _lastTurnSplashPromise;
   _lastRequestedTurn = currentTurn;
-  const title = `Turn ${currentTurn}`;
+  let title = `Turn ${currentTurn}`;
+  try {
+    const seat = (typeof window !== 'undefined' && window.gameState && typeof window.gameState.active === 'number')
+      ? window.gameState.active : null;
+    if (seat !== null) title = `Turn ${currentTurn} - Player ${seat + 1}`;
+  } catch {}
   _lastTurnSplashPromise = queueTurnSplash(title).then(()=>{ _lastShownTurn = currentTurn; });
   return _lastTurnSplashPromise;
 }
@@ -97,4 +102,3 @@ export function getState(){
 const api = { showTurnSplash, queueTurnSplash, requestTurnSplash, forceTurnSplashWithRetry, getState };
 try { if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.banner = api; } } catch {}
 export default api;
-

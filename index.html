@@ -1781,7 +1781,13 @@
           if (fill) fill.style.top = `0%`;
         }
       } catch {} })();
-      try { if (window.__ui && window.__ui.turnTimer) { window.__ui.turnTimer.attach('end-turn-btn').reset(100).start(); } } catch {}
+      try {
+        if (window.__ui && window.__ui.turnTimer) {
+          const tt = window.__ui.turnTimer.attach('end-turn-btn');
+          const online = (typeof NET_ON === 'function') ? NET_ON() : !!(typeof NET_ACTIVE !== 'undefined' && NET_ACTIVE);
+          if (online) { tt.stop(); } else { tt.reset(100).start(); }
+        }
+      } catch {}
       
       addLog('The game has begun! Player 1 goes first.');
       addLog('Drag units to the field, use spells by clicking.');
@@ -1827,7 +1833,13 @@
         } catch {}
       }, 1000);
       try { if (window.__turnTimerId) { clearInterval(window.__turnTimerId); window.__turnTimerId = null; } } catch {}
-      try { if (window.__ui && window.__ui.turnTimer) { window.__ui.turnTimer.attach('end-turn-btn').reset(100).start(); } } catch {}
+      try {
+        if (window.__ui && window.__ui.turnTimer) {
+          const tt = window.__ui.turnTimer.attach('end-turn-btn');
+          const online = (typeof NET_ON === 'function') ? NET_ON() : !!(typeof NET_ACTIVE !== 'undefined' && NET_ACTIVE);
+          if (online) { tt.stop(); } else { tt.reset(100).start(); }
+        }
+      } catch {}
       
       const controlledCells = countControlled(gameState, gameState.active);
       if (controlledCells >= 5) {
@@ -1908,7 +1920,13 @@
       }, 1000);
       // Эффектная анимация маны: показываем у обоих игроков, но для активного — анимируем его панель
       try { if (window.__turnTimerId) { clearInterval(window.__turnTimerId); window.__turnTimerId = null; } } catch {}
-      try { if (window.__ui && window.__ui.turnTimer) { window.__ui.turnTimer.attach('end-turn-btn').reset(100).start(); } } catch {}
+      try {
+        if (window.__ui && window.__ui.turnTimer) {
+          const tt = window.__ui.turnTimer.attach('end-turn-btn');
+          const online = (typeof NET_ON === 'function') ? NET_ON() : !!(typeof NET_ACTIVE !== 'undefined' && NET_ACTIVE);
+          if (online) { tt.stop(); } else { tt.reset(100).start(); }
+        }
+      } catch {}
       try { await animateTurnManaGain(gameState.active, before, manaAfter, 1500); } catch {}
       // Минимальная задержка (<0.1с) перед началом проявления большой карты
       await sleep(80);
@@ -2056,9 +2074,30 @@
       if (document.getElementById('mod-status')) return;
       const el = document.createElement('div');
       el.id = 'mod-status';
-      el.style.cssText = 'position:fixed;left:8px;top:36px;z-index:9999;font:12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#cbd5e1;background:rgba(15,23,42,.85);border:1px solid #334155;border-radius:8px;padding:6px 8px;pointer-events:none;';
+      el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:9999;font:12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#cbd5e1;background:rgba(15,23,42,.85);border:1px solid #334155;border-radius:8px;padding:6px 8px;pointer-events:none;';
       el.textContent = 'status…';
       document.body.appendChild(el);
+      // Position below build-version (if present) to avoid overlap
+      function positionModStatus(){
+        try {
+          const bv = document.getElementById('build-version');
+          let top = 8;
+          if (bv) {
+            const r = bv.getBoundingClientRect();
+            top = Math.max(8, Math.round((r.bottom || 0) + 8));
+          }
+          el.style.top = top + 'px';
+        } catch { el.style.top = '36px'; }
+      }
+      try {
+        positionModStatus();
+        window.addEventListener('resize', positionModStatus);
+        const bv = document.getElementById('build-version');
+        if (bv && window.MutationObserver) {
+          const mo = new MutationObserver(positionModStatus);
+          mo.observe(bv, { childList: true, characterData: true, subtree: true });
+        }
+      } catch {}
       updateModuleStatus();
       try { if (!window.__modStatusTimer) window.__modStatusTimer = setInterval(updateModuleStatus, 1000); } catch {}
       window.addEventListener('error', (e)=>{ try { el.setAttribute('data-last', String(e.message||'error')); updateModuleStatus(); } catch {} });
@@ -4082,16 +4121,13 @@
     try { window.__turnTimerSeconds = seconds; } catch {}
     try { if (gameState && typeof activeSeat === 'number') gameState.active = activeSeat; } catch {}
     try {
-      const btn = document.getElementById('end-turn-btn');
-      if (btn) {
-        const fill = btn.querySelector('.time-fill');
-        const txt = btn.querySelector('.sec-text');
-        if (txt) txt.textContent = `${Math.max(0, Math.min(100, seconds))}`;
-        const percent = Math.max(0, Math.min(100, seconds)) / 100;
-        if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
-        if (seconds <= 10) { btn.classList.add('urgent'); } else { btn.classList.remove('urgent'); }
+      if (window.__ui && window.__ui.turnTimer) {
+        const tt = window.__ui.turnTimer.attach('end-turn-btn');
+        tt.stop();
+        tt.set(Math.max(0, Math.min(100, Number(seconds)||0)));
       }
     } catch {}
+    try { updateUI(); } catch {}
   });
 
   // ===== 8) Победа/поражение и меню после матча =====
