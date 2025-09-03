@@ -6,6 +6,7 @@ export function hideOrientationPanel(){ try { document.getElementById('orientati
 export function showUnitActionPanel(unitMesh){
   try {
     if (!unitMesh) return;
+    try { if (typeof window !== 'undefined') window.selectedUnit = unitMesh; } catch {}
     const unitData = unitMesh.userData?.unitData; const cardData = unitMesh.userData?.cardData; const gs = (typeof window !== 'undefined') ? window.gameState : null;
     if (!gs || !unitData || !cardData) return;
     const el = document.getElementById('unit-info'); if (el) el.textContent = `${cardData.name} (${(unitMesh.userData.row||0) + 1},${(unitMesh.userData.col||0) + 1})`;
@@ -63,4 +64,3 @@ export function hidePrompt(){
 const api = { showOrientationPanel, hideOrientationPanel, showUnitActionPanel, hideUnitActionPanel, showPrompt, hidePrompt };
 try { if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.panels = api; } } catch {}
 export default api;
-

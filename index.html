@@ -3770,6 +3770,15 @@
       } catch { updateHand(); }
       updateIndicator();
       updateInputLock();
+      // Persist last seen turn/mana for robust next-frame animations
+      try {
+        if (typeof window !== 'undefined') {
+          window.__lastTurnSeen = Number(state.turn || 0);
+          if (!window.__lastManaSeen) window.__lastManaSeen = [0,0];
+          try { window.__lastManaSeen[0] = Number(state.players?.[0]?.mana || 0); } catch {}
+          try { window.__lastManaSeen[1] = Number(state.players?.[1]?.mana || 0); } catch {}
+        }
+      } catch {}
     } finally { APPLYING=false; }
   });
 
