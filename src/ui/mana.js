@@ -1,4 +1,4 @@
-// Mana bar rendering and animations
+﻿// Mana bar rendering and animations
 import { worldToScreen } from '../scene/index.js';
 
 // Keep compatibility with legacy globals
@@ -137,3 +137,4 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
 const api = { renderBars, animateManaGainFromWorld, animateTurnManaGain };
 try { if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.mana = api; } } catch {}
 export default api;
+

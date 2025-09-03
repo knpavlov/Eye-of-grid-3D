@@ -2315,7 +2315,7 @@
     try { animateManaGainFromWorld = (pos, ownerIndex, visualOnly) => window.__ui.mana.animateManaGainFromWorld(pos, ownerIndex, visualOnly); } catch {}
     try { animateTurnManaGain = (ownerIndex, before, after, durationMs) => window.__ui.mana.animateTurnManaGain(ownerIndex, before, after, durationMs); } catch {}
     try { showUnitActionPanel = (unitMesh) => { try { selectedUnit = unitMesh; window.selectedUnit = unitMesh; } catch {}; return window.__ui.panels.showUnitActionPanel(unitMesh); }; } catch {}
-    try { hideUnitActionPanel = () => { try { selectedUnit = null; window.selectedUnit = null; } catch {}; return window.__ui.panels. }; } catch {}
+    try { hideUnitActionPanel = () => { try { selectedUnit = null; window.selectedUnit = null; } catch {}; return window.__ui.panels.hideUnitActionPanel();}; } catch {}
     try { showOrientationPanel = () => window.__ui.panels.showOrientationPanel(); } catch {}
     try { hideOrientationPanel = () => window.__ui.panels.hideOrientationPanel(); } catch {}
     try { showPrompt = (text, onCancel) => window.__ui.panels.showPrompt(text, onCancel); } catch {}
@@ -2457,7 +2457,7 @@
       u.lastRotateTurn = gameState.turn;
       updateUnits();
       hideUnitActionPanel();
-      try { schedulePush('rotateUnit'); } catch {}
+
        }
     
     function performUnitAttack(unitMesh) {
@@ -3769,7 +3769,6 @@
           updateHand();
         }
       } catch { updateHand(); }
-      try { updateUI(); } catch {}
     updateIndicator();
     updateInputLock();
       // Persist last seen turn/mana for robust next-frame animations
@@ -3792,7 +3791,6 @@
         gameState.active = activeSeat;
       }
     } catch {}
-    try { updateUI(); } catch {}
     updateIndicator();
     updateInputLock();
     // Заставка хода будет показана при получении нового состояния (с правильным заголовком)
@@ -4163,8 +4161,7 @@
         tt.set(Math.max(0, Math.min(100, Number(seconds)||0)));
       }
     } catch {}
-    try { updateUI(); } catch {}
-    // Refresh small UI bits without heavy re-render
+
     try { updateIndicator(); } catch {}
     try { updateInputLock(); } catch {}
   });
@@ -4290,6 +4287,13 @@
 
 </body>
 </html>
+
+
+
+
+
+
+
 
 
 

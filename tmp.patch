@@ -1,38 +1,40 @@
 *** Begin Patch
-*** Update File: src/core/state.js
-@@
--export function randomBoard() {
--  // Keep simple: just empty 3x3 with default elements (use EARTH as neutral placeholder)
--  const elements = ['FIRE','WATER','EARTH','FOREST','MECH'];
--  const pick = (i) => elements[i % elements.length];
--  const board = [];
--  for (let r = 0; r < 3; r++) {
--    const row = [];
--    for (let c = 0; c < 3; c++) {
--      row.push({ element: pick(r*3 + c), unit: null });
--    }
--    board.push(row);
--  }
--  return board;
--}
-+export function randomBoard() {
-+  // 3x3 board with element constraints:
-+  // - Center (1,1) is always MECH
-+  // - Remaining 8 tiles: exactly two of each FIRE, WATER, EARTH, FOREST placed randomly
-+  const picks = ['FIRE','FIRE','WATER','WATER','EARTH','EARTH','FOREST','FOREST'];
-+  // Fisher–Yates shuffle
-+  for (let i = picks.length - 1; i > 0; i--) {
-+    const j = Math.floor(Math.random() * (i + 1));
-+    [picks[i], picks[j]] = [picks[j], picks[i]];
+*** Add File: src/ui/sync.js
++// Lightweight UI sync for socket events, decoupled from index.html
++// Attaches best-effort listeners to refresh UI highlights on turn change/timer
++
++let _attached = false;
++
++export function attachSocketUIRefresh() {
++  if (_attached) return;
++  const tryAttach = () => {
++    try {
++      const sock = (typeof window !== 'undefined') ? (window.socket || null) : null;
++      if (!sock) return false;
++      if (_attached) return true;
++      // Guard so we don't attach twice across HMR-like reloads
++      _attached = true;
++      try { if (typeof window !== 'undefined') window.__uiSyncAttached = true; } catch {}
++      // On timer ticks and explicit turn switch, re-run light UI refresh
++      const refresh = () => {
++        try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
++        try { if (typeof window.updateIndicator === 'function') window.updateIndicator(); } catch {}
++        try { if (typeof window.updateInputLock === 'function') window.updateInputLock(); } catch {}
++      };
++      try { sock.on('turnTimer', refresh); } catch {}
++      try { sock.on('turnSwitched', refresh); } catch {}
++      return true;
++    } catch { return false; }
++  };
++  // Try immediately, then poll briefly until socket is present
++  if (!tryAttach()) {
++    let n = 0;
++    const id = setInterval(() => {
++      n += 1; if (tryAttach() || n > 50) { try { clearInterval(id); } catch {} }
++    }, 100);
 +  }
-+  let k = 0;
-+  const board = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE', unit: null })));
-+  for (let r = 0; r < 3; r++) {
-+    for (let c = 0; c < 3; c++) {
-+      if (r === 1 && c === 1) { board[r][c].element = 'MECH'; continue; }
-+      board[r][c].element = picks[k++];
-+    }
-+  }
-+  return board;
 +}
++
++export default { attachSocketUIRefresh };
++
 *** End Patch

@@ -1,4 +1,4 @@
-// Bridge file to expose core modules to existing global code progressively
+﻿// Bridge file to expose core modules to existing global code progressively
 import * as Constants from './core/constants.js';
 import { CARDS, STARTER_FIRESET } from './core/cards.js';
 import * as Rules from './core/rules.js';
@@ -97,3 +97,7 @@ try {
   window.__ui.mana = UIMana;
   window.__ui.panels = UIPanels;
 } catch {}
+
+import * as UISync from './ui/sync.js';
+try { UISync.attachSocketUIRefresh(); if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.sync = UISync; } } catch {}
+
