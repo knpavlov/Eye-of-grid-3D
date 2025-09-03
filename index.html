@@ -1781,21 +1781,7 @@
           if (fill) fill.style.top = `0%`;
         }
       } catch {} })();
-      window.__turnTimerId = setInterval(() => {
-        if (typeof window.__turnTimerSeconds !== 'number') window.__turnTimerSeconds = 100;
-        if (window.__turnTimerSeconds > 0) window.__turnTimerSeconds -= 1;
-        try {
-          const btn = document.getElementById('end-turn-btn');
-          if (btn) {
-            const fill = btn.querySelector('.time-fill');
-            const txt = btn.querySelector('.sec-text');
-            const s = Math.max(0, Math.min(100, window.__turnTimerSeconds));
-            if (txt) txt.textContent = `${s}`;
-            const percent = s / 100; if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
-            if (s <= 10) { btn.classList.add('urgent'); } else { btn.classList.remove('urgent'); }
-          }
-        } catch {}
-      }, 1000);
+      try { if (window.__ui && window.__ui.turnTimer) { window.__ui.turnTimer.attach('end-turn-btn').reset(100).start(); } } catch {}
       
       addLog('The game has begun! Player 1 goes first.');
       addLog('Drag units to the field, use spells by clicking.');
@@ -1840,6 +1826,8 @@
           }
         } catch {}
       }, 1000);
+      try { if (window.__turnTimerId) { clearInterval(window.__turnTimerId); window.__turnTimerId = null; } } catch {}
+      try { if (window.__ui && window.__ui.turnTimer) { window.__ui.turnTimer.attach('end-turn-btn').reset(100).start(); } } catch {}
       
       const controlledCells = countControlled(gameState, gameState.active);
       if (controlledCells >= 5) {
@@ -1919,6 +1907,8 @@
         } catch {}
       }, 1000);
       // Эффектная анимация маны: показываем у обоих игроков, но для активного — анимируем его панель
+      try { if (window.__turnTimerId) { clearInterval(window.__turnTimerId); window.__turnTimerId = null; } } catch {}
+      try { if (window.__ui && window.__ui.turnTimer) { window.__ui.turnTimer.attach('end-turn-btn').reset(100).start(); } } catch {}
       try { await animateTurnManaGain(gameState.active, before, manaAfter, 1500); } catch {}
       // Минимальная задержка (<0.1с) перед началом проявления большой карты
       await sleep(80);
@@ -2066,7 +2056,7 @@
       if (document.getElementById('mod-status')) return;
       const el = document.createElement('div');
       el.id = 'mod-status';
-      el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:9999;font:12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#cbd5e1;background:rgba(15,23,42,.85);border:1px solid #334155;border-radius:8px;padding:6px 8px;pointer-events:none;';
+      el.style.cssText = 'position:fixed;left:8px;top:36px;z-index:9999;font:12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#cbd5e1;background:rgba(15,23,42,.85);border:1px solid #334155;border-radius:8px;padding:6px 8px;pointer-events:none;';
       el.textContent = 'status…';
       document.body.appendChild(el);
       updateModuleStatus();
