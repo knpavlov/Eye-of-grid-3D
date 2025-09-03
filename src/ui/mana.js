@@ -90,7 +90,9 @@ export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true) {
 export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationMs = 1500) {
   return new Promise(resolve => {
     try {
-      let manaGainActive = true; try { if (typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
+      let manaGainActive = true;
+      try { if (typeof window !== 'undefined') window.manaGainActive = true; } catch {}
+      try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
       const startIdx = Math.max(0, Math.min(9, beforeMana));
       const endIdx = Math.max(-1, Math.min(9, afterMana - 1));
       setAnim({ ownerIndex, startIdx, endIdx });
@@ -102,7 +104,8 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
       const cleanup = () => {
         for (const s of sparks) { try { if (s.parentNode) s.parentNode.removeChild(s); } catch {} }
         setAnim(null); manaGainActive = false;
-        try { if (typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
+        try { if (typeof window !== 'undefined') window.manaGainActive = false; } catch {}
+        try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
         // Ensure final mana state is rendered after animation completes
         try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
       };
@@ -126,9 +129,7 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
             .to(sp, { opacity: 0, scale: 0.3, duration: 0.35, ease: 'power1.in', delay: 0.105 }, `>-0.1`);
         }
         tl.to({}, { duration: Math.max(0, (durationMs/1000) - tl.duration()) });
-      } else {
-        resolve();
-      }
+      } else { cleanup(); resolve(); }
     } catch { resolve(); }
   });
 }
