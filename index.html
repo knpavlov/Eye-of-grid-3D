@@ -1339,7 +1339,7 @@
       
       // Обновляем две панели маны (для обоих игроков)
       try { if (window.__ui && window.__ui.mana && typeof window.__ui.mana.renderBars === 'function') { window.__ui.mana.renderBars(gameState); } else { throw 0; } } catch { const total = 10; }
-      for (let p = 0; p < 2; p++) {
+      if (false) for (let p = 0; p < 2; p++) {
         const manaDisplay = document.getElementById(`mana-display-${p}`);
         if (!manaDisplay) continue;
         const prev = manaDisplay.querySelectorAll('.mana-orb').length;
@@ -2310,79 +2310,17 @@
     }
     try { window.init = init; window.initThreeJS = initThreeJS; window.initGame = initGame; window.animate = animate; } catch {}
 
-    // Bridge UI helpers to module implementations when available
-    try {
-      const __legacyShow = showNotification;
-      showNotification = function(message, type){
-        if (window.__ui && window.__ui.notifications && typeof window.__ui.notifications.show === 'function') {
-          return window.__ui.notifications.show(message, type);
-        }
-        return __legacyShow ? __legacyShow(message, type) : undefined;
-      }
-    } catch {}
-    try {
-      const __legacyAddLog = addLog;
-      addLog = function(message){
-        if (window.__ui && window.__ui.log && typeof window.__ui.log.add === 'function') {
-          return window.__ui.log.add(message);
-        }
-        return __legacyAddLog ? __legacyAddLog(message) : undefined;
-      }
-    } catch {}
-    try {
-      const __legacyManaFrom = animateManaGainFromWorld;
-      animateManaGainFromWorld = function(pos, ownerIndex, visualOnly){
-        if (window.__ui && window.__ui.mana && typeof window.__ui.mana.animateManaGainFromWorld === 'function') {
-          return window.__ui.mana.animateManaGainFromWorld(pos, ownerIndex, visualOnly);
-        }
-        return __legacyManaFrom ? __legacyManaFrom(pos, ownerIndex, visualOnly) : undefined;
-      }
-    } catch {}
-    try {
-      const __legacyTurnMana = animateTurnManaGain;
-      animateTurnManaGain = function(ownerIndex, before, after, durationMs){
-        if (window.__ui && window.__ui.mana && typeof window.__ui.mana.animateTurnManaGain === 'function') {
-          return window.__ui.mana.animateTurnManaGain(ownerIndex, before, after, durationMs);
-        }
-        return __legacyTurnMana ? __legacyTurnMana(ownerIndex, before, after, durationMs) : Promise.resolve();
-      }
-    } catch {}
-    try {
-      const __legacyShowUAP = showUnitActionPanel;
-      showUnitActionPanel = function(unitMesh){
-        if (window.__ui && window.__ui.panels && typeof window.__ui.panels.showUnitActionPanel === 'function') {
-          return window.__ui.panels.showUnitActionPanel(unitMesh);
-        }
-        return __legacyShowUAP ? __legacyShowUAP(unitMesh) : undefined;
-      }
-    } catch {}
-    try {
-      const __legacyHideUAP = hideUnitActionPanel;
-      hideUnitActionPanel = function(){
-        if (window.__ui && window.__ui.panels && typeof window.__ui.panels.hideUnitActionPanel === 'function') {
-          return window.__ui.panels.hideUnitActionPanel();
-        }
-        return __legacyHideUAP ? __legacyHideUAP() : undefined;
-      }
-    } catch {}
-    try {
-      const __legacyShowOrient = showOrientationPanel;
-      showOrientationPanel = function(){
-        if (window.__ui && window.__ui.panels && typeof window.__ui.panels.showOrientationPanel === 'function') {
-          return window.__ui.panels.showOrientationPanel();
-        }
-        return __legacyShowOrient ? __legacyShowOrient() : undefined;
-      }
-    } catch {}
-    try {
-      const __legacyHideOrient = hideOrientationPanel;
-      hideOrientationPanel = function(){
-        if (window.__ui && window.__ui.panels && typeof window.__ui.panels.hideOrientationPanel === 'function') {
-          return window.__ui.panels.hideOrientationPanel();
-        }
-        return __legacyHideOrient ? __legacyHideOrient() : undefined;
-      }
-    } catch {}
+    // UI wrappers: use modules only (no legacy fallback)
+    try { showNotification = (message, type) => window.__ui.notifications.show(message, type); } catch {}
+    try { addLog = (message) => window.__ui.log.add(message); } catch {}
+    try { animateManaGainFromWorld = (pos, ownerIndex, visualOnly) => window.__ui.mana.animateManaGainFromWorld(pos, ownerIndex, visualOnly); } catch {}
+    try { animateTurnManaGain = (ownerIndex, before, after, durationMs) => window.__ui.mana.animateTurnManaGain(ownerIndex, before, after, durationMs); } catch {}
+    try { showUnitActionPanel = (unitMesh) => window.__ui.panels.showUnitActionPanel(unitMesh); } catch {}
+    try { hideUnitActionPanel = () => window.__ui.panels.hideUnitActionPanel(); } catch {}
+    try { showOrientationPanel = () => window.__ui.panels.showOrientationPanel(); } catch {}
+    try { hideOrientationPanel = () => window.__ui.panels.hideOrientationPanel(); } catch {}
+    try { showPrompt = (text, onCancel) => window.__ui.panels.showPrompt(text, onCancel); } catch {}
+    try { hidePrompt = () => window.__ui.panels.hidePrompt(); } catch {}
 
     function createMetaObjects() {
       // Очистить предыдущие
