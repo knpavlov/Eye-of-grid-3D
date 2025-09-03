@@ -11,6 +11,11 @@ import * as Cards from './scene/cards.js';
 import * as Units from './scene/units.js';
 import { getCtx as getSceneCtx } from './scene/context.js';
 // UI modules
+import * as UINotifications from './ui/notifications.js';
+import * as UILog from './ui/log.js';
+import * as UIMana from './ui/mana.js';
+import * as UIPanels from './ui/panels.js';
+// UI modules
 import * as TurnTimer from './ui/turnTimer.js';
 import * as Banner from './ui/banner.js';
 
@@ -87,4 +92,8 @@ try {
   window.__ui = window.__ui || {};
   window.__ui.turnTimer = TurnTimer;
   window.__ui.banner = Banner;
+  window.__ui.notifications = UINotifications;
+  window.__ui.log = UILog;
+  window.__ui.mana = UIMana;
+  window.__ui.panels = UIPanels;
 } catch {}
