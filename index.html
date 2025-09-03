@@ -376,10 +376,11 @@
       });
       return lastTurnSplashPromise;
     }
-    let __endTurnInProgress = false;
-    let drawAnimationActive = false;
-    let splashActive = false;
-     try { window.manaGainActive = manaGainActive; } catch {}
+    
+    let manaGainActive = false;
+    let PENDING_MANA_ANIM = null; // { ownerIndex, startIdx, endIdx }
+    let PENDING_MANA_BLOCK = [0,0]; // by player index
+    try { window.manaGainActive = manaGainActive; } catch {}
 // Ожидаемая анимация маны: диапазон новых орбов, которые должны появиться синхронно со вспышкой
         try { window.PENDING_MANA_ANIM = PENDING_MANA_ANIM; } catch {}
     // Блокировка появления N последних орбов маны на панели до завершения «полетевших» визуальных орбов (смерть/эффекты)
@@ -4287,6 +4288,8 @@
 
 </body>
 </html>
+
+
 
 
 
