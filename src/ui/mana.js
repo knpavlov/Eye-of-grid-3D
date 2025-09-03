@@ -101,7 +101,10 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
       const sparks = [];
       const cleanup = () => {
         for (const s of sparks) { try { if (s.parentNode) s.parentNode.removeChild(s); } catch {} }
-        setAnim(null); manaGainActive = false; try { if (typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
+        setAnim(null); manaGainActive = false;
+        try { if (typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
+        // Ensure final mana state is rendered after animation completes
+        try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
       };
       const rect = bar.getBoundingClientRect();
       const cx = rect.left + rect.width / 2; const cy = rect.top + rect.height / 2;
@@ -133,4 +136,3 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
 const api = { renderBars, animateManaGainFromWorld, animateTurnManaGain };
 try { if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.mana = api; } } catch {}
 export default api;
-
