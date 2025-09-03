@@ -1,4 +1,4 @@
-// Game state: reducer + helpers
+﻿// Game state: reducer + helpers
 import { capMana } from './constants.js';
 import { CARDS, STARTER_FIRESET } from './cards.js';
 
@@ -36,16 +36,22 @@ export function countControlled(state, player) {
 }
 
 export function randomBoard() {
-  // Keep simple: just empty 3x3 with default elements (use EARTH as neutral placeholder)
-  const elements = ['FIRE','WATER','EARTH','FOREST','MECH'];
-  const pick = (i) => elements[i % elements.length];
-  const board = [];
+  // 3x3 board with element constraints:
+  // - Center (1,1) is always MECH
+  // - Remaining 8 tiles: exactly two of each FIRE, WATER, EARTH, FOREST placed randomly
+  const picks = ['FIRE','FIRE','WATER','WATER','EARTH','EARTH','FOREST','FOREST'];
+  // Fisher–Yates shuffle
+  for (let i = picks.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [picks[i], picks[j]] = [picks[j], picks[i]];
+  }
+  let k = 0;
+  const board = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE', unit: null })));
   for (let r = 0; r < 3; r++) {
-    const row = [];
     for (let c = 0; c < 3; c++) {
-      row.push({ element: pick(r*3 + c), unit: null });
+      if (r === 1 && c === 1) { board[r][c].element = 'MECH'; continue; }
+      board[r][c].element = picks[k++];
     }
-    board.push(row);
   }
   return board;
 }
@@ -106,4 +112,5 @@ export function reducer(state, action) {
     default: return state || startGame();
   }
 }
+
 

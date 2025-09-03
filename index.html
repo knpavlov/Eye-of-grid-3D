@@ -379,11 +379,11 @@
     let __endTurnInProgress = false;
     let drawAnimationActive = false;
     let splashActive = false;
-    let manaGainActive = false;
-    // Ожидаемая анимация маны: диапазон новых орбов, которые должны появиться синхронно со вспышкой
-    let PENDING_MANA_ANIM = null; // { ownerIndex, startIdx, endIdx }
+     try { window.manaGainActive = manaGainActive; } catch {}
+// Ожидаемая анимация маны: диапазон новых орбов, которые должны появиться синхронно со вспышкой
+        try { window.PENDING_MANA_ANIM = PENDING_MANA_ANIM; } catch {}
     // Блокировка появления N последних орбов маны на панели до завершения «полетевших» визуальных орбов (смерть/эффекты)
-    let PENDING_MANA_BLOCK = [0, 0]; // по игрокам: сколько последних слотов временно скрыть
+        try { window.PENDING_MANA_BLOCK = PENDING_MANA_BLOCK; } catch {}
     // Прячет один экземпляр ритуального спелла в руке активного игрока, пока ждём выбора жертвы
     let pendingRitualSpellHandIndex = null;
     let pendingRitualSpellCard = null; // ссылка на сам объект карты-спелла, чтобы скрывать по идентичности
@@ -544,7 +544,7 @@
           try {
             const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
             // Блокируем орб для всех игроков до завершения анимации полета
-            PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) + 1);
+            PENDING_MANA_BLOCK[ownerIndex] = window.PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) + 1);
             updateUI();
           } catch {}
         }
@@ -574,7 +574,7 @@
           try {
             if (visualOnly && typeof ownerIndex === 'number') {
               // Разблокируем орб для всех игроков когда анимация полета завершена
-              PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) - 1);
+              PENDING_MANA_BLOCK[ownerIndex] = window.PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) - 1);
               updateUI(); // Орб появится в панели именно в этот момент
             }
           } catch {}
@@ -592,7 +592,7 @@
       try {
         const startIdx = Math.max(0, Math.min(9, beforeMana));
         const endIdx = Math.max(-1, Math.min(9, afterMana - 1));
-        PENDING_MANA_ANIM = { ownerIndex, startIdx, endIdx };
+        PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = { ownerIndex, startIdx, endIdx };
         updateUI();
       } catch {}
       const bar = document.getElementById(`mana-display-${ownerIndex}`);
@@ -606,7 +606,7 @@
         for (const s of sparks) { try { if (s.parentNode) s.parentNode.removeChild(s); } catch {} }
         manaGainActive = false; refreshInputLockUI();
         // Разблокируем обновление панели маны и финально дорисуем состояние
-        try { PENDING_MANA_ANIM = null; updateUI(); } catch {}
+        try { PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = null; updateUI(); } catch {}
       };
       if (indices.length === 0) {
         const tl = gsap.timeline({ onComplete: cleanup });
@@ -1768,7 +1768,7 @@
       updateHand();
       updateUI();
       // Заставка хода при старте игры с резервом (ускорена)
-      try { await forceTurnSplashWithRetry(2); } catch {}
+      try { await forceTurnSplashWithRetry(2, gameState?.turn); } catch {}
       // Запуск таймера на первом ходу
       try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
       window.__turnTimerSeconds = 100;
@@ -1868,7 +1868,7 @@
       // ЛОГИКА: применим ману сразу, а карту добавим после анимации (у активного клиента)
       player.mana = manaAfter;
       // Заблокировать преждевременное появление новых орбов до анимации вспышки
-      try { PENDING_MANA_ANIM = { ownerIndex: gameState.active, startIdx: Math.max(0, Math.min(9, before)), endIdx: Math.max(-1, Math.min(9, manaAfter - 1)) }; } catch {}
+      try { PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = { ownerIndex: gameState.active, startIdx: Math.max(0, Math.min(9, before)), endIdx: Math.max(-1, Math.min(9, manaAfter - 1)) }; } catch {}
       let shouldAnimateDraw = false;
       try {
         const amIActiveNow = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number')
@@ -1889,7 +1889,7 @@
       updateUnits();
       // updateUI выполнится вместе с анимацией маны (после заставки)
       // Показ заставки хода: строго блокирующе (визуальная последовательность)
-      try { await forceTurnSplashWithRetry(2); } catch {}
+      try { await forceTurnSplashWithRetry(2, gameState?.turn); } catch {}
       // Перезапустить таймер хода на 100 сек после заставки (анимация таймера локально у обоих)
       try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
       window.__turnTimerSeconds = 100;
@@ -2315,7 +2315,7 @@
     try { animateManaGainFromWorld = (pos, ownerIndex, visualOnly) => window.__ui.mana.animateManaGainFromWorld(pos, ownerIndex, visualOnly); } catch {}
     try { animateTurnManaGain = (ownerIndex, before, after, durationMs) => window.__ui.mana.animateTurnManaGain(ownerIndex, before, after, durationMs); } catch {}
     try { showUnitActionPanel = (unitMesh) => { try { selectedUnit = unitMesh; window.selectedUnit = unitMesh; } catch {}; return window.__ui.panels.showUnitActionPanel(unitMesh); }; } catch {}
-    try { hideUnitActionPanel = () => { try { selectedUnit = null; window.selectedUnit = null; } catch {}; return window.__ui.panels.hideUnitActionPanel(); }; } catch {}
+    try { hideUnitActionPanel = () => { try { selectedUnit = null; window.selectedUnit = null; } catch {}; return window.__ui.panels. }; } catch {}
     try { showOrientationPanel = () => window.__ui.panels.showOrientationPanel(); } catch {}
     try { hideOrientationPanel = () => window.__ui.panels.hideOrientationPanel(); } catch {}
     try { showPrompt = (text, onCancel) => window.__ui.panels.showPrompt(text, onCancel); } catch {}
@@ -2457,7 +2457,8 @@
       u.lastRotateTurn = gameState.turn;
       updateUnits();
       hideUnitActionPanel();
-    }
+      try { schedulePush('rotateUnit'); } catch {}
+       }
     
     function performUnitAttack(unitMesh) {
       if (!unitMesh) return;
@@ -2472,17 +2473,15 @@
         updateUI();
         magicFrom = { r, c };
         addLog(`${tpl.name}: select a target for the magical attack.`);
-        hideUnitActionPanel();
-        return;
+         return;
       }
       const hits = computeHits(gameState, r, c);
-      if (!hits.length) { showNotification('No available targets for attack', 'error'); hideUnitActionPanel(); return; }
-      if (gameState.players[gameState.active].mana < cost) { showNotification(`${cost} mana is required to attack`, 'error'); hideUnitActionPanel(); return; }
+      if (!hits.length) { showNotification('No available targets for attack', 'error');  return; }
+      if (gameState.players[gameState.active].mana < cost) { showNotification(`${cost} mana is required to attack`, 'error');  return; }
       gameState.players[gameState.active].mana -= cost;
       updateUI();
       performBattleSequence(r, c, true);
-      hideUnitActionPanel();
-    }
+       }
     
     async function performBattleSequence(r, c, markAttackTurn) {
       const staged = stagedAttack(gameState, r, c);
@@ -3721,7 +3720,7 @@
           const beforeMEarly = (prev?.players?.[ownerEarly]?.mana ?? 0);
           const afterMEarly = (state?.players?.[ownerEarly]?.mana ?? 0);
           if (!PENDING_MANA_ANIM) {
-            PENDING_MANA_ANIM = { ownerIndex: ownerEarly, startIdx: Math.max(0, Math.min(9, beforeMEarly)), endIdx: Math.max(-1, Math.min(9, afterMEarly - 1)) };
+            PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = { ownerIndex: ownerEarly, startIdx: Math.max(0, Math.min(9, beforeMEarly)), endIdx: Math.max(-1, Math.min(9, afterMEarly - 1)) };
           }
         }
       } catch {}
@@ -3732,7 +3731,7 @@
         const isNewTurn = (prev && typeof prev.turn === 'number') ? (typeof state.turn === 'number' && state.turn > prev.turn) : __hadNewTurn;
         if (isNewTurn && lastSplashTurnShown < state.turn) {
           // Заставка (блокирующе)
-          await forceTurnSplashWithRetry(2);
+          await forceTurnSplashWithRetry(2, gameState?.turn);
           // Анимация маны активного игрока для обоих клиентов
           const owner = (typeof state.active === 'number') ? state.active : (gameState?.active ?? 0);
           const beforeM = (prev?.players?.[owner]?.mana ?? __lastManaSeen[owner] ?? Math.max(0, (state?.players?.[owner]?.mana || 0) - 2));
@@ -3770,8 +3769,9 @@
           updateHand();
         }
       } catch { updateHand(); }
-      updateIndicator();
-      updateInputLock();
+      try { updateUI(); } catch {}
+    updateIndicator();
+    updateInputLock();
       // Persist last seen turn/mana for robust next-frame animations
       try {
         if (typeof window !== 'undefined') {
@@ -3792,6 +3792,7 @@
         gameState.active = activeSeat;
       }
     } catch {}
+    try { updateUI(); } catch {}
     updateIndicator();
     updateInputLock();
     // Заставка хода будет показана при получении нового состояния (с правильным заголовком)
@@ -3995,7 +3996,7 @@
     // Полный сброс локального состояния предыдущего матча перед стартом нового
     try { if (window.__pendingBattleFlushTimer) { clearInterval(window.__pendingBattleFlushTimer); window.__pendingBattleFlushTimer = null; } } catch {}
     try { PENDING_BATTLE_ANIMS = []; PENDING_RETALIATIONS = []; } catch {}
-    try { PENDING_MANA_ANIM = null; PENDING_MANA_BLOCK = [0,0]; } catch {}
+    try { PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = null; PENDING_MANA_BLOCK = [0,0]; } catch {}
     try { pendingDrawCount = 0; pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null; } catch {}
     try { lastDigest = ''; } catch {}
     APPLYING = false;
@@ -4162,6 +4163,7 @@
         tt.set(Math.max(0, Math.min(100, Number(seconds)||0)));
       }
     } catch {}
+    try { updateUI(); } catch {}
     // Refresh small UI bits without heavy re-render
     try { updateIndicator(); } catch {}
     try { updateInputLock(); } catch {}
@@ -4288,6 +4290,13 @@
 
 </body>
 </html>
+
+
+
+
+
+
+
 
 
 
