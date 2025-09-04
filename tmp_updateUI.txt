@@ -1,0 +1,93 @@
+              } catch {}
+            }
+          }, 1300);
+        }
+      } catch {}
+    }
+    // attachHpOverlay удалён, т.к. HP теперь перерисовывается на самой карте
+    
+    function updateUI() {
+      if (!gameState) return;      
+      // Защита от обновлений во время критических анимаций
+      if (splashActive && typeof window !== 'undefined' && window.__ui && window.__ui.banner) {
+        const bannerState = window.__ui.banner.getState();
+        if (bannerState._splashActive) {
+          // Отложим обновление UI до завершения заставки
+          setTimeout(() => updateUI(), 100);
+          return;
+        }
+      }
+      
+      document.getElementById('turn-info').textContent = `Ход: ${gameState.turn}`;
+      // Обновить числовой текст таймера в круглой кнопке и высоту заполнения
+      try {
+        const btn = document.getElementById('end-turn-btn');
+        if (btn) {
+          const fill = btn.querySelector('.time-fill');
+          const txt = btn.querySelector('.sec-text');
+          if (typeof window.__turnTimerSeconds === 'number') {
+            const s = Math.max(0, Math.min(100, window.__turnTimerSeconds));
+            if (txt) txt.textContent = `${s}`;
+            // Инверсия: опускаем верхнюю границу жёлтой заливки сверху вниз
+            const percent = s / 100; // 1 -> top:0%, 0 -> top:100%
+            if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
+          }
+        }
+      } catch {}
+      // Выделение активного игрока - с гарантией обновления
+      try {
+        const leftSide = document.getElementById('left-side');
+        const rightSide = document.getElementById('right-side');
+        const t0 = document.getElementById('player-title-0');
+        const t1 = document.getElementById('player-title-1');
+        if (leftSide && rightSide && t0 && t1) {
+          // Сначала убираем все подсветки
+          leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
+          rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
+          t0.classList.remove('title-pulse');
+          t1.classList.remove('title-pulse');
+          
+          // Затем добавляем подсветку активному игроку
+          if (gameState.active === 0) {
+            // Force reflow для гарантии применения изменений
+            requestAnimationFrame(() => {
+              leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
+              t0.classList.add('title-pulse');
+            });
+          } else {
+            requestAnimationFrame(() => {
+              rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
+              t1.classList.add('title-pulse');
+            });
+          }
+        }
+      } catch {}
+      
+      // Обновляем две панели маны (для обоих игроков) - ТОЛЬКО через модуль
+      try { 
+        if (window.__ui && window.__ui.mana && typeof window.__ui.mana.renderBars === 'function') { 
+          window.__ui.mana.renderBars(gameState); 
+        } else { 
+          console.warn('Mana module not available, skipping mana UI update');
+        } 
+      } catch (e) {
+        console.error('Error updating mana UI:', e);
+      }
+
+      const controlA = countControlled(gameState, 0);
+      const controlB = countControlled(gameState, 1);
+      const ci0 = document.getElementById('control-info-0'); if (ci0) ci0.textContent = `Контроль: ${controlA}`;
+      const ci1 = document.getElementById('control-info-1'); if (ci1) ci1.textContent = `Контроль: ${controlB}`;
+      
+      if (controlA >= 5) {
+        showNotification('Player 1 wins!', 'success');
+        gameState.winner = 0;
+      } else if (controlB >= 5) {
+        showNotification('Player 2 wins!', 'success');
+        gameState.winner = 1;
+      }
+    }
+    
+    function showNotification(message, type = 'info') {
+      const notification = document.createElement('div');
+      notification.className = `overlay-panel p-4 mb-2 ${type === 'success' ? 'bg-green-600' : type === 'error' ? 'bg-red-600' : 'bg-blue-600'}`;

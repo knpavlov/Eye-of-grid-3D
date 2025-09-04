@@ -1,0 +1,121 @@
+  }
+  // Экспортируем наружу, чтобы ранние функции (например, endTurn) могли вызвать schedulePush
+  try { window.schedulePush = schedulePush; } catch {}
+
+  // Периодическая отправка при любом изменении (подстраховка, если обёртка не сработала)
+  setInterval(()=>{
+    if (!NET_ON() || !gameState) return;
+    // пушит только тот, у кого сейчас ХОД (чтобы оба могли делать свои ходы)
+    const myTurn = (typeof gameState.active === 'number') && (gameState.active === MY_SEAT);
+    if (!myTurn) return;
+    const d = digest(gameState);
+    if (d && d !== lastDigest) schedulePush('digest');
+  }, 250);
+
+  // --- RECEIVING: применяем снапшот и перерисовываем ---
+  socket.on('state', async (state)=>{
+    if (!state) return;
+    const prev = APPLYING ? null : (gameState ? JSON.parse(JSON.stringify(gameState)) : null);
+    // Robust previous snapshot even if prev is null due to concurrent APPLYING
+    let __lastTurnSeen = 0;
+    try { __lastTurnSeen = (typeof window !== 'undefined' && typeof window.__lastTurnSeen === 'number') ? window.__lastTurnSeen : (gameState?.turn || 0); } catch {}
+    const __hadNewTurn = (typeof state.turn === 'number') && (state.turn > (__lastTurnSeen || 0));
+    let __lastManaSeen = (typeof window !== 'undefined' && window.__lastManaSeen && Array.isArray(window.__lastManaSeen)) ? window.__lastManaSeen.slice() : [0,0];
+    try {
+      if (!__lastManaSeen || __lastManaSeen.length < 2) __lastManaSeen = [0,0];
+      if (gameState && gameState.players) {
+        __lastManaSeen[0] = Number(gameState.players[0]?.mana || __lastManaSeen[0] || 0);
+        __lastManaSeen[1] = Number(gameState.players[1]?.mana || __lastManaSeen[1] || 0);
+      }
+    } catch {}
+    // Защита от поздних устаревших снапшотов: принимаем только если версия не меньше текущей
+    try {
+      const incomingVer = Number(state.__ver) || 0;
+      const currentVer = Number(gameState && gameState.__ver) || 0;
+      if (incomingVer <= currentVer && !((Number(state?.turn||0)) > (Number(gameState?.turn||0)))) {
+        // проигнорируем устаревший снапшот
+        return;
+      }
+    } catch {}
+    
+    // WebSocket анимации отключены, флаги не используются
+    
+    APPLYING = true;
+    try {
+      gameState = state;
+      try { window.gameState = state; } catch {}
+      lastDigest = digest(state);
+      // Immediately reflect active seat and mana bars before any animations
+        const leftSide = document.getElementById('left-side');
+        const rightSide = document.getElementById('right-side');
+        const t0 = document.getElementById('player-title-0');
+        const t1 = document.getElementById('player-title-1');
+        if (leftSide && rightSide && t0 && t1 && typeof gameState.active === 'number') {
+          leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
+          rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
+          t0.classList.remove('title-pulse');
+          t1.classList.remove('title-pulse');
+          if (gameState.active === 0) {
+            leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
+            t0.classList.add('title-pulse');
+          } else {
+            rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
+            t1.classList.add('title-pulse');
+          }
+        }
+      try { updateIndicator(); } catch {}
+      try { updateInputLock(); } catch {}
+      // Сначала переcоберём доску/мета-объекты, затем юниты и UI (исправляет мерцание рамок)
+      try{ createBoard && createBoard(); }catch{}
+      try{ createMetaObjects && createMetaObjects(); }catch{}
+      // Defer unit rebuild during remote lunge animation to avoid canceling the push
+      try {
+        const now = Date.now();
+        const until = (typeof window !== 'undefined' && typeof window.__REMOTE_BATTLE_ANIM_UNTIL === 'number') ? window.__REMOTE_BATTLE_ANIM_UNTIL : __REMOTE_BATTLE_ANIM_UNTIL;
+        if (until && now < until) {
+          const delay = Math.min(900, Math.max(30, until - now + 20));
+          if (window.__deferredUnitsTimer) { try { clearTimeout(window.__deferredUnitsTimer); } catch {} }
+          window.__deferredUnitsTimer = setTimeout(()=>{ try { updateUnits(); } catch {} }, delay);
+        } else {
+          updateUnits();
+        }
+      } catch { updateUnits(); }
+      // Обрабатываем отложенные WebSocket анимации
+      try { flushPendingBattleQueues && flushPendingBattleQueues(); } catch {}
+      try { if (prev) playDeltaAnimations(prev, state); } catch {}
+      // Периодически пробуем воспроизвести отложенные анимации
+      try {
+        if (typeof window !== 'undefined') {
+          if (window.__pendingBattleFlushTimer) clearInterval(window.__pendingBattleFlushTimer);
+          window.__pendingBattleFlushTimer = setInterval(()=>{
+            try { flushPendingBattleQueues && flushPendingBattleQueues(); } catch {}
+          }, 120);
+          setTimeout(()=>{ try { if (window.__pendingBattleFlushTimer) clearInterval(window.__pendingBattleFlushTimer); } catch {} }, 2500);
+        }
+      } catch {}
+      // Если пришёл новый ход, заранее блокируем отображение новых орбов маны,
+      // чтобы первая перерисовка UI не показывала их до вспышки
+      try {
+        const isNewTurnEarly = !!(prev && typeof prev.turn === 'number' && typeof state.turn === 'number' && state.turn > prev.turn);
+        if (isNewTurnEarly) {
+          const ownerEarly = (typeof state.active === 'number') ? state.active : (gameState?.active ?? 0);
+          const beforeMEarly = (prev?.players?.[ownerEarly]?.mana ?? 0);
+          const afterMEarly = (state?.players?.[ownerEarly]?.mana ?? 0);
+          // Только устанавливаем PENDING_MANA_ANIM если нет текущей анимации маны
+          if (!PENDING_MANA_ANIM && !manaGainActive) {
+            PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = { ownerIndex: ownerEarly, startIdx: Math.max(0, Math.min(9, beforeMEarly)), endIdx: Math.max(-1, Math.min(9, afterMEarly - 1)) };
+            try { if (typeof window !== 'undefined' && window.gameState && window.gameState.players && window.gameState.players[ownerEarly]) { window.gameState.players[ownerEarly]._beforeMana = beforeMEarly; } } catch {}
+          }
+        }
+      } catch {}
+      // Guard: ensure start-of-turn +2 does not render before animation
+      try {
+        const __hadNewTurn = !!(typeof state.turn === 'number' && state.turn > (__lastTurnSeen || 0));
+        if (__hadNewTurn && !PENDING_MANA_ANIM && !manaGainActive) {
+          const __owner = (typeof state.active === 'number') ? state.active : (gameState?.active ?? 0);
+          const __beforeM = Math.max(0, Number((__lastManaSeen && __lastManaSeen[__owner]) ?? 0));
+          const __afterM = Math.max(0, Number(state?.players?.[__owner]?.mana ?? __beforeM));
+          if (__afterM > __beforeM) {
+            PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = {
+              ownerIndex: __owner,
+              startIdx: Math.max(0, Math.min(9, __beforeM)),

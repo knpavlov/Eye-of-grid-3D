@@ -2488,6 +2488,8 @@
         if (gameState.players[gameState.active].mana < cost) { showNotification(`${cost} mana is required to attack`, 'error'); return; }
         gameState.players[gameState.active].mana -= cost;
         updateUI();
+        // Close action menu when the attack is initiated
+        try { hideUnitActionPanel(); } catch {}
         magicFrom = { r, c };
         addLog(`${tpl.name}: select a target for the magical attack.`);
          return;
@@ -2497,6 +2499,8 @@
       if (gameState.players[gameState.active].mana < cost) { showNotification(`${cost} mana is required to attack`, 'error');  return; }
       gameState.players[gameState.active].mana -= cost;
       updateUI();
+      // Close action menu before starting the battle sequence
+      try { hideUnitActionPanel(); } catch {}
       performBattleSequence(r, c, true);
        }
     
@@ -3700,6 +3704,28 @@
     
     // WebSocket анимации отключены, флаги не используются
     
+    // Pre-clamp incoming turn mana to avoid early +2 before splash/animation
+    try {
+      const hadNewTurn = !!(prev && typeof prev.turn === 'number' && typeof state.turn === 'number' && state.turn > prev.turn);
+      if (hadNewTurn) {
+        const owner = (typeof state.active === 'number') ? state.active : (prev?.active ?? 0);
+        const beforeM = Math.max(0, Number(prev?.players?.[owner]?.mana ?? 0));
+        const afterM = Math.max(0, Number(state?.players?.[owner]?.mana ?? beforeM));
+        if (afterM > beforeM) {
+          try { if (state.players && state.players[owner]) state.players[owner]._beforeMana = beforeM; } catch {}
+          try {
+            if (!PENDING_MANA_ANIM && !manaGainActive) {
+              PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = {
+                ownerIndex: owner,
+                startIdx: Math.max(0, Math.min(9, beforeM)),
+                endIdx: Math.max(-1, Math.min(9, afterM - 1))
+              };
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+
     APPLYING = true;
     try {
       gameState = state;

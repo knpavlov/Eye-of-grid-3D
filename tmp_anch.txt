@@ -1,0 +1,21 @@
+        const t0 = document.getElementById('player-title-0');
+        const t1 = document.getElementById('player-title-1');
+        if (leftSide && rightSide && t0 && t1 && typeof gameState.active === 'number') {
+          leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
+          rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
+          t0.classList.remove('title-pulse');
+          t1.classList.remove('title-pulse');
+          if (gameState.active === 0) {
+            leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
+            t0.classList.add('title-pulse');
+          } else {
+            rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
+            t1.classList.add('title-pulse');
+          }
+        }
+      try { updateIndicator(); } catch {}
+      try { updateInputLock(); } catch {}
+      // Сначала переcоберём доску/мета-объекты, затем юниты и UI (исправляет мерцание рамок)
+      try{ createBoard && createBoard(); }catch{}
+      try{ createMetaObjects && createMetaObjects(); }catch{}
+      // Defer unit rebuild during remote lunge animation to avoid canceling the push

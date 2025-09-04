@@ -1,0 +1,99 @@
+      document.getElementById('help-panel').classList.add('hidden');
+    });
+    // Prompt handlers
+    document.getElementById('cancel-prompt-btn').addEventListener('click', () => {
+      if (activePrompt && typeof activePrompt.onCancel === 'function') {
+        try { activePrompt.onCancel(); } catch {}
+      }
+      hidePrompt();
+    });
+    document.getElementById('cancel-orient-btn').addEventListener('click', () => {
+      if (pendingPlacement) {
+        returnCardToHand(pendingPlacement.card);
+      }
+      hideOrientationPanel();
+    });
+    document.getElementById('cancel-action-btn').addEventListener('click', hideUnitActionPanel);
+    // Действия в панели юнита
+    document.getElementById('rotate-cw-btn').addEventListener('click', () => {
+      if (selectedUnit) rotateUnit(selectedUnit, 'cw');
+    });
+    document.getElementById('rotate-ccw-btn').addEventListener('click', () => {
+      if (selectedUnit) rotateUnit(selectedUnit, 'ccw');
+    });
+    document.getElementById('attack-btn').addEventListener('click', () => {
+      if (selectedUnit) performUnitAttack(selectedUnit);
+    });
+    
+    document.querySelectorAll('[data-dir]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Явное соответствие символов на кнопках и направлений
+        const direction = btn.getAttribute('data-dir'); // 'N' | 'E' | 'S' | 'W'
+        // Если ожидается выбор направления для спелла — применим его и завершим
+        if (pendingSpellOrientation) {
+          const { spellCardMesh, unitMesh } = pendingSpellOrientation;
+          const idx = spellCardMesh.userData.handIndex;
+          const pl = gameState.players[gameState.active];
+          const tpl = pl.hand[idx];
+          const r = unitMesh.userData.row; const c = unitMesh.userData.col; const u = gameState.board[r][c].unit;
+          if (tpl && tpl.id === 'SPELL_BEGUILING_FOG' && u) {
+            u.facing = direction;
+            addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут в ${direction}.`);
+            pl.discard.push(tpl); pl.hand.splice(idx, 1);
+            resetCardSelection(); updateHand(); updateUnits(); updateUI();
+          }
+          pendingSpellOrientation = null; hideOrientationPanel();
+          return;
+        }
+        // Иначе — штатное размещение юнита
+        if (direction === 'N') return placeUnitWithDirection('N');
+        if (direction === 'E') return placeUnitWithDirection('E');
+        if (direction === 'S') return placeUnitWithDirection('S');
+        if (direction === 'W') return placeUnitWithDirection('W');
+      });
+    });
+    
+    document.addEventListener('DOMContentLoaded', init);
+
+    // ====== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЕЙСТВИЙ ======
+    function showPrompt(text, onCancel) {
+      const pp = document.getElementById('prompt-panel');
+      const pt = document.getElementById('prompt-text');
+      if (pp && pt) {
+        pt.textContent = text || '';
+        pp.classList.remove('hidden');
+        activePrompt = { text, onCancel };
+      }
+    }
+    function hidePrompt() {
+      const pp = document.getElementById('prompt-panel');
+      if (pp) pp.classList.add('hidden');
+      activePrompt = null;
+    }
+    function rotateUnit(unitMesh, dir) {
+      if (isInputLocked()) return;
+      const u = unitMesh.userData.unitData;
+      if (!u) return;
+      if (u.owner !== gameState.active) { showNotification('You can\'t rotate the other player\'s unit', 'error'); return; }
+      if (u.lastRotateTurn === gameState.turn) { showNotification('The unit has already rotated in this turn', 'error'); return; }
+      const tpl = CARDS[u.tplId];
+      const cost = attackCost(tpl);
+      if (gameState.players[gameState.active].mana < cost) { showNotification(`${cost} mana is required to rotate`, 'error'); return; }
+      gameState.players[gameState.active].mana -= cost; updateUI();
+      u.facing = dir === 'cw' ? turnCW[u.facing] : turnCCW[u.facing];
+      u.lastRotateTurn = gameState.turn;
+      updateUnits();
+      hideUnitActionPanel();
+
+       }
+    
+    function performUnitAttack(unitMesh) {
+      if (!unitMesh) return;
+      if (isInputLocked()) return;
+      const r = unitMesh.userData.row; const c = unitMesh.userData.col;
+      const unit = gameState.board[r][c].unit; if (!unit) return;
+      const tpl = CARDS[unit.tplId];
+      const cost = attackCost(tpl);
+      if (tpl.attackType === 'MAGIC') {
+        if (gameState.players[gameState.active].mana < cost) { showNotification(`${cost} mana is required to attack`, 'error'); return; }
+        gameState.players[gameState.active].mana -= cost;

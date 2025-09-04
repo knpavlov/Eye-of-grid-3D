@@ -1,0 +1,25 @@
+      }
+    } catch {}
+    // Защита от поздних устаревших снапшотов: принимаем только если версия не меньше текущей
+    try {
+      const incomingVer = Number(state.__ver) || 0;
+      const currentVer = Number(gameState && gameState.__ver) || 0;
+      if (incomingVer <= currentVer && !((Number(state?.turn||0)) > (Number(gameState?.turn||0)))) {
+        // проигнорируем устаревший снапшот
+        return;
+      }
+    } catch {}
+    
+    // WebSocket анимации отключены, флаги не используются
+    
+    APPLYING = true;
+    try {
+      gameState = state;
+      try { window.gameState = state; } catch {}
+      lastDigest = digest(state);
+      // Immediately reflect active seat and mana bars before any animations
+        const leftSide = document.getElementById('left-side');
+        const rightSide = document.getElementById('right-side');
+        const t0 = document.getElementById('player-title-0');
+        const t1 = document.getElementById('player-title-1');
+        if (leftSide && rightSide && t0 && t1 && typeof gameState.active === 'number') {

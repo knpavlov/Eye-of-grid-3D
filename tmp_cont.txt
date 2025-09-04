@@ -1,0 +1,121 @@
+        }
+      } catch { updateUnits(); }
+      // Обрабатываем отложенные WebSocket анимации
+      try { flushPendingBattleQueues && flushPendingBattleQueues(); } catch {}
+      try { if (prev) playDeltaAnimations(prev, state); } catch {}
+      // Периодически пробуем воспроизвести отложенные анимации
+      try {
+        if (typeof window !== 'undefined') {
+          if (window.__pendingBattleFlushTimer) clearInterval(window.__pendingBattleFlushTimer);
+          window.__pendingBattleFlushTimer = setInterval(()=>{
+            try { flushPendingBattleQueues && flushPendingBattleQueues(); } catch {}
+          }, 120);
+          setTimeout(()=>{ try { if (window.__pendingBattleFlushTimer) clearInterval(window.__pendingBattleFlushTimer); } catch {} }, 2500);
+        }
+      } catch {}
+      // Если пришёл новый ход, заранее блокируем отображение новых орбов маны,
+      // чтобы первая перерисовка UI не показывала их до вспышки
+      try {
+        const isNewTurnEarly = !!(prev && typeof prev.turn === 'number' && typeof state.turn === 'number' && state.turn > prev.turn);
+        if (isNewTurnEarly) {
+          const ownerEarly = (typeof state.active === 'number') ? state.active : (gameState?.active ?? 0);
+          const beforeMEarly = (prev?.players?.[ownerEarly]?.mana ?? 0);
+          const afterMEarly = (state?.players?.[ownerEarly]?.mana ?? 0);
+          // Только устанавливаем PENDING_MANA_ANIM если нет текущей анимации маны
+          if (!PENDING_MANA_ANIM && !manaGainActive) {
+            PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = { ownerIndex: ownerEarly, startIdx: Math.max(0, Math.min(9, beforeMEarly)), endIdx: Math.max(-1, Math.min(9, afterMEarly - 1)) };
+            try { if (typeof window !== 'undefined' && window.gameState && window.gameState.players && window.gameState.players[ownerEarly]) { window.gameState.players[ownerEarly]._beforeMana = beforeMEarly; } } catch {}
+          }
+        }
+      } catch {}
+      // Guard: ensure start-of-turn +2 does not render before animation
+      try {
+        const __hadNewTurn = !!(typeof state.turn === 'number' && state.turn > (__lastTurnSeen || 0));
+        if (__hadNewTurn && !PENDING_MANA_ANIM && !manaGainActive) {
+          const __owner = (typeof state.active === 'number') ? state.active : (gameState?.active ?? 0);
+          const __beforeM = Math.max(0, Number((__lastManaSeen && __lastManaSeen[__owner]) ?? 0));
+          const __afterM = Math.max(0, Number(state?.players?.[__owner]?.mana ?? __beforeM));
+          if (__afterM > __beforeM) {
+            PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = {
+              ownerIndex: __owner,
+              startIdx: Math.max(0, Math.min(9, __beforeM)),
+              endIdx: Math.max(-1, Math.min(9, __afterM - 1))
+            };
+          }
+        }
+      } catch {}
+      try { updateUI(); }catch{}
+      // Если начался новый ход — синхронизируем порядок анимаций как в офлайне:
+      // 1) Заставка хода с корректным заголовком, 2) Анимация маны, 3) Добор
+      // Упрощенная и надежная система обработки нового хода
+      try {
+        const isNewTurn = (typeof state.turn === 'number') && (state.turn > ((prev && typeof prev.turn === 'number') ? prev.turn : (__lastTurnSeen || 0)));
+        if (isNewTurn) {
+          console.log(`[NETWORK] Processing new turn ${state.turn} (prev: ${prev?.turn || 'none'})`);
+          
+          // Ensure turn splash is visible (robust, idempotent)
+          try {
+            if (window.__ui && window.__ui.banner) {
+              const b = window.__ui.banner;
+              if (typeof b.ensureTurnSplashVisible === 'function') {
+                await b.ensureTurnSplashVisible(3, state.turn);
+              } else if (typeof b.forceTurnSplashWithRetry === 'function') {
+                await b.forceTurnSplashWithRetry(3, state.turn);
+              }
+            } else if (typeof forceTurnSplashWithRetry === 'function') {
+              await forceTurnSplashWithRetry(3);
+            }
+          } catch (e) {
+            console.error('[NETWORK] Turn splash failed:', e);
+          }
+          
+          // 1. Показываем заставку хода (если еще не показывали этот ход)
+          if (lastSplashTurnShown < state.turn) {
+            console.log(`[NETWORK] Showing turn splash for turn ${state.turn}`);
+            try {
+              if (window.__ui && window.__ui.banner) {
+                const b = window.__ui.banner;
+                if (typeof b.ensureTurnSplashVisible === 'function') {
+                  await b.ensureTurnSplashVisible(3, state.turn);
+                } else if (typeof b.forceTurnSplashWithRetry === 'function') {
+                  await b.forceTurnSplashWithRetry(3, state.turn);
+                }
+              }
+              lastSplashTurnShown = state.turn;
+            } catch (e) {
+              console.error('[NETWORK] Turn splash failed:', e);
+            }
+          }
+          
+          // 2. Анимация маны активного игрока
+          const owner = (typeof state.active === 'number') ? state.active : 0;
+          const beforeM = Math.max(0, (prev?.players?.[owner]?.mana ?? 0));
+          const afterM = Math.max(0, (state?.players?.[owner]?.mana ?? 0));
+          
+          // Expose _beforeMana for UI clamping until animation completes
+          try { if (typeof window !== 'undefined' && window.gameState && window.gameState.players && window.gameState.players[owner]) { window.gameState.players[owner]._beforeMana = beforeM; } } catch {}
+
+          if (afterM > beforeM) {
+            console.log(`[NETWORK] Animating mana for player ${owner}: ${beforeM} -> ${afterM}`);
+            try {
+              if (window.__ui && window.__ui.mana && typeof window.__ui.mana.animateTurnManaGain === 'function') {
+                await window.__ui.mana.animateTurnManaGain(owner, beforeM, afterM, 1500);
+              }
+            } catch (e) {
+              console.error('[NETWORK] Mana animation failed:', e);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[NETWORK] Error processing new turn:', e);
+      }
+      // Анимация добора у приёмника (только для своей руки)
+      try {
+        const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
+        if (mySeat !== null && prev && prev.players && state.players) {
+          const prevHand = (prev.players[mySeat]?.hand) || [];
+          const nextHand = (state.players[mySeat]?.hand) || [];
+          const delta = Math.max(0, nextHand.length - prevHand.length);
+          if (delta > 0) {
+            // Спрячем последние delta карт на время анимации
+            pendingDrawCount = delta; updateHand();
