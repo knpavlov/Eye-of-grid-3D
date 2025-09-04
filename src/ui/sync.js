@@ -13,13 +13,25 @@ export function attachSocketUIRefresh() {
       // Guard so we don't attach twice across HMR-like reloads
       _attached = true;
       try { if (typeof window !== 'undefined') window.__uiSyncAttached = true; } catch {}
-      // On timer ticks and explicit turn switch, re-run light UI refresh
+      // On timer ticks, re-run light UI refresh
       const lightRefresh = () => {
         try { if (typeof window.updateIndicator === 'function') window.updateIndicator(); } catch {}
         try { if (typeof window.updateInputLock === 'function') window.updateInputLock(); } catch {}
       };
+      // On explicit turn switch, also try to show the splash and resync UI immediately
+      const onTurnSwitched = () => {
+        try { if (typeof window.updateIndicator === 'function') window.updateIndicator(); } catch {}
+        try { if (typeof window.updateInputLock === 'function') window.updateInputLock(); } catch {}
+        try {
+          const turn = (typeof window !== 'undefined' && window.gameState && typeof window.gameState.turn === 'number') ? window.gameState.turn : null;
+          if (turn && window.__ui && window.__ui.banner && typeof window.__ui.banner.requestTurnSplash === 'function') {
+            window.__ui.banner.requestTurnSplash(turn);
+          }
+        } catch {}
+        try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+      };
       try { sock.on('turnTimer', lightRefresh); } catch {}
-      try { sock.on('turnSwitched', lightRefresh); } catch {}
+      try { sock.on('turnSwitched', onTurnSwitched); } catch {}
       return true;
     } catch { return false; }
   };

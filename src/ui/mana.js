@@ -20,9 +20,8 @@ export function renderBars(gameState) {
     const prev = manaDisplay.querySelectorAll('.mana-orb').length;
     const currentMana = gameState.players?.[p]?.mana ?? 0;
     const anim = getAnim();
-    const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
-    // Clamp only for the local active seat (avoid hiding opponent's refill)
-    const pending = (anim && anim.ownerIndex === p && ((mySeat !== null && mySeat === p) || (mySeat === null && gameState?.active === p))) ? anim : null;
+    // Apply pending animation window for both clients so +2 doesn't pop in early
+    const pending = (anim && anim.ownerIndex === p) ? anim : null;
     const block = Math.max(0, Number(getBlocks()?.[p]) || 0);
     // If my seat is animating this bar, avoid rebuilding during animation to prevent DOM flicker
     if (getManaGainActive() && pending) {
@@ -36,6 +35,7 @@ export function renderBars(gameState) {
     const existingOrbs = Array.from(manaDisplay.querySelectorAll('.mana-orb, .mana-slot'));
     
     manaDisplay.innerHTML = '';
+    const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
     const activeSeat = (typeof window !== 'undefined' && window.gameState && typeof window.gameState.active === 'number')
       ? window.gameState.active : (gameState?.active ?? null);
     const animateAllowed = (typeof mySeat === 'number') ? (mySeat === p) : (typeof activeSeat === 'number' ? activeSeat === p : true);
@@ -73,9 +73,10 @@ export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true) {
     const barEl = document.getElementById(`mana-display-${ownerIndex}`);
     if (!barEl) return;
     const gameState = (typeof window !== 'undefined') ? window.gameState : null;
-    const currentMana = (gameState?.players?.[ownerIndex]?.mana) || 0;
-    let targetIdx = Math.min(9, currentMana);
-    try { if (visualOnly) targetIdx = Math.max(0, Math.min(9, currentMana - 1)); } catch {}
+    const currentMana = Math.max(0, (gameState?.players?.[ownerIndex]?.mana) || 0);
+    // For visual-only (+1 before state changes), fly to the first empty slot (index == currentMana)
+    // If state already includes the mana, aim at the newly filled orb (index == currentMana - 1)
+    let targetIdx = visualOnly ? Math.min(9, currentMana) : Math.max(0, Math.min(9, currentMana - 1));
     if (visualOnly && typeof ownerIndex === 'number') {
       const b = getBlocks(); b[ownerIndex] = Math.max(0, (b[ownerIndex] || 0) + 1); setBlocks(b);
       try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
