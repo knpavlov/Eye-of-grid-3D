@@ -26,14 +26,11 @@ export function renderBars(gameState) {
     const pending = (anim && anim.ownerIndex === p) ? anim : null;
     const block = Math.max(0, Number(getBlocks()?.[p]) || 0);
     
-    // If my seat is animating this bar, avoid rebuilding during animation to prevent DOM flicker
-    if (getManaGainActive() && pending) {
-      continue;
-    }
+    // Always rebuild to allow clamping during pending animation
     
     // Если идет анимация получения маны в начале хода и есть _beforeMana, используем его
     let displayMana = currentMana;
-    if (getManaGainActive() && typeof beforeMana === 'number' && pending) {
+    if (typeof beforeMana === 'number' && beforeMana < currentMana) {
       displayMana = beforeMana; // Показываем старое значение во время анимации
     }
     

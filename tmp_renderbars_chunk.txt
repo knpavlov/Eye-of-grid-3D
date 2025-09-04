@@ -1,0 +1,65 @@
+export function renderBars(gameState) {
+  if (!gameState) return;
+  const total = 10;
+  for (let p = 0; p < 2; p++) {
+    const manaDisplay = document.getElementById(`mana-display-${p}`);
+    if (!manaDisplay) continue;
+    const prev = manaDisplay.querySelectorAll('.mana-orb').length;
+    const currentMana = gameState.players?.[p]?.mana ?? 0;
+    const beforeMana = gameState.players?.[p]?._beforeMana;
+    const anim = getAnim();
+    
+    // Apply pending animation window for both clients so +2 doesn't pop in early
+    const pending = (anim && anim.ownerIndex === p) ? anim : null;
+    const block = Math.max(0, Number(getBlocks()?.[p]) || 0);
+    
+    // Always rebuild to allow clamping during pending animation
+    
+    // Если идет анимация получения маны в начале хода и есть _beforeMana, используем его
+    let displayMana = currentMana;
+    if (getManaGainActive() && typeof beforeMana === 'number' && pending) {
+      displayMana = beforeMana; // Показываем старое значение во время анимации
+    }
+    
+    const blockAdjusted = Math.max(0, displayMana - block);
+    const renderManaBase = pending ? Math.min(blockAdjusted, Math.max(0, pending.startIdx)) : blockAdjusted;
+    const renderMana = Math.max(0, Math.min(total, renderManaBase));
+    
+    // Сохраняем текущие видимые орбы, чтобы избежать мерцания
+    const existingOrbs = Array.from(manaDisplay.querySelectorAll('.mana-orb, .mana-slot'));
+    
+    manaDisplay.innerHTML = '';
+    const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
+    const activeSeat = (typeof window !== 'undefined' && window.gameState && typeof window.gameState.active === 'number')
+      ? window.gameState.active : (gameState?.active ?? null);
+    const animateAllowed = (typeof mySeat === 'number') ? (mySeat === p) : (typeof activeSeat === 'number' ? activeSeat === p : true);
+    for (let i = 0; i < total; i++) {
+      const orb = document.createElement('div');
+      const filled = i < renderMana;
+      const isBlockedForAnim = !!(pending && i >= pending.startIdx && i <= pending.endIdx);
+      orb.className = filled ? 'mana-orb' : 'mana-slot';
+      
+      // Избегаем мерцания: если орб уже был видим, начинаем с opacity: 1
+      const wasVisible = existingOrbs[i] && existingOrbs[i].classList.contains('mana-orb');
+      orb.style.opacity = (!animateAllowed) ? '1' : ((filled && wasVisible) ? '1' : (filled ? '0' : '1'));
+      
+      manaDisplay.appendChild(orb);
+      if (animateAllowed && filled && !isBlockedForAnim && !wasVisible) {
+        const delay = 0.06 * Math.max(0, i - prev);
+        setTimeout(()=>{
+          try {
+            orb.style.transform = 'translateX(16px) scale(0.6)';
+            orb.style.transition = 'transform 220ms ease, opacity 220ms ease';
+            requestAnimationFrame(()=>{
+              orb.style.opacity = '1';
+              orb.style.transform = 'translateX(0) scale(1)';
+            });
+          } catch {}
+        }, delay*1000);
+      }
+    }
+  }
+}
+
+export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true) {
+  try {

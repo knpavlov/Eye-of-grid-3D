@@ -2266,6 +2266,17 @@
       };
     } catch {}
 
+    // Bridge mana world->bar animation to module implementation
+    try {
+      const __legacyAnimateManaGainFromWorld = animateManaGainFromWorld;
+      animateManaGainFromWorld = function(pos, ownerIndex, visualOnly = true) {
+        if (window.__ui && window.__ui.mana && typeof window.__ui.mana.animateManaGainFromWorld === 'function') {
+          return window.__ui.mana.animateManaGainFromWorld(pos, ownerIndex, visualOnly);
+        }
+        return __legacyAnimateManaGainFromWorld ? __legacyAnimateManaGainFromWorld(pos, ownerIndex, visualOnly) : undefined;
+      };
+    } catch {}
+
     function init() {
       wireModules();
       mountModuleStatusChip();
@@ -3773,6 +3784,9 @@
           const beforeM = Math.max(0, (prev?.players?.[owner]?.mana ?? 0));
           const afterM = Math.max(0, (state?.players?.[owner]?.mana ?? 0));
           
+          // Expose _beforeMana for UI clamping until animation completes
+          try { if (typeof window !== 'undefined' && window.gameState && window.gameState.players && window.gameState.players[owner]) { window.gameState.players[owner]._beforeMana = beforeM; } } catch {}
+
           if (afterM > beforeM) {
             console.log(`[NETWORK] Animating mana for player ${owner}: ${beforeM} -> ${afterM}`);
             try {
@@ -3860,6 +3874,9 @@
     } catch {}
     updateIndicator();
     updateInputLock();
+    // Ensure UI reflects the new turn immediately and try showing splash reliably
+    try { if (typeof updateUI === 'function') updateUI(); } catch {}
+    try { if (typeof forceTurnSplashWithRetry === 'function') forceTurnSplashWithRetry(2); } catch {}
   });
 
   // ===== 9) Battle animation sync =====
