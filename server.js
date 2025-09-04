@@ -174,6 +174,63 @@ io.on("connection", (socket) => {
     pushLog({ ev: 'pushState:applied', sid: socket.id, matchId, reason: reason || '', ver: m.lastVer, active: m.lastState?.active, turn: m.lastState?.turn });
   });
 
+  // Authoritative end-turn for online: server advances turn, adds mana, draws a card
+  socket.on("endTurn", () => {
+    const matchId = socket.data.matchId;
+    if (!matchId || !matches.has(matchId)) return;
+    const m = matches.get(matchId);
+    const st = m.lastState;
+    if (!st) return;
+    try {
+      const expectedSeat = typeof st.active === 'number' ? st.active : null;
+      if (expectedSeat === null) return;
+      if (socket.data.seat !== expectedSeat) return; // not your turn
+    } catch { return; }
+
+    try {
+      // Clear temp buffs owned by current active before switching
+      for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
+        const u = st.board?.[rr]?.[cc]?.unit; if (!u) continue;
+        if (typeof u.tempAtkBuff === 'number' && u.tempBuffOwner === st.active) {
+          delete u.tempAtkBuff; delete u.tempBuffOwner;
+        }
+      }
+    } catch {}
+
+    // Switch active and increment turn
+    const prevActive = st.active;
+    st.active = st.active === 0 ? 1 : 0;
+    st.turn = (Number(st.turn) || 0) + 1;
+
+    // Add +2 mana to new active
+    try {
+      const pl = st.players?.[st.active];
+      if (pl) pl.mana = Math.min(10, (Number(pl.mana) || 0) + 2);
+    } catch {}
+
+    // Draw one card for new active if any
+    try {
+      const pl = st.players?.[st.active];
+      if (pl) {
+        const deck = Array.isArray(pl.deck) ? pl.deck : [];
+        const card = deck.shift();
+        if (card) { pl.hand = Array.isArray(pl.hand) ? pl.hand : []; pl.hand.push(card); }
+      }
+    } catch {}
+
+    // Bump version and persist
+    try { st.__ver = (Number(st.__ver) || 0) + 1; } catch {}
+    m.lastVer = Number(st.__ver) || (m.lastVer || 0);
+    m.lastState = st;
+
+    // Reset timer and notify
+    try { m.timerSeconds = 100; } catch {}
+    try { io.to(m.room).emit('turnTimer', { seconds: m.timerSeconds, activeSeat: st.active }); } catch {}
+    try { io.to(m.room).emit('turnSwitched', { activeSeat: st.active }); } catch {}
+    try { io.to(m.room).emit('state', st); } catch {}
+    pushLog({ ev: 'endTurn:applied', matchId, bySeat: socket.data.seat, prevActive, active: st.active, turn: st.turn, ver: m.lastVer, manaNewActive: st.players?.[st.active]?.mana });
+  });
+
   socket.on("requestState", () => {
     const m = matches.get(socket.data.matchId);
     if (m?.lastState) socket.emit("state", m.lastState);

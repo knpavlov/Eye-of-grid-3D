@@ -14,13 +14,12 @@ export function attachSocketUIRefresh() {
       _attached = true;
       try { if (typeof window !== 'undefined') window.__uiSyncAttached = true; } catch {}
       // On timer ticks and explicit turn switch, re-run light UI refresh
-      const refresh = () => {
-        try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+      const lightRefresh = () => {
         try { if (typeof window.updateIndicator === 'function') window.updateIndicator(); } catch {}
         try { if (typeof window.updateInputLock === 'function') window.updateInputLock(); } catch {}
       };
-      try { sock.on('turnTimer', refresh); } catch {}
-      try { sock.on('turnSwitched', refresh); } catch {}
+      try { sock.on('turnTimer', lightRefresh); } catch {}
+      try { sock.on('turnSwitched', lightRefresh); } catch {}
       return true;
     } catch { return false; }
   };

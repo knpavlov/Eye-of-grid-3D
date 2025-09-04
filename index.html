@@ -1791,6 +1791,17 @@
           if (online) { tt.stop(); } else { tt.reset(100).start(); }
         }
       } catch {}
+
+      // Online: delegate authoritative turn advance to the server
+      try {
+        const online = (typeof NET_ON === 'function') ? NET_ON() : !!(typeof NET_ACTIVE !== 'undefined' && NET_ACTIVE);
+        if (online) {
+          try { (window.socket || socket).emit('endTurn'); } catch {}
+          // Keep input locked until server pushes new state/turnSwitched
+          refreshInputLockUI();
+          return;
+        }
+      } catch {}
       
       const controlledCells = countControlled(gameState, gameState.active);
       if (controlledCells >= 5) {
@@ -1836,6 +1847,7 @@
         }
       } catch {}
       updateHand();
+      // Offline: locally apply state, online path returned earlier
       try { schedulePush('endTurn-apply', { force: true }); } catch {}
       
       resetCardSelection();
