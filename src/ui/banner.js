@@ -5,6 +5,8 @@ let _splashActive = false;
 let _lastRequestedTurn = 0;
 let _lastShownTurn = 0;
 let _splashInProgress = false; // Гарантия от параллельных вызовов
+let _lastActivePlayer = null; // Отслеживаем смену активного игрока
+let _forceNext = false; // Флаг для принудительного показа
 
 function setSplashActive(v) {
   _splashActive = !!v;
@@ -75,10 +77,22 @@ export function queueTurnSplash(title){
 
 export async function requestTurnSplash(currentTurn){
   if (typeof currentTurn !== 'number') return _lastTurnSplashPromise;
-  // Skip if this exact turn is already shown
-  if (_lastShownTurn >= currentTurn) return _lastTurnSplashPromise;
+  
+  // Более умная проверка: показываем заставку если это новый ход или если активный игрок изменился
+  const shouldShow = _lastShownTurn < currentTurn || 
+    (_lastRequestedTurn === currentTurn && !_splashInProgress && _lastShownTurn < currentTurn);
+  
+  if (!shouldShow) {
+    console.log(`[BANNER] Skipping turn splash: current=${currentTurn}, lastShown=${_lastShownTurn}, inProgress=${_splashInProgress}`);
+    return _lastTurnSplashPromise;
+  }
+  
   // De-duplicate only while a splash for this turn is still in progress
-  if (_lastRequestedTurn === currentTurn && _splashInProgress) return _lastTurnSplashPromise;
+  if (_lastRequestedTurn === currentTurn && _splashInProgress) {
+    console.log(`[BANNER] Turn ${currentTurn} splash already in progress`);
+    return _lastTurnSplashPromise;
+  }
+  
   _lastRequestedTurn = currentTurn;
   let title = `Turn ${currentTurn}`;
   try {
@@ -86,15 +100,33 @@ export async function requestTurnSplash(currentTurn){
       ? window.gameState.active : null;
     if (seat !== null) title = `Turn ${currentTurn} - Player ${seat + 1}`;
   } catch {}
-  _lastTurnSplashPromise = queueTurnSplash(title).then(()=>{ _lastShownTurn = currentTurn; });
+  
+  console.log(`[BANNER] Requesting turn splash: ${title}`);
+  _lastTurnSplashPromise = queueTurnSplash(title).then(()=>{ 
+    _lastShownTurn = currentTurn;
+    console.log(`[BANNER] Turn splash completed for turn ${currentTurn}`);
+  });
   return _lastTurnSplashPromise;
 }
 
 export async function forceTurnSplashWithRetry(maxRetries = 2, currentTurn = null) {
-  // Проверяем, не показали ли мы уже этот ход
-  if (typeof currentTurn === 'number' && _lastShownTurn >= currentTurn) {
-    console.log(`[BANNER] Turn ${currentTurn} already shown (last: ${_lastShownTurn}), skipping`);
-    return Promise.resolve();
+  // Более мягкая проверка: позволяем повторный показ если прошло время или изменился контекст
+  if (typeof currentTurn === 'number' && _lastShownTurn >= currentTurn && !_forceNext) {
+    // Проверяем, изменился ли активный игрок - если да, показываем заставку
+    let shouldForce = false;
+    try {
+      const currentActive = (typeof window !== 'undefined' && window.gameState && typeof window.gameState.active === 'number')
+        ? window.gameState.active : null;
+      if (currentActive !== null && currentActive !== _lastActivePlayer) {
+        shouldForce = true;
+        _lastActivePlayer = currentActive;
+      }
+    } catch {}
+    
+    if (!shouldForce) {
+      console.log(`[BANNER] Turn ${currentTurn} already shown (last: ${_lastShownTurn}), skipping`);
+      return Promise.resolve();
+    }
   }
   
   console.log(`[BANNER] Attempting to show turn splash for turn ${currentTurn}, tries: ${maxRetries}`);

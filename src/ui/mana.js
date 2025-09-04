@@ -19,15 +19,25 @@ export function renderBars(gameState) {
     if (!manaDisplay) continue;
     const prev = manaDisplay.querySelectorAll('.mana-orb').length;
     const currentMana = gameState.players?.[p]?.mana ?? 0;
+    const beforeMana = gameState.players?.[p]?._beforeMana;
     const anim = getAnim();
+    
     // Apply pending animation window for both clients so +2 doesn't pop in early
     const pending = (anim && anim.ownerIndex === p) ? anim : null;
     const block = Math.max(0, Number(getBlocks()?.[p]) || 0);
+    
     // If my seat is animating this bar, avoid rebuilding during animation to prevent DOM flicker
     if (getManaGainActive() && pending) {
       continue;
     }
-    const blockAdjusted = Math.max(0, currentMana - block);
+    
+    // Если идет анимация получения маны в начале хода и есть _beforeMana, используем его
+    let displayMana = currentMana;
+    if (getManaGainActive() && typeof beforeMana === 'number' && pending) {
+      displayMana = beforeMana; // Показываем старое значение во время анимации
+    }
+    
+    const blockAdjusted = Math.max(0, displayMana - block);
     const renderManaBase = pending ? Math.min(blockAdjusted, Math.max(0, pending.startIdx)) : blockAdjusted;
     const renderMana = Math.max(0, Math.min(total, renderManaBase));
     
@@ -73,22 +83,52 @@ export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true) {
     const barEl = document.getElementById(`mana-display-${ownerIndex}`);
     if (!barEl) return;
     const gameState = (typeof window !== 'undefined') ? window.gameState : null;
-    const currentMana = Math.max(0, (gameState?.players?.[ownerIndex]?.mana) || 0);
-    // For visual-only (+1 before state changes), fly to the first empty slot (index == currentMana)
-    // If state already includes the mana, aim at the newly filled orb (index == currentMana - 1)
-    let targetIdx = visualOnly ? Math.min(9, currentMana) : Math.max(0, Math.min(9, currentMana - 1));
+    
+    // Более точное вычисление целевого индекса с учетом блокировок и текущего состояния
+    let currentMana = Math.max(0, (gameState?.players?.[ownerIndex]?.mana) || 0);
+    const currentBlocks = Math.max(0, Number(getBlocks()?.[ownerIndex]) || 0);
+    
+    // Исправление: для visualOnly анимации нужно учесть уже запланированные блокировки
+    // и лететь в правильную позицию с учетом реального количества орбов на экране
+    let targetIdx;
+    if (visualOnly) {
+      // Показываем визуально в следующем свободном слоте, учитывая существующие блокировки
+      const visibleMana = Math.max(0, currentMana - currentBlocks);
+      targetIdx = Math.min(9, visibleMana);
+    } else {
+      // Состояние уже обновлено, целимся в последний заполненный орб
+      targetIdx = Math.max(0, Math.min(9, currentMana - 1));
+    }
+    
+    console.log(`[MANA] Animation for player ${ownerIndex}: currentMana=${currentMana}, blocks=${currentBlocks}, targetIdx=${targetIdx}, visualOnly=${visualOnly}`);
+    
     if (visualOnly && typeof ownerIndex === 'number') {
-      const b = getBlocks(); b[ownerIndex] = Math.max(0, (b[ownerIndex] || 0) + 1); setBlocks(b);
+      const b = getBlocks(); 
+      b[ownerIndex] = Math.max(0, (b[ownerIndex] || 0) + 1); 
+      setBlocks(b);
       try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
     }
-    const child = barEl.children && barEl.children[targetIdx];
+    // Дополнительная защита: убедимся что DOM готов и элемент существует
+    let child = barEl.children && barEl.children[targetIdx];
+    
+    // Если целевой элемент не найден, попробуем пересчитать или взять последний доступный
+    if (!child && barEl.children && barEl.children.length > 0) {
+      const lastIdx = Math.min(targetIdx, barEl.children.length - 1);
+      child = barEl.children[lastIdx];
+      console.log(`[MANA] Target child not found at ${targetIdx}, using ${lastIdx}`);
+    }
+    
     let tx, ty;
     if (child) {
       const srect = child.getBoundingClientRect();
-      tx = srect.left + srect.width / 2; ty = srect.top + srect.height / 2;
+      tx = srect.left + srect.width / 2; 
+      ty = srect.top + srect.height / 2;
+      console.log(`[MANA] Flying to child at index ${targetIdx}: (${tx}, ${ty})`);
     } else {
       const rect = barEl.getBoundingClientRect();
-      tx = rect.left + rect.width / 2; ty = rect.top + rect.height / 2;
+      tx = rect.left + rect.width / 2; 
+      ty = rect.top + rect.height / 2;
+      console.log(`[MANA] No valid child found, flying to bar center: (${tx}, ${ty})`);
     }
     const orb = document.createElement('div');
     orb.className = 'mana-orb'; orb.style.position = 'fixed';
@@ -155,6 +195,14 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
         setManaGainActive(false);
         try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
         setAnim(null);
+        
+        // Очищаем _beforeMana после завершения анимации
+        try {
+          if (typeof window !== 'undefined' && window.gameState && window.gameState.players && window.gameState.players[ownerIndex]) {
+            delete window.gameState.players[ownerIndex]._beforeMana;
+          }
+        } catch {}
+        
         try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
         resolve();
       };
