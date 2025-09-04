@@ -88,15 +88,15 @@ export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true) {
     let currentMana = Math.max(0, (gameState?.players?.[ownerIndex]?.mana) || 0);
     const currentBlocks = Math.max(0, Number(getBlocks()?.[ownerIndex]) || 0);
     
-    // Исправление: для visualOnly анимации нужно учесть уже запланированные блокировки
-    // и лететь в правильную позицию с учетом реального количества орбов на экране
+    // Определяем целевой индекс с учётом режима визуализации
+    // Для purely visual полёта (visualOnly = true) состояние gameState ещё не обновлено,
+    // поэтому целимся в следующий свободный слот, основываясь на фактическом количестве маны.
+    // Для реального обновления (visualOnly = false) мана уже увеличена и орб должен прилететь
+    // в последний заполненный слот.
     let targetIdx;
     if (visualOnly) {
-      // Показываем визуально в следующем свободном слоте, учитывая существующие блокировки
-      const visibleMana = Math.max(0, currentMana - currentBlocks);
-      targetIdx = Math.min(9, visibleMana);
+      targetIdx = Math.min(9, currentMana);
     } else {
-      // Состояние уже обновлено, целимся в последний заполненный орб
       targetIdx = Math.max(0, Math.min(9, currentMana - 1));
     }
     
