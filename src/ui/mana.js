@@ -26,8 +26,8 @@ export function renderBars(gameState) {
     const pending = (anim && anim.ownerIndex === p) ? anim : null;
     const block = Math.max(0, Number(getBlocks()?.[p]) || 0);
     
-    // If this bar is currently animating, avoid rebuilding during animation
-    if (getManaGainActive() && pending) {
+    // If this bar is scheduled or currently animating, avoid rebuilding to prevent flicker
+    if (pending || getManaGainActive()) {
       continue;
     }
     

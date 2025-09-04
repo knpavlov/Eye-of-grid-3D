@@ -1716,7 +1716,15 @@
       updateHand();
       updateUI();
       // Заставка хода при старте игры с резервом (ускорена)
-      try { await forceTurnSplashWithRetry(2, gameState?.turn); } catch {}
+      try { 
+        if (window.__ui && window.__ui.banner) {
+          const b = window.__ui.banner; const t = gameState?.turn;
+          const fn = (typeof b.ensureTurnSplashVisible === 'function') ? b.ensureTurnSplashVisible : b.forceTurnSplashWithRetry;
+          await fn.call(b, 2, t);
+        } else {
+          await forceTurnSplashWithRetry(2, gameState?.turn);
+        }
+      } catch {}
       // Запуск таймера на первом ходу
       try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
       window.__turnTimerSeconds = 100;
@@ -1752,7 +1760,7 @@
       } catch {}
       
       // Защита от преждевременного завершения хода во время анимаций
-      if (manaGainActive || drawAnimationActive || splashActive) {
+      if (typeof isInputLocked === 'function' ? isInputLocked() : (manaGainActive || drawAnimationActive || splashActive)) {
         showNotification('Wait for animations to complete', 'warning');
         return;
       }
@@ -2260,9 +2268,11 @@
     try {
       const __legacyForceTurnSplashWithRetry = forceTurnSplashWithRetry;
       forceTurnSplashWithRetry = function(maxRetries) {
-        if (window.__ui && window.__ui.banner && typeof window.__ui.banner.forceTurnSplashWithRetry === 'function') {
-          const t = (typeof gameState?.turn === 'number') ? gameState.turn : null;
-          return window.__ui.banner.forceTurnSplashWithRetry(maxRetries, t);
+        const t = (typeof gameState?.turn === 'number') ? gameState.turn : null;
+        if (window.__ui && window.__ui.banner) {
+          const b = window.__ui.banner;
+          if (typeof b.ensureTurnSplashVisible === 'function') return b.ensureTurnSplashVisible(maxRetries, t);
+          if (typeof b.forceTurnSplashWithRetry === 'function') return b.forceTurnSplashWithRetry(maxRetries, t);
         }
         return __legacyForceTurnSplashWithRetry ? __legacyForceTurnSplashWithRetry(maxRetries) : Promise.resolve();
       };
@@ -3773,8 +3783,13 @@
           if (lastSplashTurnShown < state.turn) {
             console.log(`[NETWORK] Showing turn splash for turn ${state.turn}`);
             try {
-              if (window.__ui && window.__ui.banner && typeof window.__ui.banner.forceTurnSplashWithRetry === 'function') {
-                await window.__ui.banner.forceTurnSplashWithRetry(3, state.turn);
+              if (window.__ui && window.__ui.banner) {
+                const b = window.__ui.banner;
+                if (typeof b.ensureTurnSplashVisible === 'function') {
+                  await b.ensureTurnSplashVisible(3, state.turn);
+                } else if (typeof b.forceTurnSplashWithRetry === 'function') {
+                  await b.forceTurnSplashWithRetry(3, state.turn);
+                }
               }
               lastSplashTurnShown = state.turn;
             } catch (e) {
@@ -3878,7 +3893,9 @@
     updateIndicator();
     updateInputLock();
     // Show splash reliably; state event will drive full UI/mana sync
-    try { if (typeof forceTurnSplashWithRetry === 'function') forceTurnSplashWithRetry(2); } catch {}
+    try {
+      if (typeof forceTurnSplashWithRetry === 'function') forceTurnSplashWithRetry(2);
+    } catch {}
   });
 
   // ===== 9) Battle animation sync =====

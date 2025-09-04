@@ -109,6 +109,37 @@ export async function requestTurnSplash(currentTurn){
   return _lastTurnSplashPromise;
 }
 
+// New, more robust variant used by bridged callers and sync hooks
+export async function ensureTurnSplashVisible(maxRetries = 2, currentTurn = null) {
+  const isVisible = () => {
+    try {
+      const tb = document.getElementById('turn-banner');
+      return !!tb && (tb.classList.contains('flex') || tb.style.display === 'flex');
+    } catch { return false; }
+  };
+
+  if (typeof currentTurn === 'number' && _lastShownTurn >= currentTurn && !_forceNext) {
+    try {
+      const currentActive = (typeof window !== 'undefined' && window.gameState && typeof window.gameState.active === 'number')
+        ? window.gameState.active : null;
+      if (currentActive !== null && currentActive !== _lastActivePlayer) {
+        _forceNext = true;
+        _lastActivePlayer = currentActive;
+      }
+    } catch {}
+    if (!_forceNext) return Promise.resolve();
+  }
+
+  let tries = 0;
+  while (tries <= (maxRetries || 0)) {
+    tries += 1;
+    try { await requestTurnSplash(currentTurn); } catch {}
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    if (isVisible()) { _forceNext = false; return; }
+  }
+  console.error(`[BANNER] Failed to ensure turn splash visibility for turn ${currentTurn} after ${maxRetries + 1} tries`);
+}
+
 export async function forceTurnSplashWithRetry(maxRetries = 2, currentTurn = null) {
   // Более мягкая проверка: позволяем повторный показ если прошло время или изменился контекст
   if (typeof currentTurn === 'number' && _lastShownTurn >= currentTurn && !_forceNext) {
@@ -158,6 +189,6 @@ export function getState(){
   return { _splashActive, _lastRequestedTurn, _lastShownTurn };
 }
 
-const api = { showTurnSplash, queueTurnSplash, requestTurnSplash, forceTurnSplashWithRetry, getState };
+const api = { showTurnSplash, queueTurnSplash, requestTurnSplash, forceTurnSplashWithRetry, ensureTurnSplashVisible, getState };
 try { if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.banner = api; } } catch {}
 export default api;
