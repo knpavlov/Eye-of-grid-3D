@@ -409,11 +409,16 @@
     // Сколько последних добранных карт временно скрывать из моей руки (для красивой анимации влёта)
     let pendingDrawCount = 0;
     function isInputLocked() {
-      // Добавляем проверку состояния анимации заставки из модуля
-      const moduleSplashActive = (typeof window !== 'undefined' && window.__ui && window.__ui.banner) 
-        ? window.__ui.banner.getState()._splashActive : false;
-      return __endTurnInProgress || drawAnimationActive || splashActive || manaGainActive || moduleSplashActive;
-    }
+  const splash = (typeof window !== 'undefined' && window.__ui && window.__ui.banner)
+    ? !!window.__ui.banner.getState()._splashActive : false;
+  const mana = (typeof window !== 'undefined' && typeof window.manaGainActive === 'boolean')
+    ? !!window.manaGainActive : false;
+  const endTurn = (typeof window !== 'undefined' && typeof window.__endTurnInProgress === 'boolean')
+    ? !!window.__endTurnInProgress : !!__endTurnInProgress;
+  const draw = (typeof window !== 'undefined' && typeof window.drawAnimationActive === 'boolean')
+    ? !!window.drawAnimationActive : !!drawAnimationActive;
+  return endTurn || draw || splash || mana;
+}
     function refreshInputLockUI() {
       try {
         const endBtn = document.getElementById('end-turn-btn');
@@ -1251,6 +1256,7 @@
     
     function updateUI() {
       if (!gameState) return;
+      try { if (typeof window !== 'undefined' && window.manaGainActive) return; } catch {}
       
       // Защита от обновлений во время критических анимаций
       if (splashActive && typeof window !== 'undefined' && window.__ui && window.__ui.banner) {
@@ -4308,6 +4314,10 @@
 
 </body>
 </html>
+
+
+
+
 
 
 
