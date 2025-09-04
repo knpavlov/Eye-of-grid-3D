@@ -3453,14 +3453,11 @@
     btn.id = 'find-match-btn';
     btn.className = 'overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors';
     btn.textContent = 'Play Online';
-    const host = document.querySelector('#corner-right .flex') || document.getElementById('corner-right');
-    if (host) host.appendChild(btn);
-    else {
-      const wrap = document.getElementById('mp-floater') || (() => {
-        const d = document.createElement('div'); d.id='mp-floater'; d.className='mp-floater'; document.body.appendChild(d); return d;
-      })();
-      wrap.appendChild(btn);
-    }
+    // Prefer floating host with high z-index so the button is always visible
+    const wrap = document.getElementById('mp-floater') || (() => {
+      const d = document.createElement('div'); d.id='mp-floater'; d.className='mp-floater'; document.body.appendChild(d); return d;
+    })();
+    wrap.appendChild(btn);
     btn.addEventListener('click', onFindMatchClick);
   }
   mountOnlineButton();
@@ -4349,7 +4346,6 @@
 
 </body>
 </html>
-
 
 
 

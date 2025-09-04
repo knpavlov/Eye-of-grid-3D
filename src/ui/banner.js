@@ -75,8 +75,10 @@ export function queueTurnSplash(title){
 
 export async function requestTurnSplash(currentTurn){
   if (typeof currentTurn !== 'number') return _lastTurnSplashPromise;
+  // Skip if this exact turn is already shown
   if (_lastShownTurn >= currentTurn) return _lastTurnSplashPromise;
-  if (_lastRequestedTurn === currentTurn && !_splashInProgress) return _lastTurnSplashPromise;
+  // De-duplicate only while a splash for this turn is still in progress
+  if (_lastRequestedTurn === currentTurn && _splashInProgress) return _lastTurnSplashPromise;
   _lastRequestedTurn = currentTurn;
   let title = `Turn ${currentTurn}`;
   try {
