@@ -1,0 +1,21 @@
+    // Стартер: только Fire Set + несколько спеллов
+    let STARTER_FIRESET;
+    
+    // Функции игровой логики
+    let dirsForPattern;
+    
+    const computeCellBuff = (cellElement, unitElement) => {
+      if (cellElement === unitElement) return { atk: 0, hp: 2 };
+      if (cellElement === 'MECH') return { atk: 0, hp: 0 };
+      const opp = OPPOSITE_ELEMENT[unitElement];
+      if (cellElement === opp) return { atk: 0, hp: -2 };
+      return { atk: 0, hp: 0 };
+    };
+    
+    let effectiveStats;
+    
+    const randomBoard = () => {
+      // 5 элементов: FIRE, WATER, EARTH, FOREST, MECH
+      // Центр (1,1) = MECH. Остальные 8 клеток: из FIRE/WATER/EARTH/FOREST по 2 штуки каждого
+      const picks = ['FIRE','FIRE','WATER','WATER','EARTH','EARTH','FOREST','FOREST'];
+      // Перемешаем и разложим по клеткам, пропуская центр

@@ -1833,6 +1833,20 @@
       } catch {}
       gameState.active = gameState.active === 0 ? 1 : 0;
       gameState.turn += 1;
+
+      // Show start-of-turn splash reliably in offline mode before mana/draw
+      try {
+        if (window.__ui && window.__ui.banner) {
+          const b = window.__ui.banner;
+          if (typeof b.ensureTurnSplashVisible === 'function') {
+            await b.ensureTurnSplashVisible(3, gameState.turn);
+          } else if (typeof b.forceTurnSplashWithRetry === 'function') {
+            await b.forceTurnSplashWithRetry(3, gameState.turn);
+          }
+        } else if (typeof forceTurnSplashWithRetry === 'function') {
+          await forceTurnSplashWithRetry(3);
+        }
+      } catch {}
       
       const player = gameState.players[gameState.active];
       const before = player.mana;
@@ -3778,6 +3792,22 @@
         const isNewTurn = (typeof state.turn === 'number') && (state.turn > ((prev && typeof prev.turn === 'number') ? prev.turn : (__lastTurnSeen || 0)));
         if (isNewTurn) {
           console.log(`[NETWORK] Processing new turn ${state.turn} (prev: ${prev?.turn || 'none'})`);
+          
+          // Ensure turn splash is visible (robust, idempotent)
+          try {
+            if (window.__ui && window.__ui.banner) {
+              const b = window.__ui.banner;
+              if (typeof b.ensureTurnSplashVisible === 'function') {
+                await b.ensureTurnSplashVisible(3, state.turn);
+              } else if (typeof b.forceTurnSplashWithRetry === 'function') {
+                await b.forceTurnSplashWithRetry(3, state.turn);
+              }
+            } else if (typeof forceTurnSplashWithRetry === 'function') {
+              await forceTurnSplashWithRetry(3);
+            }
+          } catch (e) {
+            console.error('[NETWORK] Turn splash failed:', e);
+          }
           
           // 1. Показываем заставку хода (если еще не показывали этот ход)
           if (lastSplashTurnShown < state.turn) {

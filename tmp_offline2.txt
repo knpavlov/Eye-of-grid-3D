@@ -1,0 +1,32 @@
+      window.__turnTimerId = setInterval(() => {
+        if (typeof window.__turnTimerSeconds !== 'number') window.__turnTimerSeconds = 100;
+        if (window.__turnTimerSeconds > 0) window.__turnTimerSeconds -= 1;
+        try {
+          const btn = document.getElementById('end-turn-btn');
+          if (btn) {
+            const fill = btn.querySelector('.time-fill');
+            const txt = btn.querySelector('.sec-text');
+            const s = Math.max(0, Math.min(100, window.__turnTimerSeconds));
+            if (txt) txt.textContent = `${s}`;
+            const percent = s / 100;
+            if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
+            if (s <= 10) { btn.classList.add('urgent'); } else { btn.classList.remove('urgent'); }
+          }
+        } catch {}
+      }, 1000);
+      // Ёффектна€ анимаци€ маны: показываем у обоих игроков, но дл€ активного Ч анимируем его панель
+      try { if (window.__turnTimerId) { clearInterval(window.__turnTimerId); window.__turnTimerId = null; } } catch {}
+      try {
+        if (window.__ui && window.__ui.turnTimer) {
+          const tt = window.__ui.turnTimer.attach('end-turn-btn');
+          const online = (typeof NET_ON === 'function') ? NET_ON() : !!(typeof NET_ACTIVE !== 'undefined' && NET_ACTIVE);
+          if (online) { tt.stop(); } else { tt.reset(100).start(); }
+        }
+      } catch {}
+      try { 
+        // »спользуем модульную функцию с интегрированной анимацией блесток
+        if (window.__ui && window.__ui.mana && typeof window.__ui.mana.animateTurnManaGain === 'function') {
+          await window.__ui.mana.animateTurnManaGain(gameState.active, before, manaAfter, 1500);
+        } else {
+          console.warn('Module mana animation not available, skipping');
+        }
