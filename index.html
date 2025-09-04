@@ -1839,6 +1839,8 @@
           PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = { ownerIndex: gameState.active, startIdx: Math.max(0, Math.min(9, before)), endIdx: Math.max(-1, Math.min(9, manaAfter - 1)) }; 
         }
       } catch {}
+      // Clamp UI to beforeMana until animation completes
+      try { if (typeof window !== 'undefined' && window.gameState && window.gameState.players && window.gameState.players[gameState.active]) { window.gameState.players[gameState.active]._beforeMana = before; } } catch {}
       let shouldAnimateDraw = false;
       try {
         const amIActiveNow = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number')
@@ -3666,7 +3668,7 @@
     try {
       const incomingVer = Number(state.__ver) || 0;
       const currentVer = Number(gameState && gameState.__ver) || 0;
-      if (incomingVer <= currentVer) {
+      if (incomingVer <= currentVer && !((Number(state?.turn||0)) > (Number(gameState?.turn||0)))) {
         // проигнорируем устаревший снапшот
         return;
       }
@@ -3738,6 +3740,7 @@
           // Только устанавливаем PENDING_MANA_ANIM если нет текущей анимации маны
           if (!PENDING_MANA_ANIM && !manaGainActive) {
             PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = { ownerIndex: ownerEarly, startIdx: Math.max(0, Math.min(9, beforeMEarly)), endIdx: Math.max(-1, Math.min(9, afterMEarly - 1)) };
+            try { if (typeof window !== 'undefined' && window.gameState && window.gameState.players && window.gameState.players[ownerEarly]) { window.gameState.players[ownerEarly]._beforeMana = beforeMEarly; } } catch {}
           }
         }
       } catch {}
@@ -3762,7 +3765,7 @@
       // 1) Заставка хода с корректным заголовком, 2) Анимация маны, 3) Добор
       // Упрощенная и надежная система обработки нового хода
       try {
-        const isNewTurn = (prev && typeof prev.turn === 'number') ? (typeof state.turn === 'number' && state.turn > prev.turn) : __hadNewTurn;
+        const isNewTurn = (typeof state.turn === 'number') && (state.turn > ((prev && typeof prev.turn === 'number') ? prev.turn : (__lastTurnSeen || 0)));
         if (isNewTurn) {
           console.log(`[NETWORK] Processing new turn ${state.turn} (prev: ${prev?.turn || 'none'})`);
           
@@ -3874,8 +3877,7 @@
     } catch {}
     updateIndicator();
     updateInputLock();
-    // Ensure UI reflects the new turn immediately and try showing splash reliably
-    try { if (typeof updateUI === 'function') updateUI(); } catch {}
+    // Show splash reliably; state event will drive full UI/mana sync
     try { if (typeof forceTurnSplashWithRetry === 'function') forceTurnSplashWithRetry(2); } catch {}
   });
 

@@ -1,0 +1,82 @@
+      const player = gameState.players[gameState.active];
+      const before = player.mana;
+      const manaAfter = capMana(before + 2);
+      // Карта для анимации: извлекаем
+      const drawnTpl = drawOneNoAdd(gameState, gameState.active);
+      
+      // ВАЖНО: НЕ применяем ману к gameState до анимации - это предотвратит появление орбов до вспышки
+      // Заблокировать преждевременное появление новых орбов до анимации вспышки
+      try { 
+        if (!PENDING_MANA_ANIM && !manaGainActive) {
+          PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = { ownerIndex: gameState.active, startIdx: Math.max(0, Math.min(9, before)), endIdx: Math.max(-1, Math.min(9, manaAfter - 1)) }; 
+        }
+      } catch {}
+      let shouldAnimateDraw = false;
+      try {
+        const amIActiveNow = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number')
+          ? (window.MY_SEAT === gameState.active)
+          : true;
+        shouldAnimateDraw = !!(amIActiveNow && drawnTpl);
+        if (!shouldAnimateDraw && drawnTpl) {
+          // Если это не наш клиент — добавим карту сразу (без анимации)
+          try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}
+        }
+      } catch {}
+      updateHand();
+      // Offline: locally apply state, online path returned earlier
+      try { schedulePush('endTurn-apply', { force: true }); } catch {}
+      
+      resetCardSelection();
+      
+      updateHand();
+      updateUnits();
+      // updateUI выполнится вместе с анимацией маны (после заставки)
+      // Показ заставки хода: строго блокирующе (визуальная последовательность)
+      try { await forceTurnSplashWithRetry(2, gameState?.turn); } catch {}
+      // Перезапустить таймер хода на 100 сек после заставки (анимация таймера локально у обоих)
+      try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
+      window.__turnTimerSeconds = 100;
+      (function syncBtn(){ try {
+        const btn = document.getElementById('end-turn-btn');
+        if (btn) {
+      const player = gameState.players[gameState.active];
+      
+      if (cardData.cost > player.mana) {
+        showNotification('Insufficient mana!', 'error');
+        returnCardToHand(card);
+        hideOrientationPanel();
+        return;
+      }
+      
+      const unit = {
+        uid: uid(),
+        owner: gameState.active,
+        tplId: cardData.id,
+        currentHP: cardData.hp,
+        facing: direction
+      };
+      
+      gameState.board[row][col].unit = unit;
+      
+      player.mana -= cardData.cost;
+      player.discard.push(cardData);
+      player.hand.splice(handIndex, 1);
+      
+      const cellElement = gameState.board[row][col].element;
+      const buff = computeCellBuff(cellElement, cardData.element);
+      if (buff.hp !== 0) {
+        const before = unit.currentHP;
+        unit.currentHP = Math.max(0, unit.currentHP + buff.hp);
+        if (buff.hp > 0) {
+          addLog(`Элемент усиливает ${cardData.name}: HP ${before}>${unit.currentHP}`);
+        } else {
+          addLog(`Элемент ослабляет ${cardData.name}: HP ${before}>${unit.currentHP}`);
+        }
+      }
+      
+      if (unit.currentHP <= 0) {
+        addLog(`${cardData.name} погибает от неблагоприятной стихии!`);
+        const owner = unit.owner;
+        // анимация возврата маны + учёт кладбища
+        try { gameState.players[owner].graveyard.push(CARDS[unit.tplId]); } catch {}
+        const pos = tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));

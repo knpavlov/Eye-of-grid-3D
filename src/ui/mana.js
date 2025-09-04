@@ -34,7 +34,7 @@ export function renderBars(gameState) {
       displayMana = beforeMana; // Показываем старое значение во время анимации
     }
     
-    const blockAdjusted = Math.max(0, displayMana - block);
+    const blockAdjusted = Math.max(0, displayMana - Math.min(block, displayMana));
     const renderManaBase = pending ? Math.min(blockAdjusted, Math.max(0, pending.startIdx)) : blockAdjusted;
     const renderMana = Math.max(0, Math.min(total, renderManaBase));
     
@@ -90,8 +90,13 @@ export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true) {
     let targetIdx;
     if (visualOnly) {
       // Показываем визуально в следующем свободном слоте, учитывая существующие блокировки
-      const visibleMana = Math.max(0, currentMana - currentBlocks);
-      targetIdx = Math.min(9, visibleMana);
+      try {
+        const filledNow = Array.from(barEl.children).filter(el => el && el.classList && el.classList.contains('mana-orb')).length;
+        targetIdx = Math.min(9, Math.max(0, filledNow));
+      } catch {
+        const visibleMana = Math.max(0, currentMana - currentBlocks);
+        targetIdx = Math.min(9, visibleMana);
+      }
     } else {
       // Состояние уже обновлено, целимся в последний заполненный орб
       targetIdx = Math.max(0, Math.min(9, currentMana - 1));
