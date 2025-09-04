@@ -91,24 +91,33 @@ export async function requestTurnSplash(currentTurn){
 export async function forceTurnSplashWithRetry(maxRetries = 2, currentTurn = null) {
   // Проверяем, не показали ли мы уже этот ход
   if (typeof currentTurn === 'number' && _lastShownTurn >= currentTurn) {
+    console.log(`[BANNER] Turn ${currentTurn} already shown (last: ${_lastShownTurn}), skipping`);
     return Promise.resolve();
   }
   
+  console.log(`[BANNER] Attempting to show turn splash for turn ${currentTurn}, tries: ${maxRetries}`);
   let tries = 0; let shown = false;
   while (tries <= maxRetries && !shown) {
     tries += 1;
+    console.log(`[BANNER] Attempt ${tries}/${maxRetries + 1} for turn ${currentTurn}`);
     try { 
       await requestTurnSplash(currentTurn); 
       shown = true; // Если requestTurnSplash завершился успешно, считаем что показали
-    } catch {
+      console.log(`[BANNER] Successfully showed turn splash for turn ${currentTurn}`);
+    } catch (e) {
+      console.warn(`[BANNER] Attempt ${tries} failed:`, e);
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       try {
         const tb = document.getElementById('turn-banner');
         shown = !!tb && (tb.classList.contains('flex') || tb.style.display === 'flex');
+        if (shown) console.log(`[BANNER] Turn splash detected as visible on attempt ${tries}`);
       } catch { shown = false; }
     }
   }
-  // Убираем setTimeout - он может прервать следующую заставку
+  
+  if (!shown) {
+    console.error(`[BANNER] Failed to show turn splash for turn ${currentTurn} after ${maxRetries + 1} attempts`);
+  }
 }
 
 export function getState(){

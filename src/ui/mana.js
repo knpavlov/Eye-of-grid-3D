@@ -105,48 +105,145 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
         return;
       }
       
-      let manaGainActive = true;
+      // Устанавливаем флаги активности
       try { if (typeof window !== 'undefined') window.manaGainActive = true; } catch {}
       try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
+      
+      // Готовим панель: блокируем раннее появление новых орбов и пересобираем UI
       const startIdx = Math.max(0, Math.min(9, beforeMana));
       const endIdx = Math.max(-1, Math.min(9, afterMana - 1));
       setAnim({ ownerIndex, startIdx, endIdx });
       try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+      
       const bar = document.getElementById(`mana-display-${ownerIndex}`);
-      if (!bar) { setAnim(null); resolve(); return; }
-      const indices = []; for (let i = startIdx; i <= endIdx; i++) indices.push(i);
-      const sparks = [];
-      const cleanup = () => {
-        for (const s of sparks) { try { if (s.parentNode) s.parentNode.removeChild(s); } catch {} }
-        setAnim(null); manaGainActive = false;
+      if (!bar) {
         try { if (typeof window !== 'undefined') window.manaGainActive = false; } catch {}
         try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
-        // Ensure final mana state is rendered after animation completes
-        try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
-        resolve(); // Всегда вызываем resolve в cleanup
-      };
-      const rect = bar.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2; const cy = rect.top + rect.height / 2;
-      const tl = (typeof window !== 'undefined') ? window.gsap?.timeline?.({ onComplete: cleanup }) : null;
-      if (tl) {
-        const startIdx2 = startIdx, endIdx2 = endIdx;
-        for (let i = 0; i < indices.length; i++) {
-          const idx = indices[i];
-          const el = bar.children[idx] || bar;
-          const r = el.getBoundingClientRect(); const tx = r.left + r.width/2; const ty = r.top + r.height/2;
-          const sp = document.createElement('div'); sp.className = 'mana-orb';
-          sp.style.position = 'fixed'; sp.style.left = cx+'px'; sp.style.top = cy+'px'; sp.style.opacity = '0'; sp.style.transform = 'translate(-50%, -50%) scale(0.6)'; sp.style.zIndex = '60';
-          document.body.appendChild(sp); sparks.push(sp);
-          const dist = Math.max(12, Math.hypot(tx - cx, ty - cy));
-          const angle = Math.atan2(ty - cy, tx - cx);
-          const dx = Math.cos(angle) * dist; const dy = Math.sin(angle) * dist;
-          const t0 = (idx - startIdx2) * 0.056;
-          tl.fromTo(sp, { x: 0, y: 0, opacity: 0, scale: 0.6 }, { x: dx, y: dy, opacity: 1, scale: 1.2, duration: 0.154, ease: 'power2.out' }, t0)
-            .to(sp, { opacity: 0, scale: 0.3, duration: 0.35, ease: 'power1.in', delay: 0.105 }, `>-0.1`);
+        resolve();
+        return;
+      }
+      
+      const indices = [];
+      for (let i = startIdx; i <= endIdx; i++) indices.push(i);
+      const sparks = [];
+      
+      const cleanup = () => {
+        // Убираем все блестки
+        for (const s of sparks) { 
+          try { if (s.parentNode) s.parentNode.removeChild(s); } catch {} 
         }
-        tl.to({}, { duration: Math.max(0, (durationMs/1000) - tl.duration()) });
-      } else { cleanup(); resolve(); }
-    } catch { resolve(); }
+        // Сбрасываем флаги и состояние
+        try { if (typeof window !== 'undefined') window.manaGainActive = false; } catch {}
+        try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
+        setAnim(null);
+        try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+        resolve();
+      };
+      
+      // Если нет новых орбов - просто вспышка на панели
+      if (indices.length === 0) {
+        const tl = (typeof window !== 'undefined') ? window.gsap?.timeline?.({ onComplete: cleanup }) : null;
+        if (tl) {
+          tl.to(bar, { filter: 'brightness(2.1) drop-shadow(0 0 16px rgba(96,165,250,0.95))', duration: 0.154, ease: 'power2.out' })
+            .to(bar, { filter: 'none', duration: 0.42, ease: 'power2.inOut' })
+            .to({}, { duration: Math.max(0, (durationMs/1000) - 0.574) });
+        } else {
+          setTimeout(cleanup, durationMs);
+        }
+        return;
+      }
+      
+      // Красивая анимация с вспышками и блестками для каждого нового орба
+      const tl = (typeof window !== 'undefined') ? window.gsap?.timeline?.({ onComplete: cleanup }) : null;
+      if (!tl) {
+        setTimeout(cleanup, durationMs);
+        return;
+      }
+      
+      for (const idx of indices) {
+        const el = bar.children[idx]; 
+        if (!el) continue;
+        
+        // Подготавливаем элемент для анимации
+        el.style.willChange = 'transform, box-shadow, filter, opacity';
+        el.style.transformOrigin = '50% 50%';
+        
+        // На старте убеждаемся что элемент существует как пустая ячейка, затем превращаем в орб + вспышка
+        tl.call(() => { 
+          try { 
+            if (el.className !== 'mana-orb') {
+              el.className = 'mana-orb'; 
+              el.style.opacity = '1'; 
+            }
+          } catch {} 
+        }, null, 0)
+          // Анимация масштабирования и свечения орба
+          .to(el, { 
+            duration: 0.196, 
+            ease: 'back.out(2.2)', 
+            onStart: () => { 
+              el.style.boxShadow = '0 0 22px rgba(96,165,250,0.95), 0 0 44px rgba(56,189,248,0.85)'; 
+            }, 
+            onComplete: () => { 
+              el.style.boxShadow = '0 0 12px rgba(30,160,255,0.85)'; 
+            } 
+          }, 0)
+          .to(el, { scale: 2.5, duration: 0.196, ease: 'back.out(2.2)' }, 0)
+          .to(el, { scale: 1.0, duration: 0.42, ease: 'power2.inOut' }, 0.196);
+        
+        // Создаем блестки вокруг каждого орба
+        const rect = el.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const sparkCount = 16; // 16 блесток на каждый орб
+        
+        for (let i = 0; i < sparkCount; i++) {
+          const spark = document.createElement('div');
+          spark.style.position = 'fixed';
+          spark.style.left = `${centerX}px`;
+          spark.style.top = `${centerY}px`;
+          spark.style.width = '4px'; 
+          spark.style.height = '4px';
+          spark.style.borderRadius = '50%';
+          spark.style.pointerEvents = 'none';
+          spark.style.background = 'radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(125,211,252,1) 60%, rgba(14,165,233,0.8) 100%)';
+          spark.style.boxShadow = '0 0 10px rgba(59,130,246,0.95)';
+          spark.style.opacity = '0';
+          spark.style.zIndex = '70';
+          document.body.appendChild(spark);
+          sparks.push(spark);
+          
+          // Случайный угол и расстояние для блестки
+          const angle = (Math.PI * 2) * (i / sparkCount) + Math.random() * 0.8;
+          const dist = 40 + Math.random() * 40;
+          const dx = Math.cos(angle) * dist;
+          const dy = Math.sin(angle) * dist;
+          const t0 = (idx - startIdx) * 0.056;
+          
+          // Анимация блестки: появление -> разлет -> исчезновение
+          tl.fromTo(spark, 
+            { x: 0, y: 0, opacity: 0, scale: 0.6 }, 
+            { x: dx, y: dy, opacity: 1, scale: 1.2, duration: 0.154, ease: 'power2.out' }, 
+            t0)
+            .to(spark, { 
+              opacity: 0, 
+              scale: 0.3, 
+              duration: 0.35, 
+              ease: 'power1.in', 
+              delay: 0.105 
+            }, `>-0.1`);
+        }
+      }
+      
+      // Добавляем паузу если анимация короче требуемой длительности
+      tl.to({}, { duration: Math.max(0, (durationMs/1000) - tl.duration()) });
+      
+    } catch (e) {
+      console.error('Error in animateTurnManaGain:', e);
+      try { if (typeof window !== 'undefined') window.manaGainActive = false; } catch {}
+      try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
+      resolve();
+    }
   });
 }
 
