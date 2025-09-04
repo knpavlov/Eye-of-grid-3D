@@ -26,7 +26,10 @@ export function renderBars(gameState) {
     const pending = (anim && anim.ownerIndex === p) ? anim : null;
     const block = Math.max(0, Number(getBlocks()?.[p]) || 0);
     
-    // Always rebuild to allow clamping during pending animation
+    // If this bar is currently animating, avoid rebuilding during animation
+    if (getManaGainActive() && pending) {
+      continue;
+    }
     
     // Если идет анимация получения маны в начале хода и есть _beforeMana, используем его
     let displayMana = currentMana;

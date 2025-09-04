@@ -24,10 +24,8 @@ export function attachSocketUIRefresh() {
         console.log('[SYNC] Turn switched event received');
         try { if (typeof window.updateIndicator === 'function') window.updateIndicator(); } catch {}
         try { if (typeof window.updateInputLock === 'function') window.updateInputLock(); } catch {}
-        
-        // Force UI update first to sync mana displays
-        try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
-        
+        // Do not force a full UI update here; wait for authoritative state
+        // This prevents early +2 mana from popping in before turn animation seeds.
         // Then handle turn splash with retry mechanism
         try {
           const turn = (typeof window !== 'undefined' && window.gameState && typeof window.gameState.turn === 'number') ? window.gameState.turn : null;
