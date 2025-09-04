@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import http from "http";
 import cors from "cors";
 import { Server } from "socket.io";
@@ -160,21 +160,17 @@ io.on("connection", (socket) => {
       if (incomingVer < lastVer) return;
       m.lastVer = incomingVer;
     } catch {}
-    const prevActive = m.lastState?.active;
-    m.lastState = state ?? m.lastState;
-    // Если активный игрок сменился — сбрасываем таймер
-    try {
-      if (typeof prevActive === 'number' && typeof m.lastState?.active === 'number' && prevActive !== m.lastState.active) {
-        m.timerSeconds = 100;
-        io.to(m.room).emit('turnTimer', { seconds: m.timerSeconds, activeSeat: m.lastState.active });
-        io.to(m.room).emit('turnSwitched', { activeSeat: m.lastState.active });
-      }
-    } catch {}
+    // Accept client state but keep server-authoritative turn/active
+    const incoming = state ?? m.lastState;
+    const keptActive = m.lastState?.active;
+    const keptTurn = m.lastState?.turn;
+    m.lastState = { ...incoming, active: keptActive, turn: keptTurn };
+    // Emit authoritative state only; turn changes happen via 'endTurn'
+    // Emit authoritative state only; turn changes happen via endTurn
     io.to(m.room).emit("state", m.lastState);
+  // Authoritative end-turn for online: server advances turn, adds mana, draws a card
     pushLog({ ev: 'pushState:applied', sid: socket.id, matchId, reason: reason || '', ver: m.lastVer, active: m.lastState?.active, turn: m.lastState?.turn });
   });
-
-  // Authoritative end-turn for online: server advances turn, adds mana, draws a card
   socket.on("endTurn", () => {
     const matchId = socket.data.matchId;
     if (!matchId || !matches.has(matchId)) return;
@@ -224,10 +220,11 @@ io.on("connection", (socket) => {
     m.lastState = st;
 
     // Reset timer and notify
+    // Reset timer and notify (emit state first)
     try { m.timerSeconds = 100; } catch {}
+    try { io.to(m.room).emit("state", st); } catch {}
     try { io.to(m.room).emit('turnTimer', { seconds: m.timerSeconds, activeSeat: st.active }); } catch {}
     try { io.to(m.room).emit('turnSwitched', { activeSeat: st.active }); } catch {}
-    try { io.to(m.room).emit('state', st); } catch {}
     pushLog({ ev: 'endTurn:applied', matchId, bySeat: socket.data.seat, prevActive, active: st.active, turn: st.turn, ver: m.lastVer, manaNewActive: st.players?.[st.active]?.mana });
   });
 
@@ -389,3 +386,5 @@ app.get("/build", (req, res) => {
 });
 
 server.listen(PORT, () => console.log("MP server on", PORT));
+
+

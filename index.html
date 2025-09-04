@@ -3665,6 +3665,33 @@
       gameState = state;
       try { window.gameState = state; } catch {}
       lastDigest = digest(state);
+      // Immediately reflect active seat and mana bars before any animations
+      try {
+        if (window.__ui && window.__ui.mana && typeof window.__ui.mana.renderBars === 'function') {
+          window.__ui.mana.renderBars(gameState);
+        }
+      } catch {}
+      try {
+        const leftSide = document.getElementById('left-side');
+        const rightSide = document.getElementById('right-side');
+        const t0 = document.getElementById('player-title-0');
+        const t1 = document.getElementById('player-title-1');
+        if (leftSide && rightSide && t0 && t1 && typeof gameState.active === 'number') {
+          leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
+          rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
+          t0.classList.remove('title-pulse');
+          t1.classList.remove('title-pulse');
+          if (gameState.active === 0) {
+            leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
+            t0.classList.add('title-pulse');
+          } else {
+            rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
+            t1.classList.add('title-pulse');
+          }
+        }
+      } catch {}
+      try { updateIndicator(); } catch {}
+      try { updateInputLock(); } catch {}
       // Сначала переcоберём доску/мета-объекты, затем юниты и UI (исправляет мерцание рамок)
       try{ createBoard && createBoard(); }catch{}
       try{ createMetaObjects && createMetaObjects(); }catch{}
@@ -3816,9 +3843,27 @@
         gameState.active = activeSeat;
       }
     } catch {}
+    try {
+      const leftSide = document.getElementById('left-side');
+      const rightSide = document.getElementById('right-side');
+      const t0 = document.getElementById('player-title-0');
+      const t1 = document.getElementById('player-title-1');
+      if (leftSide && rightSide && t0 && t1 && typeof gameState.active === 'number') {
+        leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
+        rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
+        t0.classList.remove('title-pulse');
+        t1.classList.remove('title-pulse');
+        if (gameState.active === 0) {
+          leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
+          t0.classList.add('title-pulse');
+        } else {
+          rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
+          t1.classList.add('title-pulse');
+        }
+      }
+    } catch {}
     updateIndicator();
     updateInputLock();
-    // Заставка хода будет показана при получении нового состояния (с правильным заголовком)
   });
 
   // ===== 9) Battle animation sync =====
@@ -4312,6 +4357,8 @@
 
 </body>
 </html>
+
+
 
 
 
