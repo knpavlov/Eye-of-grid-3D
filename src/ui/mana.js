@@ -83,30 +83,26 @@ export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true) {
     const barEl = document.getElementById(`mana-display-${ownerIndex}`);
     if (!barEl) return;
     const gameState = (typeof window !== 'undefined') ? window.gameState : null;
-    
-    // Более точное вычисление целевого индекса с учетом блокировок и текущего состояния
-    let currentMana = Math.max(0, (gameState?.players?.[ownerIndex]?.mana) || 0);
-    const currentBlocks = Math.max(0, Number(getBlocks()?.[ownerIndex]) || 0);
-    
-    // Исправление: для visualOnly анимации нужно учесть уже запланированные блокировки
-    // и лететь в правильную позицию с учетом реального количества орбов на экране
+
+    // Текущее количество заблокированных орбов (для уже идущих анимаций)
+    let currentBlocks = Math.max(0, Number(getBlocks()?.[ownerIndex]) || 0);
+    const existingOrbs = barEl.querySelectorAll('.mana-orb').length;
     let targetIdx;
+
     if (visualOnly) {
-      // Показываем визуально в следующем свободном слоте, учитывая существующие блокировки
-      const visibleMana = Math.max(0, currentMana - currentBlocks);
-      targetIdx = Math.min(9, visibleMana);
-    } else {
-      // Состояние уже обновлено, целимся в последний заполненный орб
-      targetIdx = Math.max(0, Math.min(9, currentMana - 1));
-    }
-    
-    console.log(`[MANA] Animation for player ${ownerIndex}: currentMana=${currentMana}, blocks=${currentBlocks}, targetIdx=${targetIdx}, visualOnly=${visualOnly}`);
-    
-    if (visualOnly && typeof ownerIndex === 'number') {
-      const b = getBlocks(); 
-      b[ownerIndex] = Math.max(0, (b[ownerIndex] || 0) + 1); 
+      // Орб летит в следующую свободную ячейку относительно уже видимых орбов + блокировок
+      targetIdx = Math.min(9, existingOrbs + currentBlocks);
+      console.log(`[MANA] Animation for player ${ownerIndex}: visibleOrbs=${existingOrbs}, blocks=${currentBlocks}, targetIdx=${targetIdx}, visualOnly=${visualOnly}`);
+
+      // Увеличиваем блокировку до завершения полёта, чтобы UI не показал орб раньше времени
+      const b = getBlocks();
+      b[ownerIndex] = Math.max(0, currentBlocks + 1);
       setBlocks(b);
       try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+    } else {
+      const currentMana = Math.max(0, (gameState?.players?.[ownerIndex]?.mana) || 0);
+      targetIdx = Math.max(0, Math.min(9, currentMana - 1));
+      console.log(`[MANA] Animation for player ${ownerIndex}: currentMana=${currentMana}, blocks=${currentBlocks}, targetIdx=${targetIdx}, visualOnly=${visualOnly}`);
     }
     // Дополнительная защита: убедимся что DOM готов и элемент существует
     let child = barEl.children && barEl.children[targetIdx];

@@ -20,26 +20,40 @@ export function attachSocketUIRefresh() {
       };
       
       // Enhanced turn switch handler with better state sync
-      const onTurnSwitched = () => {
+      const onTurnSwitched = ({ activeSeat } = {}) => {
         console.log('[SYNC] Turn switched event received');
+
+        // Update local active seat if provided
+        try {
+          if (typeof activeSeat === 'number') {
+            if (!window.gameState) window.gameState = {};
+            window.gameState.active = activeSeat;
+          }
+        } catch {}
+
+        // Refresh basic indicators immediately
         try { if (typeof window.updateIndicator === 'function') window.updateIndicator(); } catch {}
         try { if (typeof window.updateInputLock === 'function') window.updateInputLock(); } catch {}
-        
-        // Force UI update first to sync mana displays
-        try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
-        
-        // Then handle turn splash with retry mechanism
-        try {
-          const turn = (typeof window !== 'undefined' && window.gameState && typeof window.gameState.turn === 'number') ? window.gameState.turn : null;
-          if (turn && window.__ui && window.__ui.banner && typeof window.__ui.banner.forceTurnSplashWithRetry === 'function') {
-            // Use retry mechanism for better reliability
-            window.__ui.banner.forceTurnSplashWithRetry(2, turn).catch(e => {
-              console.warn('[SYNC] Failed to show turn splash:', e);
-            });
+
+        // Ask server for the latest state so observers get mana/turn immediately
+        try { if (sock && typeof sock.emit === 'function') sock.emit('requestState'); } catch {}
+
+        // Defer full UI refresh and banner until state is applied
+        setTimeout(() => {
+          try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+          try {
+            const turn = (typeof window !== 'undefined' && window.gameState && typeof window.gameState.turn === 'number')
+              ? window.gameState.turn
+              : null;
+            if (turn && window.__ui && window.__ui.banner && typeof window.__ui.banner.forceTurnSplashWithRetry === 'function') {
+              window.__ui.banner.forceTurnSplashWithRetry(2, turn).catch(e => {
+                console.warn('[SYNC] Failed to show turn splash:', e);
+              });
+            }
+          } catch (e) {
+            console.warn('[SYNC] Error in turn splash handling:', e);
           }
-        } catch (e) {
-          console.warn('[SYNC] Error in turn splash handling:', e);
-        }
+        }, 60);
       };
       
       // Additional handler for general state sync (e.g., when gameState changes)
