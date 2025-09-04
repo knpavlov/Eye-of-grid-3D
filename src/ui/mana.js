@@ -20,15 +20,23 @@ export function renderBars(gameState) {
     const blockAdjusted = Math.max(0, currentMana - block);
     const renderManaBase = pending ? Math.min(blockAdjusted, Math.max(0, pending.startIdx)) : blockAdjusted;
     const renderMana = Math.max(0, Math.min(total, renderManaBase));
+    
+    // Сохраняем текущие видимые орбы, чтобы избежать мерцания
+    const existingOrbs = Array.from(manaDisplay.querySelectorAll('.mana-orb, .mana-slot'));
+    
     manaDisplay.innerHTML = '';
     for (let i = 0; i < total; i++) {
       const orb = document.createElement('div');
       const filled = i < renderMana;
       const isBlockedForAnim = !!(pending && i >= pending.startIdx && i <= pending.endIdx);
       orb.className = filled ? 'mana-orb' : 'mana-slot';
-      orb.style.opacity = filled ? '0' : '1';
+      
+      // Избегаем мерцания: если орб уже был видим, начинаем с opacity: 1
+      const wasVisible = existingOrbs[i] && existingOrbs[i].classList.contains('mana-orb');
+      orb.style.opacity = (filled && wasVisible) ? '1' : (filled ? '0' : '1');
+      
       manaDisplay.appendChild(orb);
-      if (filled && !isBlockedForAnim) {
+      if (filled && !isBlockedForAnim && !wasVisible) {
         const delay = 0.06 * Math.max(0, i - prev);
         setTimeout(()=>{
           try {
@@ -90,6 +98,13 @@ export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true) {
 export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationMs = 1500) {
   return new Promise(resolve => {
     try {
+      // Проверяем, не идет ли уже анимация
+      if (typeof window !== 'undefined' && window.manaGainActive) {
+        console.warn('Mana animation already in progress, skipping');
+        resolve();
+        return;
+      }
+      
       let manaGainActive = true;
       try { if (typeof window !== 'undefined') window.manaGainActive = true; } catch {}
       try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
@@ -108,10 +123,11 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
         try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
         // Ensure final mana state is rendered after animation completes
         try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+        resolve(); // Всегда вызываем resolve в cleanup
       };
       const rect = bar.getBoundingClientRect();
       const cx = rect.left + rect.width / 2; const cy = rect.top + rect.height / 2;
-      const tl = (typeof window !== 'undefined') ? window.gsap?.timeline?.({ onComplete: ()=>{ cleanup(); resolve(); }}) : null;
+      const tl = (typeof window !== 'undefined') ? window.gsap?.timeline?.({ onComplete: cleanup }) : null;
       if (tl) {
         const startIdx2 = startIdx, endIdx2 = endIdx;
         for (let i = 0; i < indices.length; i++) {

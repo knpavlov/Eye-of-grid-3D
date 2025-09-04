@@ -409,7 +409,10 @@
     // Сколько последних добранных карт временно скрывать из моей руки (для красивой анимации влёта)
     let pendingDrawCount = 0;
     function isInputLocked() {
-      return __endTurnInProgress || drawAnimationActive || splashActive || manaGainActive;
+      // Добавляем проверку состояния анимации заставки из модуля
+      const moduleSplashActive = (typeof window !== 'undefined' && window.__ui && window.__ui.banner) 
+        ? window.__ui.banner.getState()._splashActive : false;
+      return __endTurnInProgress || drawAnimationActive || splashActive || manaGainActive || moduleSplashActive;
     }
     function refreshInputLockUI() {
       try {
@@ -1318,6 +1321,16 @@
     function updateUI() {
       if (!gameState) return;
       
+      // Защита от обновлений во время критических анимаций
+      if (splashActive && typeof window !== 'undefined' && window.__ui && window.__ui.banner) {
+        const bannerState = window.__ui.banner.getState();
+        if (bannerState._splashActive) {
+          // Отложим обновление UI до завершения заставки
+          setTimeout(() => updateUI(), 100);
+          return;
+        }
+      }
+      
       document.getElementById('turn-info').textContent = `Ход: ${gameState.turn}`;
       // Обновить числовой текст таймера в круглой кнопке и высоту заполнения
       try {
@@ -1334,24 +1347,31 @@
           }
         }
       } catch {}
-      // Выделение активного игрока
+      // Выделение активного игрока - с гарантией обновления
       try {
         const leftSide = document.getElementById('left-side');
         const rightSide = document.getElementById('right-side');
         const t0 = document.getElementById('player-title-0');
         const t1 = document.getElementById('player-title-1');
         if (leftSide && rightSide && t0 && t1) {
+          // Сначала убираем все подсветки
+          leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
+          rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
+          t0.classList.remove('title-pulse');
+          t1.classList.remove('title-pulse');
+          
+          // Затем добавляем подсветку активному игроку
           if (gameState.active === 0) {
-            // Подсвечиваем обе панели (мана и контроль) у активного
-            leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
-            rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
-            t0.classList.add('title-pulse');
-            t1.classList.remove('title-pulse');
+            // Force reflow для гарантии применения изменений
+            requestAnimationFrame(() => {
+              leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
+              t0.classList.add('title-pulse');
+            });
           } else {
-            rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
-            leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
-            t1.classList.add('title-pulse');
-            t0.classList.remove('title-pulse');
+            requestAnimationFrame(() => {
+              rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
+              t1.classList.add('title-pulse');
+            });
           }
         }
       } catch {}
@@ -1821,6 +1841,13 @@
           if (gameState.active !== window.MY_SEAT) { showNotification('Opponent\'s turn', 'error'); return; }
         }
       } catch {}
+      
+      // Защита от преждевременного завершения хода во время анимаций
+      if (manaGainActive || drawAnimationActive || splashActive) {
+        showNotification('Wait for animations to complete', 'warning');
+        return;
+      }
+      
       __endTurnInProgress = true;
       // Сброс и запуск таймера хода на 100 секунд
       try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
@@ -1886,8 +1913,12 @@
       const drawnTpl = drawOneNoAdd(gameState, gameState.active);
       // ЛОГИКА: применим ману сразу, а карту добавим после анимации (у активного клиента)
       player.mana = manaAfter;
-      // Заблокировать преждевременное появление новых орбов до анимации вспышки
-      try { PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = { ownerIndex: gameState.active, startIdx: Math.max(0, Math.min(9, before)), endIdx: Math.max(-1, Math.min(9, manaAfter - 1)) }; } catch {}
+      // Заблокировать преждевременное появление новых орбов до анимации вспышки (только если анимация еще не идет)
+      try { 
+        if (!PENDING_MANA_ANIM && !manaGainActive) {
+          PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = { ownerIndex: gameState.active, startIdx: Math.max(0, Math.min(9, before)), endIdx: Math.max(-1, Math.min(9, manaAfter - 1)) }; 
+        }
+      } catch {}
       let shouldAnimateDraw = false;
       try {
         const amIActiveNow = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number')
@@ -3630,6 +3661,8 @@
   function schedulePush(reason='auto', {force=false}={}){
     if (!NET_ON() || !gameState) return;
     if (APPLYING && !force) return;              // не эхоим полученный снапшот
+    // Не пушим во время анимаций, если не forced
+    if (!force && (manaGainActive || drawAnimationActive || splashActive)) return;
     const myTurn = (typeof gameState.active === 'number') && (gameState.active === MY_SEAT);
     if (!force && !myTurn) return;               // только активный игрок пушит
     if (force) {
@@ -3738,7 +3771,8 @@
           const ownerEarly = (typeof state.active === 'number') ? state.active : (gameState?.active ?? 0);
           const beforeMEarly = (prev?.players?.[ownerEarly]?.mana ?? 0);
           const afterMEarly = (state?.players?.[ownerEarly]?.mana ?? 0);
-          if (!PENDING_MANA_ANIM) {
+          // Только устанавливаем PENDING_MANA_ANIM если нет текущей анимации маны
+          if (!PENDING_MANA_ANIM && !manaGainActive) {
             PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = { ownerIndex: ownerEarly, startIdx: Math.max(0, Math.min(9, beforeMEarly)), endIdx: Math.max(-1, Math.min(9, afterMEarly - 1)) };
           }
         }
@@ -3757,7 +3791,10 @@
           const afterM = (state?.players?.[owner]?.mana ?? 0);
           // PENDING_MANA_ANIM уже установлен выше перед первым updateUI; на всякий случай обновим UI
           try { updateUI(); } catch {}
-          await animateTurnManaGain(owner, beforeM, afterM, 1500);
+          // Проверяем, что анимация маны еще не запущена
+          if (!manaGainActive) {
+            await animateTurnManaGain(owner, beforeM, afterM, 1500);
+          }
           // Короткая пауза перед добором карты
           await sleep(80);
         }

@@ -4,6 +4,7 @@ let _lastTurnSplashPromise = Promise.resolve();
 let _splashActive = false;
 let _lastRequestedTurn = 0;
 let _lastShownTurn = 0;
+let _splashInProgress = false; // Гарантия от параллельных вызовов
 
 function setSplashActive(v) {
   _splashActive = !!v;
@@ -16,9 +17,14 @@ function setSplashActive(v) {
 function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
 export async function showTurnSplash(title) {
+  if (_splashInProgress) {
+    // Если уже показываем заставку, ждем завершения
+    return _lastTurnSplashPromise;
+  }
+  _splashInProgress = true;
   setSplashActive(true);
   const tb = (typeof document !== 'undefined') ? document.getElementById('turn-banner') : null;
-  if (!tb) { setSplashActive(false); return; }
+  if (!tb) { setSplashActive(false); _splashInProgress = false; return; }
   tb.innerHTML = '';
   // Build DOM
   const wrap = document.createElement('div'); wrap.className = 'ts-wrap';
@@ -57,6 +63,7 @@ export async function showTurnSplash(title) {
   tb.classList.add('hidden'); tb.classList.remove('flex'); tb.style.display = 'none'; tb.style.opacity = '';
   tb.innerHTML = '';
   setSplashActive(false);
+  _splashInProgress = false;
 }
 
 export function queueTurnSplash(title){
@@ -69,7 +76,7 @@ export function queueTurnSplash(title){
 export async function requestTurnSplash(currentTurn){
   if (typeof currentTurn !== 'number') return _lastTurnSplashPromise;
   if (_lastShownTurn >= currentTurn) return _lastTurnSplashPromise;
-  if (_lastRequestedTurn === currentTurn) return _lastTurnSplashPromise;
+  if (_lastRequestedTurn === currentTurn && !_splashInProgress) return _lastTurnSplashPromise;
   _lastRequestedTurn = currentTurn;
   let title = `Turn ${currentTurn}`;
   try {
@@ -82,17 +89,26 @@ export async function requestTurnSplash(currentTurn){
 }
 
 export async function forceTurnSplashWithRetry(maxRetries = 2, currentTurn = null) {
+  // Проверяем, не показали ли мы уже этот ход
+  if (typeof currentTurn === 'number' && _lastShownTurn >= currentTurn) {
+    return Promise.resolve();
+  }
+  
   let tries = 0; let shown = false;
   while (tries <= maxRetries && !shown) {
     tries += 1;
-    try { await requestTurnSplash(currentTurn); } catch {}
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-    try {
-      const tb = document.getElementById('turn-banner');
-      shown = !!tb && (tb.classList.contains('flex') || tb.style.display === 'flex');
-    } catch { shown = false; }
+    try { 
+      await requestTurnSplash(currentTurn); 
+      shown = true; // Если requestTurnSplash завершился успешно, считаем что показали
+    } catch {
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      try {
+        const tb = document.getElementById('turn-banner');
+        shown = !!tb && (tb.classList.contains('flex') || tb.style.display === 'flex');
+      } catch { shown = false; }
+    }
   }
-  setTimeout(() => setSplashActive(false), 1000);
+  // Убираем setTimeout - он может прервать следующую заставку
 }
 
 export function getState(){
