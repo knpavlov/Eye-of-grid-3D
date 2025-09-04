@@ -31,10 +31,12 @@ export function renderBars(gameState) {
       continue;
     }
     
-    // Если идет анимация получения маны в начале хода и есть _beforeMana, используем его
+    // Если на игроке висит предыдущее значение маны (_beforeMana), отображаем его до
+    // начала анимации пополнения. Это предотвращает преждевременное появление +2 маны
+    // в панели ещё до запуска анимации и делает поведение одинаковым для обоих клиентов.
     let displayMana = currentMana;
-    if (getManaGainActive() && typeof beforeMana === 'number' && pending) {
-      displayMana = beforeMana; // Показываем старое значение во время анимации
+    if (typeof beforeMana === 'number') {
+      displayMana = beforeMana;
     }
     
     const blockAdjusted = Math.max(0, displayMana - block);
@@ -94,7 +96,8 @@ export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true) {
     if (visualOnly) {
       // Показываем визуально в следующем свободном слоте, учитывая существующие блокировки
       const visibleMana = Math.max(0, currentMana - currentBlocks);
-      targetIdx = Math.min(9, visibleMana);
+      // Орб должен лететь в ячейку, которая будет заполнена после прибавки маны
+      targetIdx = Math.max(0, Math.min(9, visibleMana - 1));
     } else {
       // Состояние уже обновлено, целимся в последний заполненный орб
       targetIdx = Math.max(0, Math.min(9, currentMana - 1));
