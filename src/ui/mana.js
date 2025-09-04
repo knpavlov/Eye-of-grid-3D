@@ -7,6 +7,10 @@ function setBlocks(v){ try { window.PENDING_MANA_BLOCK = v; } catch {} }
 function getAnim(){ try { return (typeof window !== 'undefined' && window.PENDING_MANA_ANIM) || null; } catch { return null; } }
 function setAnim(v){ try { window.PENDING_MANA_ANIM = v; } catch {} }
 
+// Sync with legacy flags
+function getManaGainActive(){ try { return !!(typeof window !== 'undefined' && window.manaGainActive); } catch { return false; } }
+function setManaGainActive(v){ try { if (typeof window !== 'undefined') { window.manaGainActive = !!v; } } catch {} }
+
 export function renderBars(gameState) {
   if (!gameState) return;
   const total = 10;
@@ -99,14 +103,16 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
   return new Promise(resolve => {
     try {
       // Проверяем, не идет ли уже анимация
-      if (typeof window !== 'undefined' && window.manaGainActive) {
+      if (getManaGainActive()) {
         console.warn('Mana animation already in progress, skipping');
         resolve();
         return;
       }
       
-      // Устанавливаем флаги активности
-      try { if (typeof window !== 'undefined') window.manaGainActive = true; } catch {}
+      console.log(`[MANA] Starting animation for player ${ownerIndex}: ${beforeMana} -> ${afterMana}`);
+      
+      // Устанавливаем флаги активности и синхронизируем с legacy
+      setManaGainActive(true);
       try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
       
       // Готовим панель: блокируем раннее появление новых орбов и пересобираем UI
@@ -117,7 +123,8 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
       
       const bar = document.getElementById(`mana-display-${ownerIndex}`);
       if (!bar) {
-        try { if (typeof window !== 'undefined') window.manaGainActive = false; } catch {}
+        console.warn(`[MANA] Mana display not found for player ${ownerIndex}`);
+        setManaGainActive(false);
         try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
         resolve();
         return;
@@ -128,12 +135,13 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
       const sparks = [];
       
       const cleanup = () => {
+        console.log(`[MANA] Cleaning up animation for player ${ownerIndex}`);
         // Убираем все блестки
         for (const s of sparks) { 
           try { if (s.parentNode) s.parentNode.removeChild(s); } catch {} 
         }
         // Сбрасываем флаги и состояние
-        try { if (typeof window !== 'undefined') window.manaGainActive = false; } catch {}
+        setManaGainActive(false);
         try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
         setAnim(null);
         try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
@@ -240,7 +248,7 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
       
     } catch (e) {
       console.error('Error in animateTurnManaGain:', e);
-      try { if (typeof window !== 'undefined') window.manaGainActive = false; } catch {}
+      setManaGainActive(false);
       try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
       resolve();
     }
