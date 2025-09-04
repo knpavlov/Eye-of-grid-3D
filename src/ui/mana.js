@@ -19,8 +19,15 @@ export function renderBars(gameState) {
     if (!manaDisplay) continue;
     const prev = manaDisplay.querySelectorAll('.mana-orb').length;
     const currentMana = gameState.players?.[p]?.mana ?? 0;
-    const pending = (getAnim() && getAnim().ownerIndex === p) ? getAnim() : null;
+    const anim = getAnim();
+    const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
+    // Clamp only for the local active seat (avoid hiding opponent's refill)
+    const pending = (anim && anim.ownerIndex === p && ((mySeat !== null && mySeat === p) || (mySeat === null && gameState?.active === p))) ? anim : null;
     const block = Math.max(0, Number(getBlocks()?.[p]) || 0);
+    // If my seat is animating this bar, avoid rebuilding during animation to prevent DOM flicker
+    if (getManaGainActive() && pending) {
+      continue;
+    }
     const blockAdjusted = Math.max(0, currentMana - block);
     const renderManaBase = pending ? Math.min(blockAdjusted, Math.max(0, pending.startIdx)) : blockAdjusted;
     const renderMana = Math.max(0, Math.min(total, renderManaBase));
@@ -29,6 +36,9 @@ export function renderBars(gameState) {
     const existingOrbs = Array.from(manaDisplay.querySelectorAll('.mana-orb, .mana-slot'));
     
     manaDisplay.innerHTML = '';
+    const activeSeat = (typeof window !== 'undefined' && window.gameState && typeof window.gameState.active === 'number')
+      ? window.gameState.active : (gameState?.active ?? null);
+    const animateAllowed = (typeof mySeat === 'number') ? (mySeat === p) : (typeof activeSeat === 'number' ? activeSeat === p : true);
     for (let i = 0; i < total; i++) {
       const orb = document.createElement('div');
       const filled = i < renderMana;
@@ -37,10 +47,10 @@ export function renderBars(gameState) {
       
       // Избегаем мерцания: если орб уже был видим, начинаем с opacity: 1
       const wasVisible = existingOrbs[i] && existingOrbs[i].classList.contains('mana-orb');
-      orb.style.opacity = (filled && wasVisible) ? '1' : (filled ? '0' : '1');
+      orb.style.opacity = (!animateAllowed) ? '1' : ((filled && wasVisible) ? '1' : (filled ? '0' : '1'));
       
       manaDisplay.appendChild(orb);
-      if (filled && !isBlockedForAnim && !wasVisible) {
+      if (animateAllowed && filled && !isBlockedForAnim && !wasVisible) {
         const delay = 0.06 * Math.max(0, i - prev);
         setTimeout(()=>{
           try {
@@ -258,4 +268,6 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
 const api = { renderBars, animateManaGainFromWorld, animateTurnManaGain };
 try { if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.mana = api; } } catch {}
 export default api;
+
+
 
