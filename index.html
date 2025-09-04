@@ -3703,6 +3703,22 @@
           }
         }
       } catch {}
+      // Guard: ensure start-of-turn +2 does not render before animation
+      try {
+        const __hadNewTurn = !!(typeof state.turn === 'number' && state.turn > (__lastTurnSeen || 0));
+        if (__hadNewTurn && !PENDING_MANA_ANIM && !manaGainActive) {
+          const __owner = (typeof state.active === 'number') ? state.active : (gameState?.active ?? 0);
+          const __beforeM = Math.max(0, Number((__lastManaSeen && __lastManaSeen[__owner]) ?? 0));
+          const __afterM = Math.max(0, Number(state?.players?.[__owner]?.mana ?? __beforeM));
+          if (__afterM > __beforeM) {
+            PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = {
+              ownerIndex: __owner,
+              startIdx: Math.max(0, Math.min(9, __beforeM)),
+              endIdx: Math.max(-1, Math.min(9, __afterM - 1))
+            };
+          }
+        }
+      } catch {}
       try{ if (!(typeof window !== 'undefined' && window.manaGainActive)) updateUI(); }catch{}
       // Если начался новый ход — синхронизируем порядок анимаций как в офлайне:
       // 1) Заставка хода с корректным заголовком, 2) Анимация маны, 3) Добор
@@ -3770,6 +3786,7 @@
           updateHand();
         }
       } catch { updateHand(); }
+    try { __endTurnInProgress = false; } catch {}
     updateIndicator();
     updateInputLock();
       // Persist last seen turn/mana for robust next-frame animations
@@ -3781,7 +3798,10 @@
           try { window.__lastManaSeen[1] = Number(state.players?.[1]?.mana || 0); } catch {}
         }
       } catch {}
-    } finally { APPLYING=false; }
+    } finally {
+      APPLYING=false;
+      try { __endTurnInProgress = false; refreshInputLockUI(); } catch {}
+    }
   });
 
   // Явный сигнал о смене хода (ускоряет разблокировку у оппонента в заанимированных кейсах)
