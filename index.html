@@ -775,34 +775,15 @@
       if (window.__cards && typeof window.__cards.createCard3D === 'function') {
         return window.__cards.createCard3D(cardData, isInHand, hpOverride, atkOverride);
       }
-      // Fallback to legacy if module is missing
-      return __legacy_createCard3D(cardData, isInHand, hpOverride, atkOverride);
+      throw new Error('[bridge] __cards.createCard3D not available; modules must be loaded.');
     }
-
-      /* LEGACY Fallback: 2D card creation placeholders (unused) */
-      function __legacy_createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
-        // disabled legacy body
-        return null;
-      }
-
-      // LEGACY Fallback: offline file:// illustration loader
-      function __legacy_attachIllustrationPlane(cardMesh, cardData) {
-        // disabled legacy body
-        return;
-      }
     // Delegator: module cards implementation
     function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
       if (window.__cards && typeof window.__cards.drawCardFace === 'function') {
         return window.__cards.drawCardFace(ctx, cardData, width, height, hpOverride, atkOverride);
       }
-      return __legacy_drawCardFace(ctx, cardData, width, height, hpOverride, atkOverride);
+      throw new Error('[bridge] __cards.drawCardFace not available; modules must be loaded.');
     }
-
-      // LEGACY Fallback: vector draw routine from 2D client
-      function __legacy_drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
-        // disabled legacy body
-        return;
-      }
     
 
     
@@ -2050,21 +2031,6 @@
         dirsForPattern = window.dirsForPattern; effectiveStats = window.effectiveStats;
         hasAdjacentGuard = window.hasAdjacentGuard; computeHits = window.computeHits; stagedAttack = window.stagedAttack; magicAttack = window.magicAttack;
         shuffle = window.shuffle; drawOne = window.drawOne; drawOneNoAdd = window.drawOneNoAdd; countControlled = window.countControlled; startGame = window.startGame;
-      } catch {}
-      // Fallbacks to ensure offline scene renders even if module failed to load
-      try {
-        if (!startGame || typeof startGame !== 'function') {
-          startGame = (deck0, deck1) => ({
-            board: randomBoard(),
-            players: [
-              { name: 'Player 1', deck: Array.isArray(deck0)?deck0.slice():[], hand: [], discard: [], graveyard: [], mana: 2 },
-              { name: 'Player 2', deck: Array.isArray(deck1)?deck1.slice():[], hand: [], discard: [], graveyard: [], mana: 0 }
-            ],
-            active: 0,
-            turn: 1,
-            winner: null
-          });
-        }
       } catch {}
     }
 
