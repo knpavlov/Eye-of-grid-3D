@@ -363,9 +363,8 @@
     let magicFrom = null; // { r, c }
     // Паузы/состояния для новых механик
     let pendingSpellOrientation = null; // { spellCardMesh, unitMesh }
-    let pendingDiscardSelection = null; // { requiredType: 'UNIT', onPicked: function }
-    let activePrompt = null; // { text: string, onCancel: function }
-    let pendingRitualBoardMesh = null; // временный меш спелла на поле
+      let pendingDiscardSelection = null; // { requiredType: 'UNIT', onPicked: function }
+      let pendingRitualBoardMesh = null; // временный меш спелла на поле
     let spellDragHandled = false; // флаг, что возврат карты в руку уже не нужен
 
     
@@ -1111,7 +1110,8 @@
         if (selectedCard && selectedCard.userData.cardData.type === 'SPELL') {
           castSpellOnUnit(selectedCard, unit);
         } else if (unit.userData.unitData.owner === gameState.active) {
-          showUnitActionPanel(unit);
+          selectedUnit = unit;
+          window.__ui.panels.showUnitActionPanel(unit);
         }
         return;
       }
@@ -1121,7 +1121,7 @@
       }
       // Отмена ритуального дискарда кликом по полю
       if (pendingDiscardSelection) {
-        try { hidePrompt(); } catch {}
+        try { window.__ui.panels.hidePrompt(); } catch {}
         pendingDiscardSelection = null;
         // Вернём визуально карту спелла, если она была перетянута
         if (draggedCard && draggedCard.userData && draggedCard.userData.cardData && draggedCard.userData.cardData.type === 'SPELL') {
@@ -1169,7 +1169,7 @@
                 col: col,
                 handIndex: draggedCard.userData.handIndex
               };
-              showOrientationPanel();
+              window.__ui.panels.showOrientationPanel();
             }
           } else {
             returnCardToHand(draggedCard);
@@ -1244,69 +1244,14 @@
     
 
     
-    function resetCardSelection() {
-      if (selectedCard) {
-        returnCardToHand(selectedCard);
-        selectedCard.material[2].emissive = new THREE.Color(0x000000);
-        selectedCard.material[2].emissiveIntensity = 0;
-        selectedCard = null;
+      function resetCardSelection() {
+        if (selectedCard) {
+          returnCardToHand(selectedCard);
+          selectedCard.material[2].emissive = new THREE.Color(0x000000);
+          selectedCard.material[2].emissiveIntensity = 0;
+          selectedCard = null;
+        }
       }
-    }
-    
-    function showOrientationPanel() {
-      document.getElementById('orientation-panel').classList.remove('hidden');
-    }
-    
-    function hideOrientationPanel() {
-      document.getElementById('orientation-panel').classList.add('hidden');
-      pendingPlacement = null;
-    }
-    
-    function showUnitActionPanel(unitMesh) {
-      selectedUnit = unitMesh;
-      const unitData = unitMesh.userData.unitData;
-      const cardData = unitMesh.userData.cardData;
-      
-      document.getElementById('unit-info').textContent = 
-        `${cardData.name} (${unitMesh.userData.row + 1},${unitMesh.userData.col + 1})`;
-      
-      const alreadyAttacked = unitData.lastAttackTurn === gameState.turn;
-      const attackBtn = document.getElementById('attack-btn');
-      attackBtn.disabled = alreadyAttacked;
-      const cost = attackCost(cardData);
-      attackBtn.textContent = alreadyAttacked ? 'Already attacked' : `Attack (−${cost})`;
-      // Ротация: платное действие, 1 раз за ход
-      const rotateCost = attackCost(cardData);
-      const alreadyRotated = unitData.lastRotateTurn === gameState.turn;
-      const rCw = document.getElementById('rotate-cw-btn');
-      const rCcw = document.getElementById('rotate-ccw-btn');
-      if (rCw && rCcw) {
-        rCw.disabled = !!alreadyRotated;
-        rCcw.disabled = !!alreadyRotated;
-        rCw.textContent = alreadyRotated ? 'Already rotated' : `Rotate ↻ (−${rotateCost})`;
-        rCcw.textContent = alreadyRotated ? 'Already rotated' : `Rotate ↺ (−${rotateCost})`;
-      }
-      // Подсветка потенциальных целей в панели действий
-      const hits = computeHits(gameState, selectedUnit.userData.row, selectedUnit.userData.col);
-      for (const h of hits) {
-        const m = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
-        if (!m) continue;
-        const ringGeom = new THREE.RingGeometry(0.6, 0.8, 24);
-        const ringMat = new THREE.MeshBasicMaterial({ color: 0xf97316, transparent:true, opacity:0.7, side:THREE.DoubleSide });
-        const ring = new THREE.Mesh(ringGeom, ringMat);
-        ring.rotation.x = -Math.PI/2;
-        ring.position.copy(m.position).add(new THREE.Vector3(0, -0.45, 0));
-        effectsGroup.add(ring);
-        gsap.to(ring.material, { opacity: 0, duration: 0.8, onComplete: ()=> effectsGroup.remove(ring) });
-      }
-      
-      document.getElementById('unit-action-panel').classList.remove('hidden');
-    }
-    
-    function hideUnitActionPanel() {
-      document.getElementById('unit-action-panel').classList.add('hidden');
-      selectedUnit = null;
-    }
     
     async function initGame() {
       gameState = startGame(STARTER_FIRESET, STARTER_FIRESET);
@@ -1565,12 +1510,13 @@
       const cardData = card.userData.cardData;
       const player = gameState.players[gameState.active];
       
-      if (cardData.cost > player.mana) {
-        showNotification('Insufficient mana!', 'error');
-        returnCardToHand(card);
-        hideOrientationPanel();
-        return;
-      }
+        if (cardData.cost > player.mana) {
+          showNotification('Insufficient mana!', 'error');
+          returnCardToHand(card);
+          window.__ui.panels.hideOrientationPanel();
+          pendingPlacement = null;
+          return;
+        }
       
       const unit = {
         uid: uid(),
@@ -1634,9 +1580,10 @@
         }
       });
       
-      addLog(`${player.name} призывает ${cardData.name} на (${row + 1},${col + 1})`);
-      hideOrientationPanel();
-    }
+        addLog(`${player.name} призывает ${cardData.name} на (${row + 1},${col + 1})`);
+        window.__ui.panels.hideOrientationPanel();
+        pendingPlacement = null;
+      }
     
     function animate() {
       if (window.__scene && typeof window.__scene.animate === 'function') {
@@ -1739,12 +1686,7 @@
     try { addLog = (message) => window.__ui.log.add(message); } catch {}
     try { animateManaGainFromWorld = (pos, ownerIndex, visualOnly) => window.__ui.mana.animateManaGainFromWorld(pos, ownerIndex, visualOnly); } catch {}
     // animateTurnManaGain теперь вызывается напрямую через модуль
-    try { showUnitActionPanel = (unitMesh) => { try { selectedUnit = unitMesh; window.selectedUnit = unitMesh; } catch {}; return window.__ui.panels.showUnitActionPanel(unitMesh); }; } catch {}
-    try { hideUnitActionPanel = () => { try { selectedUnit = null; window.selectedUnit = null; } catch {}; return window.__ui.panels.hideUnitActionPanel();}; } catch {}
-    try { showOrientationPanel = () => window.__ui.panels.showOrientationPanel(); } catch {}
-    try { hideOrientationPanel = () => window.__ui.panels.hideOrientationPanel(); } catch {}
-    try { showPrompt = (text, onCancel) => window.__ui.panels.showPrompt(text, onCancel); } catch {}
-    try { hidePrompt = () => window.__ui.panels.hidePrompt(); } catch {}
+      
 
     function createMetaObjects() {
       // Очистить предыдущие
@@ -1799,23 +1741,25 @@
       document.getElementById('help-panel').classList.add('hidden');
     });
     // Prompt handlers
-    document.getElementById('cancel-prompt-btn').addEventListener('click', () => {
-      if (activePrompt && typeof activePrompt.onCancel === 'function') {
-        try { activePrompt.onCancel(); } catch {}
-      }
-      hidePrompt();
-    });
-    document.getElementById('cancel-orient-btn').addEventListener('click', () => {
-      if (pendingPlacement) {
-        returnCardToHand(pendingPlacement.card);
-      }
-      hideOrientationPanel();
-    });
-    document.getElementById('cancel-action-btn').addEventListener('click', hideUnitActionPanel);
-    // Действия в панели юнита
-    document.getElementById('rotate-cw-btn').addEventListener('click', () => {
-      if (selectedUnit) rotateUnit(selectedUnit, 'cw');
-    });
+      document.getElementById('cancel-prompt-btn').addEventListener('click', () => {
+        const prompt = window.activePrompt;
+        if (prompt && typeof prompt.onCancel === 'function') {
+          try { prompt.onCancel(); } catch {}
+        }
+        window.__ui.panels.hidePrompt();
+      });
+      document.getElementById('cancel-orient-btn').addEventListener('click', () => {
+        if (pendingPlacement) {
+          returnCardToHand(pendingPlacement.card);
+        }
+        window.__ui.panels.hideOrientationPanel();
+        pendingPlacement = null;
+      });
+        document.getElementById('cancel-action-btn').addEventListener('click', () => { selectedUnit = null; window.__ui.panels.hideUnitActionPanel(); });
+      // Действия в панели юнита
+      document.getElementById('rotate-cw-btn').addEventListener('click', () => {
+        if (selectedUnit) rotateUnit(selectedUnit, 'cw');
+      });
     document.getElementById('rotate-ccw-btn').addEventListener('click', () => {
       if (selectedUnit) rotateUnit(selectedUnit, 'ccw');
     });
@@ -1840,9 +1784,9 @@
             pl.discard.push(tpl); pl.hand.splice(idx, 1);
             resetCardSelection(); updateHand(); updateUnits(); updateUI();
           }
-          pendingSpellOrientation = null; hideOrientationPanel();
-          return;
-        }
+            pendingSpellOrientation = null; window.__ui.panels.hideOrientationPanel();
+            return;
+          }
         // Иначе — штатное размещение юнита
         if (direction === 'N') return placeUnitWithDirection('N');
         if (direction === 'E') return placeUnitWithDirection('E');
@@ -1855,21 +1799,7 @@
 
       /* MODULE: UI action helpers - candidate for src/ui/actions.js */
       // ====== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЕЙСТВИЙ ======
-    function showPrompt(text, onCancel) {
-      const pp = document.getElementById('prompt-panel');
-      const pt = document.getElementById('prompt-text');
-      if (pp && pt) {
-        pt.textContent = text || '';
-        pp.classList.remove('hidden');
-        activePrompt = { text, onCancel };
-      }
-    }
-    function hidePrompt() {
-      const pp = document.getElementById('prompt-panel');
-      if (pp) pp.classList.add('hidden');
-      activePrompt = null;
-    }
-    function rotateUnit(unitMesh, dir) {
+      function rotateUnit(unitMesh, dir) {
       if (isInputLocked()) return;
       const u = unitMesh.userData.unitData;
       if (!u) return;
@@ -1882,7 +1812,8 @@
       u.facing = dir === 'cw' ? turnCW[u.facing] : turnCCW[u.facing];
       u.lastRotateTurn = gameState.turn;
       updateUnits();
-      hideUnitActionPanel();
+      selectedUnit = null;
+      window.__ui.panels.hideUnitActionPanel();
 
        }
     
@@ -1897,8 +1828,9 @@
         if (gameState.players[gameState.active].mana < cost) { showNotification(`${cost} mana is required to attack`, 'error'); return; }
         gameState.players[gameState.active].mana -= cost;
         updateUI();
-        // Close action menu when the attack is initiated
-        try { hideUnitActionPanel(); } catch {}
+          // Close action menu when the attack is initiated
+          selectedUnit = null;
+          try { window.__ui.panels.hideUnitActionPanel(); } catch {}
         magicFrom = { r, c };
         addLog(`${tpl.name}: select a target for the magical attack.`);
          return;
@@ -1906,11 +1838,12 @@
       const hits = computeHits(gameState, r, c);
       if (!hits.length) { showNotification('No available targets for attack', 'error');  return; }
       if (gameState.players[gameState.active].mana < cost) { showNotification(`${cost} mana is required to attack`, 'error');  return; }
-      gameState.players[gameState.active].mana -= cost;
-      updateUI();
-      // Close action menu before starting the battle sequence
-      try { hideUnitActionPanel(); } catch {}
-      performBattleSequence(r, c, true);
+        gameState.players[gameState.active].mana -= cost;
+        updateUI();
+        // Close action menu before starting the battle sequence
+        selectedUnit = null;
+        try { window.__ui.panels.hideUnitActionPanel(); } catch {}
+        performBattleSequence(r, c, true);
        }
     
     /* MODULE: core/battleSequence
@@ -2507,9 +2440,9 @@
         pendingSpellOrientation = { spellCardMesh: cardMesh, unitMesh };
         addLog(`${tpl.name}: выберите направление для цели.`);
         // Временно покажем панель и перехватим её клики (см. обработчик ниже)
-        showOrientationPanel();
-        return; // завершим, остальная логика применения выполнится после выбора направления
-      }
+          window.__ui.panels.showOrientationPanel();
+          return; // завершим, остальная логика применения выполнится после выбора направления
+        }
       if (tpl.id === 'SPELL_CLARE_WILS_BANNER') {
         if (!u || u.owner !== gameState.active) { showNotification('Target: friendly unit', 'error'); return; }
         // Применяем временный баф атаки до конца хода кастера
@@ -2593,7 +2526,7 @@
             if (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) {
               try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: handIdx }); } catch {}
               // Закрываем prompt и очищаем выбор, чтобы не зависала панель
-              hidePrompt(); pendingDiscardSelection = null;
+                window.__ui.panels.hidePrompt(); pendingDiscardSelection = null;
               resetCardSelection(); updateHand(); updateUI();
             } else {
               // Оффлайн: применяем сразу локально
@@ -2783,8 +2716,8 @@
           pendingRitualSpellCard = tpl;
         } catch {}
         console.log('[HF:drag] Showing prompt for Holy Feast drag to field');
-        showPrompt('Select a unit for this action', () => {
-          // Отмена ритуала — убрать временный меш и показать карту-спелл, без возврата в руку
+          window.__ui.panels.showPrompt('Select a unit for this action', () => {
+            // Отмена ритуала — убрать временный меш и показать карту-спелл, без возврата в руку
           console.log('[HF:drag] Canceling Holy Feast ritual');
           try { if (pendingRitualBoardMesh && pendingRitualBoardMesh.parent) pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {}
           pendingRitualBoardMesh = null;
@@ -2812,7 +2745,7 @@
               pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
               // Закроем prompt немедленно, чтобы не зависал UI
               console.log('[HF:onPicked] Hiding prompt and clearing selection (online)');
-              hidePrompt(); pendingDiscardSelection = null;
+                window.__ui.panels.hidePrompt(); pendingDiscardSelection = null;
               updateHand(); updateUI();
             } else {
               console.log('[HF:onPicked] Processing offline (handleSpellDrop)');
@@ -2824,13 +2757,13 @@
               pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
               console.log('[HF:onPicked] Hiding prompt and clearing selection (offline)');
               pendingDiscardSelection = null;
-              hidePrompt();
+                window.__ui.panels.hidePrompt();
               pl.discard.push(tpl); updateHand(); updateUI();
               schedulePush('spell-holy-feast', { force: true });
             }
           } }; addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`);
           // Доп. страховка: если по какой-то причине ритуал не завершился за 3 секунды — сбросить выбор
-          setTimeout(()=>{ try { if (pendingDiscardSelection) { hidePrompt(); pendingDiscardSelection = null; updateHand(); updateUI(); } } catch {} }, 3000);
+            setTimeout(()=>{ try { if (pendingDiscardSelection) { window.__ui.panels.hidePrompt(); pendingDiscardSelection = null; updateHand(); updateUI(); } } catch {} }, 3000);
           return;
         }
         // Если ровно одна карта-сущность — сбрасываем её сразу
@@ -2849,7 +2782,7 @@
             try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: singleIdx }); } catch {}
             setTimeout(()=>{ try { if (typeof window !== 'undefined' && !window.__HF_ACK && window.socket) window.socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: singleIdx }); } catch {} }, 350);
             pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
-            hidePrompt();
+              window.__ui.panels.hidePrompt();
             updateHand(); updateUI();
           } else {
             try { pl.graveyard.push(toDiscardTpl); } catch {}
@@ -2859,7 +2792,7 @@
             let spellIdx = localSpellIdx; if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
                           pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
               pendingDiscardSelection = null;
-              pl.discard.push(tpl); updateHand(); updateUI(); hidePrompt();
+                pl.discard.push(tpl); updateHand(); updateUI(); window.__ui.panels.hidePrompt();
               schedulePush('spell-holy-feast', { force: true });
           }
         }
