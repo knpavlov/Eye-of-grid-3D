@@ -191,10 +191,10 @@
 
       let scene, camera, renderer, raycaster, mouse;
       let boardGroup, cardGroup, effectsGroup, metaGroup;
-      let tileMeshes = [];
-      let tileFrames = [];
-    let unitMeshes = [];
-    let handCardMeshes = [];
+      let tileMeshes = [];    // 2D массив мешей клеток игрового поля
+      let tileFrames = [];    // рамки подсветки/выделения клеток
+    let unitMeshes = [];      // текущие меши юнитов на поле
+    let handCardMeshes = [];  // меши карт в руке игрока
       let gameState = null;
       // Tile textures are now managed by scene/board module
     // Настройки показа большой карты при доборе — можно править из консоли
@@ -385,6 +385,7 @@
       window.__cardsRedrawT = setTimeout(() => { updateUnits(); updateHand(); }, 10);
     }
 
+    // Возврат материала тайла по его элементу; делегируется модулю доски
     function getTileMaterial(element) {
       if (window.__board && window.__board.getTileMaterial) {
         return window.__board.getTileMaterial(element);
@@ -426,6 +427,7 @@
     
 
     
+    // Перерисовывает руку игрока в 3D, раскладывая карты веером и скрывая временно недоступные
     function updateHand() {
       // Во время полёта карты не перерисовываем руку, чтобы не ломать предраскладку
       if (drawAnimationActive) return;
@@ -658,6 +660,7 @@
       } catch {}
     }
     
+    // Синхронизирует 3D-модели юнитов с текущим состоянием gameState
     function updateUnits() {
       if (window.__units && typeof window.__units.updateUnits === 'function') {
         window.__units.updateUnits(gameState);
@@ -671,6 +674,7 @@
     }
 
     // Визуализировать изменения между предыдущим и новым состоянием (для наблюдателя/оппонента)
+    // Показывает визуальные различия на поле между предыдущим и новым состоянием
     function playDeltaAnimations(prevState, nextState) {
       try {
         if (!prevState || !nextState) return;
@@ -859,7 +863,8 @@
         }
       }
 
-      // Взаимодействие
+      // ===== ЛОГИКА ВЗАИМОДЕЙСТВИЯ С ПОЛЕМ И РУКОЙ =====
+    // Главный обработчик движения мыши: подсветка клеток, наведение на карты и мета-объекты
     function onMouseMove(event) {
       if (isInputLocked()) return;
       const rect = renderer.domElement.getBoundingClientRect();
@@ -946,6 +951,7 @@
       }
     }
     
+    // Обработчик нажатия на поле: выбор юнита или старт перетаскивания карты
     function onMouseDown(event) {
       if (!gameState || gameState.winner !== null) return;
       if (isInputLocked()) return;
@@ -1026,6 +1032,7 @@
       }
     }
     
+    // Завершение перетаскивания и обработка клика по полю/юниту
     function onMouseUp(event) {
       if (isInputLocked()) { endCardDrag(); return; }
       if (draggedCard) {
@@ -1077,6 +1084,7 @@
       endCardDrag();
     }
     
+    // Подготовка карты к перетаскиванию из руки
     function startCardDrag(card) {
       draggedCard = card;
       // если карта была увеличена ховером — вернём к стандартному масштабу руки
@@ -1106,6 +1114,7 @@
       });
     }
     
+    // Сброс визуального состояния после завершения перетаскивания
     function endCardDrag() {
       if (hoveredTile) {
         hoveredTile.material.emissiveIntensity = 0.1;
@@ -1114,6 +1123,7 @@
       draggedCard = null;
     }
     
+    // Возврат карты на исходную позицию в руке при отмене дропа
     function returnCardToHand(card) {
       gsap.to(card.position, {
         x: card.userData.originalPosition.x,
@@ -1506,6 +1516,7 @@
       animate();
       initGame();
       
+      // Привязка обработчиков взаимодействия с трёхмерным полем и картами
       renderer.domElement.addEventListener('mousemove', onMouseMove);
       renderer.domElement.addEventListener('mousedown', onMouseDown);
       renderer.domElement.addEventListener('mouseup', onMouseUp);
@@ -2055,6 +2066,7 @@
         .to(mats, { opacity: 0, duration: 1.5 }, 0);
     }
     
+    // ===== АНИМАЦИИ СМЕНЫ ЭЛЕМЕНТОВ КЛЕТОК =====
     // Плавная шейдерная замена материала тайла (для Fissures)
     function dissolveTileSwap(tileMesh, newMaterial, durationSec = 0.9) {
       if (!tileMesh || !newMaterial) return;
@@ -2415,7 +2427,7 @@
       if (!delayedApply) { updateUnits(); updateUI(); }
     }
 
-    // Новый универсальный обработчик каста спелла при перетаскивании
+    // Универсальный обработчик каста спелла при перетаскивании на юнита или клетку
     function castSpellByDrag(cardMesh, unitMesh, tileMesh) {
       const idx = cardMesh.userData.handIndex;
       const pl = gameState.players[gameState.active];
