@@ -214,34 +214,7 @@
     let RECENT_REMOTE_DAMAGE = new Map();
     try { window.RECENT_REMOTE_DAMAGE = RECENT_REMOTE_DAMAGE; } catch {}
     // Pending HP popups scheduled by playDeltaAnimations, so we can cancel if battleAnim shows earlier
-    let PENDING_HP_POPUPS = [];
-    function cancelPendingHpPopup(key, delta){
-      try {
-        if (!PENDING_HP_POPUPS || !PENDING_HP_POPUPS.length) return;
-        for (const item of PENDING_HP_POPUPS) {
-          if (!item.canceled && item.key === key && item.delta === delta) {
-            try { clearTimeout(item.timerId); } catch {}
-            item.canceled = true;
-          }
-        }
-        PENDING_HP_POPUPS = PENDING_HP_POPUPS.filter(x => !x.canceled);
-      } catch {}
-    }
-    function scheduleHpPopup(r,c,delta,delayMs){
-      try {
-        const key = `${r},${c}`;
-        const timerId = setTimeout(()=>{
-          try {
-            const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-            if (tMesh) {
-              const color = delta > 0 ? '#22c55e' : '#ef4444';
-              spawnDamageText(tMesh, `${delta > 0 ? '+' : ''}${delta}`, color);
-            }
-          } catch {}
-        }, Math.max(0, delayMs));
-        PENDING_HP_POPUPS.push({ key, delta, timerId, scheduledAt: Date.now() + Math.max(0, delayMs), canceled: false });
-      } catch {}
-    }
+    // HP popup scheduling moved to src/scene/effects.js
     let PENDING_HIDE_HAND_CARDS = [];
     // Управление анимациями заставки хода и добора карты
     let lastTurnSplashPromise = Promise.resolve();
@@ -491,7 +464,7 @@
                 const ghost = createCard3D(CARDS[pu.tplId], false);
                 ghost.position.copy(tile.position).add(new THREE.Vector3(0, 0.28, 0));
                 try { effectsGroup.add(ghost); } catch { cardGroup.add(ghost); }
-                dissolveAndAsh(ghost, new THREE.Vector3(0,0,0.6), 0.9);
+                window.__fx.dissolveAndAsh(ghost, new THREE.Vector3(0,0,0.6), 0.9);
                 const p = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
                 animateManaGainFromWorld(p, pu.owner, true);
                 try { if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') { gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1); updateUI(); } } catch {}
@@ -551,12 +524,12 @@
         const halfCount = Math.ceil(pendingHpChanges.length / 2);
         for (let i = 0; i < halfCount && i < pendingHpChanges.length; i++) {
           const change = pendingHpChanges[i];
-          scheduleHpPopup(change.r, change.c, change.delta, 800);
+          window.__fx.scheduleHpPopup(change.r, change.c, change.delta, 800);
         }
         if (pendingHpChanges.length > halfCount) {
           for (let i = halfCount; i < pendingHpChanges.length; i++) {
             const change = pendingHpChanges[i];
-            scheduleHpPopup(change.r, change.c, change.delta, 1600);
+            window.__fx.scheduleHpPopup(change.r, change.c, change.delta, 1600);
           }
         }
       } catch {}
@@ -1308,13 +1281,13 @@
         document.getElementById('cancel-action-btn').addEventListener('click', () => { selectedUnit = null; window.__ui.panels.hideUnitActionPanel(); });
       // Действия в панели юнита
       document.getElementById('rotate-cw-btn').addEventListener('click', () => {
-        if (selectedUnit) rotateUnit(selectedUnit, 'cw');
+        if (selectedUnit) window.__ui.actions.rotateUnit(selectedUnit, 'cw');
       });
     document.getElementById('rotate-ccw-btn').addEventListener('click', () => {
-      if (selectedUnit) rotateUnit(selectedUnit, 'ccw');
+      if (selectedUnit) window.__ui.actions.rotateUnit(selectedUnit, 'ccw');
     });
     document.getElementById('attack-btn').addEventListener('click', () => {
-      if (selectedUnit) performUnitAttack(selectedUnit);
+      if (selectedUnit) window.__ui.actions.performUnitAttack(selectedUnit);
     });
     
     document.querySelectorAll('[data-dir]').forEach(btn => {
@@ -1347,54 +1320,7 @@
     
     document.addEventListener('DOMContentLoaded', init);
 
-      /* MODULE: UI action helpers - candidate for src/ui/actions.js */
-      // ====== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЕЙСТВИЙ ======
-      function rotateUnit(unitMesh, dir) {
-      if (isInputLocked()) return;
-      const u = unitMesh.userData.unitData;
-      if (!u) return;
-      if (u.owner !== gameState.active) { showNotification('You can\'t rotate the other player\'s unit', 'error'); return; }
-      if (u.lastRotateTurn === gameState.turn) { showNotification('The unit has already rotated in this turn', 'error'); return; }
-      const tpl = CARDS[u.tplId];
-      const cost = attackCost(tpl);
-      if (gameState.players[gameState.active].mana < cost) { showNotification(`${cost} mana is required to rotate`, 'error'); return; }
-      gameState.players[gameState.active].mana -= cost; updateUI();
-      u.facing = dir === 'cw' ? turnCW[u.facing] : turnCCW[u.facing];
-      u.lastRotateTurn = gameState.turn;
-      updateUnits();
-      selectedUnit = null;
-      window.__ui.panels.hideUnitActionPanel();
-
-       }
-    
-    function performUnitAttack(unitMesh) {
-      if (!unitMesh) return;
-      if (isInputLocked()) return;
-      const r = unitMesh.userData.row; const c = unitMesh.userData.col;
-      const unit = gameState.board[r][c].unit; if (!unit) return;
-      const tpl = CARDS[unit.tplId];
-      const cost = attackCost(tpl);
-      if (tpl.attackType === 'MAGIC') {
-        if (gameState.players[gameState.active].mana < cost) { showNotification(`${cost} mana is required to attack`, 'error'); return; }
-        gameState.players[gameState.active].mana -= cost;
-        updateUI();
-          // Close action menu when the attack is initiated
-          selectedUnit = null;
-          try { window.__ui.panels.hideUnitActionPanel(); } catch {}
-        magicFrom = { r, c };
-        addLog(`${tpl.name}: select a target for the magical attack.`);
-         return;
-      }
-      const hits = computeHits(gameState, r, c);
-      if (!hits.length) { showNotification('No available targets for attack', 'error');  return; }
-      if (gameState.players[gameState.active].mana < cost) { showNotification(`${cost} mana is required to attack`, 'error');  return; }
-        gameState.players[gameState.active].mana -= cost;
-        updateUI();
-        // Close action menu before starting the battle sequence
-        selectedUnit = null;
-        try { window.__ui.panels.hideUnitActionPanel(); } catch {}
-        performBattleSequence(r, c, true);
-       }
+      /* UI action helpers moved to src/ui/actions.js */
     
     /* MODULE: core/battleSequence
        Combines combat resolution, animations and network sync.
@@ -1419,8 +1345,8 @@
         for (const h of hitsPrev) {
           const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
           if (tMesh) { 
-            shakeMesh(tMesh, 6, 0.12); 
-            spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555');
+            window.__fx.shakeMesh(tMesh, 6, 0.12); 
+            window.__fx.spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555');
           }
         }
         setTimeout(async () => {
@@ -1450,8 +1376,8 @@
             setTimeout(() => { 
               const aLive = unitMeshes.find(m => m.userData.row === r && m.userData.col === c) || aMesh; 
               if (aLive) { 
-                shakeMesh(aLive, 6, 0.14); 
-                spawnDamageText(aLive, `-${retaliation}`, '#ffd166');
+                window.__fx.shakeMesh(aLive, 6, 0.14); 
+                window.__fx.spawnDamageText(aLive, `-${retaliation}`, '#ffd166');
               } 
             }, Math.max(0, maxDur * 1000 - 10));
             animDelayMs = Math.max(animDelayMs, Math.floor(maxDur * 1000) + 160);
@@ -1490,7 +1416,7 @@
               if (deadMesh) {
                 const fromMesh = aMesh || deadMesh;
                 const dirUp = new THREE.Vector3().subVectors(deadMesh.position, fromMesh.position).normalize().multiplyScalar(0.4);
-                dissolveAndAsh(deadMesh, dirUp, 0.9);
+                window.__fx.dissolveAndAsh(deadMesh, dirUp, 0.9);
               }
               // Орб маны появляется с задержкой 400мс после начала анимации смерти
               setTimeout(() => {
@@ -1549,306 +1475,7 @@
       }
     }
 
-    /* MODULE: effects/damageText
-       Floating damage numbers; pure visual helper.
-       Move to src/scene/effects.js */
-    function spawnDamageText(targetMesh, text, color = '#ff5555') {
-      const canvas = document.createElement('canvas');
-      canvas.width = 256; canvas.height = 128;
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0,0,canvas.width, canvas.height);
-      ctx.font = 'bold 64px Arial';
-      ctx.fillStyle = color;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 6;
-      ctx.strokeText(text, canvas.width/2, canvas.height/2);
-      ctx.fillText(text, canvas.width/2, canvas.height/2);
-      const tex = new THREE.CanvasTexture(canvas);
-      tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0, depthTest: false, depthWrite: false });
-      const sprite = new THREE.Sprite(mat);
-      sprite.scale.set(2.6, 1.4, 1);
-      const pos = targetMesh.position.clone().add(new THREE.Vector3(0, 0.9, 0));
-      sprite.position.copy(pos);
-      sprite.renderOrder = 999;
-      effectsGroup.add(sprite);
-      const tl = gsap.timeline({ onComplete: () => { effectsGroup.remove(sprite); tex.dispose(); mat.dispose(); } });
-      // 0.5с вылет, 1с стоп, 0.5с испарение
-      tl.to(sprite.material, { opacity: 1, duration: 0.05 })
-        .to(sprite.position, { y: sprite.position.y + 0.8, duration: 0.5, ease: 'power1.out' })
-        .to({}, { duration: 1.0 })
-        .to(sprite.position, { y: sprite.position.y + 1.6, duration: 0.5, ease: 'power1.in' }, 'end')
-        .to(sprite.material, { opacity: 0, duration: 0.5 }, 'end');
-    }
-
-    function shakeMesh(mesh, times = 3, duration = 0.1) {
-      const tl = gsap.timeline();
-      const ox = mesh.position.x; const oz = mesh.position.z;
-      for (let i = 0; i < times; i++) {
-        const dx = (Math.random()*0.2 - 0.1);
-        const dz = (Math.random()*0.2 - 0.1);
-        tl.to(mesh.position, { x: ox + dx, z: oz + dz, duration: duration/2 })
-          .to(mesh.position, { x: ox, z: oz, duration: duration/2 });
-      }
-      return tl;
-    }
-
-    // Dissolve shader for death effect (fiery burn-away)
-    function createDissolveMaterial() {
-      return new THREE.ShaderMaterial({
-        transparent: true,
-        depthTest: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        uniforms: {
-          uTime:       { value: 0.0 },
-          uThreshold:  { value: 0.0 },
-          uEdgeWidth:  { value: 0.08 },
-          uEdgeColor:  { value: new THREE.Color(0.55, 0.80, 1.0) }, // магическая голубая кромка
-          uBaseColor:  { value: new THREE.Color(0.90, 0.95, 1.0) }, // холодный светлый
-          uNoiseScale: { value: 3.0 },
-          uNoiseMove:  { value: new THREE.Vector2(0.15, -0.1) },
-        },
-        vertexShader: `
-          varying vec2 vUv;
-          varying vec3 vPos;
-          void main(){
-            vUv = uv;
-            vec4 mv = modelViewMatrix * vec4(position, 1.0);
-            vPos = (modelMatrix * vec4(position, 1.0)).xyz;
-            gl_Position = projectionMatrix * mv;
-          }
-        `,
-        fragmentShader: `
-          precision highp float;
-          varying vec2 vUv;
-          varying vec3 vPos;
-          uniform float uTime;
-          uniform float uThreshold;
-          uniform float uEdgeWidth;
-          uniform vec3  uEdgeColor;
-          uniform vec3  uBaseColor;
-          uniform float uNoiseScale;
-          uniform vec2  uNoiseMove;
-          float hash(vec2 p){
-            p = fract(p * vec2(123.34, 345.45));
-            p += dot(p, p + 34.345);
-            return fract(p.x * p.y);
-          }
-          float noise(vec2 p){
-            vec2 i = floor(p);
-            vec2 f = fract(p);
-            float a = hash(i);
-            float b = hash(i + vec2(1.0, 0.0));
-            float c = hash(i + vec2(0.0, 1.0));
-            float d = hash(i + vec2(1.0, 1.0));
-            vec2 u = f * f * (3.0 - 2.0 * f);
-            return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
-          }
-          float fbm(vec2 p){
-            float v = 0.0;
-            float a = 0.5;
-            for (int i = 0; i < 5; i++){
-              v += a * noise(p);
-              p *= 2.02;
-              a *= 0.5;
-            }
-            return v;
-          }
-          void main(){
-            float heightBias = clamp((vPos.y + 0.9) * 0.2, 0.0, 1.0);
-            vec2  uv = vUv * uNoiseScale + uNoiseMove * uTime;
-            float n = fbm(uv) * 0.8 + heightBias * 0.2;
-            float d = n - uThreshold;
-            if (d < 0.0) discard;
-            float edge = smoothstep(0.0, uEdgeWidth, d) - smoothstep(uEdgeWidth, uEdgeWidth * 2.0, d);
-            vec3 color = mix(uBaseColor, uEdgeColor, edge);
-            gl_FragColor = vec4(color, 1.0);
-          }
-        `
-      });
-    }
-
-    function dissolveAndAsh(mesh, awayVec, durationSec = 1.0) {
-      // Клонируем визуальный объект и анимируем клон в effectsGroup, оригинал скрываем
-      if (!mesh) return;
-      try { mesh.updateWorldMatrix(true, true); } catch {}
-      const worldPos = new THREE.Vector3();
-      const worldQuat = new THREE.Quaternion();
-      const worldScale = new THREE.Vector3();
-      try { mesh.getWorldPosition(worldPos); mesh.getWorldQuaternion(worldQuat); mesh.getWorldScale(worldScale); } catch {}
-      const ghost = mesh.clone(true);
-      ghost.traverse(obj => { if (obj && obj.userData) obj.userData = { ...obj.userData }; });
-      ghost.position.copy(worldPos);
-      ghost.quaternion.copy(worldQuat);
-      ghost.scale.copy(worldScale);
-      ghost.renderOrder = (mesh.renderOrder || 1000) + 10;
-      try { effectsGroup.add(ghost); } catch { (mesh.parent||scene).add(ghost); }
-      try { mesh.visible = false; } catch {}
-
-      // Подготовим материалы на клоне и соберём uniform'ы
-      const dissolveTargets = [];
-      ghost.traverse(obj => {
-        if (obj && obj.isMesh && obj.material) {
-          const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
-          const newMats = [];
-          for (const m of materials) {
-            if (!m) { newMats.push(m); continue; }
-            const matClone = m.clone();
-            matClone.transparent = true;
-            matClone.depthWrite = false;
-            matClone.onBeforeCompile = (shader) => {
-              shader.uniforms.uTime = { value: 0.0 };
-              shader.uniforms.uThreshold = { value: 0.0 };
-              shader.uniforms.uEdgeWidth = { value: 0.12 };
-              shader.uniforms.uEdgeColor = { value: new THREE.Color(0.55, 0.80, 1.0) };
-              shader.uniforms.uBaseColor = { value: new THREE.Color(0.90, 0.95, 1.0) };
-              shader.uniforms.uNoiseScale = { value: 3.0 };
-              shader.uniforms.uNoiseMove = { value: new THREE.Vector2(0.15, -0.1) };
-              shader.vertexShader = shader.vertexShader
-                .replace('#include <common>', '#include <common>\n varying vec3 dWorldPos;')
-                .replace('#include <project_vertex>', '#include <project_vertex>\n dWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;');
-              const header = `
-                varying vec3 dWorldPos;
-                uniform float uTime; uniform float uThreshold; uniform float uEdgeWidth; uniform vec3 uEdgeColor; uniform float uNoiseScale; uniform vec2 uNoiseMove;
-                float dhash(vec2 p){ p = fract(p * vec2(123.34, 345.45)); p += dot(p, p + 34.345); return fract(p.x * p.y); }
-                float dnoise(vec2 p){ vec2 i = floor(p); vec2 f = fract(p); float a = dhash(i); float b = dhash(i+vec2(1.0,0.0)); float c = dhash(i+vec2(0.0,1.0)); float d = dhash(i+vec2(1.0,1.0)); vec2 u = f*f*(3.0-2.0*f); return mix(a,b,u.x) + (c-a)*u.y*(1.0-u.x) + (d-b)*u.x*u.y; }
-                float dfbm(vec2 p){ float v=0.0; float a=0.5; for (int i=0;i<5;i++){ v+=a*dnoise(p); p*=2.02; a*=0.5; } return v; }
-                vec4 applyDissolve(vec4 baseColor){
-                  vec2  uv = dWorldPos.xz * uNoiseScale + uNoiseMove * uTime;
-                  float heightBias = clamp((dWorldPos.y) * 0.15, 0.0, 1.0);
-                  float n = dfbm(uv) * 0.8 + heightBias * 0.2;
-                  float d = n - uThreshold; if (d < 0.0) discard;
-                  float edge = smoothstep(0.0, uEdgeWidth, d) - smoothstep(uEdgeWidth, uEdgeWidth*2.0, d);
-                  vec3 c = mix(baseColor.rgb, uEdgeColor, edge);
-                  return vec4(c, baseColor.a);
-                }
-              `;
-              shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + header);
-              try { shader.fragmentShader = shader.fragmentShader.replace(/gl_FragColor\s*=\s*([^;]+);/g, 'gl_FragColor = applyDissolve($1);'); } catch(e) {}
-              shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', '#include <dithering_fragment>\n gl_FragColor = applyDissolve(gl_FragColor);');
-              dissolveTargets.push(shader.uniforms);
-            };
-            matClone.needsUpdate = true;
-            newMats.push(matClone);
-          }
-          obj.material = Array.isArray(obj.material) ? newMats : newMats[0];
-        }
-      });
-
-      const start = performance.now();
-      let rafId = 0; let alive = true;
-      (function tick(){
-        if (!alive) return;
-        const t = (performance.now() - start) / 1000;
-        for (const u of dissolveTargets) { if (u && u.uTime) u.uTime.value = t; }
-        rafId = requestAnimationFrame(tick);
-      })();
-      const tl = gsap.timeline({ onComplete: () => {
-        alive = false; try { cancelAnimationFrame(rafId); } catch {}
-        try { effectsGroup.remove(ghost); } catch {}
-      }});
-      const dy = 1.2;
-      tl.to({}, { duration: 0.0 })
-        .to({ th: 0.0 }, {
-          th: 1.0, duration: Math.max(0.6, durationSec), ease: 'power1.inOut',
-          onUpdate: function(){ const v = this.targets()[0].th; for (const u of dissolveTargets) { if (u && u.uThreshold) u.uThreshold.value = v; } },
-        }, 0)
-        .to(ghost.position, { y: ghost.position.y + dy, duration: Math.max(0.6, durationSec), ease: 'power1.inOut' }, 0);
-    }
-
-    function fadeOutAndFly(mesh, awayVec) {
-      awayVec = awayVec || new THREE.Vector3(0, 0, 1);
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      mats.forEach(m => { m.transparent = true; });
-      const tl = gsap.timeline();
-      tl.to(mesh.rotation, { y: mesh.rotation.y + Math.PI * 0.6, x: mesh.rotation.x - Math.PI * 0.20, duration: 1.5, ease: 'power1.inOut' }, 0)
-        .to(mesh.position, { x: mesh.position.x + awayVec.x, y: mesh.position.y + 2.2, z: mesh.position.z + awayVec.z, duration: 1.5, ease: 'power2.in' }, 0)
-        .to(mats, { opacity: 0, duration: 1.5 }, 0);
-    }
-    
-    // ===== АНИМАЦИИ СМЕНЫ ЭЛЕМЕНТОВ КЛЕТОК =====
-    // Плавная шейдерная замена материала тайла (для Fissures)
-    function dissolveTileSwap(tileMesh, newMaterial, durationSec = 0.9) {
-      if (!tileMesh || !newMaterial) return;
-      try {
-        const old = tileMesh.material;
-        // Обёртка над onBeforeCompile аналогично dissolveAndAsh, но для плоского тайла
-        const uniforms = {
-          uTime: { value: 0.0 },
-          uThreshold: { value: 0.0 },
-          uEdgeWidth: { value: 0.10 },
-          uEdgeColor: { value: new THREE.Color(0.95, 0.85, 0.4) },
-          uNoiseScale: { value: 5.0 },
-          uNoiseMove: { value: new THREE.Vector2(0.2, -0.12) }
-        };
-        const matClone = old.clone();
-        matClone.transparent = true; matClone.depthWrite = false;
-        matClone.onBeforeCompile = (shader) => {
-          shader.uniforms.uTime = uniforms.uTime;
-          shader.uniforms.uThreshold = uniforms.uThreshold;
-          shader.uniforms.uEdgeWidth = uniforms.uEdgeWidth;
-          shader.uniforms.uEdgeColor = uniforms.uEdgeColor;
-          shader.uniforms.uNoiseScale = uniforms.uNoiseScale;
-          shader.uniforms.uNoiseMove = uniforms.uNoiseMove;
-          const header = `
-            uniform float uTime; uniform float uThreshold; uniform float uEdgeWidth; uniform vec3 uEdgeColor; uniform float uNoiseScale; uniform vec2 uNoiseMove;
-            float hashf(vec2 p){ p = fract(p * vec2(123.34, 345.45)); p += dot(p, p + 34.345); return fract(p.x * p.y); }
-            float noisef(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); float a=hashf(i); float b=hashf(i+vec2(1.,0.)); float c=hashf(i+vec2(0.,1.)); float d=hashf(i+vec2(1.,1.)); vec2 u=f*f*(3.-2.*f); return mix(a,b,u.x)+(c-a)*u.y*(1.-u.x)+(d-b)*u.x*u.y; }
-            float fbmf(vec2 p){ float v=0., a=0.5; for(int i=0;i<5;i++){ v+=a*noisef(p); p*=2.02; a*=0.5; } return v; }
-          `;
-          shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n'+header);
-          shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', `#include <dithering_fragment>\n{
-            vec2 uv = gl_FragCoord.xy * (uNoiseScale/512.0) + uNoiseMove * uTime;
-            float n = fbmf(uv);
-            float d = n - uThreshold; if (d < 0.0) discard; 
-            float edge = smoothstep(0.0, uEdgeWidth, d) - smoothstep(uEdgeWidth, uEdgeWidth*2.0, d);
-            gl_FragColor.rgb = mix(gl_FragColor.rgb, uEdgeColor, edge);
-          }`);
-        };
-        tileMesh.material = matClone; tileMesh.material.needsUpdate = true;
-        const start = performance.now(); let rafId=0, alive=true;
-        (function tick(){ if(!alive) return; const t=(performance.now()-start)/1000; uniforms.uTime.value=t; rafId=requestAnimationFrame(tick); })();
-        gsap.to({ th: 0.0 }, { th: 1.0, duration: Math.max(0.5, durationSec), ease: 'power1.inOut', onUpdate: function(){ uniforms.uThreshold.value=this.targets()[0].th; }, onComplete: ()=>{
-          alive=false; try{ cancelAnimationFrame(rafId);}catch{}
-          // Устанавливаем новый материал после растворения старого
-          try { old.dispose && old.dispose(); } catch {}
-          tileMesh.material = newMaterial; tileMesh.material.needsUpdate = true;
-        }});
-      } catch {
-        // Фоллбек: мгновенная замена
-        tileMesh.material = newMaterial; tileMesh.material.needsUpdate = true;
-      }
-    }
-    // Кроссфейд между старым и новым материалом: старая текстура плавно растворяется, новая проявляется
-    function dissolveTileCrossfade(tileMesh, oldMaterial, newMaterial, durationSec = 0.9) {
-      try {
-        if (!tileMesh || !oldMaterial || !newMaterial) return dissolveTileSwap(tileMesh, newMaterial, durationSec);
-        const geom = tileMesh.geometry;
-        const group = new THREE.Group();
-        group.position.copy(tileMesh.position);
-        group.rotation.copy(tileMesh.rotation);
-        group.scale.copy(tileMesh.scale);
-        const oldMesh = new THREE.Mesh(geom.clone(), oldMaterial.clone());
-        const newMesh = new THREE.Mesh(geom.clone(), newMaterial.clone());
-        (boardGroup || scene).add(group);
-        group.add(oldMesh); group.add(newMesh);
-        // подготовка прозрачности
-        oldMesh.material.transparent = true; newMesh.material.transparent = true;
-        oldMesh.material.depthWrite = false; newMesh.material.depthWrite = false;
-        oldMesh.material.opacity = 1.0; newMesh.material.opacity = 0.0;
-        // запустить анимацию
-        const tl = gsap.timeline({ onComplete: () => {
-          try { tileMesh.material = newMaterial; tileMesh.material.needsUpdate = true; } catch {}
-          try { (boardGroup || scene).remove(group); } catch {}
-        }});
-        tl.to(oldMesh.material, { opacity: 0.0, duration: Math.max(0.4, durationSec), ease: 'power1.inOut' }, 0)
-          .to(newMesh.material, { opacity: 1.0, duration: Math.max(0.4, durationSec), ease: 'power1.inOut' }, 0);
-      } catch {
-        dissolveTileSwap(tileMesh, newMaterial, durationSec);
-      }
-    }
-
+    /* Scene effects moved to src/scene/effects.js */
     function performMagicAttack(from, targetMesh) {
       const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
       const res = magicAttack(gameState, from.r, from.c, tr, tc);
@@ -1868,9 +1495,9 @@
         gsap.to(flash.scale, { x: 2, y: 2, z: 2, duration: 0.3 });
         gsap.to(flash.material, { opacity: 0, duration: 0.3, onComplete: ()=> effectsGroup.remove(flash) });
         // тряска цели и всплывающий урон для магии
-        shakeMesh(tMesh, 6, 0.12);
+        window.__fx.shakeMesh(tMesh, 6, 0.12);
         if (typeof res.dmg === 'number' && res.dmg > 0) {
-          spawnDamageText(tMesh, `-${res.dmg}`, '#ff5555');
+          window.__fx.spawnDamageText(tMesh, `-${res.dmg}`, '#ff5555');
         }
       }
       // Манасфера и кладбище для погибших от магии; откладываем перерисовку до конца дизолва
@@ -1878,7 +1505,7 @@
         for (const d of res.deaths) {
           try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
           const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
-          if (deadMesh) { dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9); }
+          if (deadMesh) { window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9); }
           // Орб маны появляется с задержкой 400мс после начала анимации смерти
           setTimeout(() => {
             const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
@@ -2004,7 +1631,7 @@
         addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает +2 ATK до конца хода.`);
         const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
         if (tMesh) {
-          spawnDamageText(tMesh, `+2`, '#22c55e');
+          window.__fx.spawnDamageText(tMesh, `+2`, '#22c55e');
           // Шейдерная вспышка вокруг цели
           try {
             const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.8, 48), new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.0 }));
@@ -2078,7 +1705,7 @@
             try { if (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
             // Поднимем 3D-карту из руки и прожжём её через dissolve (визуально)
             const handMesh = handCardMeshes.find(m => m.userData?.handIndex === handIdx);
-            if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
+            if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} window.__fx.dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
             if (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) {
               try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: handIdx }); } catch {}
               // Закрываем prompt и очищаем выбор, чтобы не зависала панель
@@ -2110,7 +1737,7 @@
         if (u) {
           const before = u.currentHP; u.currentHP = Math.max(0, u.currentHP - 1);
           addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает 1 урона (HP ${before}→${u.currentHP})`);
-          try { const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c); if (tMesh) spawnDamageText(tMesh, `-1`, '#ef4444'); } catch {}
+          try { const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c); if (tMesh) window.__fx.spawnDamageText(tMesh, `-1`, '#ef4444'); } catch {}
           if (u.currentHP <= 0) {
             delayedApply = true;
             const owner = u.owner;
@@ -2118,7 +1745,7 @@
             const pos = tileMeshes[r][c].position.clone().add(new THREE.Vector3(0,1.2,0));
             animateManaGainFromWorld(pos, owner);
             // Запускаем дизолв на текущем меше цели
-            if (unitMesh) { dissolveAndAsh(unitMesh, new THREE.Vector3(0,0,0.6), 0.9); }
+            if (unitMesh) { window.__fx.dissolveAndAsh(unitMesh, new THREE.Vector3(0,0,0.6), 0.9); }
             // Отложим удаление из доски до завершения анимации
             setTimeout(() => { gameState.board[r][c].unit = null; updateUnits(); updateUI(); }, 1000);
           }
@@ -2129,7 +1756,7 @@
         if (!u) { showNotification('Need to drag this card to a unit', 'error'); return; }
         if (u.owner !== gameState.active) { showNotification('Only friendly unit', 'error'); return; }
         const before = u.currentHP; u.currentHP += 2; addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает +2 HP (HP ${before}→${u.currentHP})`);
-        try { const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c); if (tMesh) spawnDamageText(tMesh, `+2`, '#22c55e'); } catch {}
+        try { const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c); if (tMesh) window.__fx.spawnDamageText(tMesh, `+2`, '#22c55e'); } catch {}
       }
       pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
       resetCardSelection(); updateHand();
@@ -2171,7 +1798,7 @@
           const p = tileMesh ? tileMesh.position.clone().add(new THREE.Vector3(0, 1.0, 0)) : new THREE.Vector3(0, 1.0, 0);
           big.position.copy(p);
           (boardGroup || scene).add(big);
-          dissolveAndAsh(big, new THREE.Vector3(0, 0.6, 0), 0.9);
+          window.__fx.dissolveAndAsh(big, new THREE.Vector3(0, 0.6, 0), 0.9);
           spellDragHandled = true;
           // Скрыть перетягиваемую карту, чтобы не мигала
           try { cardMesh.visible = false; } catch {}
@@ -2206,7 +1833,7 @@
           const p = tileMesh ? tileMesh.position.clone().add(new THREE.Vector3(0, 1.0, 0)) : new THREE.Vector3(0, 1.0, 0);
           big.position.copy(p);
           (boardGroup || scene).add(big);
-          dissolveAndAsh(big, new THREE.Vector3(0, 0.6, 0), 0.9);
+          window.__fx.dissolveAndAsh(big, new THREE.Vector3(0, 0.6, 0), 0.9);
           spellDragHandled = true;
         } catch {}
         pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
@@ -2227,7 +1854,7 @@
         try {
           const tile = tileMeshes[r][c];
           const mat = getTileMaterial(nextEl);
-          dissolveTileCrossfade(tile, getTileMaterial(prevEl), mat, 0.9);
+          window.__fx.dissolveTileCrossfade(tile, getTileMaterial(prevEl), mat, 0.9);
           // Онлайновая синхронизация эффекта
           try { if (NET_ON() && MY_SEAT === gameState.active && typeof window !== 'undefined' && window.socket) window.socket.emit('tileCrossfade', { r, c, prev: prevEl, next: nextEl }); } catch {}
         } catch {}
@@ -2241,11 +1868,11 @@
           if (deltaHp !== 0) {
             const before = u.currentHP; u.currentHP = Math.max(0, before + deltaHp);
             const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-            if (tMesh) spawnDamageText(tMesh, `${deltaHp > 0 ? '+' : ''}${deltaHp}`, deltaHp > 0 ? '#22c55e' : '#ef4444');
+            if (tMesh) window.__fx.spawnDamageText(tMesh, `${deltaHp > 0 ? '+' : ''}${deltaHp}`, deltaHp > 0 ? '#22c55e' : '#ef4444');
             if (u.currentHP <= 0) {
               try { gameState.players[u.owner].graveyard.push(CARDS[u.tplId]); } catch {}
               const deadMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-              if (deadMesh) { dissolveAndAsh(deadMesh, new THREE.Vector3(0,0,0.6), 0.9); setTimeout(()=>{ gameState.board[r][c].unit = null; updateUnits(); updateUI(); }, 1000); }
+              if (deadMesh) { window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0,0,0.6), 0.9); setTimeout(()=>{ gameState.board[r][c].unit = null; updateUnits(); updateUI(); }, 1000); }
             }
           }
         }
@@ -2253,7 +1880,7 @@
         try {
           const big = createCard3D(tpl, false);
           const p = tileMesh.position.clone().add(new THREE.Vector3(0, 1.0, 0));
-          big.position.copy(p); (boardGroup || scene).add(big); dissolveAndAsh(big, new THREE.Vector3(0,0.6,0), 0.9);
+          big.position.copy(p); (boardGroup || scene).add(big); window.__fx.dissolveAndAsh(big, new THREE.Vector3(0,0.6,0), 0.9);
           spellDragHandled = true;
         } catch {}
         pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
@@ -2297,11 +1924,11 @@
             const localSpellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl);
             try { if (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
             const handMesh = handCardMeshes.find(m => m.userData?.handIndex === handIdx);
-            if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
+            if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} window.__fx.dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
             if (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) {
               try { if (typeof window !== 'undefined') window.__HF_ACK = false; } catch {}
               try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('debugLog', { tag:'HF:onPicked', phase:'emit', localSpellIdx, handIdx, active: gameState.active }); } catch {}
-              try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
+              try { if (pendingRitualBoardMesh) { window.__fx.dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
               try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: handIdx }); } catch {}
               // Повторная отправка через 350мс, если сервер не ответил
               setTimeout(()=>{ try { if (typeof window !== 'undefined' && !window.__HF_ACK && window.socket) window.socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: handIdx }); } catch {} }, 350);
@@ -2315,7 +1942,7 @@
               try { pl.graveyard.push(toDiscardTpl); } catch {}
               pl.hand.splice(handIdx, 1); updateHand();
               pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
-              try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
+              try { if (pendingRitualBoardMesh) { window.__fx.dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
               let spellIdx = localSpellIdx; if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
               pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
               console.log('[HF:onPicked] Hiding prompt and clearing selection (offline)');
@@ -2336,11 +1963,11 @@
           const handMesh = handCardMeshes.find(m => m.userData?.handIndex === singleIdx);
           const localSpellIdx = (pendingRitualSpellHandIndex != null) ? pendingRitualSpellHandIndex : pl.hand.indexOf(tpl);
           try { if (NET_ON()) { PENDING_HIDE_HAND_CARDS = Array.from(new Set([singleIdx, localSpellIdx])).filter(i=>i>=0); } } catch {}
-          if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
+          if (handMesh) { try { handMesh.userData.isInHand = false; } catch {} window.__fx.dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9); }
           if (NET_ON()) {
             try { if (typeof window !== 'undefined') window.__HF_ACK = false; } catch {}
             try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('debugLog', { tag:'HF:single', phase:'emit', localSpellIdx, singleIdx, active: gameState.active }); } catch {}
-            try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
+            try { if (pendingRitualBoardMesh) { window.__fx.dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
             try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('ritualResolve', { kind:'HOLY_FEAST', by: gameState.active, card: tpl.id, consumed: toDiscardTpl.id }); } catch {}
             try { if (typeof window !== 'undefined' && window.socket) window.socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: singleIdx }); } catch {}
             setTimeout(()=>{ try { if (typeof window !== 'undefined' && !window.__HF_ACK && window.socket) window.socket.emit('holyFeast', { seat: gameState.active, spellIdx: localSpellIdx, creatureIdx: singleIdx }); } catch {} }, 350);
@@ -2351,7 +1978,7 @@
             try { pl.graveyard.push(toDiscardTpl); } catch {}
             pl.hand.splice(singleIdx, 1); updateHand();
             pl.mana = capMana(pl.mana + 2); addLog(`${tpl.name}: ритуал — +2 маны.`);
-            try { if (pendingRitualBoardMesh) { dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
+            try { if (pendingRitualBoardMesh) { window.__fx.dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); setTimeout(()=>{ try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} pendingRitualBoardMesh = null; }, 950); } } catch {}
             let spellIdx = localSpellIdx; if (spellIdx >= 0) { pl.hand.splice(spellIdx, 1); }
                           pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null;
               pendingDiscardSelection = null;
