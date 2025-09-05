@@ -191,10 +191,10 @@
 
       let scene, camera, renderer, raycaster, mouse;
       let boardGroup, cardGroup, effectsGroup, metaGroup;
-      let tileMeshes = [];
-      let tileFrames = [];
-    let unitMeshes = [];
-    let handCardMeshes = [];
+      let tileMeshes = [];    // 2D массив мешей клеток игрового поля
+      let tileFrames = [];    // рамки подсветки/выделения клеток
+    let unitMeshes = [];      // текущие меши юнитов на поле
+    let handCardMeshes = [];  // меши карт в руке игрока
       let gameState = null;
       // Tile textures are now managed by scene/board module
     // Настройки показа большой карты при доборе — можно править из консоли
@@ -360,7 +360,7 @@
       let pendingRitualBoardMesh = null; // временный меш спелла на поле
     let spellDragHandled = false; // флаг, что возврат карты в руку уже не нужен
 
-    
+    // === THREE.JS SCENE INITIALIZATION ===
     function initThreeJS() {
       if (window.__scene && typeof window.__scene.initThreeJS === 'function') {
         const ctx = window.__scene.initThreeJS({ canvasId: 'three-canvas', clearColor: 0x0b1220 });
@@ -380,11 +380,13 @@
     }
     // preloadCardImages removed (module handles lazy loading)
 
+    // Request deferred redraw of units and hand after state mutations.
     function requestCardsRedraw() {
       clearTimeout(window.__cardsRedrawT);
       window.__cardsRedrawT = setTimeout(() => { updateUnits(); updateHand(); }, 10);
     }
 
+    // Возврат материала тайла по его элементу; делегируется модулю доски
     function getTileMaterial(element) {
       if (window.__board && window.__board.getTileMaterial) {
         return window.__board.getTileMaterial(element);
@@ -398,6 +400,7 @@
       }
     }
 
+    // Build or rebuild the 3D board tiles.
     function createBoard() {
       try { window.__cards.preloadCardTextures(); } catch {}
       if (window.__board && window.__scene) {
@@ -426,6 +429,8 @@
     
 
     
+    // ====== HAND RENDERING AND LAYOUT ======
+    // Rebuilds 3D meshes to match current player's hand cards.
     function updateHand() {
       // Во время полёта карты не перерисовываем руку, чтобы не ломать предраскладку
       if (drawAnimationActive) return;
@@ -500,6 +505,7 @@
       }
     }
 
+    // Helper: compute fan layout transform for card `index` in `total` cards.
     function computeHandTransform(index, total) {
       const handSize = Math.max(1, total);
       const angleSpread = Math.min(0.3, 1.2 / (handSize + 1));
@@ -519,6 +525,7 @@
       return { position: pos, rotation: rot, scale };
     }
 
+    // Visual adjustments when a hand card is hovered.
     function setHandCardHoverVisual(mesh, hovered) {
       if (!mesh) return;
       const materials = [];
@@ -556,6 +563,7 @@
       }
     }
 
+    // Animation: large card flies into hand when drawing from deck.
     async function animateDrawnCardToHand(cardTpl) {
       try {
         if (!cardTpl) return;
@@ -658,6 +666,7 @@
       } catch {}
     }
     
+    // Синхронизирует 3D-модели юнитов с текущим состоянием gameState
     function updateUnits() {
       if (window.__units && typeof window.__units.updateUnits === 'function') {
         window.__units.updateUnits(gameState);
@@ -671,6 +680,7 @@
     }
 
     // Визуализировать изменения между предыдущим и новым состоянием (для наблюдателя/оппонента)
+    // Показывает визуальные различия на поле между предыдущим и новым состоянием
     function playDeltaAnimations(prevState, nextState) {
       try {
         if (!prevState || !nextState) return;
@@ -859,7 +869,8 @@
         }
       }
 
-      // Взаимодействие
+      // ====== POINTER INTERACTION HANDLERS ======
+      // Mouse move: update drag position and hand hover.
     function onMouseMove(event) {
       if (isInputLocked()) return;
       const rect = renderer.domElement.getBoundingClientRect();
@@ -946,6 +957,7 @@
       }
     }
     
+    // Mouse down: start drag or select targets.
     function onMouseDown(event) {
       if (!gameState || gameState.winner !== null) return;
       if (isInputLocked()) return;
@@ -1026,6 +1038,7 @@
       }
     }
     
+    // Mouse up: finalize card drops or cancel drag.
     function onMouseUp(event) {
       if (isInputLocked()) { endCardDrag(); return; }
       if (draggedCard) {
@@ -1077,6 +1090,8 @@
       endCardDrag();
     }
     
+    // ====== CARD DRAG HELPERS ======
+    // Prepare card mesh for dragging from hand.
     function startCardDrag(card) {
       draggedCard = card;
       // если карта была увеличена ховером — вернём к стандартному масштабу руки
@@ -1106,6 +1121,7 @@
       });
     }
     
+    // Clean up after drag operation finishes.
     function endCardDrag() {
       if (hoveredTile) {
         hoveredTile.material.emissiveIntensity = 0.1;
@@ -1114,6 +1130,7 @@
       draggedCard = null;
     }
     
+    // Animate card back to its original hand slot.
     function returnCardToHand(card) {
       gsap.to(card.position, {
         x: card.userData.originalPosition.x,
@@ -1138,8 +1155,7 @@
       });
     }
     
-
-    
+      // Cancel currently selected card and restore its visuals.
       function resetCardSelection() {
         if (selectedCard) {
           returnCardToHand(selectedCard);
@@ -1399,6 +1415,7 @@
       manaGainActive = false;
       refreshInputLockUI();
     }
+    // Resolve unit card placement on board after choosing orientation.
     function placeUnitWithDirection(direction) {
       if (!pendingPlacement) return;
       
@@ -1506,6 +1523,7 @@
       animate();
       initGame();
       
+      // Привязка обработчиков взаимодействия с трёхмерным полем и картами
       renderer.domElement.addEventListener('mousemove', onMouseMove);
       renderer.domElement.addEventListener('mousedown', onMouseDown);
       renderer.domElement.addEventListener('mouseup', onMouseUp);
@@ -2055,6 +2073,7 @@
         .to(mats, { opacity: 0, duration: 1.5 }, 0);
     }
     
+    // ===== АНИМАЦИИ СМЕНЫ ЭЛЕМЕНТОВ КЛЕТОК =====
     // Плавная шейдерная замена материала тайла (для Fissures)
     function dissolveTileSwap(tileMesh, newMaterial, durationSec = 0.9) {
       if (!tileMesh || !newMaterial) return;
@@ -2264,6 +2283,8 @@
       } catch {}
     }
     
+    // === SPELL CASTING LOGIC ===
+    // Apply spell card to a specific unit on board.
     function castSpellOnUnit(cardMesh, unitMesh) {
       const idx = cardMesh.userData.handIndex;
       const pl = gameState.players[gameState.active];
@@ -2304,8 +2325,9 @@
         resetCardSelection(); updateHand(); updateUnits(); updateUI();
         return;
       }
-      if (tpl.id === 'SPELL_SUMMONER_MESMERS_ERRAND') {
-        // Добор двух карт с существующей анимацией
+        // Summoner's Errand: draw two cards immediately.
+        if (tpl.id === 'SPELL_SUMMONER_MESMERS_ERRAND') {
+          // Добор двух карт с существующей анимацией
         if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); resetCardSelection(); return; }
         pl.mana -= tpl.cost;
         (async () => {
@@ -2324,8 +2346,9 @@
         resetCardSelection();
         return;
       }
-      if (tpl.id === 'SPELL_GOGHLIE_ALTAR') {
-        // Оба игрока получают ману = числу вражеских существ на доске
+        // Goghlie Altar: each player gains mana for enemy units on board.
+        if (tpl.id === 'SPELL_GOGHLIE_ALTAR') {
+          // Оба игрока получают ману = числу вражеских существ на доске
         const countUnits = (ownerIdx) => {
           let n = 0; for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
             const un = gameState.board[rr][cc].unit; if (un && un.owner !== ownerIdx) n++;
@@ -2345,8 +2368,9 @@
         resetCardSelection(); updateHand(); updateUI();
         return;
       }
-      if (tpl.id === 'SPELL_PARMTETIC_HOLY_FEAST') {
-        // Ритуал: требуется сбросить существо из руки -> применить анимацию dissolve для выбранной карты из руки
+        // Parmtetic Holy Feast: ritual requiring discard of a unit from hand.
+        if (tpl.id === 'SPELL_PARMTETIC_HOLY_FEAST') {
+          // Ритуал: требуется сбросить существо из руки -> применить анимацию dissolve для выбранной карты из руки
         const handCreatures = pl.hand.filter(x => x && x.type === 'UNIT');
         if (handCreatures.length === 0) { showNotification('No units available', 'error'); return; }
         console.log('[HF:setup] Setting up pendingDiscardSelection for Holy Feast (castSpellOnUnit)');
@@ -2385,8 +2409,10 @@
         // Подсветить руку не будем — выбор по клику на карте из руки (см. перехват в onMouseDown)
         return;
       }
-      if (tpl.id === 'WIND_SHIFT') { if (u) u.facing = turnCW[u.facing]; addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут.`); }
-      if (tpl.id === 'FREEZE_STREAM') {
+        // Wind Shift: rotate target unit clockwise.
+        if (tpl.id === 'WIND_SHIFT') { if (u) u.facing = turnCW[u.facing]; addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут.`); }
+        // Freeze Stream: deal 1 damage and dissolve if lethal.
+        if (tpl.id === 'FREEZE_STREAM') {
         if (u) {
           const before = u.currentHP; u.currentHP = Math.max(0, u.currentHP - 1);
           addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает 1 урона (HP ${before}→${u.currentHP})`);
@@ -2404,7 +2430,8 @@
           }
         }
       }
-      if (tpl.id === 'RAISE_STONE') {
+        // Raise Stone: grant +2 HP to a friendly unit.
+        if (tpl.id === 'RAISE_STONE') {
         if (!u) { showNotification('Need to drag this card to a unit', 'error'); return; }
         if (u.owner !== gameState.active) { showNotification('Only friendly unit', 'error'); return; }
         const before = u.currentHP; u.currentHP += 2; addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает +2 HP (HP ${before}→${u.currentHP})`);
@@ -2415,7 +2442,7 @@
       if (!delayedApply) { updateUnits(); updateUI(); }
     }
 
-    // Новый универсальный обработчик каста спелла при перетаскивании
+    // Generic handler for drag-and-drop spell casting on units or tiles.
     function castSpellByDrag(cardMesh, unitMesh, tileMesh) {
       const idx = cardMesh.userData.handIndex;
       const pl = gameState.players[gameState.active];
@@ -2438,8 +2465,9 @@
         } catch {}
         return castSpellOnUnit(cardMesh, unitMesh);
       }
-      // Спеллы без цели
-      if (id === 'SPELL_SUMMONER_MESMERS_ERRAND') {
+        // Спеллы без цели
+        // Summoner's Errand: burn card and draw two replacements.
+        if (id === 'SPELL_SUMMONER_MESMERS_ERRAND') {
         // Добор двух карт
         if (tpl.cost > pl.mana) { showNotification('Insuffcient mana', 'error'); return; }
         pl.mana -= tpl.cost;
@@ -2470,7 +2498,8 @@
         })();
         return;
       }
-      if (id === 'SPELL_GOGHLIE_ALTAR') {
+        // Goghlie Altar: each player gains mana for enemy units.
+        if (id === 'SPELL_GOGHLIE_ALTAR') {
         const countUnits = (ownerIdx) => { let n = 0; for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) { const un = gameState.board[rr][cc].unit; if (un && un.owner !== ownerIdx) n++; } return n; };
         const g0 = countUnits(0), g1 = countUnits(1);
         gameState.players[0].mana = capMana(gameState.players[0].mana + g0);
@@ -2490,7 +2519,8 @@
         updateHand(); updateUI();
         return;
       }
-      if (id === 'SPELL_FISSURES_OF_GOGHLIE') {
+        // Fissures of Goghlie: flip tile element and update unit.
+        if (id === 'SPELL_FISSURES_OF_GOGHLIE') {
         if (!tileMesh) { showNotification('Drag this card to a board cell', 'error'); return; }
         const r = tileMesh.userData.row, c = tileMesh.userData.col;
         const cell = gameState.board[r][c];
@@ -2536,7 +2566,8 @@
         updateHand(); updateUnits(); updateUI();
         return;
       }
-      if (id === 'SPELL_PARMTETIC_HOLY_FEAST') {
+        // Parmtetic Holy Feast: board-placed ritual requiring unit discard.
+        if (id === 'SPELL_PARMTETIC_HOLY_FEAST') {
         const handCreatures = pl.hand.filter(x => x && x.type === 'UNIT');
         if (handCreatures.length === 0) { showNotification('No unit in hand for this action', 'error'); return; }
         // Визуально «оставим» карту на поле: создаём временный меш спелла и не возвращаем перетянутую карту
