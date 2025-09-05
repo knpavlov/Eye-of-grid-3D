@@ -10,37 +10,11 @@
   <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
   <script type="module" src="./src/main.js"></script>
-  <script>
-    // Early globals so later scripts never crash if earlier code aborted
-    (function(){
-      try { if (typeof window.NET_ACTIVE === 'undefined') window.NET_ACTIVE = false; } catch(e){}
-      try { if (typeof window.MY_SEAT === 'undefined') window.MY_SEAT = null; } catch(e){}
-      try { if (typeof window.APPLYING === 'undefined') window.APPLYING = false; } catch(e){}
-      try { if (typeof window.NET_ON === 'undefined') window.NET_ON = function(){ try { return !!window.NET_ACTIVE; } catch(e){ return false; } }; } catch(e){}
-
-      // Define core UI lock flags upfront to avoid ReferenceError on first access
-      try { if (typeof window.__endTurnInProgress === 'undefined') window.__endTurnInProgress = false; } catch(e){}
-      try { if (typeof window.drawAnimationActive === 'undefined') window.drawAnimationActive = false; } catch(e){}
-      try { if (typeof window.splashActive === 'undefined') window.splashActive = false; } catch(e){}
-
-      // nothing else inside IIFE
-    })();
-    // Also create global bindings (var) so bare identifiers work in this file
-    try {
-      /* eslint-disable no-var */
-      var __endTurnInProgress = window.__endTurnInProgress;
-      var drawAnimationActive = window.drawAnimationActive;
-      var splashActive = window.splashActive;
-      // keep window properties in sync (assign again just in case)
-      window.__endTurnInProgress = __endTurnInProgress;
-      window.drawAnimationActive = drawAnimationActive;
-      window.splashActive = splashActive;
-    } catch(e){}
-  </script>
 </head>
 <body>
   <canvas id="three-canvas"></canvas>
   
+  <!-- MODULE: UI layout (static) - consider extracting to templates/components -->
   <div id="ui">
     <!-- Боковые панели: слева — игрок A, справа — игрок B -->
     <div id="left-side" class="ui-panel fixed left-4 top-1/2 -translate-y-1/2 space-y-3 z-20 flex flex-col items-center">
@@ -168,15 +142,24 @@
   <div id="build-version" class="fixed left-0 top-0 z-20 text-xs text-slate-300 opacity-80 p-1.5"></div>
 
   <script>
-    // ====== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ======
-    // Переменные для мультиплеера (должны быть доступны везде)
-    var NET_ACTIVE = false;
-    var MY_SEAT = null;
-    var APPLYING = false;
-    
-    // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
-    
-    let DIR_VECTORS, OPPOSITE_ELEMENT, elementEmoji, turnCW, turnCCW;
+      /* MODULE: runtime globals
+         Purpose: multiplayer state shared across modules
+         TODO: move to src/core/netState.js */
+      // ====== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ======
+      // Переменные для мультиплеера (должны быть доступны везде)
+        var NET_ACTIVE = false;
+        var MY_SEAT = null;
+        var APPLYING = false;
+        function NET_ON(){ return !!NET_ACTIVE; }
+
+        // UI lock flags
+        let __endTurnInProgress = false;
+        let drawAnimationActive = false;
+        let splashActive = false;
+
+        // ====== ИГРОВАЯ ЛОГИКА ======
+
+      let DIR_VECTORS, OPPOSITE_ELEMENT, elementEmoji, turnCW, turnCCW;
     // Переопределяем ориентации: N должен смотреть к верхнему краю (−Z), S — к нижнему (+Z)
     // В three.js «вперёд» меша по умолчанию это +Z (0°), поэтому:
     // S: 0°, E: -90°, W: 90°, N: 180°
@@ -192,6 +175,9 @@
     let STARTER_FIRESET;
     
     // Функции игровой логики
+    /* MODULE: core/boardSetup & mechanics
+       Buff calculations, stat helpers and initial board generation.
+       Extract to src/core/board.js to keep index.html thin. */
     let dirsForPattern;
     
     const computeCellBuff = (cellElement, unitElement) => {
@@ -204,24 +190,7 @@
     
     let effectiveStats;
     
-    const randomBoard = () => {
-      // 5 элементов: FIRE, WATER, EARTH, FOREST, MECH
-      // Центр (1,1) = MECH. Остальные 8 клеток: из FIRE/WATER/EARTH/FOREST по 2 штуки каждого
-      const picks = ['FIRE','FIRE','WATER','WATER','EARTH','EARTH','FOREST','FOREST'];
-      // Перемешаем и разложим по клеткам, пропуская центр
-      for (let i = picks.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [picks[i], picks[j]] = [picks[j], picks[i]]; }
-      let k = 0;
-      const board = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE' })));
-      for (let r = 0; r < 3; r++) {
-        for (let c = 0; c < 3; c++) {
-          if (r === 1 && c === 1) { board[r][c].element = 'MECH'; continue; }
-          board[r][c].element = picks[k++];
-        }
-      }
-      return board;
-    };
-    
-    let shuffle;
+      let shuffle;
     
     let drawOne;
 
@@ -230,55 +199,30 @@
     
     let countControlled;
     
-    let startGame;
+      let startGame;
+
+      // ====== БОЕВАЯ СИСТЕМА ======
+      let hasAdjacentGuard;
+      let computeHits;
+      let stagedAttack;
+      let magicAttack;
     
-    // ====== БОЕВАЯ СИСТЕМА (порт из 2D) ======
-    let hasAdjacentGuard;
-    let computeHits;
-/*          const backDir = turnCW[turnCW[B.facing]];
-          const [bdr, bdc] = DIR_VECTORS[backDir];
-          const isBack = (nr + bdr === r && nc + bdc === c);
-          // Определяем направление на атакующего относительно ПОВОРОТА цели
-          const dirAbs = (() => {
-            if (r === nr - 1 && c === nc) return 'N';
-            if (r === nr + 1 && c === nc) return 'S';
-            if (r === nr && c === nc - 1) return 'W';
-            return 'E';
-          })();
-          const ORDER = ['N','E','S','W'];
-          const absIdx = ORDER.indexOf(dirAbs);
-          const faceIdx = ORDER.indexOf(B.facing);
-          const relIdx = (absIdx - faceIdx + 4) % 4;
-          const dirRel = ORDER[relIdx];
-          const blind = CARDS[B.tplId].blindspots || ['S'];
-          const inBlind = blind.includes(dirRel);
-          // Исключаем двойное начисление за спину: максимум +1
-          const extraTotal = isBack ? 1 : (inBlind ? 1 : 0);
-          const dmg = Math.max(0, atk + extraTotal);
-          hits.push({ r: nr, c: nc, dmg, backstab: isBack });
-          break; // первая цель по лучу
-        }
-      }
-      return hits;
-    */
-    
-    let stagedAttack;
-    let magicAttack;
-    
-    // ====== THREE.JS СЦЕНА ======
-    
-    let scene, camera, renderer, raycaster, mouse;
-    let boardGroup, cardGroup, effectsGroup, metaGroup;
-    let tileMeshes = [];
-    let tileFrames = [];
-    let unitMeshes = [];
-    let handCardMeshes = [];
-    let gameState = null;
-    let logEntries = [];
-    let TILE_TEXTURES = {};
-    // Legacy CARD_TEX placeholder: modules expose window.CARD_TEX when preloaded
-    var CARD_TEX;
-    let PROC_TILE_TEXTURES = {};
+      /* MODULE: 3D scene setup and rendering
+         Target module: src/scene/*.js (board, cards, units). Inline code below
+         duplicates logic already present in modules; keep until migration
+         complete. */
+      // ====== THREE.JS СЦЕНА ======
+
+      let scene, camera, renderer, raycaster, mouse;
+      let boardGroup, cardGroup, effectsGroup, metaGroup;
+      let tileMeshes = [];
+      let tileFrames = [];
+      let unitMeshes = [];
+      let handCardMeshes = [];
+      let gameState = null;
+      let logEntries = [];
+      let TILE_TEXTURES = {};
+      let PROC_TILE_TEXTURES = {};
     // Настройки показа большой карты при доборе — можно править из консоли
     window.DRAW_CARD_TUNE = {
       posY: 8.5,   // высота
@@ -777,37 +721,19 @@
       try { window.tileMeshes = tileMeshes; window.tileFrames = tileFrames; } catch {}
     }
     
-    // Delegator: module cards implementation
-    function createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
-      if (window.__cards && typeof window.__cards.createCard3D === 'function') {
-        return window.__cards.createCard3D(cardData, isInHand, hpOverride, atkOverride);
+      // Delegator: module cards implementation
+      function createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
+        return (window.__cards && typeof window.__cards.createCard3D === 'function')
+          ? window.__cards.createCard3D(cardData, isInHand, hpOverride, atkOverride)
+          : null;
       }
-      // Fallback to legacy if module is missing
-      return __legacy_createCard3D(cardData, isInHand, hpOverride, atkOverride);
-    }
 
-    function __legacy_createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
-      // disabled legacy body
-      return null;
-    }
-
-    // Legacy kept only for offline file:// fallback (modules handle normally)
-    function __legacy_attachIllustrationPlane(cardMesh, cardData) {
-      // disabled legacy body
-      return;
-    }
-    // Delegator: module cards implementation
-    function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
-      if (window.__cards && typeof window.__cards.drawCardFace === 'function') {
-        return window.__cards.drawCardFace(ctx, cardData, width, height, hpOverride, atkOverride);
+      // Delegator: module cards implementation
+      function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
+        return (window.__cards && typeof window.__cards.drawCardFace === 'function')
+          ? window.__cards.drawCardFace(ctx, cardData, width, height, hpOverride, atkOverride)
+          : null;
       }
-      return __legacy_drawCardFace(ctx, cardData, width, height, hpOverride, atkOverride);
-    }
-
-    function __legacy_drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
-      // disabled legacy body
-      return;
-    }
     
 
     
@@ -2056,21 +1982,7 @@
         hasAdjacentGuard = window.hasAdjacentGuard; computeHits = window.computeHits; stagedAttack = window.stagedAttack; magicAttack = window.magicAttack;
         shuffle = window.shuffle; drawOne = window.drawOne; drawOneNoAdd = window.drawOneNoAdd; countControlled = window.countControlled; startGame = window.startGame;
       } catch {}
-      // Fallbacks to ensure offline scene renders even if module failed to load
-      try {
-        if (!startGame || typeof startGame !== 'function') {
-          startGame = (deck0, deck1) => ({
-            board: randomBoard(),
-            players: [
-              { name: 'Player 1', deck: Array.isArray(deck0)?deck0.slice():[], hand: [], discard: [], graveyard: [], mana: 2 },
-              { name: 'Player 2', deck: Array.isArray(deck1)?deck1.slice():[], hand: [], discard: [], graveyard: [], mana: 0 }
-            ],
-            active: 0,
-            turn: 1,
-            winner: null
-          });
-        }
-      } catch {}
+      // Modules are required; no legacy fallbacks
     }
 
     // ---- Lightweight on-screen diagnostics for module/scene wiring ----
@@ -2348,8 +2260,8 @@
       const zA = -5.2 - META_Z_AWAY; const zB = 0.2 + META_Z_AWAY; // Важно (смещение колоды/кладбища от камеры)
       function buildDeck(player, z) {
         const g = new THREE.Group(); g.position.set(baseX, 0.5, z); g.userData = { metaType: 'deck', player };
-        const sideMap = (CARD_TEX && CARD_TEX.deckSide) ? CARD_TEX.deckSide : getCachedTexture('textures/card_deck_side_view.jpeg');
-        const backMap = (CARD_TEX && CARD_TEX.back) ? CARD_TEX.back : getCachedTexture('textures/card_back_main.jpeg');
+          const sideMap = getCachedTexture('textures/card_deck_side_view.jpeg');
+          const backMap = getCachedTexture('textures/card_back_main.jpeg');
         const sideMat = new THREE.MeshStandardMaterial({ map: sideMap, color: 0xffffff, metalness: 0.3, roughness: 0.85 });
         const body = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.8, 5.0), sideMat);
         body.castShadow = true; body.receiveShadow = true; body.userData = { metaType: 'deck', player };
@@ -2445,7 +2357,8 @@
     
     document.addEventListener('DOMContentLoaded', init);
 
-    // ====== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЕЙСТВИЙ ======
+      /* MODULE: UI action helpers - candidate for src/ui/actions.js */
+      // ====== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЕЙСТВИЙ ======
     function showPrompt(text, onCancel) {
       const pp = document.getElementById('prompt-panel');
       const pt = document.getElementById('prompt-text');
@@ -2504,6 +2417,10 @@
       performBattleSequence(r, c, true);
        }
     
+    /* MODULE: core/battleSequence
+       Combines combat resolution, animations and network sync.
+       Split into logic (src/core/battle.js), FX (src/scene/battleFx.js)
+       and net sync (src/net/battleSync.js). */
     async function performBattleSequence(r, c, markAttackTurn) {
       const staged = stagedAttack(gameState, r, c);
       if (!staged || staged.empty) return;
@@ -2653,6 +2570,9 @@
       }
     }
 
+    /* MODULE: effects/damageText
+       Floating damage numbers; pure visual helper.
+       Move to src/scene/effects.js */
     function spawnDamageText(targetMesh, text, color = '#ff5555') {
       const canvas = document.createElement('canvas');
       canvas.width = 256; canvas.height = 128;
@@ -3455,10 +3375,14 @@
 
     // (убраны несуществующие обработчики magic-btn и draw-btn)
   </script>
-<!-- серверный патч -->
-<!-- === Multiplayer patch v2: sync + queue + countdown + lock input + indicator === --> 
+<!-- MODULE: network/multiplayer (socket.io sync, queue, indicator)
+     TODO: extract to src/net/client.js -->
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script> 
+<script>
+  /* MODULE: network/multiplayer
+     Purpose: handle server connection, matchmaking, state sync,
+     countdowns, and input locking.
+     TODO: migrate this whole block to src/net/client.js */
 (() => {
   // ===== 0) Config =====
   const SERVER_URL = (location.hostname === "localhost")
