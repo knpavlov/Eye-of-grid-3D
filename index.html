@@ -145,6 +145,14 @@
       /* MODULE: runtime globals
          Purpose: multiplayer state shared across modules
          Extracted to src/core/netState.js */
+      // Fallbacks to avoid ReferenceError if module has not yet initialized
+      if (typeof NET_ACTIVE === 'undefined') var NET_ACTIVE = false;
+      if (typeof MY_SEAT === 'undefined') var MY_SEAT = null;
+      if (typeof APPLYING === 'undefined') var APPLYING = false;
+      if (typeof __endTurnInProgress === 'undefined') var __endTurnInProgress = false;
+      if (typeof drawAnimationActive === 'undefined') var drawAnimationActive = false;
+      if (typeof splashActive === 'undefined') var splashActive = false;
+      if (typeof NET_ON === 'undefined') var NET_ON = () => NET_ACTIVE;
         // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
     
     let DIR_VECTORS, OPPOSITE_ELEMENT, elementEmoji, turnCW, turnCCW;
