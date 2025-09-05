@@ -12,6 +12,7 @@ import * as Cards from './scene/cards.js';
 import * as Units from './scene/units.js';
 import * as Hand from './scene/hand.js';
 import { getCtx as getSceneCtx } from './scene/context.js';
+import * as SceneFx from './scene/effects.js';
 // UI modules
 import * as UINotifications from './ui/notifications.js';
 import * as UILog from './ui/log.js';
@@ -23,6 +24,7 @@ import * as Banner from './ui/banner.js';
 import * as HandCount from './ui/handCount.js';
 import { updateUI } from './ui/update.js';
 import './ui/statusChip.js';
+import * as UIActions from './ui/actions.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -142,11 +144,13 @@ try {
   window.__ui.notifications = UINotifications;
   window.__ui.log = UILog;
   window.__ui.mana = UIMana;
-  window.__ui.panels = UIPanels;
-  window.__ui.handCount = HandCount;
-  window.__ui.updateUI = updateUI;
-  window.updateUI = updateUI;
-} catch {}
+    window.__ui.panels = UIPanels;
+    window.__ui.handCount = HandCount;
+    window.__ui.updateUI = updateUI;
+    window.__ui.actions = UIActions;
+    window.updateUI = updateUI;
+    window.__fx = SceneFx;
+  } catch {}
 
 import * as UISync from './ui/sync.js';
 try { UISync.attachSocketUIRefresh(); if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.sync = UISync; } } catch {}
