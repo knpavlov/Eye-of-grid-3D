@@ -532,9 +532,9 @@
           for (const target of targets) {
             const tMesh = unitMeshes.find(m => m.userData.row === target.r && m.userData.col === target.c);
             if (tMesh && typeof target.dmg === 'number' && target.dmg > 0) {
-              shakeMesh(tMesh, 6, 0.12);
-              try { cancelPendingHpPopup(`${target.r},${target.c}`, -target.dmg); } catch {}
-              try { spawnDamageText(tMesh, `-${target.dmg}`, '#ff5555'); } catch {}
+              window.__fx?.shakeMesh(tMesh, 6, 0.12);
+              try { window.__fx?.cancelPendingHpPopup(`${target.r},${target.c}`, -target.dmg); } catch {}
+              try { window.__fx?.spawnDamageText(tMesh, `-${target.dmg}`, '#ff5555'); } catch {}
               try {
                 const key = `${target.r},${target.c}`;
                 RECENT_REMOTE_DAMAGE.set(key, { delta: -target.dmg, ts: Date.now() });
@@ -584,7 +584,7 @@
         // Убираем карту-спелл с поля если она там есть
         try { 
           if (pendingRitualBoardMesh) { 
-            dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9); 
+            window.__fx?.dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9);
             setTimeout(()=>{ 
               try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} 
               pendingRitualBoardMesh = null; 
@@ -628,9 +628,9 @@
         setTimeout(() => {
           const aLive = unitMeshes.find(m => m.userData.row === attacker.r && m.userData.col === attacker.c) || aMesh;
           if (aLive) {
-            shakeMesh(aLive, 6, 0.14);
-            try { cancelPendingHpPopup(`${attacker.r},${attacker.c}`, -total); } catch {}
-            try { spawnDamageText(aLive, `-${total}`, '#ffd166'); } catch {}
+            window.__fx?.shakeMesh(aLive, 6, 0.14);
+            try { window.__fx?.cancelPendingHpPopup(`${attacker.r},${attacker.c}`, -total); } catch {}
+            try { window.__fx?.spawnDamageText(aLive, `-${total}`, '#ffd166'); } catch {}
             try {
               const key = `${attacker.r},${attacker.c}`;
               RECENT_REMOTE_DAMAGE.set(key, { delta: -total, ts: Date.now() });
@@ -672,7 +672,7 @@
   socket.on('tileCrossfade', ({ r, c, prev, next }) => {
     try {
       const tile = tileMeshes?.[r]?.[c]; if (!tile) return;
-      dissolveTileCrossfade(tile, getTileMaterial(prev), getTileMaterial(next), 0.9);
+      window.__fx?.dissolveTileCrossfade(tile, getTileMaterial(prev), getTileMaterial(next), 0.9);
     } catch {}
   });
 
