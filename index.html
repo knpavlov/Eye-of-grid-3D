@@ -36,7 +36,7 @@
     </div>
 
     <!-- Верхний центр: номер хода и круглая кнопка с таймером -->
-    <div id="top-center" class="ui-panel fixed top-3 left-1/2 -translate-x-1/2 z-20">
+    <div id="top-center" class="ui-panel fixed top-3 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center">
       <div class="overlay-panel px-4 py-3 flex flex-col items-center gap-2">
         <div id="turn-info" class="text-sm tracking-wide">Turn: 1</div>
         <button id="end-turn-btn" class="end-turn-btn" aria-label="End Turn">
@@ -45,6 +45,7 @@
           <span class="sec-text">100</span>
         </button>
       </div>
+      <div id="opponent-hand-count" title="Opponent has 0 cards"></div>
     </div>
 
     <!-- Правый нижний угол: сервисные кнопки -->
@@ -870,6 +871,18 @@
             const percent = s / 100; // 1 -> top:0%, 0 -> top:100%
             if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
           }
+        }
+      } catch {}
+      // Update opponent hand count indicator
+      try {
+        const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : 0;
+        const oppSeat = mySeat === 0 ? 1 : 0;
+        const count = gameState?.players?.[oppSeat]?.hand?.length || 0;
+        if (window.__ui && window.__ui.handCount && typeof window.__ui.handCount.render === 'function') {
+          window.__ui.handCount.render(count);
+        } else {
+          const el = document.getElementById('opponent-hand-count');
+          if (el) el.textContent = `Cards: ${count}`;
         }
       } catch {}
       // Выделение активного игрока - с гарантией обновления

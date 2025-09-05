@@ -19,6 +19,7 @@ import * as UIPanels from './ui/panels.js';
 // UI modules
 import * as TurnTimer from './ui/turnTimer.js';
 import * as Banner from './ui/banner.js';
+import * as HandCount from './ui/handCount.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -134,6 +135,7 @@ try {
   window.__ui.log = UILog;
   window.__ui.mana = UIMana;
   window.__ui.panels = UIPanels;
+  window.__ui.handCount = HandCount;
 } catch {}
 
 import * as UISync from './ui/sync.js';
