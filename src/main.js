@@ -3,6 +3,7 @@ import * as Constants from './core/constants.js';
 import { CARDS, STARTER_FIRESET } from './core/cards.js';
 import * as Rules from './core/rules.js';
 import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled } from './core/state.js';
+import { netState, NET_ON } from './core/netState.js';
 import { createStore, makeMiddleware } from './lib/store.js';
 // Scene modules (new)
 import { initThreeJS as sceneInitThreeJS, worldToScreen as sceneWorldToScreen, animate as sceneAnimate } from './scene/index.js';
@@ -37,6 +38,7 @@ try {
 
   window.hasAdjacentGuard = Rules.hasAdjacentGuard;
   window.dirsForPattern = Rules.dirsForPattern;
+  window.computeCellBuff = Rules.computeCellBuff;
   window.effectiveStats = Rules.effectiveStats;
   window.computeHits = Rules.computeHits;
   window.stagedAttack = Rules.stagedAttack;
@@ -47,6 +49,42 @@ try {
   window.drawOneNoAdd = drawOneNoAdd;
   window.countControlled = countControlled;
   window.startGame = startGame;
+
+  // Runtime net state globals
+  Object.defineProperties(window, {
+    NET_ACTIVE: {
+      get: () => netState.NET_ACTIVE,
+      set: v => { netState.NET_ACTIVE = v; },
+      configurable: true,
+    },
+    MY_SEAT: {
+      get: () => netState.MY_SEAT,
+      set: v => { netState.MY_SEAT = v; },
+      configurable: true,
+    },
+    APPLYING: {
+      get: () => netState.APPLYING,
+      set: v => { netState.APPLYING = v; },
+      configurable: true,
+    },
+    __endTurnInProgress: {
+      get: () => netState.__endTurnInProgress,
+      set: v => { netState.__endTurnInProgress = v; },
+      configurable: true,
+    },
+    drawAnimationActive: {
+      get: () => netState.drawAnimationActive,
+      set: v => { netState.drawAnimationActive = v; },
+      configurable: true,
+    },
+    splashActive: {
+      get: () => netState.splashActive,
+      set: v => { netState.splashActive = v; },
+      configurable: true,
+    },
+  });
+  window.__netState = netState;
+  window.NET_ON = NET_ON;
 } catch {}
 
 // Optional: basic store and a push-state placeholder middleware
