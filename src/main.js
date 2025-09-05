@@ -10,6 +10,7 @@ import { initThreeJS as sceneInitThreeJS, worldToScreen as sceneWorldToScreen, a
 import * as Board from './scene/board.js';
 import * as Cards from './scene/cards.js';
 import * as Units from './scene/units.js';
+import * as Hand from './scene/hand.js';
 import { getCtx as getSceneCtx } from './scene/context.js';
 // UI modules
 import * as UINotifications from './ui/notifications.js';
@@ -20,6 +21,7 @@ import * as UIPanels from './ui/panels.js';
 import * as TurnTimer from './ui/turnTimer.js';
 import * as Banner from './ui/banner.js';
 import * as HandCount from './ui/handCount.js';
+import { updateUI } from './ui/update.js';
 import './ui/statusChip.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
@@ -129,6 +131,11 @@ try {
   window.__units = {
     updateUnits: Units.updateUnits,
   };
+  window.__hand = {
+    setHandCardHoverVisual: Hand.setHandCardHoverVisual,
+    updateHand: Hand.updateHand,
+    animateDrawnCardToHand: Hand.animateDrawnCardToHand,
+  };
   window.__ui = window.__ui || {};
   window.__ui.turnTimer = TurnTimer;
   window.__ui.banner = Banner;
@@ -137,6 +144,8 @@ try {
   window.__ui.mana = UIMana;
   window.__ui.panels = UIPanels;
   window.__ui.handCount = HandCount;
+  window.__ui.updateUI = updateUI;
+  window.updateUI = updateUI;
 } catch {}
 
 import * as UISync from './ui/sync.js';

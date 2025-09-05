@@ -430,242 +430,30 @@
 
     
     // ====== HAND RENDERING AND LAYOUT ======
-    // Rebuilds 3D meshes to match current player's hand cards.
     function updateHand() {
-      // Во время полёта карты не перерисовываем руку, чтобы не ломать предраскладку
-      if (drawAnimationActive) return;
-      handCardMeshes.forEach(card => {
-        if (card.parent) card.parent.remove(card);
-      });
-      handCardMeshes = [];
+      if (window.__hand && typeof window.__hand.updateHand === 'function') {
+        window.__hand.updateHand(gameState);
+        const ctx = window.__scene && typeof window.__scene.getCtx === 'function'
+          ? window.__scene.getCtx() : null;
+        if (ctx && ctx.handCardMeshes) {
+          handCardMeshes = ctx.handCardMeshes;
+        }
+      }
       hoveredHandCard = null;
-      
-      if (!gameState) return;
-
-      // В онлайне всегда показываем СВОЮ руку, а не руку активного игрока
-      const viewerSeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number')
-        ? window.MY_SEAT
-        : gameState.active;
-      let hand = (gameState.players && gameState.players[viewerSeat] && gameState.players[viewerSeat].hand)
-        ? gameState.players[viewerSeat].hand.slice()
-        : [];
-      // В момент анимации добора скрываем N последних карт, чтобы не было дублирования
-      try {
-        if (viewerSeat === (typeof window !== 'undefined' ? window.MY_SEAT : viewerSeat) && pendingDrawCount > 0) {
-          hand = hand.slice(0, Math.max(0, hand.length - pendingDrawCount));
-        }
-      } catch {}
-      // Скрыть один экземпляр ритуального спелла у активного игрока (во время выбора жертвы)
-      let indices = [];
-      for (let i = 0; i < hand.length; i++) {
-        // Скрываем выбранный для ритуала спелл
-        if (viewerSeat === gameState.active && typeof pendingRitualSpellHandIndex === 'number' && i === pendingRitualSpellHandIndex) continue;
-        // Скрываем карты, которые клиент пометил «спрятать» (например, выбранные для Holy Feast до прихода снапшота)
-        if (Array.isArray(PENDING_HIDE_HAND_CARDS) && PENDING_HIDE_HAND_CARDS.includes(i)) continue;
-        indices.push(i);
-      }
-      const handSize = indices.length;
-      
-      if (handSize === 0) return;
-      
-      // Параметры для веерного расположения
-      const spread = Math.min(4.0, Math.max(2.0, 20 / (handSize + 2)));
-      const angleSpread = Math.min(0.3, 1.2 / (handSize + 1));
-      const radius = 8.0;  // Разумный радиус для видимости
-      const baseY = 6.0;   // Рука над полем, но не слишком высоко
-      
-      for (let k = 0; k < handSize; k++) {
-        const i = indices[k];
-        const cardData = hand[i];
-        const card = createCard3D(cardData, true);
-        
-        // Вычисляем позицию для веерного расположения
-        const angle = (k - (handSize - 1) / 2) * angleSpread;
-        const x = Math.sin(angle) * radius;
-        const z = radius + Math.cos(angle) * radius * 0.3 - HAND_Z_OFFSET;
-        const y = baseY + Math.sin(angle) * 1.5; // Небольшое изменение по Y для объема
-        
-        card.position.set(x, y, z);
-        
-        // Поворот карты для веерного эффекта
-        card.rotation.set(
-            -0.2 + angle * 0.1,   // Наклон вперед
-            angle * 0.5,           // Поворот в сторону
-            0                       // Без крена
-        );
-        
-        card.userData.originalPosition.copy(card.position);
-        card.userData.originalRotation.copy(card.rotation);
-        card.userData.handIndex = i;
-        card.userData.cardData = cardData;
-        
-        card.renderOrder = 2000; // поверх рамок
-        cardGroup.add(card);
-        handCardMeshes.push(card);
-      }
     }
 
-    // Helper: compute fan layout transform for card `index` in `total` cards.
-    function computeHandTransform(index, total) {
-      const handSize = Math.max(1, total);
-      const angleSpread = Math.min(0.3, 1.2 / (handSize + 1));
-      const radius = 8.0;
-      const baseY = 6.0;
-      const angle = (index - (handSize - 1) / 2) * angleSpread;
-      const x = Math.sin(angle) * radius;
-      const z = radius + Math.cos(angle) * radius * 0.3 - HAND_Z_OFFSET;
-      const y = baseY + Math.sin(angle) * 1.5;
-      const rot = new THREE.Euler(
-        -0.2 + angle * 0.1,
-        angle * 0.5,
-        0
-      );
-      const pos = new THREE.Vector3(x, y, z);
-      const scale = new THREE.Vector3(0.54, 1, 0.54);
-      return { position: pos, rotation: rot, scale };
-    }
-
-    // Visual adjustments when a hand card is hovered.
     function setHandCardHoverVisual(mesh, hovered) {
-      if (!mesh) return;
-      const materials = [];
-      const collect = (obj) => {
-        if (!obj) return;
-        if (obj.material) {
-          if (Array.isArray(obj.material)) materials.push(...obj.material);
-          else materials.push(obj.material);
-        }
-        (obj.children || []).forEach(collect);
-      };
-      collect(mesh);
-      if (hovered) {
-        mesh.renderOrder = 10000;
-        // ВАЖНО: оставляем depthWrite=true, чтобы карта корректно рисовала свою лицевую сторону над своими же гранями/рубашкой
-        materials.forEach(m => { if (m) { m.depthTest = true; m.depthWrite = true; m.needsUpdate = true; } });
-        // Поднимем и немного приблизим к камере вдоль направления взгляда
-        try {
-          if (mesh.userData && mesh.userData.originalPosition) {
-            const camDir = new THREE.Vector3();
-            camera.getWorldDirection(camDir);
-            const towardCamera = camDir.clone().multiplyScalar(-0.7); // шаг к камере
-            const target = mesh.userData.originalPosition.clone().add(new THREE.Vector3(0, 0.9, 0)).add(towardCamera);
-            gsap.to(mesh.position, { x: target.x, y: target.y, z: target.z, duration: 0.18 });
-          }
-        } catch {}
-        // Поднимем иллюстрационный плейн (если есть) поверх самой карты
-        try { (mesh.children || []).forEach(ch => { if (ch && ch.userData && ch.userData.kind === 'illustrationPlane') { ch.renderOrder = mesh.renderOrder + 1; } }); } catch {}
-      } else {
-        mesh.renderOrder = 2000;
-        // Возвращаем стандартные тест/запись глубины
-        materials.forEach(m => { if (m) { m.depthTest = true; m.depthWrite = true; m.needsUpdate = true; } });
-        try { if (mesh.userData && mesh.userData.originalPosition) { const p = mesh.userData.originalPosition; gsap.to(mesh.position, { x: p.x, y: p.y, z: p.z, duration: 0.18 }); } } catch {}
-        try { (mesh.children || []).forEach(ch => { if (ch && ch.userData && ch.userData.kind === 'illustrationPlane') { ch.renderOrder = mesh.renderOrder + 1; } }); } catch {}
+      if (window.__hand && typeof window.__hand.setHandCardHoverVisual === 'function') {
+        window.__hand.setHandCardHoverVisual(mesh, hovered);
       }
     }
 
-    // Animation: large card flies into hand when drawing from deck.
     async function animateDrawnCardToHand(cardTpl) {
-      try {
-        if (!cardTpl) return;
-        drawAnimationActive = true; refreshInputLockUI();
-        // Создаём временный крупный меш (не относится к руке), и ориентируем как «билборд» к камере
-        const big = createCard3D(cardTpl, false);
-        // Разместим карту выше и ближе к центру стола, чтобы не пересекалась с рукой
-        const T = window.DRAW_CARD_TUNE || {};
-        big.position.set(0, (T.posY ?? 10.0), (T.posZ ?? 2.4));
-        // Повернуть параллельно камере: фронт карты на камеру, без уголка перспект.
-        // Камера смотрит на (0,1.2,0), берем её yaw вокруг Y
-        try {
-          // Ориентируем карту строго к камере: лицевая нормаль = -направление взгляда камеры,
-          // верх карты выровнен с up камерой.
-          const camForward = new THREE.Vector3();
-          camera.getWorldDirection(camForward); // куда смотрит камера
-          const faceNormal = camForward.clone().negate().normalize(); // лицом к камере
-          const camUpWorld = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
-          let right = new THREE.Vector3().crossVectors(camUpWorld, faceNormal);
-          if (right.lengthSq() < 1e-6) right.set(1, 0, 0); else right.normalize();
-          const upInPlane = new THREE.Vector3().crossVectors(faceNormal, right).normalize();
-          const basis = new THREE.Matrix4().makeBasis(right, faceNormal, upInPlane);
-          const q = new THREE.Quaternion().setFromRotationMatrix(basis);
-          big.setRotationFromQuaternion(q);
-        } catch { big.rotation.set(0, 0, 0); }
-        big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
-        big.renderOrder = 9000;
-        // Соберём все материалы (включая накладные плейны иллюстрации и оверлей лица),
-        // чтобы обеспечить плавное проявление без мгновенного всплытия слоёв
-        const mats = Array.isArray(big.material) ? big.material : [big.material];
-        const allMaterials = [];
-        const collectMaterials = (obj) => {
-          if (!obj) return;
-          if (obj.material) {
-            if (Array.isArray(obj.material)) allMaterials.push(...obj.material);
-            else allMaterials.push(obj.material);
-          }
-          (obj.children || []).forEach(collectMaterials);
-        };
-        collectMaterials(big);
-        allMaterials.forEach(m => { if (m) { m.transparent = true; m.opacity = 0; } });
-        cardGroup.add(big);
-
-        // Целевая позиция в руке — вычислим, как будто карта станет последней
-        // В момент анимации мы уже спрятали последнюю карту (pendingDrawCount=1),
-        // поэтому берём фактический рендеримый размер руки и прибавляем 1.
-        const totalVisible = Math.max(0, handCardMeshes.filter(m => m?.userData?.isInHand).length);
-        const totalAfter = totalVisible + 1;
-        const indexAfter = totalAfter - 1;
-        const target = computeHandTransform(indexAfter, totalAfter);
-
-        // Предраскладка: заранее сместим существующие карты руки в положения для totalAfter,
-        // чтобы к моменту прилёта новой карты соседи уже стояли на своих местах
-        try {
-          const preLayoutDuration = 0.6;
-          for (let i = 0; i < handCardMeshes.length; i++) {
-            const mesh = handCardMeshes[i];
-            if (!mesh || !mesh.userData || !mesh.userData.isInHand) continue;
-            // Учтём, что new card займёт позицию indexAfter, поэтому старые индексы не сдвигаем чрезмерно
-            const t = computeHandTransform(i, totalAfter);
-            gsap.to(mesh.position, {
-              x: t.position.x,
-              y: t.position.y,
-              z: t.position.z,
-              duration: preLayoutDuration,
-              ease: 'power2.inOut'
-            });
-            gsap.to(mesh.rotation, {
-              x: t.rotation.x,
-              y: t.rotation.y,
-              z: t.rotation.z,
-              duration: preLayoutDuration,
-              ease: 'power2.inOut'
-            });
-            // Вернём масштаб к стандартному для руки на случай, если какая-то карта была наведена
-            gsap.to(mesh.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.18 });
-            // Обновим базовые позиции/углы для корректного ховера после анимации
-            try { mesh.userData.originalPosition.copy(t.position); } catch {}
-            try { mesh.userData.originalRotation.copy(t.rotation); } catch {}
-          }
-        } catch {}
-
-        await new Promise(resolve => {
-          const tl = gsap.timeline({ onComplete: resolve });
-          // Проявление ≤ 1.0с
-          tl.to(allMaterials, { opacity: 1, duration: 0.8, ease: 'power2.out' })
-            // Полёт в руку ≤ 0.7с, все трансформации синхронно
-            .to(big.position, { x: target.position.x, y: target.position.y, z: target.position.z, duration: 0.7, ease: 'power2.inOut' }, 'fly')
-            .to(big.rotation, { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z, duration: 0.7, ease: 'power2.inOut' }, 'fly')
-            .to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: 0.7, ease: 'power2.inOut' }, 'fly');
-          // После ориентации к камере применим ручные углы (в градусах)
-          try {
-            big.rotateX(THREE.MathUtils.degToRad(T.pitchDeg || 0));
-            big.rotateY(THREE.MathUtils.degToRad(T.yawDeg || 0));
-            big.rotateZ(THREE.MathUtils.degToRad(T.rollDeg || 0));
-          } catch {}
-        });
-        try { cardGroup.remove(big); } catch {}
-        drawAnimationActive = false; refreshInputLockUI();
-      } catch {}
+      if (window.__hand && typeof window.__hand.animateDrawnCardToHand === 'function') {
+        return window.__hand.animateDrawnCardToHand(cardTpl);
+      }
     }
-    
+
     // Синхронизирует 3D-модели юнитов с текущим состоянием gameState
     function updateUnits() {
       if (window.__units && typeof window.__units.updateUnits === 'function') {
@@ -775,100 +563,6 @@
     }
     // attachHpOverlay удалён, т.к. HP теперь перерисовывается на самой карте
     
-    function updateUI() {
-      if (!gameState) return;      
-      // Защита от обновлений во время критических анимаций
-      if (splashActive && typeof window !== 'undefined' && window.__ui && window.__ui.banner) {
-        const bannerState = window.__ui.banner.getState();
-        if (bannerState._splashActive) {
-          // Отложим обновление UI до завершения заставки
-          setTimeout(() => updateUI(), 100);
-          return;
-        }
-      }
-      
-      document.getElementById('turn-info').textContent = `Ход: ${gameState.turn}`;
-      // Обновить числовой текст таймера в круглой кнопке и высоту заполнения
-      try {
-        const btn = document.getElementById('end-turn-btn');
-        if (btn) {
-          const fill = btn.querySelector('.time-fill');
-          const txt = btn.querySelector('.sec-text');
-          if (typeof window.__turnTimerSeconds === 'number') {
-            const s = Math.max(0, Math.min(100, window.__turnTimerSeconds));
-            if (txt) txt.textContent = `${s}`;
-            // Инверсия: опускаем верхнюю границу жёлтой заливки сверху вниз
-            const percent = s / 100; // 1 -> top:0%, 0 -> top:100%
-            if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
-          }
-        }
-      } catch {}
-      // Update opponent hand count indicator
-      try {
-        const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : 0;
-        const oppSeat = mySeat === 0 ? 1 : 0;
-        const count = gameState?.players?.[oppSeat]?.hand?.length || 0;
-        if (window.__ui && window.__ui.handCount && typeof window.__ui.handCount.render === 'function') {
-          window.__ui.handCount.render(count);
-        } else {
-          const el = document.getElementById('opponent-hand-count');
-          if (el) el.textContent = `Cards: ${count}`;
-        }
-      } catch {}
-      // Выделение активного игрока - с гарантией обновления
-      try {
-        const leftSide = document.getElementById('left-side');
-        const rightSide = document.getElementById('right-side');
-        const t0 = document.getElementById('player-title-0');
-        const t1 = document.getElementById('player-title-1');
-        if (leftSide && rightSide && t0 && t1) {
-          // Сначала убираем все подсветки
-          leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
-          rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
-          t0.classList.remove('title-pulse');
-          t1.classList.remove('title-pulse');
-          
-          // Затем добавляем подсветку активному игроку
-          if (gameState.active === 0) {
-            // Force reflow для гарантии применения изменений
-            requestAnimationFrame(() => {
-              leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
-              t0.classList.add('title-pulse');
-            });
-          } else {
-            requestAnimationFrame(() => {
-              rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.add('active-player-panel'));
-              t1.classList.add('title-pulse');
-            });
-          }
-        }
-      } catch {}
-      
-      // Обновляем две панели маны (для обоих игроков) - ТОЛЬКО через модуль
-      try { 
-        if (window.__ui && window.__ui.mana && typeof window.__ui.mana.renderBars === 'function') { 
-          window.__ui.mana.renderBars(gameState); 
-        } else { 
-          console.warn('Mana module not available, skipping mana UI update');
-        } 
-      } catch (e) {
-        console.error('Error updating mana UI:', e);
-      }
-
-      const controlA = countControlled(gameState, 0);
-      const controlB = countControlled(gameState, 1);
-      const ci0 = document.getElementById('control-info-0'); if (ci0) ci0.textContent = `Контроль: ${controlA}`;
-      const ci1 = document.getElementById('control-info-1'); if (ci1) ci1.textContent = `Контроль: ${controlB}`;
-      
-        if (controlA >= 5) {
-          showNotification('Player 1 wins!', 'success');
-          gameState.winner = 0;
-        } else if (controlB >= 5) {
-          showNotification('Player 2 wins!', 'success');
-          gameState.winner = 1;
-        }
-      }
-
       // ====== POINTER INTERACTION HANDLERS ======
       // Mouse move: update drag position and hand hover.
     function onMouseMove(event) {

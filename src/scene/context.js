@@ -17,6 +17,9 @@ const ctx = {
   // Board caches (module-local, but exposed for convenience)
   tileMeshes: [],
   tileFrames: [],
+  // Scene caches for units and hand cards
+  unitMeshes: [],
+  handCardMeshes: [],
   // Textures cache
   TILE_TEXTURES: {},
   PROC_TILE_TEXTURES: {},
