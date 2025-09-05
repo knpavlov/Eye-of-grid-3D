@@ -11,6 +11,7 @@ import * as Board from './scene/board.js';
 import * as Cards from './scene/cards.js';
 import * as Units from './scene/units.js';
 import { getCtx as getSceneCtx } from './scene/context.js';
+import * as FX from './scene/effects.js';
 // UI modules
 import * as UINotifications from './ui/notifications.js';
 import * as UILog from './ui/log.js';
@@ -20,6 +21,7 @@ import * as UIPanels from './ui/panels.js';
 import * as TurnTimer from './ui/turnTimer.js';
 import * as Banner from './ui/banner.js';
 import * as HandCount from './ui/handCount.js';
+import * as UIActions from './ui/actions.js';
 import './ui/statusChip.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
@@ -114,6 +116,7 @@ try {
     animate: sceneAnimate,
     getCtx: getSceneCtx,
   };
+  window.__fx = FX;
   window.__board = {
     createBoard: Board.createBoard,
     getTileMaterial: Board.getTileMaterial,
@@ -137,6 +140,7 @@ try {
   window.__ui.mana = UIMana;
   window.__ui.panels = UIPanels;
   window.__ui.handCount = HandCount;
+  window.__ui.actions = UIActions;
 } catch {}
 
 import * as UISync from './ui/sync.js';

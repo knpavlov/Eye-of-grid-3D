@@ -1,6 +1,8 @@
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
      countdowns, and input locking. */
+import { spawnDamageText, cancelPendingHpPopup, shakeMesh, dissolveAndAsh } from '../scene/effects.js';
+
 (() => {
   // ===== 0) Config =====
   const SERVER_URL = (location.hostname === "localhost")
