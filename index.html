@@ -3671,6 +3671,7 @@
     const net=document.getElementById('mp-net');
     const seat=document.getElementById('mp-seat');
     const turn=document.getElementById('mp-turn');
+    if (!dot || !net || !seat || !turn) return;
 
     const online = socket.connected && (typeof NET_ON === 'function' ? NET_ON() : false);
     dot.classList.toggle('on', online);
@@ -3704,6 +3705,7 @@
 
   function updateInputLock(){
     // Lock only when seat is known; otherwise do not block input
+    if (!lock) return;
     const myKnown = (typeof MY_SEAT === 'number');
     const shouldLock = (typeof NET_ON === 'function' ? NET_ON() : false) &&
       gameState && myKnown && (gameState.active !== MY_SEAT);
