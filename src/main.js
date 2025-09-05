@@ -20,6 +20,8 @@ import * as UIPanels from './ui/panels.js';
 import * as TurnTimer from './ui/turnTimer.js';
 import * as Banner from './ui/banner.js';
 import * as HandCount from './ui/handCount.js';
+import * as UIButtons from './ui/buttons.js';
+import * as InputLock from './ui/inputLock.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -136,8 +138,11 @@ try {
   window.__ui.mana = UIMana;
   window.__ui.panels = UIPanels;
   window.__ui.handCount = HandCount;
+  window.__ui.buttons = UIButtons;
+  window.__ui.inputLock = InputLock;
 } catch {}
 
 import * as UISync from './ui/sync.js';
 try { UISync.attachSocketUIRefresh(); if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.sync = UISync; } } catch {}
+try { UIButtons.init(); } catch {}
 
