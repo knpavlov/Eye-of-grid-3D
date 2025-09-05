@@ -37,15 +37,16 @@
 
     <!-- Верхний центр: номер хода и круглая кнопка с таймером -->
     <div id="top-center" class="ui-panel fixed top-3 left-1/2 -translate-x-1/2 z-20">
-      <div class="overlay-panel px-4 py-3 flex flex-col items-center gap-2">
-        <div id="turn-info" class="text-sm tracking-wide">Turn: 1</div>
-        <button id="end-turn-btn" class="end-turn-btn" aria-label="End Turn">
-          <span class="time-fill"></span>
-          <span class="label-text">End Turn</span>
-          <span class="sec-text">100</span>
-        </button>
+        <div class="overlay-panel px-4 py-3 flex flex-col items-center gap-2">
+          <div id="turn-info" class="text-sm tracking-wide">Turn: 1</div>
+          <button id="end-turn-btn" class="end-turn-btn" aria-label="End Turn">
+            <span class="time-fill"></span>
+            <span class="label-text">End Turn</span>
+            <span class="sec-text">100</span>
+          </button>
+          <div id="opponent-hand" class="opponent-hand" title="0 cards"></div>
+        </div>
       </div>
-    </div>
 
     <!-- Правый нижний угол: сервисные кнопки -->
     <div id="corner-right" class="ui-panel fixed right-4 bottom-4 z-20">
@@ -916,6 +917,13 @@
       const controlB = countControlled(gameState, 1);
       const ci0 = document.getElementById('control-info-0'); if (ci0) ci0.textContent = `Контроль: ${controlA}`;
       const ci1 = document.getElementById('control-info-1'); if (ci1) ci1.textContent = `Контроль: ${controlB}`;
+
+      // Update opponent hand count display via module
+      try {
+        if (window.__ui && window.__ui.opponentHand && typeof window.__ui.opponentHand.render === 'function') {
+          window.__ui.opponentHand.render(gameState);
+        }
+      } catch {}
       
       if (controlA >= 5) {
         showNotification('Player 1 wins!', 'success');
