@@ -2325,8 +2325,9 @@
         resetCardSelection(); updateHand(); updateUnits(); updateUI();
         return;
       }
-      if (tpl.id === 'SPELL_SUMMONER_MESMERS_ERRAND') {
-        // Добор двух карт с существующей анимацией
+        // Summoner's Errand: draw two cards immediately.
+        if (tpl.id === 'SPELL_SUMMONER_MESMERS_ERRAND') {
+          // Добор двух карт с существующей анимацией
         if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); resetCardSelection(); return; }
         pl.mana -= tpl.cost;
         (async () => {
@@ -2345,8 +2346,9 @@
         resetCardSelection();
         return;
       }
-      if (tpl.id === 'SPELL_GOGHLIE_ALTAR') {
-        // Оба игрока получают ману = числу вражеских существ на доске
+        // Goghlie Altar: each player gains mana for enemy units on board.
+        if (tpl.id === 'SPELL_GOGHLIE_ALTAR') {
+          // Оба игрока получают ману = числу вражеских существ на доске
         const countUnits = (ownerIdx) => {
           let n = 0; for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
             const un = gameState.board[rr][cc].unit; if (un && un.owner !== ownerIdx) n++;
@@ -2366,8 +2368,9 @@
         resetCardSelection(); updateHand(); updateUI();
         return;
       }
-      if (tpl.id === 'SPELL_PARMTETIC_HOLY_FEAST') {
-        // Ритуал: требуется сбросить существо из руки -> применить анимацию dissolve для выбранной карты из руки
+        // Parmtetic Holy Feast: ritual requiring discard of a unit from hand.
+        if (tpl.id === 'SPELL_PARMTETIC_HOLY_FEAST') {
+          // Ритуал: требуется сбросить существо из руки -> применить анимацию dissolve для выбранной карты из руки
         const handCreatures = pl.hand.filter(x => x && x.type === 'UNIT');
         if (handCreatures.length === 0) { showNotification('No units available', 'error'); return; }
         console.log('[HF:setup] Setting up pendingDiscardSelection for Holy Feast (castSpellOnUnit)');
@@ -2406,8 +2409,10 @@
         // Подсветить руку не будем — выбор по клику на карте из руки (см. перехват в onMouseDown)
         return;
       }
-      if (tpl.id === 'WIND_SHIFT') { if (u) u.facing = turnCW[u.facing]; addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут.`); }
-      if (tpl.id === 'FREEZE_STREAM') {
+        // Wind Shift: rotate target unit clockwise.
+        if (tpl.id === 'WIND_SHIFT') { if (u) u.facing = turnCW[u.facing]; addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут.`); }
+        // Freeze Stream: deal 1 damage and dissolve if lethal.
+        if (tpl.id === 'FREEZE_STREAM') {
         if (u) {
           const before = u.currentHP; u.currentHP = Math.max(0, u.currentHP - 1);
           addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает 1 урона (HP ${before}→${u.currentHP})`);
@@ -2425,7 +2430,8 @@
           }
         }
       }
-      if (tpl.id === 'RAISE_STONE') {
+        // Raise Stone: grant +2 HP to a friendly unit.
+        if (tpl.id === 'RAISE_STONE') {
         if (!u) { showNotification('Need to drag this card to a unit', 'error'); return; }
         if (u.owner !== gameState.active) { showNotification('Only friendly unit', 'error'); return; }
         const before = u.currentHP; u.currentHP += 2; addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает +2 HP (HP ${before}→${u.currentHP})`);
@@ -2459,8 +2465,9 @@
         } catch {}
         return castSpellOnUnit(cardMesh, unitMesh);
       }
-      // Спеллы без цели
-      if (id === 'SPELL_SUMMONER_MESMERS_ERRAND') {
+        // Спеллы без цели
+        // Summoner's Errand: burn card and draw two replacements.
+        if (id === 'SPELL_SUMMONER_MESMERS_ERRAND') {
         // Добор двух карт
         if (tpl.cost > pl.mana) { showNotification('Insuffcient mana', 'error'); return; }
         pl.mana -= tpl.cost;
@@ -2491,7 +2498,8 @@
         })();
         return;
       }
-      if (id === 'SPELL_GOGHLIE_ALTAR') {
+        // Goghlie Altar: each player gains mana for enemy units.
+        if (id === 'SPELL_GOGHLIE_ALTAR') {
         const countUnits = (ownerIdx) => { let n = 0; for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) { const un = gameState.board[rr][cc].unit; if (un && un.owner !== ownerIdx) n++; } return n; };
         const g0 = countUnits(0), g1 = countUnits(1);
         gameState.players[0].mana = capMana(gameState.players[0].mana + g0);
@@ -2511,7 +2519,8 @@
         updateHand(); updateUI();
         return;
       }
-      if (id === 'SPELL_FISSURES_OF_GOGHLIE') {
+        // Fissures of Goghlie: flip tile element and update unit.
+        if (id === 'SPELL_FISSURES_OF_GOGHLIE') {
         if (!tileMesh) { showNotification('Drag this card to a board cell', 'error'); return; }
         const r = tileMesh.userData.row, c = tileMesh.userData.col;
         const cell = gameState.board[r][c];
@@ -2557,7 +2566,8 @@
         updateHand(); updateUnits(); updateUI();
         return;
       }
-      if (id === 'SPELL_PARMTETIC_HOLY_FEAST') {
+        // Parmtetic Holy Feast: board-placed ritual requiring unit discard.
+        if (id === 'SPELL_PARMTETIC_HOLY_FEAST') {
         const handCreatures = pl.hand.filter(x => x && x.type === 'UNIT');
         if (handCreatures.length === 0) { showNotification('No unit in hand for this action', 'error'); return; }
         // Визуально «оставим» карту на поле: создаём временный меш спелла и не возвращаем перетянутую карту
