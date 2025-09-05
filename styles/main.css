@@ -103,6 +103,6 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
   margin-left: -8px;
   border: 2px solid #ffffff;
   border-radius: 3px;
-  background: transparent;
+  background: #0f172a;
   transform-origin: bottom center;
 }

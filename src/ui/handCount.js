@@ -21,12 +21,13 @@ export function render(count) {
   for (let i = 0; i < n; i++) {
     const card = document.createElement('div');
     card.className = 'opp-card';
-    const stepAngle = 8; // degrees between cards
-    const stepOffset = 6; // px horizontal offset
+    const stepAngle = 14; // degrees between cards
+    const stepOffset = 7; // px horizontal offset
     const offsetIndex = i - (n - 1) / 2;
     const angle = offsetIndex * stepAngle;
     const offset = offsetIndex * stepOffset;
     card.style.transform = `translateX(${offset}px) rotate(${angle}deg)`;
+    card.style.zIndex = String(n - i);
     el.appendChild(card);
   }
 }
