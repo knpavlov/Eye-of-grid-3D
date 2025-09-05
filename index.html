@@ -144,16 +144,7 @@
   <script>
       /* MODULE: runtime globals
          Purpose: multiplayer state shared across modules
-         TODO: move to src/core/netState.js */
-      // ====== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ======
-      // Переменные для мультиплеера (должны быть доступны везде)
-        var NET_ACTIVE = false;
-        var MY_SEAT = null;
-        var APPLYING = false;
-        const NET_ON = () => NET_ACTIVE;
-        let __endTurnInProgress = false;
-        let drawAnimationActive = false;
-        let splashActive = false;
+         Extracted to src/core/netState.js */
         // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
     
     let DIR_VECTORS, OPPOSITE_ELEMENT, elementEmoji, turnCW, turnCCW;
@@ -171,48 +162,18 @@
     // Стартер: только Fire Set + несколько спеллов
     let STARTER_FIRESET;
     
-    // Функции игровой логики
-    /* MODULE: core/boardSetup & mechanics
-       Buff calculations, stat helpers and initial board generation.
-       Extract to src/core/board.js to keep index.html thin. */
-    let dirsForPattern;
-    
-    const computeCellBuff = (cellElement, unitElement) => {
-      if (cellElement === unitElement) return { atk: 0, hp: 2 };
-      if (cellElement === 'MECH') return { atk: 0, hp: 0 };
-      const opp = OPPOSITE_ELEMENT[unitElement];
-      if (cellElement === opp) return { atk: 0, hp: -2 };
-      return { atk: 0, hp: 0 };
-    };
-    
-    let effectiveStats;
-    
-    const randomBoard = () => {
-      // 5 элементов: FIRE, WATER, EARTH, FOREST, MECH
-      // Центр (1,1) = MECH. Остальные 8 клеток: из FIRE/WATER/EARTH/FOREST по 2 штуки каждого
-      const picks = ['FIRE','FIRE','WATER','WATER','EARTH','EARTH','FOREST','FOREST'];
-      // Перемешаем и разложим по клеткам, пропуская центр
-      for (let i = picks.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [picks[i], picks[j]] = [picks[j], picks[i]]; }
-      let k = 0;
-      const board = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE' })));
-      for (let r = 0; r < 3; r++) {
-        for (let c = 0; c < 3; c++) {
-          if (r === 1 && c === 1) { board[r][c].element = 'MECH'; continue; }
-          board[r][c].element = picks[k++];
-        }
-      }
-      return board;
-    };
-    
+    // Функции игровой логики (полные реализации находятся в core/*)
+    let dirsForPattern, computeCellBuff, effectiveStats;
+
     let shuffle;
-    
+
     let drawOne;
 
     // Специальная версия: вынуть верхнюю карту, но НЕ класть в руку (для эффектной анимации)
     let drawOneNoAdd;
-    
+
     let countControlled;
-    
+
     let startGame;
       // ====== БОЕВАЯ СИСТЕМА (порт из 2D) ======
       let hasAdjacentGuard;
@@ -235,8 +196,7 @@
     let handCardMeshes = [];
     let gameState = null;
     let logEntries = [];
-      let TILE_TEXTURES = {};
-    let PROC_TILE_TEXTURES = {};
+      // Tile textures are now managed by scene/board module
     // Настройки показа большой карты при доборе — можно править из консоли
     window.DRAW_CARD_TUNE = {
       posY: 8.5,   // высота
@@ -496,160 +456,28 @@
       window.__cardsRedrawT = setTimeout(() => { updateUnits(); updateHand(); }, 10);
     }
 
-    function createProceduralTileTexture(element) {
-      if (PROC_TILE_TEXTURES[element]) return PROC_TILE_TEXTURES[element];
-      const c = document.createElement('canvas');
-      c.width = 256; c.height = 256; const ctx = c.getContext('2d');
-      // фон
-      const base = {
-        FIRE: '#3b0d0d', WATER: '#0d243b', EARTH: '#2f2b24', FOREST: '#0f2b1a', MECH: '#1f2937'
-      }[element] || '#2a2a2a';
-      ctx.fillStyle = base; ctx.fillRect(0,0,256,256);
-      ctx.globalAlpha = 0.5;
-      if (element === 'FIRE') {
-        for (let i= -64; i<256; i+=24) {
-          ctx.fillStyle = i % 48 === 0 ? '#b91c1c' : '#ef4444';
-          ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i+64,0); ctx.lineTo(i+256,256); ctx.lineTo(i+192,256); ctx.closePath(); ctx.fill();
-        }
-      } else if (element === 'WATER') {
-        ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 3; ctx.globalAlpha = 0.7;
-        for (let y=20; y<256; y+=24) {
-          ctx.beginPath(); for (let x=0; x<=256; x+=8) { ctx.lineTo(x, y + Math.sin((x+y)/20)*6); } ctx.stroke();
-        }
-      } else if (element === 'EARTH') {
-        for (let y=0; y<256; y+=16) {
-          for (let x=0; x<256; x+=16) {
-            const v = 40 + Math.floor(Math.random()*30);
-            ctx.fillStyle = `rgb(${v+60},${v+40},${v})`; ctx.fillRect(x,y,16,16);
-          }
-        }
-      } else if (element === 'FOREST') {
-        ctx.fillStyle = '#16a34a';
-        for (let i=0; i<180; i++) {
-          const x = Math.random()*256; const y = Math.random()*256; const r = Math.random()*3+1;
-          ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
-        }
-        ctx.strokeStyle = '#22c55e'; ctx.globalAlpha = 0.35;
-        for (let i=0; i<40; i++) { ctx.beginPath(); ctx.moveTo(Math.random()*256, Math.random()*256); ctx.lineTo(Math.random()*256, Math.random()*256); ctx.stroke(); }
-      } else if (element === 'MECH') {
-        // простая техно-сетка
-        ctx.globalAlpha = 0.6; ctx.strokeStyle = '#9ca3af'; ctx.lineWidth = 1.5;
-        for (let y=16; y<256; y+=16) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(256,y); ctx.stroke(); }
-        for (let x=16; x<256; x+=16) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,256); ctx.stroke(); }
-        ctx.globalAlpha = 0.9; ctx.fillStyle = '#94a3b8';
-        for (let i=0; i<40; i++) { const x= Math.floor(Math.random()*16)*16+2; const y=Math.floor(Math.random()*16)*16+2; ctx.fillRect(x,y,2,2); }
-      }
-      const tex = new THREE.CanvasTexture(c); tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-      tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(1,1);
-      PROC_TILE_TEXTURES[element] = tex; return tex;
-    }
-    
-    // Базовые цвета для элементов (фолбэк, если текстуры не загрузились)
-    const ELEMENT_BASE_COLORS = {
-      FIRE: 0xdc2626,
-      WATER: 0x0369a1,
-      EARTH: 0x525252,
-      FOREST: 0x166534,
-      MECH: 0x334155
-    };
-
     function getTileMaterial(element) {
-      let tex = TILE_TEXTURES[element];
-      // Если текстура ещё не готова, используем процедурную
-      if (!tex || !tex.image || !tex.image.width) tex = createProceduralTileTexture(element);
-      if (tex) return new THREE.MeshBasicMaterial({ map: tex });
-      return new THREE.MeshStandardMaterial({
-        color: ELEMENT_BASE_COLORS[element] || 0x64748b,
-        metalness: 0.12,
-        roughness: 0.6,
-        emissive: 0x1a1a1a,
-        emissiveIntensity: 0.18
-      });
+      if (window.__board && window.__board.getTileMaterial) {
+        return window.__board.getTileMaterial(element);
+      }
+      return null;
     }
 
-    // Обновить материалы уже созданных тайлов при подгрузке текстуры
     function updateTileMaterialsFor(elementKey) {
-      if (!tileMeshes || !tileMeshes.length) return;
-      const tex = TILE_TEXTURES[elementKey];
-      if (!tex) return;
-      for (let r = 0; r < tileMeshes.length; r++) {
-        const row = tileMeshes[r]; if (!row) continue;
-        for (let c = 0; c < row.length; c++) {
-          const tile = row[c]; if (!tile) continue;
-          const cell = (gameState && gameState.board && gameState.board[r] && gameState.board[r][c]) ? gameState.board[r][c] : null;
-          if (cell && cell.element === elementKey) {
-            // освобождаем старый материал и назначаем новый с текстурой
-            try { tile.material.dispose && tile.material.dispose(); } catch {}
-            const mat = new THREE.MeshBasicMaterial({ map: tex });
-            tile.material = mat;
-            tile.material.needsUpdate = true;
-          }
-        }
+      if (window.__board && window.__board.updateTileMaterialsFor) {
+        window.__board.updateTileMaterialsFor(elementKey);
       }
-      // Перерисуем кадр
-      try { renderer && renderer.render(scene, camera); } catch {}
     }
-    
+
     function createBoard() {
       try { window.__cards.preloadCardTextures(); } catch {}
-      tileMeshes.forEach(row => row.forEach(tile => {
-        if (tile) boardGroup.remove(tile);
-      }));
-      tileFrames.forEach(row => row.forEach(f => { if (f) boardGroup.remove(f); }));
-      tileMeshes = [];
-      tileFrames = [];
-      
-      if (!gameState) return;
-      
-      const tileSize = 6.2; // увеличено
-      const tileHeight = 0.35;
-      const spacing = 0.2;
-      const boardYOffset = 0.0; // опущено ближе к платформе. Важно
-      const boardZShift = -3.5; // отодвинуть поле дальше от камеры/руки. Важно
-      
-      for (let r = 0; r < 3; r++) {
-        const row = [];
-        const frameRow = [];
-        for (let c = 0; c < 3; c++) {
-          const cell = gameState.board[r][c];
-          
-          const geometry = new THREE.BoxGeometry(tileSize, tileHeight, tileSize);
-          const material = getTileMaterial(cell.element);
-          const tile = new THREE.Mesh(geometry, material);
-          
-          const x = (c - 1) * (tileSize + spacing);
-          const z = (r - 1) * (tileSize + spacing) + boardZShift;
-          tile.position.set(x, tileHeight / 2 + boardYOffset, z);
-          tile.castShadow = false;
-          tile.receiveShadow = true;
-          
-          tile.userData = { type: 'tile', row: r, col: c, element: cell.element };
-          
-          boardGroup.add(tile);
-          row.push(tile);
-
-          // Рамка владения (толстая, из 4 сегментов)
-          const frame = new THREE.Group();
-          const borderT = 0.18; // толщина рамки (увеличено)
-          const h = 0.018; // высота рамки над тайлом
-          const frameMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, depthTest: true, depthWrite: false, opacity: 0.0 });
-          const top    = new THREE.Mesh(new THREE.BoxGeometry(tileSize + 0.04, h, borderT), frameMat.clone());
-          const bottom = new THREE.Mesh(new THREE.BoxGeometry(tileSize + 0.04, h, borderT), frameMat.clone());
-          const left   = new THREE.Mesh(new THREE.BoxGeometry(borderT, h, tileSize + 0.04), frameMat.clone());
-          const right  = new THREE.Mesh(new THREE.BoxGeometry(borderT, h, tileSize + 0.04), frameMat.clone());
-          top.position.set(x, tileHeight + boardYOffset + h/2 + 0.002, z - (tileSize/2 - borderT/2));
-          bottom.position.set(x, tileHeight + boardYOffset + h/2 + 0.002, z + (tileSize/2 - borderT/2));
-          left.position.set(x - (tileSize/2 - borderT/2), tileHeight + boardYOffset + h/2 + 0.002, z);
-          right.position.set(x + (tileSize/2 - borderT/2), tileHeight + boardYOffset + h/2 + 0.002, z);
-          for (const seg of [top, bottom, left, right]) { seg.renderOrder = 600; frame.add(seg); }
-          frame.renderOrder = 800; // ниже карт в руке, но выше тайла
-          boardGroup.add(frame);
-          frameRow.push(frame);
-        }
-        tileMeshes.push(row);
-        tileFrames.push(frameRow);
+      if (window.__board && window.__scene) {
+        window.__board.createBoard(gameState);
+        const ctx = window.__scene.getCtx();
+        tileMeshes = ctx.tileMeshes || [];
+        tileFrames = ctx.tileFrames || [];
+        try { window.tileMeshes = tileMeshes; window.tileFrames = tileFrames; } catch {}
       }
-      try { window.tileMeshes = tileMeshes; window.tileFrames = tileFrames; } catch {}
     }
     
     // Delegator: module cards implementation
@@ -1801,7 +1629,7 @@
         turnCW = window.turnCW; turnCCW = window.turnCCW; facingDeg = window.facingDeg;
         uid = window.uid; inBounds = window.inBounds; capMana = window.capMana; attackCost = window.attackCost;
         CARDS = window.CARDS; STARTER_FIRESET = window.STARTER_FIRESET || [];
-        dirsForPattern = window.dirsForPattern; effectiveStats = window.effectiveStats;
+        dirsForPattern = window.dirsForPattern; computeCellBuff = window.computeCellBuff; effectiveStats = window.effectiveStats;
         hasAdjacentGuard = window.hasAdjacentGuard; computeHits = window.computeHits; stagedAttack = window.stagedAttack; magicAttack = window.magicAttack;
         shuffle = window.shuffle; drawOne = window.drawOne; drawOneNoAdd = window.drawOneNoAdd; countControlled = window.countControlled; startGame = window.startGame;
       } catch {}
@@ -1845,7 +1673,7 @@
       const el = document.getElementById('mod-status'); if (!el) return;
       const hasCards = !!(CARDS && Object.keys(CARDS||{}).length);
       const starterLen = (STARTER_FIRESET && STARTER_FIRESET.length) || 0;
-      const rulesOk = [dirsForPattern, effectiveStats, computeHits, stagedAttack, magicAttack].every(fn => typeof fn === 'function');
+      const rulesOk = [dirsForPattern, computeCellBuff, effectiveStats, computeHits, stagedAttack, magicAttack].every(fn => typeof fn === 'function');
       const stateOk = [startGame, drawOne, drawOneNoAdd, shuffle, countControlled].every(fn => typeof fn === 'function');
       const threeOk = !!(renderer && scene && camera);
       const boardOk = !!(tileMeshes && tileMeshes.length && tileMeshes[0] && tileMeshes[0].length);
@@ -3986,7 +3814,7 @@
       function upd(){
         var cardsOk = !!(window.CARDS && Object.keys(window.CARDS||{}).length);
         var starterLen = (window.STARTER_FIRESET && window.STARTER_FIRESET.length) || 0;
-        var rulesOk = ['dirsForPattern','effectiveStats','computeHits','stagedAttack','magicAttack'].every(function(k){return typeof window[k]==='function';});
+        var rulesOk = ['dirsForPattern','computeCellBuff','effectiveStats','computeHits','stagedAttack','magicAttack'].every(function(k){return typeof window[k]==='function';});
         var stateOk = ['startGame','drawOne','drawOneNoAdd','shuffle','countControlled'].every(function(k){return typeof window[k]==='function';});
         var threeOk = !!(window.renderer && window.scene && window.camera);
         var boardOk = !!(window.tileMeshes && window.tileMeshes.length && window.tileMeshes[0] && window.tileMeshes[0].length);
