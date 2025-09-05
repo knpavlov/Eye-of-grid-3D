@@ -3032,7 +3032,8 @@
   let lastDigest = '';
   let pending = false;
   function schedulePush(reason='auto', {force=false}={}){
-    if (!NET_ON() || !gameState) return;
+    const online = (typeof NET_ON === 'function') ? NET_ON() : false;
+    if (!online || !gameState) return;
     if (APPLYING && !force) return;              // не эхоим полученный снапшот
     // Не пушим во время анимаций, если не forced
     if (!force && (manaGainActive || drawAnimationActive || splashActive)) return;
@@ -3067,7 +3068,8 @@
 
   // Периодическая отправка при любом изменении (подстраховка, если обёртка не сработала)
   setInterval(()=>{
-    if (!NET_ON() || !gameState) return;
+    const online = (typeof NET_ON === 'function') ? NET_ON() : false;
+    if (!online || !gameState) return;
     // пушит только тот, у кого сейчас ХОД (чтобы оба могли делать свои ходы)
     const myTurn = (typeof gameState.active === 'number') && (gameState.active === MY_SEAT);
     if (!myTurn) return;
@@ -3670,7 +3672,7 @@
     const seat=document.getElementById('mp-seat');
     const turn=document.getElementById('mp-turn');
 
-    const online = socket.connected && NET_ON();
+    const online = socket.connected && (typeof NET_ON === 'function' ? NET_ON() : false);
     dot.classList.toggle('on', online);
     net.textContent = online ? 'online' : 'offline';
     seat.textContent = (MY_SEAT===0)?'Player 1':(MY_SEAT===1)?'Player 2':'—';
@@ -3703,7 +3705,8 @@
   function updateInputLock(){
     // Lock only when seat is known; otherwise do not block input
     const myKnown = (typeof MY_SEAT === 'number');
-    const shouldLock = NET_ON() && gameState && myKnown && (gameState.active !== MY_SEAT);
+    const shouldLock = (typeof NET_ON === 'function' ? NET_ON() : false) &&
+      gameState && myKnown && (gameState.active !== MY_SEAT);
     lock.classList.toggle('on', !!shouldLock);
   }
 
