@@ -146,14 +146,6 @@
       /* MODULE: runtime globals
          Purpose: multiplayer state shared across modules
          Extracted to src/core/netState.js */
-      // Fallbacks to avoid ReferenceError if module has not yet initialized
-      if (typeof NET_ACTIVE === 'undefined') var NET_ACTIVE = false;
-      if (typeof MY_SEAT === 'undefined') var MY_SEAT = null;
-      if (typeof APPLYING === 'undefined') var APPLYING = false;
-      if (typeof __endTurnInProgress === 'undefined') var __endTurnInProgress = false;
-      if (typeof drawAnimationActive === 'undefined') var drawAnimationActive = false;
-      if (typeof splashActive === 'undefined') var splashActive = false;
-      if (typeof NET_ON === 'undefined') var NET_ON = () => NET_ACTIVE;
         // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
     
     let DIR_VECTORS, OPPOSITE_ELEMENT, elementEmoji, turnCW, turnCCW;
@@ -332,12 +324,14 @@
     let pendingRitualSpellHandIndex = null;
     let pendingRitualSpellCard = null; // ссылка на сам объект карты-спелла, чтобы скрывать по идентичности
     // Сколько последних добранных карт временно скрывать из моей руки (для красивой анимации влёта)
-    let pendingDrawCount = 0;
-    function isInputLocked() {
-  const splash = (typeof window !== 'undefined' && window.__ui && window.__ui.banner)
-    ? !!window.__ui.banner.getState()._splashActive : false;
-  return __endTurnInProgress || drawAnimationActive || splash || manaGainActive;
-}
+      let pendingDrawCount = 0;
+      function isInputLocked() {
+        const splash = (typeof window !== 'undefined' && window.__ui && window.__ui.banner)
+          ? !!window.__ui.banner.getState()._splashActive : false;
+        return (typeof __endTurnInProgress !== 'undefined' && __endTurnInProgress) ||
+          (typeof drawAnimationActive !== 'undefined' && drawAnimationActive) ||
+          splash || manaGainActive;
+      }
     function refreshInputLockUI() {
       try {
         const endBtn = document.getElementById('end-turn-btn');
@@ -505,12 +499,12 @@
     
 
     
-    function updateHand() {
-      // Во время полёта карты не перерисовываем руку, чтобы не ломать предраскладку
-      if (drawAnimationActive) return;
-      handCardMeshes.forEach(card => {
-        if (card.parent) card.parent.remove(card);
-      });
+      function updateHand() {
+        // Во время полёта карты не перерисовываем руку, чтобы не ломать предраскладку
+        if (typeof drawAnimationActive !== 'undefined' && drawAnimationActive) return;
+        handCardMeshes.forEach(card => {
+          if (card.parent) card.parent.remove(card);
+        });
       handCardMeshes = [];
       hoveredHandCard = null;
       
@@ -844,17 +838,17 @@
     }
     // attachHpOverlay удалён, т.к. HP теперь перерисовывается на самой карте
     
-    function updateUI() {
-      if (!gameState) return;      
-      // Защита от обновлений во время критических анимаций
-      if (splashActive && typeof window !== 'undefined' && window.__ui && window.__ui.banner) {
-        const bannerState = window.__ui.banner.getState();
-        if (bannerState._splashActive) {
-          // Отложим обновление UI до завершения заставки
-          setTimeout(() => updateUI(), 100);
-          return;
+      function updateUI() {
+        if (!gameState) return;
+        // Защита от обновлений во время критических анимаций
+        if (typeof splashActive !== 'undefined' && splashActive && typeof window !== 'undefined' && window.__ui && window.__ui.banner) {
+          const bannerState = window.__ui.banner.getState();
+          if (bannerState._splashActive) {
+            // Отложим обновление UI до завершения заставки
+            setTimeout(() => updateUI(), 100);
+            return;
+          }
         }
-      }
       
       document.getElementById('turn-info').textContent = `Ход: ${gameState.turn}`;
       // Обновить числовой текст таймера в круглой кнопке и высоту заполнения
@@ -994,10 +988,11 @@
           hoveredTile = null;
         }
       } else {
-        // Ховер по картам в руке: увеличиваем наведённую, уменьшаем предыдущую, поднимаем над стеком
-        raycaster.setFromCamera(mouse, camera);
-        const handHits = drawAnimationActive ? [] : raycaster.intersectObjects(handCardMeshes, true);
-        const newHover = handHits.length > 0 ? (handHits[0].object.userData?.isInHand ? handHits[0].object : handHits[0].object.parent) : null;
+          // Ховер по картам в руке: увеличиваем наведённую, уменьшаем предыдущую, поднимаем над стеком
+          raycaster.setFromCamera(mouse, camera);
+          const handHits = (typeof drawAnimationActive !== 'undefined' && drawAnimationActive)
+            ? [] : raycaster.intersectObjects(handCardMeshes, true);
+          const newHover = handHits.length > 0 ? (handHits[0].object.userData?.isInHand ? handHits[0].object : handHits[0].object.parent) : null;
         if (hoveredHandCard && hoveredHandCard !== newHover) {
           gsap.to(hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.18 });
           setHandCardHoverVisual(hoveredHandCard, false);
@@ -1308,10 +1303,10 @@
       } catch {}
       
       // Защита от преждевременного завершения хода во время анимаций
-      if (typeof isInputLocked === 'function' ? isInputLocked() : (manaGainActive || drawAnimationActive || splashActive)) {
-        showNotification('Wait for animations to complete', 'warning');
-        return;
-      }
+        if (typeof isInputLocked === 'function' ? isInputLocked() : (manaGainActive || (typeof drawAnimationActive !== 'undefined' && drawAnimationActive) || (typeof splashActive !== 'undefined' && splashActive))) {
+          showNotification('Wait for animations to complete', 'warning');
+          return;
+        }
       
       __endTurnInProgress = true;
       // Сброс и запуск таймера хода на 100 секунд
@@ -1603,70 +1598,13 @@
       } catch {}
     }
 
-    // ---- Lightweight on-screen diagnostics for module/scene wiring ----
-    function mountModuleStatusChip(){
-      if (document.getElementById('mod-status')) return;
-      const el = document.createElement('div');
-      el.id = 'mod-status';
-      el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:9999;font:12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#cbd5e1;background:rgba(15,23,42,.85);border:1px solid #334155;border-radius:8px;padding:6px 8px;pointer-events:none;';
-      el.textContent = 'status…';
-      document.body.appendChild(el);
-      // Position below build-version (if present) to avoid overlap
-      function positionModStatus(){
-        try {
-          const bv = document.getElementById('build-version');
-          let top = 8;
-          if (bv) {
-            const r = bv.getBoundingClientRect();
-            top = Math.max(8, Math.round((r.bottom || 0) + 8));
-          }
-          el.style.top = top + 'px';
-        } catch { el.style.top = '36px'; }
-      }
-      try {
-        positionModStatus();
-        window.addEventListener('resize', positionModStatus);
-        const bv = document.getElementById('build-version');
-        if (bv && window.MutationObserver) {
-          const mo = new MutationObserver(positionModStatus);
-          mo.observe(bv, { childList: true, characterData: true, subtree: true });
-        }
-      } catch {}
-      updateModuleStatus();
-      try { if (!window.__modStatusTimer) window.__modStatusTimer = setInterval(updateModuleStatus, 1000); } catch {}
-      window.addEventListener('error', (e)=>{ try { el.setAttribute('data-last', String(e.message||'error')); updateModuleStatus(); } catch {} });
-    }
-    function okBadge(ok){ return `<span style="color:${ok?'#22c55e':'#ef4444'}">●</span>`; }
-    function updateModuleStatus(){
-      const el = document.getElementById('mod-status'); if (!el) return;
-      const hasCards = !!(CARDS && Object.keys(CARDS||{}).length);
-      const starterLen = (STARTER_FIRESET && STARTER_FIRESET.length) || 0;
-      const rulesOk = [dirsForPattern, computeCellBuff, effectiveStats, computeHits, stagedAttack, magicAttack].every(fn => typeof fn === 'function');
-      const stateOk = [startGame, drawOne, drawOneNoAdd, shuffle, countControlled].every(fn => typeof fn === 'function');
-      const threeOk = !!(renderer && scene && camera);
-      const boardOk = !!(tileMeshes && tileMeshes.length && tileMeshes[0] && tileMeshes[0].length);
-      const gs = (typeof gameState === 'object' && gameState && Array.isArray(gameState.board)) ? 'ok' : 'none';
-      const net = (typeof NET_ACTIVE !== 'undefined' && NET_ACTIVE) ? 'online' : 'offline';
-      const last = el.getAttribute('data-last') || '';
-      el.innerHTML = [
-        `${okBadge(hasCards)} cards (${starterLen})`,
-        `${okBadge(rulesOk)} rules`,
-        `${okBadge(stateOk)} state`,
-        `${okBadge(threeOk)} three`,
-        `${okBadge(boardOk)} board`,
-        `${okBadge(gs==='ok')} gState`,
-        `${okBadge(net==='online')} net:${net}`,
-        last ? `<div style="color:#fca5a5;margin-top:4px;max-width:240px;">${last}</div>` : ''
-      ].join(' · ');
-    }
     
-    function init() {
-      wireModules();
-      mountModuleStatusChip();
-      initThreeJS();
-      // Start render loop early so scene is visible even if game init fails
-      animate();
-      initGame();
+      function init() {
+        wireModules();
+        initThreeJS();
+        // Start render loop early so scene is visible even if game init fails
+        animate();
+        initGame();
       
       renderer.domElement.addEventListener('mousemove', onMouseMove);
       renderer.domElement.addEventListener('mousedown', onMouseDown);
