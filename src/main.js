@@ -19,6 +19,7 @@ import * as UIPanels from './ui/panels.js';
 // UI modules
 import * as TurnTimer from './ui/turnTimer.js';
 import * as Banner from './ui/banner.js';
+import * as OpponentHand from './ui/opponentHand.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -134,7 +135,10 @@ try {
   window.__ui.log = UILog;
   window.__ui.mana = UIMana;
   window.__ui.panels = UIPanels;
+  window.__ui.opponentHand = OpponentHand;
 } catch {}
+
+try { OpponentHand.init(); } catch {}
 
 import * as UISync from './ui/sync.js';
 try { UISync.attachSocketUIRefresh(); if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.sync = UISync; } } catch {}
