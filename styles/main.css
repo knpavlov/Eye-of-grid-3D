@@ -86,3 +86,23 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
 .battle-flash-scan { position:absolute; inset:0; background: linear-gradient( to bottom, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100% ); transform: translateY(-100%); }
 /* Tooltip для 3D-колод/кладбищ */
 #hover-tooltip { position: fixed; pointer-events: none; z-index: 50; }
+
+/* Opponent hand count indicator */
+#opponent-hand-count {
+  position: relative;
+  width: 84px;
+  height: 24px;
+  margin-top: 4px;
+}
+#opponent-hand-count .opp-card {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 16px;
+  height: 22px;
+  margin-left: -8px;
+  border: 2px solid #ffffff;
+  border-radius: 3px;
+  background: transparent;
+  transform-origin: bottom center;
+}

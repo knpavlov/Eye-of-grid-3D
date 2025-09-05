@@ -44,6 +44,7 @@
           <span class="label-text">End Turn</span>
           <span class="sec-text">100</span>
         </button>
+        <div id="opponent-hand-count" title="Opponent has 0 cards"></div>
       </div>
     </div>
 
@@ -870,6 +871,18 @@
             const percent = s / 100; // 1 -> top:0%, 0 -> top:100%
             if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
           }
+        }
+      } catch {}
+      // Update opponent hand count indicator
+      try {
+        const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : 0;
+        const oppSeat = mySeat === 0 ? 1 : 0;
+        const count = gameState?.players?.[oppSeat]?.hand?.length || 0;
+        if (window.__ui && window.__ui.handCount && typeof window.__ui.handCount.render === 'function') {
+          window.__ui.handCount.render(count);
+        } else {
+          const el = document.getElementById('opponent-hand-count');
+          if (el) el.textContent = `Cards: ${count}`;
         }
       } catch {}
       // Выделение активного игрока - с гарантией обновления
