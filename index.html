@@ -146,14 +146,6 @@
       /* MODULE: runtime globals
          Purpose: multiplayer state shared across modules
          Extracted to src/core/netState.js */
-      // Fallbacks to avoid ReferenceError if module has not yet initialized
-      if (typeof NET_ACTIVE === 'undefined') var NET_ACTIVE = false;
-      if (typeof MY_SEAT === 'undefined') var MY_SEAT = null;
-      if (typeof APPLYING === 'undefined') var APPLYING = false;
-      if (typeof __endTurnInProgress === 'undefined') var __endTurnInProgress = false;
-      if (typeof drawAnimationActive === 'undefined') var drawAnimationActive = false;
-      if (typeof splashActive === 'undefined') var splashActive = false;
-      if (typeof NET_ON === 'undefined') var NET_ON = () => NET_ACTIVE;
         // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
     
     let DIR_VECTORS, OPPOSITE_ELEMENT, elementEmoji, turnCW, turnCCW;
@@ -1656,66 +1648,8 @@
       } catch {}
     }
 
-    // ---- Lightweight on-screen diagnostics for module/scene wiring ----
-    function mountModuleStatusChip(){
-      if (document.getElementById('mod-status')) return;
-      const el = document.createElement('div');
-      el.id = 'mod-status';
-      el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:9999;font:12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#cbd5e1;background:rgba(15,23,42,.85);border:1px solid #334155;border-radius:8px;padding:6px 8px;pointer-events:none;';
-      el.textContent = 'status…';
-      document.body.appendChild(el);
-      // Position below build-version (if present) to avoid overlap
-      function positionModStatus(){
-        try {
-          const bv = document.getElementById('build-version');
-          let top = 8;
-          if (bv) {
-            const r = bv.getBoundingClientRect();
-            top = Math.max(8, Math.round((r.bottom || 0) + 8));
-          }
-          el.style.top = top + 'px';
-        } catch { el.style.top = '36px'; }
-      }
-      try {
-        positionModStatus();
-        window.addEventListener('resize', positionModStatus);
-        const bv = document.getElementById('build-version');
-        if (bv && window.MutationObserver) {
-          const mo = new MutationObserver(positionModStatus);
-          mo.observe(bv, { childList: true, characterData: true, subtree: true });
-        }
-      } catch {}
-      updateModuleStatus();
-      try { if (!window.__modStatusTimer) window.__modStatusTimer = setInterval(updateModuleStatus, 1000); } catch {}
-      window.addEventListener('error', (e)=>{ try { el.setAttribute('data-last', String(e.message||'error')); updateModuleStatus(); } catch {} });
-    }
-    function okBadge(ok){ return `<span style="color:${ok?'#22c55e':'#ef4444'}">●</span>`; }
-    function updateModuleStatus(){
-      const el = document.getElementById('mod-status'); if (!el) return;
-      const hasCards = !!(CARDS && Object.keys(CARDS||{}).length);
-      const starterLen = (STARTER_FIRESET && STARTER_FIRESET.length) || 0;
-      const rulesOk = [dirsForPattern, computeCellBuff, effectiveStats, computeHits, stagedAttack, magicAttack].every(fn => typeof fn === 'function');
-      const stateOk = [startGame, drawOne, drawOneNoAdd, shuffle, countControlled].every(fn => typeof fn === 'function');
-      const threeOk = !!(renderer && scene && camera);
-      const boardOk = !!(tileMeshes && tileMeshes.length && tileMeshes[0] && tileMeshes[0].length);
-      const gs = (typeof gameState === 'object' && gameState && Array.isArray(gameState.board)) ? 'ok' : 'none';
-      const net = (typeof NET_ACTIVE !== 'undefined' && NET_ACTIVE) ? 'online' : 'offline';
-      const last = el.getAttribute('data-last') || '';
-      el.innerHTML = [
-        `${okBadge(hasCards)} cards (${starterLen})`,
-        `${okBadge(rulesOk)} rules`,
-        `${okBadge(stateOk)} state`,
-        `${okBadge(threeOk)} three`,
-        `${okBadge(boardOk)} board`,
-        `${okBadge(gs==='ok')} gState`,
-        `${okBadge(net==='online')} net:${net}`,
-        last ? `<div style="color:#fca5a5;margin-top:4px;max-width:240px;">${last}</div>` : ''
-      ].join(' · ');
-    }
-    
     function init() {
       wireModules();
-      mountModuleStatusChip();
       initThreeJS();
       // Start render loop early so scene is visible even if game init fails
       animate();
@@ -1785,8 +1719,6 @@
     document.getElementById('log-btn').addEventListener('click', () => {
       const lp = document.getElementById('log-panel');
       lp.classList.toggle('hidden');
-      // На всякий случай жёстко позиционируем ниже контролов
-      lp.style.top = (document.getElementById('controls').offsetHeight + 40) + 'px';
       if (!lp.classList.contains('hidden')) lp.style.pointerEvents = 'auto';
     });
     document.getElementById('close-log-btn').addEventListener('click', () => {
@@ -2868,8 +2800,6 @@
       // Если сюда попали — нераспознанная цель/спелл
       showNotification('Incorrect target', 'error');
     }
-
-    // (убраны несуществующие обработчики magic-btn и draw-btn)
   </script>
 <!-- MODULE: network/multiplayer (socket.io sync, queue, indicator) -->
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
