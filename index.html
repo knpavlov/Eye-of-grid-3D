@@ -360,7 +360,7 @@
       let pendingRitualBoardMesh = null; // временный меш спелла на поле
     let spellDragHandled = false; // флаг, что возврат карты в руку уже не нужен
 
-    
+    // === THREE.JS SCENE INITIALIZATION ===
     function initThreeJS() {
       if (window.__scene && typeof window.__scene.initThreeJS === 'function') {
         const ctx = window.__scene.initThreeJS({ canvasId: 'three-canvas', clearColor: 0x0b1220 });
@@ -380,6 +380,7 @@
     }
     // preloadCardImages removed (module handles lazy loading)
 
+    // Request deferred redraw of units and hand after state mutations.
     function requestCardsRedraw() {
       clearTimeout(window.__cardsRedrawT);
       window.__cardsRedrawT = setTimeout(() => { updateUnits(); updateHand(); }, 10);
@@ -399,6 +400,7 @@
       }
     }
 
+    // Build or rebuild the 3D board tiles.
     function createBoard() {
       try { window.__cards.preloadCardTextures(); } catch {}
       if (window.__board && window.__scene) {
@@ -427,7 +429,8 @@
     
 
     
-    // Перерисовывает руку игрока в 3D, раскладывая карты веером и скрывая временно недоступные
+    // ====== HAND RENDERING AND LAYOUT ======
+    // Rebuilds 3D meshes to match current player's hand cards.
     function updateHand() {
       // Во время полёта карты не перерисовываем руку, чтобы не ломать предраскладку
       if (drawAnimationActive) return;
@@ -502,6 +505,7 @@
       }
     }
 
+    // Helper: compute fan layout transform for card `index` in `total` cards.
     function computeHandTransform(index, total) {
       const handSize = Math.max(1, total);
       const angleSpread = Math.min(0.3, 1.2 / (handSize + 1));
@@ -521,6 +525,7 @@
       return { position: pos, rotation: rot, scale };
     }
 
+    // Visual adjustments when a hand card is hovered.
     function setHandCardHoverVisual(mesh, hovered) {
       if (!mesh) return;
       const materials = [];
@@ -558,6 +563,7 @@
       }
     }
 
+    // Animation: large card flies into hand when drawing from deck.
     async function animateDrawnCardToHand(cardTpl) {
       try {
         if (!cardTpl) return;
@@ -863,8 +869,8 @@
         }
       }
 
-      // ===== ЛОГИКА ВЗАИМОДЕЙСТВИЯ С ПОЛЕМ И РУКОЙ =====
-    // Главный обработчик движения мыши: подсветка клеток, наведение на карты и мета-объекты
+      // ====== POINTER INTERACTION HANDLERS ======
+      // Mouse move: update drag position and hand hover.
     function onMouseMove(event) {
       if (isInputLocked()) return;
       const rect = renderer.domElement.getBoundingClientRect();
@@ -951,7 +957,7 @@
       }
     }
     
-    // Обработчик нажатия на поле: выбор юнита или старт перетаскивания карты
+    // Mouse down: start drag or select targets.
     function onMouseDown(event) {
       if (!gameState || gameState.winner !== null) return;
       if (isInputLocked()) return;
@@ -1032,7 +1038,7 @@
       }
     }
     
-    // Завершение перетаскивания и обработка клика по полю/юниту
+    // Mouse up: finalize card drops or cancel drag.
     function onMouseUp(event) {
       if (isInputLocked()) { endCardDrag(); return; }
       if (draggedCard) {
@@ -1084,7 +1090,8 @@
       endCardDrag();
     }
     
-    // Подготовка карты к перетаскиванию из руки
+    // ====== CARD DRAG HELPERS ======
+    // Prepare card mesh for dragging from hand.
     function startCardDrag(card) {
       draggedCard = card;
       // если карта была увеличена ховером — вернём к стандартному масштабу руки
@@ -1114,7 +1121,7 @@
       });
     }
     
-    // Сброс визуального состояния после завершения перетаскивания
+    // Clean up after drag operation finishes.
     function endCardDrag() {
       if (hoveredTile) {
         hoveredTile.material.emissiveIntensity = 0.1;
@@ -1123,7 +1130,7 @@
       draggedCard = null;
     }
     
-    // Возврат карты на исходную позицию в руке при отмене дропа
+    // Animate card back to its original hand slot.
     function returnCardToHand(card) {
       gsap.to(card.position, {
         x: card.userData.originalPosition.x,
@@ -1148,8 +1155,7 @@
       });
     }
     
-
-    
+      // Cancel currently selected card and restore its visuals.
       function resetCardSelection() {
         if (selectedCard) {
           returnCardToHand(selectedCard);
@@ -1409,6 +1415,7 @@
       manaGainActive = false;
       refreshInputLockUI();
     }
+    // Resolve unit card placement on board after choosing orientation.
     function placeUnitWithDirection(direction) {
       if (!pendingPlacement) return;
       
@@ -2276,6 +2283,8 @@
       } catch {}
     }
     
+    // === SPELL CASTING LOGIC ===
+    // Apply spell card to a specific unit on board.
     function castSpellOnUnit(cardMesh, unitMesh) {
       const idx = cardMesh.userData.handIndex;
       const pl = gameState.players[gameState.active];
@@ -2427,7 +2436,7 @@
       if (!delayedApply) { updateUnits(); updateUI(); }
     }
 
-    // Универсальный обработчик каста спелла при перетаскивании на юнита или клетку
+    // Generic handler for drag-and-drop spell casting on units or tiles.
     function castSpellByDrag(cardMesh, unitMesh, tileMesh) {
       const idx = cardMesh.userData.handIndex;
       const pl = gameState.players[gameState.active];
