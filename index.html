@@ -146,15 +146,7 @@
       /* MODULE: runtime globals
          Purpose: multiplayer state shared across modules
          Extracted to src/core/netState.js */
-      // Fallbacks to avoid ReferenceError if module has not yet initialized
-      if (typeof NET_ACTIVE === 'undefined') var NET_ACTIVE = false;
-      if (typeof MY_SEAT === 'undefined') var MY_SEAT = null;
-      if (typeof APPLYING === 'undefined') var APPLYING = false;
-      if (typeof __endTurnInProgress === 'undefined') var __endTurnInProgress = false;
-      if (typeof drawAnimationActive === 'undefined') var drawAnimationActive = false;
-      if (typeof splashActive === 'undefined') var splashActive = false;
-      if (typeof NET_ON === 'undefined') var NET_ON = () => NET_ACTIVE;
-        // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
+      // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
     
     let DIR_VECTORS, OPPOSITE_ELEMENT, elementEmoji, turnCW, turnCCW;
     // Переопределяем ориентации: N должен смотреть к верхнему краю (−Z), S — к нижнему (+Z)
@@ -203,8 +195,7 @@
       let tileFrames = [];
     let unitMeshes = [];
     let handCardMeshes = [];
-    let gameState = null;
-    let logEntries = [];
+      let gameState = null;
       // Tile textures are now managed by scene/board module
     // Настройки показа большой карты при доборе — можно править из консоли
     window.DRAW_CARD_TUNE = {
@@ -336,7 +327,9 @@
     function isInputLocked() {
   const splash = (typeof window !== 'undefined' && window.__ui && window.__ui.banner)
     ? !!window.__ui.banner.getState()._splashActive : false;
-  return __endTurnInProgress || drawAnimationActive || splash || manaGainActive;
+  return (typeof __endTurnInProgress !== 'undefined' && __endTurnInProgress) ||
+         (typeof drawAnimationActive !== 'undefined' && drawAnimationActive) ||
+         splash || manaGainActive;
 }
     function refreshInputLockUI() {
       try {
@@ -385,78 +378,6 @@
         throw new Error('Scene module not available');
       }
     }
-
-    function worldToScreen(vec3) {
-      const v = vec3.clone().project(camera);
-      const x = (v.x + 1) / 2 * renderer.domElement.clientWidth;
-      const y = (1 - v.y) / 2 * renderer.domElement.clientHeight;
-      return { x, y };
-    }
-
-    function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true) {
-      try {
-        const start = worldToScreen(pos);
-        const barEl = document.getElementById(`mana-display-${ownerIndex}`);
-        if (!barEl) return;
-        // определить целевую ячейку
-        const currentMana = (gameState && gameState.players && gameState.players[ownerIndex]) ? (gameState.players[ownerIndex].mana || 0) : 0;
-        let targetIdx = Math.min(9, currentMana);
-        // В visualOnly режиме орб всегда летит в позицию currentMana - 1 (последний свободный слот)
-        try {
-          if (visualOnly) {
-            // Если мана уже учтена в state (т.е. currentMana включает +1 от только что убитого существа),
-            // то орб должен лететь в индекс currentMana - 1 (последний реально свободный орб).
-            // Подстрахуемся и не уйдём левее нуля.
-            targetIdx = Math.max(0, Math.min(9, currentMana - 1));
-          }
-        } catch {}
-        // Блокируем появление орба в панели до завершения полета
-        if (visualOnly && typeof ownerIndex === 'number') {
-          try {
-            const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
-            // Блокируем орб для всех игроков до завершения анимации полета
-            PENDING_MANA_BLOCK[ownerIndex] = window.PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) + 1);
-            updateUI();
-          } catch {}
-        }
-        const child = barEl.children && barEl.children[targetIdx];
-        let tx, ty;
-        if (child) {
-          const srect = child.getBoundingClientRect();
-          tx = srect.left + srect.width / 2;
-          ty = srect.top + srect.height / 2;
-        } else {
-          const rect = barEl.getBoundingClientRect();
-          tx = rect.left + rect.width / 2;
-          ty = rect.top + rect.height / 2;
-        }
-        const orb = document.createElement('div');
-        orb.className = 'mana-orb';
-        orb.style.position = 'fixed';
-        orb.style.left = start.x + 'px';
-        orb.style.top = start.y + 'px';
-        orb.style.transform = 'translate(-50%, -50%) scale(0.3)';
-        orb.style.opacity = '0';
-        orb.style.zIndex = '60';
-        document.body.appendChild(orb);
-        const tl = gsap.timeline({ onComplete: () => {
-          if (orb && orb.parentNode) orb.parentNode.removeChild(orb);
-          // Визуальный эффект завершён - теперь показываем орб в панели
-          try {
-            if (visualOnly && typeof ownerIndex === 'number') {
-              // Разблокируем орб для всех игроков когда анимация полета завершена
-              PENDING_MANA_BLOCK[ownerIndex] = window.PENDING_MANA_BLOCK[ownerIndex] = Math.max(0, (PENDING_MANA_BLOCK[ownerIndex] || 0) - 1);
-              updateUI(); // Орб появится в панели именно в этот момент
-            }
-          } catch {}
-        }});
-        // 0.5с появление, затем 2.0с полёт к панели
-        tl.to(orb, { duration: 0.5, ease: 'back.out(1.4)', opacity: 1, transform: 'translate(-50%, -50%) scale(1)' })
-          .to(orb, { duration: 2.0, ease: 'power2.inOut', left: tx, top: ty }, '>-0.1');
-      } catch {}
-    }
-
-
     // preloadCardImages removed (module handles lazy loading)
 
     function requestCardsRedraw() {
@@ -929,41 +850,16 @@
       const ci0 = document.getElementById('control-info-0'); if (ci0) ci0.textContent = `Контроль: ${controlA}`;
       const ci1 = document.getElementById('control-info-1'); if (ci1) ci1.textContent = `Контроль: ${controlB}`;
       
-      if (controlA >= 5) {
-        showNotification('Player 1 wins!', 'success');
-        gameState.winner = 0;
-      } else if (controlB >= 5) {
-        showNotification('Player 2 wins!', 'success');
-        gameState.winner = 1;
-      }
-    }
-    
-    function showNotification(message, type = 'info') {
-      const notification = document.createElement('div');
-      notification.className = `overlay-panel p-4 mb-2 ${type === 'success' ? 'bg-green-600' : type === 'error' ? 'bg-red-600' : 'bg-blue-600'}`;
-      notification.textContent = message;
-      
-      const container = document.getElementById('notifications');
-      container.appendChild(notification);
-      
-      setTimeout(() => {
-        if (notification.parentNode) {
-          notification.parentNode.removeChild(notification);
+        if (controlA >= 5) {
+          showNotification('Player 1 wins!', 'success');
+          gameState.winner = 0;
+        } else if (controlB >= 5) {
+          showNotification('Player 2 wins!', 'success');
+          gameState.winner = 1;
         }
-      }, 3000);
-    }
-    
-    function addLog(message) {
-      logEntries.unshift(`• ${message}`);
-      if (logEntries.length > 100) logEntries.pop();
-      
-      const logContent = document.getElementById('log-content');
-      if (logContent) {
-        logContent.innerHTML = logEntries.map(entry => `<div>${entry}</div>`).join('');
       }
-    }
-    
-    // Взаимодействие
+
+      // Взаимодействие
     function onMouseMove(event) {
       if (isInputLocked()) return;
       const rect = renderer.domElement.getBoundingClientRect();
@@ -1603,66 +1499,8 @@
       } catch {}
     }
 
-    // ---- Lightweight on-screen diagnostics for module/scene wiring ----
-    function mountModuleStatusChip(){
-      if (document.getElementById('mod-status')) return;
-      const el = document.createElement('div');
-      el.id = 'mod-status';
-      el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:9999;font:12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#cbd5e1;background:rgba(15,23,42,.85);border:1px solid #334155;border-radius:8px;padding:6px 8px;pointer-events:none;';
-      el.textContent = 'status…';
-      document.body.appendChild(el);
-      // Position below build-version (if present) to avoid overlap
-      function positionModStatus(){
-        try {
-          const bv = document.getElementById('build-version');
-          let top = 8;
-          if (bv) {
-            const r = bv.getBoundingClientRect();
-            top = Math.max(8, Math.round((r.bottom || 0) + 8));
-          }
-          el.style.top = top + 'px';
-        } catch { el.style.top = '36px'; }
-      }
-      try {
-        positionModStatus();
-        window.addEventListener('resize', positionModStatus);
-        const bv = document.getElementById('build-version');
-        if (bv && window.MutationObserver) {
-          const mo = new MutationObserver(positionModStatus);
-          mo.observe(bv, { childList: true, characterData: true, subtree: true });
-        }
-      } catch {}
-      updateModuleStatus();
-      try { if (!window.__modStatusTimer) window.__modStatusTimer = setInterval(updateModuleStatus, 1000); } catch {}
-      window.addEventListener('error', (e)=>{ try { el.setAttribute('data-last', String(e.message||'error')); updateModuleStatus(); } catch {} });
-    }
-    function okBadge(ok){ return `<span style="color:${ok?'#22c55e':'#ef4444'}">●</span>`; }
-    function updateModuleStatus(){
-      const el = document.getElementById('mod-status'); if (!el) return;
-      const hasCards = !!(CARDS && Object.keys(CARDS||{}).length);
-      const starterLen = (STARTER_FIRESET && STARTER_FIRESET.length) || 0;
-      const rulesOk = [dirsForPattern, computeCellBuff, effectiveStats, computeHits, stagedAttack, magicAttack].every(fn => typeof fn === 'function');
-      const stateOk = [startGame, drawOne, drawOneNoAdd, shuffle, countControlled].every(fn => typeof fn === 'function');
-      const threeOk = !!(renderer && scene && camera);
-      const boardOk = !!(tileMeshes && tileMeshes.length && tileMeshes[0] && tileMeshes[0].length);
-      const gs = (typeof gameState === 'object' && gameState && Array.isArray(gameState.board)) ? 'ok' : 'none';
-      const net = (typeof NET_ACTIVE !== 'undefined' && NET_ACTIVE) ? 'online' : 'offline';
-      const last = el.getAttribute('data-last') || '';
-      el.innerHTML = [
-        `${okBadge(hasCards)} cards (${starterLen})`,
-        `${okBadge(rulesOk)} rules`,
-        `${okBadge(stateOk)} state`,
-        `${okBadge(threeOk)} three`,
-        `${okBadge(boardOk)} board`,
-        `${okBadge(gs==='ok')} gState`,
-        `${okBadge(net==='online')} net:${net}`,
-        last ? `<div style="color:#fca5a5;margin-top:4px;max-width:240px;">${last}</div>` : ''
-      ].join(' · ');
-    }
-    
     function init() {
       wireModules();
-      mountModuleStatusChip();
       initThreeJS();
       // Start render loop early so scene is visible even if game init fails
       animate();
