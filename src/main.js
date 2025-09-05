@@ -20,6 +20,7 @@ import * as UIPanels from './ui/panels.js';
 import * as TurnTimer from './ui/turnTimer.js';
 import * as Banner from './ui/banner.js';
 import * as HandCount from './ui/handCount.js';
+import './ui/statusChip.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
