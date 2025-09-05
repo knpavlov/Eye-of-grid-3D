@@ -20,6 +20,8 @@ import * as UIPanels from './ui/panels.js';
 import * as TurnTimer from './ui/turnTimer.js';
 import * as Banner from './ui/banner.js';
 import * as HandCount from './ui/handCount.js';
+import * as UIStatus from './ui/status.js';
+import * as Multiplayer from './net/client.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -136,6 +138,8 @@ try {
   window.__ui.mana = UIMana;
   window.__ui.panels = UIPanels;
   window.__ui.handCount = HandCount;
+  window.__ui.status = UIStatus;
+  window.__mp = Multiplayer;
 } catch {}
 
 import * as UISync from './ui/sync.js';
