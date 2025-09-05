@@ -10,36 +10,7 @@
   <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
   <script type="module" src="./src/main.js"></script>
-  <script>
-    /* MODULE: bootstrap/globals - bootstrap global flags.
-       LEGACY fallback to prevent crashes before modules load */
-    // Early globals so later scripts never crash if earlier code aborted
-    (function(){
-      try { if (typeof window.NET_ACTIVE === 'undefined') window.NET_ACTIVE = false; } catch(e){}
-      try { if (typeof window.MY_SEAT === 'undefined') window.MY_SEAT = null; } catch(e){}
-      try { if (typeof window.APPLYING === 'undefined') window.APPLYING = false; } catch(e){}
-      try { if (typeof window.NET_ON === 'undefined') window.NET_ON = function(){ try { return !!window.NET_ACTIVE; } catch(e){ return false; } }; } catch(e){}
-
-      // Define core UI lock flags upfront to avoid ReferenceError on first access
-      try { if (typeof window.__endTurnInProgress === 'undefined') window.__endTurnInProgress = false; } catch(e){}
-      try { if (typeof window.drawAnimationActive === 'undefined') window.drawAnimationActive = false; } catch(e){}
-      try { if (typeof window.splashActive === 'undefined') window.splashActive = false; } catch(e){}
-
-      // nothing else inside IIFE
-    })();
-    // LEGACY bridge: create global bindings so bare identifiers work in this file
-    try {
-      /* eslint-disable no-var */
-      var __endTurnInProgress = window.__endTurnInProgress;
-      var drawAnimationActive = window.drawAnimationActive;
-      var splashActive = window.splashActive;
-      // keep window properties in sync (assign again just in case)
-      window.__endTurnInProgress = __endTurnInProgress;
-      window.drawAnimationActive = drawAnimationActive;
-      window.splashActive = splashActive;
-    } catch(e){}
-  </script>
-</head>
+  </head>
 <body>
   <canvas id="three-canvas"></canvas>
   
@@ -176,14 +147,14 @@
          TODO: move to src/core/netState.js */
       // ====== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ======
       // Переменные для мультиплеера (должны быть доступны везде)
-      var NET_ACTIVE = false;
-      var MY_SEAT = null;
-      var APPLYING = false;
-
-      /* LEGACY MODULE: 2D game logic fallback.
-         Most logic below is carried over from the old 2D client and should be
-         migrated into src/core/*.js or removed once 3D modules cover it. */
-      // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
+        var NET_ACTIVE = false;
+        var MY_SEAT = null;
+        var APPLYING = false;
+        const NET_ON = () => NET_ACTIVE;
+        let __endTurnInProgress = false;
+        let drawAnimationActive = false;
+        let splashActive = false;
+        // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
     
     let DIR_VECTORS, OPPOSITE_ELEMENT, elementEmoji, turnCW, turnCCW;
     // Переопределяем ориентации: N должен смотреть к верхнему краю (−Z), S — к нижнему (+Z)
@@ -243,10 +214,6 @@
     let countControlled;
     
     let startGame;
-    
-      /* LEGACY MODULE: battle system (ported from 2D)
-         To be extracted into src/core/battle.js and cleaned up. Currently
-         mostly unused but serves as fallback. */
       // ====== БОЕВАЯ СИСТЕМА (порт из 2D) ======
       let hasAdjacentGuard;
       let computeHits;
@@ -269,8 +236,6 @@
     let gameState = null;
     let logEntries = [];
       let TILE_TEXTURES = {};
-      // LEGACY placeholder: CARD_TEX kept for compatibility with older loaders.
-      var CARD_TEX;
     let PROC_TILE_TEXTURES = {};
     // Настройки показа большой карты при доборе — можно править из консоли
     window.DRAW_CARD_TUNE = {
@@ -282,7 +247,6 @@
       yawDeg: 0,    // поворот влево/вправо (ось Y)
       rollDeg: 0    // крен (ось Z)
     };
-    // Legacy CARD_IMAGES/CARD_PENDING removed (handled in modules)
     // Очереди догоняющих анимаций боя для наблюдателя
     let PENDING_BATTLE_ANIMS = [];
     let PENDING_RETALIATIONS = [];
@@ -391,7 +355,6 @@
     let manaGainActive = false;
     let PENDING_MANA_ANIM = null; // { ownerIndex, startIdx, endIdx }
     let PENDING_MANA_BLOCK = [0,0]; // by player index
-    try { window.manaGainActive = manaGainActive; } catch {}
 // Ожидаемая анимация маны: диапазон новых орбов, которые должны появиться синхронно со вспышкой
         try { window.PENDING_MANA_ANIM = PENDING_MANA_ANIM; } catch {}
     // Блокировка появления N последних орбов маны на панели до завершения «полетевших» визуальных орбов (смерть/эффекты)
@@ -404,13 +367,7 @@
     function isInputLocked() {
   const splash = (typeof window !== 'undefined' && window.__ui && window.__ui.banner)
     ? !!window.__ui.banner.getState()._splashActive : false;
-  const mana = (typeof window !== 'undefined' && typeof window.manaGainActive === 'boolean')
-    ? !!window.manaGainActive : false;
-  const endTurn = (typeof window !== 'undefined' && typeof window.__endTurnInProgress === 'boolean')
-    ? !!window.__endTurnInProgress : !!__endTurnInProgress;
-  const draw = (typeof window !== 'undefined' && typeof window.drawAnimationActive === 'boolean')
-    ? !!window.drawAnimationActive : !!drawAnimationActive;
-  return endTurn || draw || splash || mana;
+  return __endTurnInProgress || drawAnimationActive || splash || manaGainActive;
 }
     function refreshInputLockUI() {
       try {
@@ -444,94 +401,20 @@
 
     
     function initThreeJS() {
-      const canvas = document.getElementById('three-canvas');
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      renderer.setClearColor(0x0b1220);
-      // Цветовое пространство и экспозиция — повысим читаемость текстур
-      if (THREE.SRGBColorSpace) {
-        renderer.outputColorSpace = THREE.SRGBColorSpace;
-      }
-      renderer.toneMappingExposure = 1.08;
-      
-      scene = new THREE.Scene();
-      // Сделаем даль менее тёмной: убираем туман
-      scene.fog = null;
-      
-      camera = new THREE.PerspectiveCamera(54, window.innerWidth / window.innerHeight, 0.1, 120);
-      camera.position.set(0, 22, 13);
-      camera.lookAt(0, 1.2, 0);
-      
-      raycaster = new THREE.Raycaster();
-      mouse = new THREE.Vector2();
-      
-      boardGroup = new THREE.Group();
-      cardGroup = new THREE.Group();
-      effectsGroup = new THREE.Group();
-      metaGroup = new THREE.Group();
-      scene.add(boardGroup);
-      scene.add(cardGroup);
-      scene.add(effectsGroup);
-      scene.add(metaGroup);
-      try { window.renderer = renderer; window.scene = scene; window.camera = camera; window.boardGroup = boardGroup; } catch {}
-      
-      // Освещение
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
-      scene.add(ambientLight);
-      
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-      directionalLight.position.set(10, 20, 10);
-      directionalLight.castShadow = true;
-      directionalLight.shadow.mapSize.set(2048, 2048);
-      directionalLight.shadow.camera.near = 1;
-      directionalLight.shadow.camera.far = 50;
-      directionalLight.shadow.camera.left = -15;
-      directionalLight.shadow.camera.right = 15;
-      directionalLight.shadow.camera.top = 15;
-      directionalLight.shadow.camera.bottom = -15;
-      scene.add(directionalLight);
-      // Дополнительный полушарной свет, чтобы вдали было светлее
-      const hemi = new THREE.HemisphereLight(0xcadfff, 0x1a2a3a, 0.6);
-      scene.add(hemi);
-      
-      // Платформа
-      const platformGeometry = new THREE.CylinderGeometry(32, 32, 0.7, 48);
-      const platformMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x1a2332, 
-        metalness: 0.7, 
-        roughness: 0.3 
-      });
-      const platform = new THREE.Mesh(platformGeometry, platformMaterial);
-      platform.position.y = -0.35;
-      platform.receiveShadow = true;
-      scene.add(platform);
-      // Загрузка текстур тайлов поля из папки textures/
-      const loader = new THREE.TextureLoader();
-      const ASSET_VERSION = '2';
-      const baseMap = { FIRE: './textures/tile_fire.png', WATER: './textures/tile_water.png', EARTH: './textures/tile_earth.png', FOREST: './textures/tile_forest.png', MECH: './textures/tile_mech.png' };
-      for (const k in baseMap) {
-        const path = `${baseMap[k]}?v=${ASSET_VERSION}`;
-        loader.load(
-          path,
-          (tex) => {
-            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
-            tex.repeat.set(1, 1);
-            tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-            if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
-            TILE_TEXTURES[k] = tex;
-            tex.needsUpdate = true;
-            // Если поле уже создано — обновим материалы соответствующих тайлов
-            try { updateTileMaterialsFor(k); } catch {}
-          },
-          undefined,
-          () => {
-            // если не удалось — оставим процедурную текстуру как фолбэк
-            try { console.warn('Could not load tile texture', k, path); } catch {}
-          }
-        );
+      if (window.__scene && typeof window.__scene.initThreeJS === 'function') {
+        const ctx = window.__scene.initThreeJS({ canvasId: 'three-canvas', clearColor: 0x0b1220 });
+        renderer = ctx.renderer;
+        scene = ctx.scene;
+        camera = ctx.camera;
+        raycaster = ctx.raycaster;
+        mouse = ctx.mouse;
+        boardGroup = ctx.boardGroup;
+        cardGroup = ctx.cardGroup;
+        effectsGroup = ctx.effectsGroup;
+        metaGroup = ctx.metaGroup;
+        try { window.renderer = renderer; window.scene = scene; window.camera = camera; window.boardGroup = boardGroup; } catch {}
+      } else {
+        throw new Error('Scene module not available');
       }
     }
 
@@ -605,7 +488,6 @@
       } catch {}
     }
 
-    // Legacy animateTurnManaGain перенесена в модуль src/ui/mana.js
 
     // preloadCardImages removed (module handles lazy loading)
 
@@ -709,7 +591,7 @@
     }
     
     function createBoard() {
-      try { preloadCardTextures(); } catch {}
+      try { window.__cards.preloadCardTextures(); } catch {}
       tileMeshes.forEach(row => row.forEach(tile => {
         if (tile) boardGroup.remove(tile);
       }));
@@ -1020,81 +902,13 @@
     }
     
     function updateUnits() {
-      unitMeshes.forEach(unit => {
-        if (unit.parent) unit.parent.remove(unit);
-      });
-      unitMeshes = [];
-      
-      if (!gameState) return;
-      
-      const tileSize = 6.2;
-      const spacing = 0.2;
-      const boardZShift = -3.5;
-      
-      for (let r = 0; r < 3; r++) {
-        for (let c = 0; c < 3; c++) {
-          const unit = gameState.board[r][c].unit;
-          // Обновим рамки владения
-          if (tileFrames[r] && tileFrames[r][c]) {
-            const frame = tileFrames[r][c];
-            const setFrame = (opacity, color) => {
-              frame.traverse(child => { if (child.isMesh && child.material) { child.material.opacity = opacity; child.material.color = new THREE.Color(color); } });
-            };
-            if (unit) {
-              // В онлайне: подсветка по владельцу относительно моего места (MY_SEAT)
-              // Оффлайн: по владельцу (0 зелёный, 1 красный)
-              // Определяем место зрителя: онлайн — MY_SEAT, офлайн — текущий активный
-              let viewerSeat = null;
-              try {
-                if (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') viewerSeat = window.MY_SEAT;
-                else viewerSeat = gameState.active;
-              } catch { viewerSeat = gameState.active; }
-              const isMine = (unit.owner === viewerSeat);
-              const col = isMine ? 0x22c55e : 0xef4444;
-              setFrame(0.95, col);
-            } else {
-              setFrame(0.0, 0x000000);
-            }
-          }
-          if (!unit) continue;
-          
-          const cardData = CARDS[unit.tplId];
-          const stats = effectiveStats(gameState.board[r][c], unit);
-          const unitMesh = createCard3D(cardData, false, unit.currentHP, stats.atk);
-          
-          const x = (c - 1) * (tileSize + spacing);
-          const z = (r - 1) * (tileSize + spacing) + boardZShift + 0.0; // Важно - смещение карт на поле?
-          const yBase = tileFrames[r] && tileFrames[r][c] ? (tileFrames[r][c].children?.[0]?.position?.y || (0.5 + 0.5)) : (0.5 + 0.5);
-          unitMesh.position.set(x, yBase + 0.28, z);
-          
-          const facingAngle = facingDeg[unit.facing] * Math.PI / 180;
-          unitMesh.rotation.y = facingAngle;
-          
-          const ownerColor = unit.owner === 0 ? 0x22c55e : 0xef4444;
-          const glowMaterial = new THREE.MeshStandardMaterial({
-            color: ownerColor,
-            emissive: ownerColor,
-            emissiveIntensity: 0.2,
-            transparent: true,
-            opacity: 0.3
-          });
-          
-          const glowGeometry = new THREE.BoxGeometry(1.8, 0.02, 2.4);
-          const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-          glow.position.set(0, -0.05, 0);
-          unitMesh.add(glow);
-          
-          unitMesh.userData = {
-            type: 'unit',
-            row: r,
-            col: c,
-            unitData: unit,
-            cardData: cardData
-          };
-          // Убрали дополнительный HP-оверлей, так как цифра HP рисуется на самой карте
-          
-          cardGroup.add(unitMesh);
-          unitMeshes.push(unitMesh);
+      if (window.__units && typeof window.__units.updateUnits === 'function') {
+        window.__units.updateUnits(gameState);
+        const ctx = window.__scene && typeof window.__scene.getCtx === 'function'
+          ? window.__scene.getCtx() : null;
+        if (ctx && ctx.unitMeshes) {
+          unitMeshes = ctx.unitMeshes;
+          try { window.unitMeshes = unitMeshes; } catch {}
         }
       }
     }
@@ -1179,52 +993,16 @@
           : hpChanges;
 
         // Schedule HP popups in a cancelable way to sync with remote battle shakes
-        try {
-          const halfCount = Math.ceil(pendingHpChanges.length / 2);
-          for (let i = 0; i < halfCount && i < pendingHpChanges.length; i++) {
-            const change = pendingHpChanges[i];
-            scheduleHpPopup(change.r, change.c, change.delta, 800);
-          }
-          if (pendingHpChanges.length > halfCount) {
-            for (let i = halfCount; i < pendingHpChanges.length; i++) {
-              const change = pendingHpChanges[i];
-              scheduleHpPopup(change.r, change.c, change.delta, 1600);
-            }
-          }
-          // Prevent legacy fallback from double-displaying numbers
-          return;
-        } catch {}
-
         const halfCount = Math.ceil(pendingHpChanges.length / 2);
-        
-        // Первая волна чисел (урон по атакованным целям) <-- важно
-        setTimeout(() => {
-          for (let i = 0; i < halfCount && i < pendingHpChanges.length; i++) {
-            const change = pendingHpChanges[i];
-            try {
-              const tMesh = unitMeshes.find(m => m.userData.row === change.r && m.userData.col === change.c);
-              if (tMesh) {
-                const color = change.delta > 0 ? '#22c55e' : '#ef4444';
-                spawnDamageText(tMesh, `${change.delta > 0 ? '+' : ''}${change.delta}`, color);
-              }
-            } catch {}
-          }
-        }, 500);
-        
-        // Вторая волна чисел (урон по атакующему от контратаки) <-- важно
+        for (let i = 0; i < halfCount && i < pendingHpChanges.length; i++) {
+          const change = pendingHpChanges[i];
+          scheduleHpPopup(change.r, change.c, change.delta, 800);
+        }
         if (pendingHpChanges.length > halfCount) {
-          setTimeout(() => {
-            for (let i = halfCount; i < pendingHpChanges.length; i++) {
-              const change = pendingHpChanges[i];
-              try {
-                const tMesh = unitMeshes.find(m => m.userData.row === change.r && m.userData.col === change.c);
-                if (tMesh) {
-                  const color = change.delta > 0 ? '#22c55e' : '#ef4444';
-                  spawnDamageText(tMesh, `${change.delta > 0 ? '+' : ''}${change.delta}`, color);
-                }
-              } catch {}
-            }
-          }, 1300);
+          for (let i = halfCount; i < pendingHpChanges.length; i++) {
+            const change = pendingHpChanges[i];
+            scheduleHpPopup(change.r, change.c, change.delta, 1600);
+          }
         }
       } catch {}
     }
@@ -2012,14 +1790,9 @@
     }
     
     function animate() {
-      requestAnimationFrame(animate);
-      renderer.render(scene, camera);
-    }
-    
-    function onWindowResize() {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      if (window.__scene && typeof window.__scene.animate === 'function') {
+        window.__scene.animate();
+      }
     }
 
     function wireModules() {
@@ -2091,185 +1864,12 @@
       ].join(' · ');
     }
     
-    // Bridge helpers for gradual migration to modules
-    function initThreeJSBridge(){
-      if (window.__scene && typeof window.__scene.initThreeJS === 'function') {
-        try {
-          const ctx = window.__scene.initThreeJS({ canvasId: 'three-canvas' });
-          renderer = ctx.renderer; scene = ctx.scene; camera = ctx.camera;
-          raycaster = ctx.raycaster; mouse = ctx.mouse;
-          boardGroup = ctx.boardGroup; cardGroup = ctx.cardGroup; effectsGroup = ctx.effectsGroup; metaGroup = ctx.metaGroup;
-          try { window.renderer = renderer; window.scene = scene; window.camera = camera; window.boardGroup = boardGroup; } catch {}
-          return true;
-        } catch (e) { console.error('[bridge] initThreeJS via module failed, fallback', e); }
-      }
-      try { initThreeJS(); return true; } catch (e) { console.error('[bridge] legacy initThreeJS failed', e); return false; }
-    }
-    let __sceneLoopStarted = false;
-    function animateBridge(){
-      if (window.__scene && typeof window.__scene.animate === 'function') {
-        if (!__sceneLoopStarted) { __sceneLoopStarted = true; try { window.__scene.animate(); } catch (e) { console.error('[bridge] animate via module failed', e); } }
-        return;
-      }
-      try { animate(); } catch (e) { console.error('[bridge] legacy animate failed', e); }
-    }
-    function createBoardBridge(){
-      if (window.__board && typeof window.__board.createBoard === 'function' && window.__scene && typeof window.__scene.getCtx === 'function') {
-        try {
-          window.__board.createBoard(gameState);
-          const ctx = window.__scene.getCtx();
-          tileMeshes = ctx.tileMeshes || []; tileFrames = ctx.tileFrames || [];
-          try { window.tileMeshes = tileMeshes; window.tileFrames = tileFrames; } catch {}
-          return true;
-        } catch (e) { console.error('[bridge] createBoard via module failed, fallback', e); }
-      }
-      try { createBoard(); return true; } catch (e) { console.error('[bridge] legacy createBoard failed', e); return false; }
-    }
-
-    // Override legacy createBoard to route through bridge when modules are present
-    try {
-      const __legacyCreateBoard = createBoard;
-      createBoard = function() {
-        if (window.__board && window.__scene && typeof window.__board.createBoard === 'function') {
-          window.__board.createBoard(gameState);
-          const ctx = window.__scene.getCtx();
-          tileMeshes = ctx.tileMeshes || []; tileFrames = ctx.tileFrames || [];
-          try { window.tileMeshes = tileMeshes; window.tileFrames = tileFrames; } catch {}
-          return;
-        }
-        console.error('[bridge] __board.createBoard not available; modules must be loaded.');
-        throw new Error('Module board missing');
-      };
-    } catch {}
-    // Board material helpers: delegate to window.__board
-    try {
-      const __legacyCreateProc = createProceduralTileTexture;
-      createProceduralTileTexture = function(element) {
-        if (window.__board && typeof window.__board.createProceduralTileTexture === 'function') {
-          return window.__board.createProceduralTileTexture(element);
-        }
-        return __legacyCreateProc ? __legacyCreateProc(element) : null;
-      };
-    } catch {}
-    try {
-      const __legacyGetTileMat = getTileMaterial;
-      getTileMaterial = function(element) {
-        if (window.__board && typeof window.__board.getTileMaterial === 'function') {
-          return window.__board.getTileMaterial(element);
-        }
-        return __legacyGetTileMat ? __legacyGetTileMat(element) : new THREE.MeshStandardMaterial({ color: 0x64748b });
-      };
-    } catch {}
-
-    // Bridge card helpers to module implementations when available
-    try {
-      getCachedTexture = function(url) {
-        if (window.__cards && typeof window.__cards.getCachedTexture === 'function') {
-          return window.__cards.getCachedTexture(url);
-        }
-        console.error('[bridge] __cards.getCachedTexture not available; modules must be loaded.');
-        throw new Error('Module cards missing');
-      };
-    } catch {}
-    try {
-      preloadCardTextures = function() {
-        if (window.__cards && typeof window.__cards.preloadCardTextures === 'function') {
-          return window.__cards.preloadCardTextures();
-        }
-        console.error('[bridge] __cards.preloadCardTextures not available; modules must be loaded.');
-        throw new Error('Module cards missing');
-      };
-    } catch {}
-    try {
-      createCard3D = function() {
-        if (window.__cards && typeof window.__cards.createCard3D === 'function') {
-          return window.__cards.createCard3D.apply(null, arguments);
-        }
-        console.error('[bridge] __cards.createCard3D not available; modules must be loaded.');
-        throw new Error('Module cards missing');
-      };
-    } catch {}
-    try {
-      drawCardFace = function() {
-        if (window.__cards && typeof window.__cards.drawCardFace === 'function') {
-          return window.__cards.drawCardFace.apply(null, arguments);
-        }
-        console.error('[bridge] __cards.drawCardFace not available; modules must be loaded.');
-        throw new Error('Module cards missing');
-      };
-    } catch {}
-    try {
-      updateUnits = function() {
-        if (window.__units && typeof window.__units.updateUnits === 'function') {
-          window.__units.updateUnits(gameState);
-          const ctx = (window.__scene && typeof window.__scene.getCtx === 'function') ? window.__scene.getCtx() : null;
-          if (ctx && ctx.unitMeshes) { unitMeshes = ctx.unitMeshes; try { window.unitMeshes = unitMeshes; } catch {} }
-          return;
-        }
-        console.error('[bridge] __units.updateUnits not available; modules must be loaded.');
-        throw new Error('Module units missing');
-      };
-    } catch {}
-
-    // Bridge UI banner helpers to module implementations when available
-    try {
-      const __legacyShowTurnSplash = showTurnSplash;
-      showTurnSplash = function(title) {
-        if (window.__ui && window.__ui.banner && typeof window.__ui.banner.showTurnSplash === 'function') {
-          return window.__ui.banner.showTurnSplash(title);
-        }
-        return __legacyShowTurnSplash ? __legacyShowTurnSplash(title) : Promise.resolve();
-      };
-    } catch {}
-    try {
-      const __legacyQueueTurnSplash = queueTurnSplash;
-      queueTurnSplash = function(title) {
-        if (window.__ui && window.__ui.banner && typeof window.__ui.banner.queueTurnSplash === 'function') {
-          return window.__ui.banner.queueTurnSplash(title);
-        }
-        return __legacyQueueTurnSplash ? __legacyQueueTurnSplash(title) : Promise.resolve();
-      };
-    } catch {}
-    try {
-      const __legacyRequestTurnSplash = requestTurnSplash;
-      requestTurnSplash = function() {
-        if (window.__ui && window.__ui.banner && typeof window.__ui.banner.requestTurnSplash === 'function') {
-          const t = (typeof gameState?.turn === 'number') ? gameState.turn : null;
-          return window.__ui.banner.requestTurnSplash(t);
-        }
-        return __legacyRequestTurnSplash ? __legacyRequestTurnSplash() : Promise.resolve();
-      };
-    } catch {}
-    try {
-      const __legacyForceTurnSplashWithRetry = forceTurnSplashWithRetry;
-      forceTurnSplashWithRetry = function(maxRetries) {
-        const t = (typeof gameState?.turn === 'number') ? gameState.turn : null;
-        if (window.__ui && window.__ui.banner) {
-          const b = window.__ui.banner;
-          if (typeof b.ensureTurnSplashVisible === 'function') return b.ensureTurnSplashVisible(maxRetries, t);
-          if (typeof b.forceTurnSplashWithRetry === 'function') return b.forceTurnSplashWithRetry(maxRetries, t);
-        }
-        return __legacyForceTurnSplashWithRetry ? __legacyForceTurnSplashWithRetry(maxRetries) : Promise.resolve();
-      };
-    } catch {}
-
-    // Bridge mana world->bar animation to module implementation
-    try {
-      const __legacyAnimateManaGainFromWorld = animateManaGainFromWorld;
-      animateManaGainFromWorld = function(pos, ownerIndex, visualOnly = true) {
-        if (window.__ui && window.__ui.mana && typeof window.__ui.mana.animateManaGainFromWorld === 'function') {
-          return window.__ui.mana.animateManaGainFromWorld(pos, ownerIndex, visualOnly);
-        }
-        return __legacyAnimateManaGainFromWorld ? __legacyAnimateManaGainFromWorld(pos, ownerIndex, visualOnly) : undefined;
-      };
-    } catch {}
-
     function init() {
       wireModules();
       mountModuleStatusChip();
-      initThreeJSBridge();
+      initThreeJS();
       // Start render loop early so scene is visible even if game init fails
-      animateBridge();
+      animate();
       initGame();
       
       renderer.domElement.addEventListener('mousemove', onMouseMove);
@@ -2282,12 +1882,10 @@
           hoveredHandCard = null;
         }
       });
-      window.addEventListener('resize', onWindowResize);
-      
     }
     try { window.init = init; window.initThreeJS = initThreeJS; window.initGame = initGame; window.animate = animate; } catch {}
 
-    // UI wrappers: use modules only (no legacy fallback)
+    // UI wrappers: use modules only
     try { showNotification = (message, type) => window.__ui.notifications.show(message, type); } catch {}
     try { addLog = (message) => window.__ui.log.add(message); } catch {}
     try { animateManaGainFromWorld = (pos, ownerIndex, visualOnly) => window.__ui.mana.animateManaGainFromWorld(pos, ownerIndex, visualOnly); } catch {}
@@ -2309,8 +1907,8 @@
       const zA = -5.2 - META_Z_AWAY; const zB = 0.2 + META_Z_AWAY; // Важно (смещение колоды/кладбища от камеры)
       function buildDeck(player, z) {
         const g = new THREE.Group(); g.position.set(baseX, 0.5, z); g.userData = { metaType: 'deck', player };
-        const sideMap = (CARD_TEX && CARD_TEX.deckSide) ? CARD_TEX.deckSide : getCachedTexture('textures/card_deck_side_view.jpeg');
-        const backMap = (CARD_TEX && CARD_TEX.back) ? CARD_TEX.back : getCachedTexture('textures/card_back_main.jpeg');
+        const sideMap = (CARD_TEX && CARD_TEX.deckSide) ? CARD_TEX.deckSide : window.__cards.getCachedTexture('textures/card_deck_side_view.jpeg');
+        const backMap = (CARD_TEX && CARD_TEX.back) ? CARD_TEX.back : window.__cards.getCachedTexture('textures/card_back_main.jpeg');
         const sideMat = new THREE.MeshStandardMaterial({ map: sideMap, color: 0xffffff, metalness: 0.3, roughness: 0.85 });
         const body = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.8, 5.0), sideMat);
         body.castShadow = true; body.receiveShadow = true; body.userData = { metaType: 'deck', player };
@@ -3874,7 +3472,7 @@
           updateHand();
         }
       } catch { updateHand(); }
-    try { __endTurnInProgress = false; } catch {}
+    __endTurnInProgress = false;
     updateIndicator();
     updateInputLock();
       // Persist last seen turn/mana for robust next-frame animations
@@ -3888,7 +3486,7 @@
       } catch {}
     } finally {
       APPLYING=false;
-      try { __endTurnInProgress = false; refreshInputLockUI(); } catch {}
+      __endTurnInProgress = false; refreshInputLockUI();
     }
   });
 
