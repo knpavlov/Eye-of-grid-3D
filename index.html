@@ -11,6 +11,8 @@
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
   <script type="module" src="./src/main.js"></script>
   <script>
+    /* MODULE: bootstrap/globals - bootstrap global flags.
+       LEGACY fallback to prevent crashes before modules load */
     // Early globals so later scripts never crash if earlier code aborted
     (function(){
       try { if (typeof window.NET_ACTIVE === 'undefined') window.NET_ACTIVE = false; } catch(e){}
@@ -25,7 +27,7 @@
 
       // nothing else inside IIFE
     })();
-    // Also create global bindings (var) so bare identifiers work in this file
+    // LEGACY bridge: create global bindings so bare identifiers work in this file
     try {
       /* eslint-disable no-var */
       var __endTurnInProgress = window.__endTurnInProgress;
@@ -41,6 +43,7 @@
 <body>
   <canvas id="three-canvas"></canvas>
   
+  <!-- MODULE: UI layout (static) - consider extracting to templates/components -->
   <div id="ui">
     <!-- Боковые панели: слева — игрок A, справа — игрок B -->
     <div id="left-side" class="ui-panel fixed left-4 top-1/2 -translate-y-1/2 space-y-3 z-20 flex flex-col items-center">
@@ -168,13 +171,19 @@
   <div id="build-version" class="fixed left-0 top-0 z-20 text-xs text-slate-300 opacity-80 p-1.5"></div>
 
   <script>
-    // ====== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ======
-    // Переменные для мультиплеера (должны быть доступны везде)
-    var NET_ACTIVE = false;
-    var MY_SEAT = null;
-    var APPLYING = false;
-    
-    // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
+      /* MODULE: runtime globals
+         Purpose: multiplayer state shared across modules
+         TODO: move to src/core/netState.js */
+      // ====== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ======
+      // Переменные для мультиплеера (должны быть доступны везде)
+      var NET_ACTIVE = false;
+      var MY_SEAT = null;
+      var APPLYING = false;
+
+      /* LEGACY MODULE: 2D game logic fallback.
+         Most logic below is carried over from the old 2D client and should be
+         migrated into src/core/*.js or removed once 3D modules cover it. */
+      // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
     
     let DIR_VECTORS, OPPOSITE_ELEMENT, elementEmoji, turnCW, turnCCW;
     // Переопределяем ориентации: N должен смотреть к верхнему краю (−Z), S — к нижнему (+Z)
@@ -192,6 +201,9 @@
     let STARTER_FIRESET;
     
     // Функции игровой логики
+    /* MODULE: core/boardSetup & mechanics
+       Buff calculations, stat helpers and initial board generation.
+       Extract to src/core/board.js to keep index.html thin. */
     let dirsForPattern;
     
     const computeCellBuff = (cellElement, unitElement) => {
@@ -232,52 +244,33 @@
     
     let startGame;
     
-    // ====== БОЕВАЯ СИСТЕМА (порт из 2D) ======
-    let hasAdjacentGuard;
-    let computeHits;
-/*          const backDir = turnCW[turnCW[B.facing]];
-          const [bdr, bdc] = DIR_VECTORS[backDir];
-          const isBack = (nr + bdr === r && nc + bdc === c);
-          // Определяем направление на атакующего относительно ПОВОРОТА цели
-          const dirAbs = (() => {
-            if (r === nr - 1 && c === nc) return 'N';
-            if (r === nr + 1 && c === nc) return 'S';
-            if (r === nr && c === nc - 1) return 'W';
-            return 'E';
-          })();
-          const ORDER = ['N','E','S','W'];
-          const absIdx = ORDER.indexOf(dirAbs);
-          const faceIdx = ORDER.indexOf(B.facing);
-          const relIdx = (absIdx - faceIdx + 4) % 4;
-          const dirRel = ORDER[relIdx];
-          const blind = CARDS[B.tplId].blindspots || ['S'];
-          const inBlind = blind.includes(dirRel);
-          // Исключаем двойное начисление за спину: максимум +1
-          const extraTotal = isBack ? 1 : (inBlind ? 1 : 0);
-          const dmg = Math.max(0, atk + extraTotal);
-          hits.push({ r: nr, c: nc, dmg, backstab: isBack });
-          break; // первая цель по лучу
-        }
-      }
-      return hits;
-    */
-    
+      /* LEGACY MODULE: battle system (ported from 2D)
+         To be extracted into src/core/battle.js and cleaned up. Currently
+         mostly unused but serves as fallback. */
+      // ====== БОЕВАЯ СИСТЕМА (порт из 2D) ======
+      let hasAdjacentGuard;
+      let computeHits;
+
     let stagedAttack;
     let magicAttack;
     
-    // ====== THREE.JS СЦЕНА ======
-    
-    let scene, camera, renderer, raycaster, mouse;
-    let boardGroup, cardGroup, effectsGroup, metaGroup;
-    let tileMeshes = [];
-    let tileFrames = [];
+      /* MODULE: 3D scene setup and rendering
+         Target module: src/scene/*.js (board, cards, units). Inline code below
+         duplicates logic already present in modules; keep until migration
+         complete. */
+      // ====== THREE.JS СЦЕНА ======
+
+      let scene, camera, renderer, raycaster, mouse;
+      let boardGroup, cardGroup, effectsGroup, metaGroup;
+      let tileMeshes = [];
+      let tileFrames = [];
     let unitMeshes = [];
     let handCardMeshes = [];
     let gameState = null;
     let logEntries = [];
-    let TILE_TEXTURES = {};
-    // Legacy CARD_TEX placeholder: modules expose window.CARD_TEX when preloaded
-    var CARD_TEX;
+      let TILE_TEXTURES = {};
+      // LEGACY placeholder: CARD_TEX kept for compatibility with older loaders.
+      var CARD_TEX;
     let PROC_TILE_TEXTURES = {};
     // Настройки показа большой карты при доборе — можно править из консоли
     window.DRAW_CARD_TUNE = {
@@ -786,16 +779,17 @@
       return __legacy_createCard3D(cardData, isInHand, hpOverride, atkOverride);
     }
 
-    function __legacy_createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
-      // disabled legacy body
-      return null;
-    }
+      /* LEGACY Fallback: 2D card creation placeholders (unused) */
+      function __legacy_createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
+        // disabled legacy body
+        return null;
+      }
 
-    // Legacy kept only for offline file:// fallback (modules handle normally)
-    function __legacy_attachIllustrationPlane(cardMesh, cardData) {
-      // disabled legacy body
-      return;
-    }
+      // LEGACY Fallback: offline file:// illustration loader
+      function __legacy_attachIllustrationPlane(cardMesh, cardData) {
+        // disabled legacy body
+        return;
+      }
     // Delegator: module cards implementation
     function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
       if (window.__cards && typeof window.__cards.drawCardFace === 'function') {
@@ -804,10 +798,11 @@
       return __legacy_drawCardFace(ctx, cardData, width, height, hpOverride, atkOverride);
     }
 
-    function __legacy_drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
-      // disabled legacy body
-      return;
-    }
+      // LEGACY Fallback: vector draw routine from 2D client
+      function __legacy_drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
+        // disabled legacy body
+        return;
+      }
     
 
     
@@ -2445,7 +2440,8 @@
     
     document.addEventListener('DOMContentLoaded', init);
 
-    // ====== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЕЙСТВИЙ ======
+      /* MODULE: UI action helpers - candidate for src/ui/actions.js */
+      // ====== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЕЙСТВИЙ ======
     function showPrompt(text, onCancel) {
       const pp = document.getElementById('prompt-panel');
       const pt = document.getElementById('prompt-text');
@@ -2504,6 +2500,10 @@
       performBattleSequence(r, c, true);
        }
     
+    /* MODULE: core/battleSequence
+       Combines combat resolution, animations and network sync.
+       Split into logic (src/core/battle.js), FX (src/scene/battleFx.js)
+       and net sync (src/net/battleSync.js). */
     async function performBattleSequence(r, c, markAttackTurn) {
       const staged = stagedAttack(gameState, r, c);
       if (!staged || staged.empty) return;
@@ -2653,6 +2653,9 @@
       }
     }
 
+    /* MODULE: effects/damageText
+       Floating damage numbers; pure visual helper.
+       Move to src/scene/effects.js */
     function spawnDamageText(targetMesh, text, color = '#ff5555') {
       const canvas = document.createElement('canvas');
       canvas.width = 256; canvas.height = 128;
@@ -3455,10 +3458,14 @@
 
     // (убраны несуществующие обработчики magic-btn и draw-btn)
   </script>
-<!-- серверный патч -->
-<!-- === Multiplayer patch v2: sync + queue + countdown + lock input + indicator === --> 
+<!-- MODULE: network/multiplayer (socket.io sync, queue, indicator)
+     TODO: extract to src/net/client.js -->
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script> 
+<script>
+  /* MODULE: network/multiplayer
+     Purpose: handle server connection, matchmaking, state sync,
+     countdowns, and input locking.
+     TODO: migrate this whole block to src/net/client.js */
 (() => {
   // ===== 0) Config =====
   const SERVER_URL = (location.hostname === "localhost")
