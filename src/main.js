@@ -25,6 +25,7 @@ import { updateUI } from './ui/update.js';
 import * as UIActions from './ui/actions.js';
 import * as SceneEffects from './scene/effects.js';
 import * as UISpellUtils from './ui/spellUtils.js';
+import * as Spells from './spells/handlers.js';
 import './ui/statusChip.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
@@ -154,6 +155,7 @@ try {
   window.__fx = SceneEffects;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
   window.burnSpellCard = UISpellUtils.burnSpellCard;
+  window.__spells = Spells;
 } catch {}
 
 import * as UISync from './ui/sync.js';
