@@ -25,6 +25,7 @@ import { updateUI } from './ui/update.js';
 import * as UIActions from './ui/actions.js';
 import * as SceneEffects from './scene/effects.js';
 import * as UISpellUtils from './ui/spellUtils.js';
+import * as UISpellHandlers from './ui/spellHandlers.js';
 import './ui/statusChip.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
@@ -149,6 +150,7 @@ try {
   window.__ui.handCount = HandCount;
   window.__ui.actions = UIActions;
   window.__ui.spellUtils = UISpellUtils;
+  window.__ui.spellHandlers = UISpellHandlers;
   window.__ui.updateUI = updateUI;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
