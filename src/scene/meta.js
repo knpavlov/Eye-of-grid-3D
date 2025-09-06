@@ -3,13 +3,14 @@
 let deckMeshes = [];
 let graveyardMeshes = [];
 
-export function createMetaObjects(gameState) {
+export function createMetaObjects(gs) {
   try {
     const THREE = window.THREE;
     const metaGroup = window.metaGroup || window.__scene?.getCtx?.().metaGroup;
     deckMeshes.forEach(m => m.parent && m.parent.remove(m));
     graveyardMeshes.forEach(m => m.parent && m.parent.remove(m));
     deckMeshes = []; graveyardMeshes = [];
+    const gameState = gs || (typeof window !== 'undefined' ? window.gameState : null);
     if (!gameState || !THREE || !metaGroup) return;
 
     const CARD_TEX = window.CARD_TEX || {};

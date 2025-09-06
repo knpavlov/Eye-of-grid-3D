@@ -147,6 +147,12 @@ export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true) {
         const b2 = getBlocks(); b2[ownerIndex] = Math.max(0, (b2[ownerIndex] || 0) - 1); setBlocks(b2);
         try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
       }
+      try {
+        const gs = (typeof window !== 'undefined') ? window.gameState : null;
+        const after = Math.max(0, gs?.players?.[ownerIndex]?.mana || 0);
+        const before = Math.max(0, after - 1);
+        animateTurnManaGain(ownerIndex, before, after, 600);
+      } catch {}
     }}) : null;
     if (tl) {
       tl.to(orb, { duration: 0.5, ease: 'back.out(1.4)', opacity: 1, transform: 'translate(-50%, -50%) scale(1)' })

@@ -6,6 +6,8 @@
 import { spendAndDiscardSpell, burnSpellCard } from '../ui/spellUtils.js';
 import { getCtx } from '../scene/context.js';
 import { interactionState, resetCardSelection } from '../scene/interactions.js';
+import { discardFromHand } from '../lib/discard.js';
+import { animateTurnManaGain } from '../ui/mana.js';
 
 export const handlers = {
   SPELL_BEGUILING_FOG: {
@@ -137,368 +139,104 @@ export const handlers = {
   },
 
   SPELL_PARMTETIC_HOLY_FEAST: {
-    // Unit-targeted variant just sets up discard prompt
+    // Каст на существо (через клик)
     onUnit({ tpl, pl }) {
-      const handCreatures = pl.hand.filter(x => x && x.type === 'UNIT');
+      const handCreatures = pl.hand.filter(c => c && c.type === 'UNIT');
       if (handCreatures.length === 0) {
         showNotification('No units available', 'error');
         return;
       }
-      console.log('[HF:setup] Setting up pendingDiscardSelection for Holy Feast (castSpellOnUnit)');
+      window.__ui.panels.showPrompt('Выберите существо из руки', () => {
+        interactionState.pendingDiscardSelection = null;
+        resetCardSelection();
+        updateHand();
+        updateUI();
+      });
       interactionState.pendingDiscardSelection = {
         requiredType: 'UNIT',
         onPicked: handIdx => {
-          console.log('[HF:onPicked] Called onPicked (castSpellOnUnit)', {
-            handIdx,
-            NET_ACTIVE: typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : 'undefined',
-          });
-          const toDiscardTpl = pl.hand[handIdx];
-          if (!toDiscardTpl) return;
           const localSpellIdx = pl.hand.indexOf(tpl);
-          try {
-            if (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) {
-              PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, localSpellIdx])).filter(i => i >= 0);
-            }
-          } catch {}
-          const handMesh = getCtx().handCardMeshes.find(m => m.userData?.handIndex === handIdx);
-          if (handMesh) {
-            try { handMesh.userData.isInHand = false; } catch {}
-            window.__fx.dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9);
-          }
-          if (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) {
-            try {
-              if (typeof window !== 'undefined' && window.socket)
-                window.socket.emit('holyFeast', {
-                  seat: gameState.active,
-                  spellIdx: localSpellIdx,
-                  creatureIdx: handIdx,
-                });
-            } catch {}
-            window.__ui.panels.hidePrompt();
-            interactionState.pendingDiscardSelection = null;
-            resetCardSelection();
-            updateHand();
-            updateUI();
-          } else {
-            try { pl.graveyard.push(toDiscardTpl); } catch {}
-            pl.hand.splice(handIdx, 1);
-            updateHand();
-            pl.mana = capMana(pl.mana + 2);
-            updateUI();
-            addLog(
-              `${tpl.name}: сбрасываете существо из руки и получаете +2 маны (\`${toDiscardTpl.name}\`).`
-            );
-            pl.mana = capMana(pl.mana - (tpl.cost || 0));
-            const spellIdx2 = pl.hand.indexOf(tpl);
-            if (spellIdx2 >= 0) {
-              pl.hand.splice(spellIdx2, 1);
-            }
-            pl.discard.push(tpl);
-            resetCardSelection();
-            updateHand();
-            updateUI();
-            schedulePush('spell-holy-feast', { force: true });
-          }
-        },
+          const toDiscardTpl = discardFromHand(pl, handIdx, { to: 'graveyard' });
+          updateHand();
+          const before = pl.mana;
+          pl.mana = capMana(pl.mana + 2);
+          updateUI();
+          animateTurnManaGain(gameState.active, before, pl.mana, 800);
+          addLog(`${tpl.name}: ритуал — +2 маны (\`${toDiscardTpl?.name||''}\`).`);
+          const adjIdx = localSpellIdx > handIdx ? localSpellIdx - 1 : localSpellIdx;
+          if (adjIdx >= 0) discardFromHand(pl, adjIdx, { to: 'discard', skipAnim: true });
+          interactionState.pendingDiscardSelection = null;
+          try { window.__ui.panels.hidePrompt(); } catch {}
+          resetCardSelection();
+          updateHand();
+          updateUI();
+          schedulePush('spell-holy-feast', { force: true });
+        }
       };
       addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`);
     },
 
-    // Board drag variant
+    // Каст перетаскиванием на поле
     onBoard({ tpl, pl, idx, cardMesh, tileMesh }) {
-      const handCreatures = pl.hand.filter(x => x && x.type === 'UNIT');
+      const handCreatures = pl.hand.filter(c => c && c.type === 'UNIT');
       if (handCreatures.length === 0) {
         showNotification('No unit in hand for this action', 'error');
         return;
       }
+      let boardMesh = null;
       try {
         const big = window.__cards?.createCard3D(tpl, false);
-        const p = tileMesh
-          ? tileMesh.position.clone().add(new THREE.Vector3(0, 1.0, 0))
-          : new THREE.Vector3(0, 1.0, 0);
+        const p = tileMesh ? tileMesh.position.clone().add(new THREE.Vector3(0,1.0,0)) : new THREE.Vector3(0,1.0,0);
         big.position.copy(p);
         const ctx = getCtx();
         (ctx.boardGroup || ctx.scene).add(big);
-        interactionState.pendingRitualBoardMesh = big;
-        interactionState.spellDragHandled = true;
-        try { cardMesh.visible = false; } catch {}
-        interactionState.pendingRitualSpellHandIndex = idx;
-        interactionState.pendingRitualSpellCard = tpl;
+        boardMesh = big;
       } catch {}
-      console.log('[HF:drag] Showing prompt for Holy Feast drag to field');
-      window.__ui.panels.showPrompt('Select a unit for this action', () => {
-        console.log('[HF:drag] Canceling Holy Feast ritual');
-        try {
-          if (interactionState.pendingRitualBoardMesh && interactionState.pendingRitualBoardMesh.parent)
-            interactionState.pendingRitualBoardMesh.parent.remove(interactionState.pendingRitualBoardMesh);
-        } catch {}
-        interactionState.pendingRitualBoardMesh = null;
+      interactionState.pendingRitualBoardMesh = boardMesh;
+      interactionState.spellDragHandled = true;
+      interactionState.pendingRitualSpellHandIndex = idx;
+      interactionState.pendingRitualSpellCard = tpl;
+      try { cardMesh.visible = false; } catch {}
+
+      window.__ui.panels.showPrompt('Выберите существо из руки', () => {
+        try { if (boardMesh && boardMesh.parent) boardMesh.parent.remove(boardMesh); } catch {}
         try { cardMesh.visible = true; } catch {}
+        interactionState.pendingRitualBoardMesh = null;
         interactionState.pendingRitualSpellHandIndex = null;
         interactionState.pendingRitualSpellCard = null;
-        updateHand();
         interactionState.pendingDiscardSelection = null;
+        resetCardSelection();
+        updateHand();
+        updateUI();
       });
-      if (handCreatures.length > 1) {
-        console.log('[HF:setup] Setting up pendingDiscardSelection for Holy Feast (handleSpellDrop)');
-        interactionState.pendingDiscardSelection = {
-          requiredType: 'UNIT',
-          onPicked: handIdx => {
-            console.log('[HF:onPicked] Called onPicked (handleSpellDrop)', {
-              handIdx,
-              NET_ACTIVE,
-            });
-            const toDiscardTpl = pl.hand[handIdx];
-            if (!toDiscardTpl) return;
-            const localSpellIdx =
-              interactionState.pendingRitualSpellHandIndex != null
-                ? interactionState.pendingRitualSpellHandIndex
-                : pl.hand.indexOf(tpl);
-            try {
-              if (NET_ON()) {
-                PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, localSpellIdx])).filter(
-                  i => i >= 0
-                );
-              }
-            } catch {}
-            const handMesh = getCtx().handCardMeshes.find(m => m.userData?.handIndex === handIdx);
-            if (handMesh) {
-              try { handMesh.userData.isInHand = false; } catch {}
-              window.__fx.dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9);
-            }
-            if (NET_ON()) {
-              try {
-                if (typeof window !== 'undefined') window.__HF_ACK = false;
-              } catch {}
-              try {
-                if (typeof window !== 'undefined' && window.socket)
-                  window.socket.emit('debugLog', {
-                    tag: 'HF:onPicked',
-                    phase: 'emit',
-                    localSpellIdx,
-                    handIdx,
-                    active: gameState.active,
-                  });
-              } catch {}
-              try {
-                if (interactionState.pendingRitualBoardMesh) {
-                  window.__fx.dissolveAndAsh(
-                    interactionState.pendingRitualBoardMesh,
-                    new THREE.Vector3(0, 0.6, 0),
-                    0.9
-                  );
-                  setTimeout(() => {
-                    try {
-                      interactionState.pendingRitualBoardMesh.parent.remove(interactionState.pendingRitualBoardMesh);
-                    } catch {}
-                    interactionState.pendingRitualBoardMesh = null;
-                  }, 950);
-                }
-              } catch {}
-              try {
-                if (typeof window !== 'undefined' && window.socket)
-                  window.socket.emit('holyFeast', {
-                    seat: gameState.active,
-                    spellIdx: localSpellIdx,
-                    creatureIdx: handIdx,
-                  });
-              } catch {}
-              setTimeout(() => {
-                try {
-                  if (
-                    typeof window !== 'undefined' &&
-                    !window.__HF_ACK &&
-                    window.socket
-                  )
-                    window.socket.emit('holyFeast', {
-                      seat: gameState.active,
-                      spellIdx: localSpellIdx,
-                      creatureIdx: handIdx,
-                    });
-                } catch {}
-              }, 350);
-              interactionState.pendingRitualSpellHandIndex = null;
-              interactionState.pendingRitualSpellCard = null;
-              console.log(
-                '[HF:onPicked] Hiding prompt and clearing selection (online)'
-              );
-              window.__ui.panels.hidePrompt();
-              interactionState.pendingDiscardSelection = null;
-              updateHand();
-              updateUI();
-            } else {
-              console.log('[HF:onPicked] Processing offline (handleSpellDrop)');
-              try { pl.graveyard.push(toDiscardTpl); } catch {}
-              pl.hand.splice(handIdx, 1);
-              updateHand();
-              pl.mana = capMana(pl.mana + 2);
-              addLog(`${tpl.name}: ритуал — +2 маны.`);
-              try {
-                if (interactionState.pendingRitualBoardMesh) {
-                  window.__fx.dissolveAndAsh(
-                    interactionState.pendingRitualBoardMesh,
-                    new THREE.Vector3(0, 0.6, 0),
-                    0.9
-                  );
-                  setTimeout(() => {
-                    try {
-                      interactionState.pendingRitualBoardMesh.parent.remove(interactionState.pendingRitualBoardMesh);
-                    } catch {}
-                    interactionState.pendingRitualBoardMesh = null;
-                  }, 950);
-                }
-              } catch {}
-              let spellIdx = localSpellIdx;
-              if (spellIdx >= 0) {
-                pl.hand.splice(spellIdx, 1);
-              }
-              interactionState.pendingRitualSpellHandIndex = null;
-              interactionState.pendingRitualSpellCard = null;
-              console.log(
-                '[HF:onPicked] Hiding prompt and clearing selection (offline)'
-              );
-              interactionState.pendingDiscardSelection = null;
-              window.__ui.panels.hidePrompt();
-              pl.discard.push(tpl);
-              updateHand();
-              updateUI();
-              schedulePush('spell-holy-feast', { force: true });
-            }
-          },
-        };
-        addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`);
-        setTimeout(() => {
-          try {
-            if (interactionState.pendingDiscardSelection) {
-              window.__ui.panels.hidePrompt();
-              interactionState.pendingDiscardSelection = null;
-              updateHand();
-              updateUI();
-            }
-          } catch {}
-        }, 3000);
-        return;
-      }
-      const singleIdx = pl.hand.findIndex(x => x && x.type === 'UNIT');
-      if (singleIdx >= 0) {
-        const toDiscardTpl = pl.hand[singleIdx];
-        const handMesh = getCtx().handCardMeshes.find(m => m.userData?.handIndex === singleIdx);
-        const localSpellIdx =
-          interactionState.pendingRitualSpellHandIndex != null
-            ? interactionState.pendingRitualSpellHandIndex
-            : pl.hand.indexOf(tpl);
-        try {
-          if (NET_ON()) {
-            PENDING_HIDE_HAND_CARDS = Array.from(new Set([singleIdx, localSpellIdx])).filter(
-              i => i >= 0
-            );
-          }
-        } catch {}
-        if (handMesh) {
-          try { handMesh.userData.isInHand = false; } catch {}
-          window.__fx.dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9);
-        }
-        if (NET_ON()) {
-          try {
-            if (typeof window !== 'undefined') window.__HF_ACK = false;
-          } catch {}
-          try {
-            if (typeof window !== 'undefined' && window.socket)
-              window.socket.emit('debugLog', {
-                tag: 'HF:single',
-                phase: 'emit',
-                localSpellIdx,
-                singleIdx,
-                active: gameState.active,
-              });
-          } catch {}
-          try {
-            if (interactionState.pendingRitualBoardMesh) {
-              window.__fx.dissolveAndAsh(
-                interactionState.pendingRitualBoardMesh,
-                new THREE.Vector3(0, 0.6, 0),
-                0.9
-              );
-              setTimeout(() => {
-                try {
-                  interactionState.pendingRitualBoardMesh.parent.remove(interactionState.pendingRitualBoardMesh);
-                } catch {}
-                interactionState.pendingRitualBoardMesh = null;
-              }, 950);
-            }
-          } catch {}
-          try {
-            if (typeof window !== 'undefined' && window.socket)
-              window.socket.emit('ritualResolve', {
-                kind: 'HOLY_FEAST',
-                by: gameState.active,
-                card: tpl.id,
-                consumed: toDiscardTpl.id,
-              });
-          } catch {}
-          try {
-            if (typeof window !== 'undefined' && window.socket)
-              window.socket.emit('holyFeast', {
-                seat: gameState.active,
-                spellIdx: localSpellIdx,
-                creatureIdx: singleIdx,
-              });
-          } catch {}
-          setTimeout(() => {
-            try {
-              if (
-                typeof window !== 'undefined' &&
-                !window.__HF_ACK &&
-                window.socket
-              )
-                window.socket.emit('holyFeast', {
-                  seat: gameState.active,
-                  spellIdx: localSpellIdx,
-                  creatureIdx: singleIdx,
-                });
-            } catch {}
-          }, 350);
-          interactionState.pendingRitualSpellHandIndex = null;
-          interactionState.pendingRitualSpellCard = null;
-          window.__ui.panels.hidePrompt();
+
+      interactionState.pendingDiscardSelection = {
+        requiredType: 'UNIT',
+        onPicked: handIdx => {
+          const localSpellIdx = interactionState.pendingRitualSpellHandIndex != null ? interactionState.pendingRitualSpellHandIndex : pl.hand.indexOf(tpl);
+          const toDiscardTpl = discardFromHand(pl, handIdx, { to: 'graveyard' });
           updateHand();
-          updateUI();
-        } else {
-          try { pl.graveyard.push(toDiscardTpl); } catch {}
-          pl.hand.splice(singleIdx, 1);
-          updateHand();
+          const before = pl.mana;
           pl.mana = capMana(pl.mana + 2);
+          updateUI();
+          animateTurnManaGain(gameState.active, before, pl.mana, 800);
           addLog(`${tpl.name}: ритуал — +2 маны.`);
-          try {
-            if (interactionState.pendingRitualBoardMesh) {
-              window.__fx.dissolveAndAsh(
-                interactionState.pendingRitualBoardMesh,
-                new THREE.Vector3(0, 0.6, 0),
-                0.9
-              );
-              setTimeout(() => {
-                try {
-                  interactionState.pendingRitualBoardMesh.parent.remove(interactionState.pendingRitualBoardMesh);
-                } catch {}
-                interactionState.pendingRitualBoardMesh = null;
-              }, 950);
-            }
-          } catch {}
-          let spellIdx = localSpellIdx;
-          if (spellIdx >= 0) {
-            pl.hand.splice(spellIdx, 1);
-          }
+          const adjIdx = localSpellIdx > handIdx ? localSpellIdx - 1 : localSpellIdx;
+          if (adjIdx >= 0) discardFromHand(pl, adjIdx, { to: 'discard', skipAnim: true });
+          try { if (boardMesh && boardMesh.parent) boardMesh.parent.remove(boardMesh); } catch {}
+          interactionState.pendingRitualBoardMesh = null;
           interactionState.pendingRitualSpellHandIndex = null;
           interactionState.pendingRitualSpellCard = null;
           interactionState.pendingDiscardSelection = null;
-          pl.discard.push(tpl);
+          try { window.__ui.panels.hidePrompt(); } catch {}
+          resetCardSelection();
           updateHand();
           updateUI();
-          window.__ui.panels.hidePrompt();
           schedulePush('spell-holy-feast', { force: true });
         }
-      }
-    },
+      };
+      addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`);
+    }
   },
 
   WIND_SHIFT: {
