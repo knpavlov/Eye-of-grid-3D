@@ -195,7 +195,7 @@
       let tileFrames = [];    // рамки подсветки/выделения клеток
     let unitMeshes = [];      // текущие меши юнитов на поле
     let handCardMeshes = [];  // меши карт в руке игрока
-      let gameState = null;
+      let gameState = window.gameState || null;
       // Tile textures are now managed by scene/board module
     // Настройки показа большой карты при доборе — можно править из консоли
     window.DRAW_CARD_TUNE = {
@@ -371,11 +371,14 @@
       }
     }
 
-    // Build or rebuild the 3D board tiles.
+    // Build or rebuild the 3D board tiles.  Some modules may update
+    // window.gameState without touching this file's local `gameState`
+    // variable, so prefer the global copy when available.
     function createBoard() {
+      const gs = window.gameState || gameState;
       try { window.__cards.preloadCardTextures(); } catch {}
-      if (window.__board && window.__scene) {
-        window.__board.createBoard(gameState);
+      if (window.__board && window.__scene && gs) {
+        window.__board.createBoard(gs);
         const ctx = window.__scene.getCtx();
         tileMeshes = ctx.tileMeshes || [];
         tileFrames = ctx.tileFrames || [];
@@ -402,8 +405,9 @@
     
     // ====== HAND RENDERING AND LAYOUT ======
     function updateHand() {
+      const gs = window.gameState || gameState;
       if (window.__hand && typeof window.__hand.updateHand === 'function') {
-        window.__hand.updateHand(gameState);
+        window.__hand.updateHand(gs);
         const ctx = window.__scene && typeof window.__scene.getCtx === 'function'
           ? window.__scene.getCtx() : null;
         if (ctx && ctx.handCardMeshes) {
@@ -426,8 +430,9 @@
 
     // Синхронизирует 3D-модели юнитов с текущим состоянием gameState
     function updateUnits() {
-      if (window.__units && typeof window.__units.updateUnits === 'function') {
-        window.__units.updateUnits(gameState);
+      const gs = window.gameState || gameState;
+      if (window.__units && typeof window.__units.updateUnits === 'function' && gs) {
+        window.__units.updateUnits(gs);
         const ctx = window.__scene && typeof window.__scene.getCtx === 'function'
           ? window.__scene.getCtx() : null;
         if (ctx && ctx.unitMeshes) {
@@ -587,6 +592,8 @@
       // Start render loop early so scene is visible even if game init fails
       animate();
       game.initGame();
+      // Sync local reference with global state created by the game module
+      try { gameState = window.gameState; } catch {}
 
       // Привязка обработчиков взаимодействия с трёхмерным полем и картами
       renderer.domElement.addEventListener('mousemove', onMouseMove);
@@ -608,7 +615,8 @@
       deckMeshes.forEach(m => m.parent && m.parent.remove(m));
       graveyardMeshes.forEach(m => m.parent && m.parent.remove(m));
       deckMeshes = []; graveyardMeshes = [];
-      if (!gameState) return;
+      const gs = window.gameState || gameState;
+      if (!gs) return;
       const baseX = (6.2 + 0.2) * 1 + 6.6; // правее поля
       const zA = -5.2 - META_Z_AWAY; const zB = 0.2 + META_Z_AWAY; // Важно (смещение колоды/кладбища от камеры)
       function buildDeck(player, z) {
