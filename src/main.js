@@ -12,6 +12,7 @@ import * as Cards from './scene/cards.js';
 import * as Units from './scene/units.js';
 import * as Hand from './scene/hand.js';
 import { getCtx as getSceneCtx } from './scene/context.js';
+import * as Interactions from './scene/interactions.js';
 // UI modules
 import * as UINotifications from './ui/notifications.js';
 import * as UILog from './ui/log.js';
@@ -140,6 +141,7 @@ try {
     updateHand: Hand.updateHand,
     animateDrawnCardToHand: Hand.animateDrawnCardToHand,
   };
+  window.__interactions = Interactions;
   window.__ui = window.__ui || {};
   window.__ui.turnTimer = TurnTimer;
   window.__ui.banner = Banner;

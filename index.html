@@ -194,7 +194,6 @@
       let tileMeshes = [];    // 2D массив мешей клеток игрового поля
       let tileFrames = [];    // рамки подсветки/выделения клеток
     let unitMeshes = [];      // текущие меши юнитов на поле
-    let handCardMeshes = [];  // меши карт в руке игрока
       let gameState = null;
       // Tile textures are now managed by scene/board module
     // Настройки показа большой карты при доборе — можно править из консоли
@@ -310,28 +309,12 @@
         if (endBtn) endBtn.disabled = isInputLocked();
       } catch {}
     }
+    try { window.isInputLocked = isInputLocked; window.refreshInputLockUI = refreshInputLockUI; } catch {}
     // Отступ руки по оси Z (положительное — дальше от камеры)
     const HAND_Z_OFFSET = 1.0;
     // Смещение колод/кладбищ от камеры вдоль оси Z (положительное значение — дальше от камеры)
     const META_Z_AWAY = 1.5;
-    // 3D объекты справа (колоды/кладбища)
-    let deckMeshes = [];
-    let graveyardMeshes = [];
-    let hoveredMeta = null; // { metaType: 'deck'|'grave', player: 0|1 }
-    
-    // Состояние взаимодействия
-    let draggedCard = null;
-    let hoveredTile = null;
-    let hoveredHandCard = null;
-    let selectedCard = null;
-    let pendingPlacement = null;
-    let selectedUnit = null;
-    let magicFrom = null; // { r, c }
-    // Паузы/состояния для новых механик
-    let pendingSpellOrientation = null; // { spellCardMesh, unitMesh }
-      let pendingDiscardSelection = null; // { requiredType: 'UNIT', onPicked: function }
-      let pendingRitualBoardMesh = null; // временный меш спелла на поле
-    let spellDragHandled = false; // флаг, что возврат карты в руку уже не нужен
+    // 3D объекты справа (колоды/кладбища) управляются через контекст сцены
 
     // === THREE.JS SCENE INITIALIZATION ===
     function initThreeJS() {
@@ -406,13 +389,8 @@
     function updateHand() {
       if (window.__hand && typeof window.__hand.updateHand === 'function') {
         window.__hand.updateHand(gameState);
-        const ctx = window.__scene && typeof window.__scene.getCtx === 'function'
-          ? window.__scene.getCtx() : null;
-        if (ctx && ctx.handCardMeshes) {
-          handCardMeshes = ctx.handCardMeshes;
-        }
       }
-      hoveredHandCard = null;
+      if (window.__interactions) window.__interactions.state.hoveredHandCard = null;
     }
 
     function setHandCardHoverVisual(mesh, hovered) {
@@ -535,303 +513,6 @@
       } catch {}
     }
     // attachHpOverlay удалён, т.к. HP теперь перерисовывается на самой карте
-    
-      // ====== POINTER INTERACTION HANDLERS ======
-      // Mouse move: update drag position and hand hover.
-    function onMouseMove(event) {
-      if (isInputLocked()) return;
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      
-      if (draggedCard) {
-        raycaster.setFromCamera(mouse, camera);
-        const intersects = raycaster.intersectObjects(tileMeshes.flat());
-        
-        if (hoveredTile) {
-          hoveredTile.material.emissiveIntensity = 0.1;
-        }
-        
-        if (intersects.length > 0) {
-          hoveredTile = intersects[0].object;
-          hoveredTile.material.emissiveIntensity = 0.3;
-          
-          const targetPos = hoveredTile.position.clone();
-          targetPos.y = 2;
-          gsap.to(draggedCard.position, {
-            x: targetPos.x,
-            y: targetPos.y,
-            z: targetPos.z,
-            duration: 0.1
-          });
-        } else {
-          hoveredTile = null;
-        }
-      } else {
-        // Ховер по картам в руке: увеличиваем наведённую, уменьшаем предыдущую, поднимаем над стеком
-        raycaster.setFromCamera(mouse, camera);
-        const handHits = drawAnimationActive ? [] : raycaster.intersectObjects(handCardMeshes, true);
-        const newHover = handHits.length > 0 ? (handHits[0].object.userData?.isInHand ? handHits[0].object : handHits[0].object.parent) : null;
-        if (hoveredHandCard && hoveredHandCard !== newHover) {
-          gsap.to(hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.18 });
-          setHandCardHoverVisual(hoveredHandCard, false);
-          hoveredHandCard = null;
-        }
-        if (newHover && newHover.userData && newHover.userData.isInHand) {
-          hoveredHandCard = newHover;
-          gsap.to(newHover.scale, { x: 0.675, y: 1, z: 0.675, duration: 0.18 });
-          setHandCardHoverVisual(newHover, true);
-        }
-      }
-      // Подсветка потенциальных целей при открытой панели действий юнита
-      if (selectedUnit) {
-        const r = selectedUnit.userData.row; const c = selectedUnit.userData.col;
-        const hits = computeHits(gameState, r, c);
-        // убираем прошлую подсветку
-        unitMeshes.forEach(m => { if (m.material && m.material[2]) { } });
-        // подсветим цели небольшим всплеском по Y
-        for (const h of hits) {
-          const m = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
-          if (m) gsap.to(m.position, { y: 0.7, yoyo: true, repeat: 1, duration: 0.2 });
-        }
-      }
-
-      // Tooltip для колод/кладбищ
-      {
-        raycaster.setFromCamera(mouse, camera);
-        const metaHits = raycaster.intersectObjects([...deckMeshes, ...graveyardMeshes], true);
-        const tip = document.getElementById('hover-tooltip');
-        if (metaHits.length > 0) {
-          const obj = metaHits[0].object;
-          const data = obj.userData || obj.parent?.userData || {};
-          if (data && data.metaType) {
-            const p = data.player ?? 0;
-            hoveredMeta = { metaType: data.metaType, player: p };
-            if (tip) {
-              const deckCount = gameState?.players?.[p]?.deck?.length ?? 0;
-              const gyCount = gameState?.players?.[p]?.graveyard?.length ?? 0;
-              tip.textContent = data.metaType === 'deck' ? `Deck - Player ${p===0? '1':'2'}: ${deckCount}` : `Graveyard - Player ${p===0? '1':'2'}: ${gyCount}`;
-              tip.style.left = (event.clientX + 16) + 'px';
-              tip.style.top = (event.clientY + 16) + 'px';
-              tip.classList.remove('hidden');
-            }
-          }
-        } else {
-          hoveredMeta = null;
-          const tipEl = document.getElementById('hover-tooltip');
-          if (tipEl) tipEl.classList.add('hidden');
-        }
-      }
-    }
-    
-    // Mouse down: start drag or select targets.
-    function onMouseDown(event) {
-      if (!gameState || gameState.winner !== null) return;
-      if (isInputLocked()) return;
-      
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      
-      raycaster.setFromCamera(mouse, camera);
-      
-      const handIntersects = raycaster.intersectObjects(handCardMeshes, true);
-      if (handIntersects.length > 0) {
-        const hitObj = handIntersects[0].object;
-        const card = hitObj.userData?.isInHand ? hitObj : hitObj.parent;
-        const cardData = card.userData.cardData;
-        // Если ждём ритуального дискарда — перехват клика по руке
-        if (pendingDiscardSelection && cardData && cardData.type === (pendingDiscardSelection.requiredType || cardData.type)) {
-          console.log('[HF:click] Clicked on creature card for Holy Feast', {
-            cardType: cardData.type,
-            requiredType: pendingDiscardSelection.requiredType,
-            handIdx: card.userData.handIndex,
-            NET_ACTIVE
-          });
-          const owner = gameState.players[gameState.active];
-          const handIdx = card.userData.handIndex;
-          try { 
-            console.log('[HF:click] Calling onPicked with handIdx:', handIdx);
-            pendingDiscardSelection.onPicked(handIdx); 
-          } catch (e) {
-            console.error('[HF:click] Error in onPicked:', e);
-          }
-          pendingDiscardSelection = null;
-          console.log('[HF:click] Reset pendingDiscardSelection to null');
-          return;
-        }
-        
-        if (cardData.type === 'UNIT') {
-          startCardDrag(card);
-        } else if (cardData.type === 'SPELL') {
-          // Новый принцип: спеллы разыгрываются перетаскиванием, а не кликом
-          startCardDrag(card);
-        }
-        return;
-      }
-      
-      const unitIntersects = raycaster.intersectObjects(unitMeshes, true);
-      if (unitIntersects.length > 0) {
-        const hitObj = unitIntersects[0].object;
-        let unit = hitObj;
-        while (unit && (!unit.userData || unit.userData.type !== 'unit')) unit = unit.parent;
-        if (!unit) return;
-        // если в режиме магической атаки
-        if (magicFrom) {
-          performMagicAttack(magicFrom, unit);
-          magicFrom = null;
-          return;
-        }
-        if (selectedCard && selectedCard.userData.cardData.type === 'SPELL') {
-          castSpellOnUnit(selectedCard, unit);
-        } else if (unit.userData.unitData.owner === gameState.active) {
-          selectedUnit = unit;
-          window.__ui.panels.showUnitActionPanel(unit);
-        }
-        return;
-      }
-      
-      if (selectedCard) {
-        resetCardSelection();
-      }
-      // Отмена ритуального дискарда кликом по полю
-      if (pendingDiscardSelection) {
-        try { window.__ui.panels.hidePrompt(); } catch {}
-        pendingDiscardSelection = null;
-        // Вернём визуально карту спелла, если она была перетянута
-        if (draggedCard && draggedCard.userData && draggedCard.userData.cardData && draggedCard.userData.cardData.type === 'SPELL') {
-          returnCardToHand(draggedCard);
-        }
-      }
-    }
-    
-    // Mouse up: finalize card drops or cancel drag.
-    function onMouseUp(event) {
-      if (isInputLocked()) { endCardDrag(); return; }
-      if (draggedCard) {
-        const cardData = draggedCard.userData.cardData;
-        // Определим, навели ли на юнита
-        const rect = renderer.domElement.getBoundingClientRect();
-        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-        raycaster.setFromCamera(mouse, camera);
-        const unitIntersects = raycaster.intersectObjects(unitMeshes, true);
-        let unitMesh = null;
-        if (unitIntersects.length > 0) {
-          let u = unitIntersects[0].object;
-          while (u && (!u.userData || u.userData.type !== 'unit')) u = u.parent;
-          unitMesh = u;
-        }
-        if (cardData.type === 'SPELL') {
-          // Перетаскивание спелла: каст по цели (юнит/клетка)
-          try { castSpellByDrag(draggedCard, unitMesh, hoveredTile); } catch {}
-          // Если логика каста создала бордовый меш/сожгла карту (spellDragHandled=true) — не возвращаем; иначе вернуть в руку
-          if (!spellDragHandled) {
-            returnCardToHand(draggedCard);
-          }
-          spellDragHandled = false;
-        } else if (cardData.type === 'UNIT') {
-          // Перетаскивание существа: прежняя логика размещения на пустую клетку
-          if (hoveredTile) {
-            const row = hoveredTile.userData.row;
-            const col = hoveredTile.userData.col;
-            if (gameState.board[row][col].unit) {
-              showNotification('Cell is already occupied!', 'error');
-              returnCardToHand(draggedCard);
-            } else {
-              pendingPlacement = {
-                card: draggedCard,
-                row: row,
-                col: col,
-                handIndex: draggedCard.userData.handIndex
-              };
-              window.__ui.panels.showOrientationPanel();
-            }
-          } else {
-            returnCardToHand(draggedCard);
-          }
-        }
-        endCardDrag();
-        return;
-      }
-      endCardDrag();
-    }
-    
-    // ====== CARD DRAG HELPERS ======
-    // Prepare card mesh for dragging from hand.
-    function startCardDrag(card) {
-      draggedCard = card;
-      // если карта была увеличена ховером — вернём к стандартному масштабу руки
-      if (hoveredHandCard) {
-        gsap.to(hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.1 });
-        setHandCardHoverVisual(hoveredHandCard, false);
-        hoveredHandCard = null;
-      }
-      
-      gsap.to(card.position, {
-        y: card.position.y + 1,
-        duration: 0.2,
-        ease: "power2.out"
-      });
-      
-      gsap.to(card.rotation, {
-        x: 0,
-        z: 0,
-        duration: 0.2
-      });
-      
-      gsap.to(card.scale, {
-        x: 1.1,
-        y: 1.1,
-        z: 1.1,
-        duration: 0.2
-      });
-    }
-    
-    // Clean up after drag operation finishes.
-    function endCardDrag() {
-      if (hoveredTile) {
-        hoveredTile.material.emissiveIntensity = 0.1;
-        hoveredTile = null;
-      }
-      draggedCard = null;
-    }
-    
-    // Animate card back to its original hand slot.
-    function returnCardToHand(card) {
-      gsap.to(card.position, {
-        x: card.userData.originalPosition.x,
-        y: card.userData.originalPosition.y,
-        z: card.userData.originalPosition.z,
-        duration: 0.3,
-        ease: "power2.inOut"
-      });
-      
-      gsap.to(card.rotation, {
-        x: card.userData.originalRotation.x,
-        y: card.userData.originalRotation.y,
-        z: card.userData.originalRotation.z,
-        duration: 0.3
-      });
-      
-      gsap.to(card.scale, {
-        x: card.userData && card.userData.isInHand ? 0.54 : 1,
-        y: 1,
-        z: card.userData && card.userData.isInHand ? 0.54 : 1,
-        duration: 0.3
-      });
-    }
-    
-      // Cancel currently selected card and restore its visuals.
-      function resetCardSelection() {
-        if (selectedCard) {
-          returnCardToHand(selectedCard);
-          selectedCard.material[2].emissive = new THREE.Color(0x000000);
-          selectedCard.material[2].emissiveIntensity = 0;
-          selectedCard = null;
-        }
-      }
-    
     async function initGame() {
       gameState = startGame(STARTER_FIRESET, STARTER_FIRESET);
       try { window.gameState = gameState; } catch {}
@@ -1005,7 +686,7 @@
       // Offline: locally apply state, online path returned earlier
       try { schedulePush('endTurn-apply', { force: true }); } catch {}
       
-      resetCardSelection();
+      window.__interactions.resetCardSelection();
       
       updateHand();
       updateUnits();
@@ -1084,17 +765,18 @@
     }
     // Resolve unit card placement on board after choosing orientation.
     function placeUnitWithDirection(direction) {
-      if (!pendingPlacement) return;
-      
-      const { card, row, col, handIndex } = pendingPlacement;
+      const pp = window.__interactions.getPendingPlacement();
+      if (!pp) return;
+
+      const { card, row, col, handIndex } = pp;
       const cardData = card.userData.cardData;
       const player = gameState.players[gameState.active];
       
         if (cardData.cost > player.mana) {
           showNotification('Insufficient mana!', 'error');
-          returnCardToHand(card);
+          window.__interactions.returnCardToHand(card);
           window.__ui.panels.hideOrientationPanel();
-          pendingPlacement = null;
+          window.__interactions.setPendingPlacement(null);
           return;
         }
       
@@ -1162,7 +844,7 @@
       
         addLog(`${player.name} призывает ${cardData.name} на (${row + 1},${col + 1})`);
         window.__ui.panels.hideOrientationPanel();
-        pendingPlacement = null;
+        window.__interactions.setPendingPlacement(null);
       }
     
     function animate() {
@@ -1189,18 +871,7 @@
       // Start render loop early so scene is visible even if game init fails
       animate();
       initGame();
-      
-      // Привязка обработчиков взаимодействия с трёхмерным полем и картами
-      renderer.domElement.addEventListener('mousemove', onMouseMove);
-      renderer.domElement.addEventListener('mousedown', onMouseDown);
-      renderer.domElement.addEventListener('mouseup', onMouseUp);
-      renderer.domElement.addEventListener('mouseleave', () => {
-        if (hoveredHandCard) {
-          gsap.to(hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.18 });
-          setHandCardHoverVisual(hoveredHandCard, false);
-          hoveredHandCard = null;
-        }
-      });
+      try { window.__interactions.attach(); } catch {}
     }
     try { window.init = init; window.initThreeJS = initThreeJS; window.initGame = initGame; window.animate = animate; } catch {}
 
@@ -1212,10 +883,12 @@
       
 
     function createMetaObjects() {
+      const ctx = window.__scene.getCtx();
       // Очистить предыдущие
-      deckMeshes.forEach(m => m.parent && m.parent.remove(m));
-      graveyardMeshes.forEach(m => m.parent && m.parent.remove(m));
-      deckMeshes = []; graveyardMeshes = [];
+      (ctx.deckMeshes || []).forEach(m => m.parent && m.parent.remove(m));
+      (ctx.graveyardMeshes || []).forEach(m => m.parent && m.parent.remove(m));
+      ctx.deckMeshes = [];
+      ctx.graveyardMeshes = [];
       if (!gameState) return;
       const baseX = (6.2 + 0.2) * 1 + 6.6; // правее поля
       const zA = -5.2 - META_Z_AWAY; const zB = 0.2 + META_Z_AWAY; // Важно (смещение колоды/кладбища от камеры)
@@ -1228,7 +901,7 @@
         body.castShadow = true; body.receiveShadow = true; body.userData = { metaType: 'deck', player };
         const top = new THREE.Mesh(new THREE.BoxGeometry(3.62, 0.04, 5.02), new THREE.MeshStandardMaterial({ map: backMap, color: 0xffffff }));
         top.position.y = 0.42; top.userData = { metaType: 'deck', player };
-        g.add(body); g.add(top); metaGroup.add(g); deckMeshes.push(g);
+        g.add(body); g.add(top); metaGroup.add(g); ctx.deckMeshes.push(g);
       }
       function buildGrave(player, z) {
         const g = new THREE.Group(); g.position.set(baseX + 4.2, 0.5, z); g.userData = { metaType: 'grave', player };
@@ -1236,7 +909,7 @@
         base.userData = { metaType: 'grave', player };
         const icon = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x64748b }));
         icon.position.y = 0.9; icon.rotation.y = Math.PI / 8; icon.userData = { metaType: 'grave', player };
-        g.add(base); g.add(icon); metaGroup.add(g); graveyardMeshes.push(g);
+        g.add(base); g.add(icon); metaGroup.add(g); ctx.graveyardMeshes.push(g);
       }
       buildDeck(0, zA); buildDeck(1, zB); buildGrave(0, zA); buildGrave(1, zB);
     }
@@ -1272,22 +945,26 @@
         window.__ui.panels.hidePrompt();
       });
       document.getElementById('cancel-orient-btn').addEventListener('click', () => {
-        if (pendingPlacement) {
-          returnCardToHand(pendingPlacement.card);
+        const pp = window.__interactions.getPendingPlacement();
+        if (pp) {
+          window.__interactions.returnCardToHand(pp.card);
         }
         window.__ui.panels.hideOrientationPanel();
-        pendingPlacement = null;
+        window.__interactions.setPendingPlacement(null);
       });
-        document.getElementById('cancel-action-btn').addEventListener('click', () => { selectedUnit = null; window.__ui.panels.hideUnitActionPanel(); });
+        document.getElementById('cancel-action-btn').addEventListener('click', () => { window.__interactions.setSelectedUnit(null); window.__ui.panels.hideUnitActionPanel(); });
       // Действия в панели юнита
       document.getElementById('rotate-cw-btn').addEventListener('click', () => {
-        if (selectedUnit) window.__ui.actions.rotateUnit(selectedUnit, 'cw');
+        const u = window.__interactions.getSelectedUnit();
+        if (u) window.__ui.actions.rotateUnit(u, 'cw');
       });
     document.getElementById('rotate-ccw-btn').addEventListener('click', () => {
-      if (selectedUnit) window.__ui.actions.rotateUnit(selectedUnit, 'ccw');
+      const u = window.__interactions.getSelectedUnit();
+      if (u) window.__ui.actions.rotateUnit(u, 'ccw');
     });
     document.getElementById('attack-btn').addEventListener('click', () => {
-      if (selectedUnit) window.__ui.actions.performUnitAttack(selectedUnit);
+      const u = window.__interactions.getSelectedUnit();
+      if (u) window.__ui.actions.performUnitAttack(u);
     });
     
     document.querySelectorAll('[data-dir]').forEach(btn => {
@@ -1295,8 +972,9 @@
         // Явное соответствие символов на кнопках и направлений
         const direction = btn.getAttribute('data-dir'); // 'N' | 'E' | 'S' | 'W'
         // Если ожидается выбор направления для спелла — применим его и завершим
-        if (pendingSpellOrientation) {
-          const { spellCardMesh, unitMesh } = pendingSpellOrientation;
+        const pso = window.__interactions.getPendingSpellOrientation();
+        if (pso) {
+          const { spellCardMesh, unitMesh } = pso;
           const idx = spellCardMesh.userData.handIndex;
           const pl = gameState.players[gameState.active];
           const tpl = pl.hand[idx];
@@ -1305,9 +983,9 @@
             u.facing = direction;
             addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут в ${direction}.`);
             pl.discard.push(tpl); pl.hand.splice(idx, 1);
-            resetCardSelection(); updateHand(); updateUnits(); updateUI();
+            window.__interactions.resetCardSelection(); updateHand(); updateUnits(); updateUI();
           }
-            pendingSpellOrientation = null; window.__ui.panels.hideOrientationPanel();
+            window.__interactions.setPendingSpellOrientation(null); window.__ui.panels.hideOrientationPanel();
             return;
           }
         // Иначе — штатное размещение юнита
@@ -1609,10 +1287,10 @@
     function castSpellOnUnit(cardMesh, unitMesh) {
       const idx = cardMesh.userData.handIndex;
       const pl = gameState.players[gameState.active];
-      if (idx == null || idx < 0 || idx >= pl.hand.length) { resetCardSelection(); return; }
+      if (idx == null || idx < 0 || idx >= pl.hand.length) { window.__interactions.resetCardSelection(); return; }
       const tpl = pl.hand[idx];
-      if (!tpl || tpl.type !== 'SPELL') { resetCardSelection(); return; }
-      if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); resetCardSelection(); return; }
+      if (!tpl || tpl.type !== 'SPELL') { window.__interactions.resetCardSelection(); return; }
+      if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); window.__interactions.resetCardSelection(); return; }
       const r = unitMesh.userData.row;
       const c = unitMesh.userData.col;
       const u = gameState.board[r][c].unit;
