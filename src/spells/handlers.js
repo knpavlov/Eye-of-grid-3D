@@ -4,6 +4,8 @@
 // surrounding code handles index/lookups and basic validations.
 
 import { spendAndDiscardSpell, burnSpellCard } from '../ui/spellUtils.js';
+import { getCtx } from '../scene/context.js';
+import { interactionState, resetCardSelection } from '../scene/interactions.js';
 
 export const handlers = {
   SPELL_BEGUILING_FOG: {
@@ -11,7 +13,7 @@ export const handlers = {
     onUnit({ cardMesh, unitMesh, tpl }) {
       // Allow rotating any target in any direction via orientation panel
       try {
-        pendingSpellOrientation = { spellCardMesh: cardMesh, unitMesh };
+        interactionState.pendingSpellOrientation = { spellCardMesh: cardMesh, unitMesh };
         addLog(`${tpl.name}: выберите направление для цели.`);
         window.__ui.panels.showOrientationPanel();
       } catch {}
@@ -25,6 +27,7 @@ export const handlers = {
         showNotification('Target: friendly unit', 'error');
         return;
       }
+      const { unitMeshes, effectsGroup } = getCtx();
       // Temporary attack buff until caster's turn ends
       u.tempAtkBuff = (u.tempAtkBuff || 0) + 2;
       u.tempBuffOwner = gameState.active;
@@ -117,7 +120,7 @@ export const handlers = {
         for (let cc = 0; cc < 3; cc++) {
           const un = gameState.board[rr][cc].unit;
           if (!un) continue;
-          const pos = tileMeshes[rr][cc].position
+          const pos = getCtx().tileMeshes[rr][cc].position
             .clone()
             .add(new THREE.Vector3(0, 1.2, 0));
           animateManaGainFromWorld(pos, un.owner === 0 ? 1 : 0);
@@ -142,7 +145,7 @@ export const handlers = {
         return;
       }
       console.log('[HF:setup] Setting up pendingDiscardSelection for Holy Feast (castSpellOnUnit)');
-      pendingDiscardSelection = {
+      interactionState.pendingDiscardSelection = {
         requiredType: 'UNIT',
         onPicked: handIdx => {
           console.log('[HF:onPicked] Called onPicked (castSpellOnUnit)', {
@@ -157,7 +160,7 @@ export const handlers = {
               PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, localSpellIdx])).filter(i => i >= 0);
             }
           } catch {}
-          const handMesh = handCardMeshes.find(m => m.userData?.handIndex === handIdx);
+          const handMesh = getCtx().handCardMeshes.find(m => m.userData?.handIndex === handIdx);
           if (handMesh) {
             try { handMesh.userData.isInHand = false; } catch {}
             window.__fx.dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9);
@@ -172,7 +175,7 @@ export const handlers = {
                 });
             } catch {}
             window.__ui.panels.hidePrompt();
-            pendingDiscardSelection = null;
+            interactionState.pendingDiscardSelection = null;
             resetCardSelection();
             updateHand();
             updateUI();
@@ -214,30 +217,31 @@ export const handlers = {
           ? tileMesh.position.clone().add(new THREE.Vector3(0, 1.0, 0))
           : new THREE.Vector3(0, 1.0, 0);
         big.position.copy(p);
-        (boardGroup || scene).add(big);
-        pendingRitualBoardMesh = big;
-        spellDragHandled = true;
+        const ctx = getCtx();
+        (ctx.boardGroup || ctx.scene).add(big);
+        interactionState.pendingRitualBoardMesh = big;
+        interactionState.spellDragHandled = true;
         try { cardMesh.visible = false; } catch {}
-        pendingRitualSpellHandIndex = idx;
-        pendingRitualSpellCard = tpl;
+        interactionState.pendingRitualSpellHandIndex = idx;
+        interactionState.pendingRitualSpellCard = tpl;
       } catch {}
       console.log('[HF:drag] Showing prompt for Holy Feast drag to field');
       window.__ui.panels.showPrompt('Select a unit for this action', () => {
         console.log('[HF:drag] Canceling Holy Feast ritual');
         try {
-          if (pendingRitualBoardMesh && pendingRitualBoardMesh.parent)
-            pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh);
+          if (interactionState.pendingRitualBoardMesh && interactionState.pendingRitualBoardMesh.parent)
+            interactionState.pendingRitualBoardMesh.parent.remove(interactionState.pendingRitualBoardMesh);
         } catch {}
-        pendingRitualBoardMesh = null;
+        interactionState.pendingRitualBoardMesh = null;
         try { cardMesh.visible = true; } catch {}
-        pendingRitualSpellHandIndex = null;
-        pendingRitualSpellCard = null;
+        interactionState.pendingRitualSpellHandIndex = null;
+        interactionState.pendingRitualSpellCard = null;
         updateHand();
-        pendingDiscardSelection = null;
+        interactionState.pendingDiscardSelection = null;
       });
       if (handCreatures.length > 1) {
         console.log('[HF:setup] Setting up pendingDiscardSelection for Holy Feast (handleSpellDrop)');
-        pendingDiscardSelection = {
+        interactionState.pendingDiscardSelection = {
           requiredType: 'UNIT',
           onPicked: handIdx => {
             console.log('[HF:onPicked] Called onPicked (handleSpellDrop)', {
@@ -247,8 +251,8 @@ export const handlers = {
             const toDiscardTpl = pl.hand[handIdx];
             if (!toDiscardTpl) return;
             const localSpellIdx =
-              pendingRitualSpellHandIndex != null
-                ? pendingRitualSpellHandIndex
+              interactionState.pendingRitualSpellHandIndex != null
+                ? interactionState.pendingRitualSpellHandIndex
                 : pl.hand.indexOf(tpl);
             try {
               if (NET_ON()) {
@@ -257,7 +261,7 @@ export const handlers = {
                 );
               }
             } catch {}
-            const handMesh = handCardMeshes.find(m => m.userData?.handIndex === handIdx);
+            const handMesh = getCtx().handCardMeshes.find(m => m.userData?.handIndex === handIdx);
             if (handMesh) {
               try { handMesh.userData.isInHand = false; } catch {}
               window.__fx.dissolveAndAsh(handMesh, new THREE.Vector3(0, 0.6, 0), 0.9);
@@ -277,17 +281,17 @@ export const handlers = {
                   });
               } catch {}
               try {
-                if (pendingRitualBoardMesh) {
+                if (interactionState.pendingRitualBoardMesh) {
                   window.__fx.dissolveAndAsh(
-                    pendingRitualBoardMesh,
+                    interactionState.pendingRitualBoardMesh,
                     new THREE.Vector3(0, 0.6, 0),
                     0.9
                   );
                   setTimeout(() => {
                     try {
-                      pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh);
+                      interactionState.pendingRitualBoardMesh.parent.remove(interactionState.pendingRitualBoardMesh);
                     } catch {}
-                    pendingRitualBoardMesh = null;
+                    interactionState.pendingRitualBoardMesh = null;
                   }, 950);
                 }
               } catch {}
@@ -313,13 +317,13 @@ export const handlers = {
                     });
                 } catch {}
               }, 350);
-              pendingRitualSpellHandIndex = null;
-              pendingRitualSpellCard = null;
+              interactionState.pendingRitualSpellHandIndex = null;
+              interactionState.pendingRitualSpellCard = null;
               console.log(
                 '[HF:onPicked] Hiding prompt and clearing selection (online)'
               );
               window.__ui.panels.hidePrompt();
-              pendingDiscardSelection = null;
+              interactionState.pendingDiscardSelection = null;
               updateHand();
               updateUI();
             } else {
@@ -330,17 +334,17 @@ export const handlers = {
               pl.mana = capMana(pl.mana + 2);
               addLog(`${tpl.name}: ритуал — +2 маны.`);
               try {
-                if (pendingRitualBoardMesh) {
+                if (interactionState.pendingRitualBoardMesh) {
                   window.__fx.dissolveAndAsh(
-                    pendingRitualBoardMesh,
+                    interactionState.pendingRitualBoardMesh,
                     new THREE.Vector3(0, 0.6, 0),
                     0.9
                   );
                   setTimeout(() => {
                     try {
-                      pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh);
+                      interactionState.pendingRitualBoardMesh.parent.remove(interactionState.pendingRitualBoardMesh);
                     } catch {}
-                    pendingRitualBoardMesh = null;
+                    interactionState.pendingRitualBoardMesh = null;
                   }, 950);
                 }
               } catch {}
@@ -348,12 +352,12 @@ export const handlers = {
               if (spellIdx >= 0) {
                 pl.hand.splice(spellIdx, 1);
               }
-              pendingRitualSpellHandIndex = null;
-              pendingRitualSpellCard = null;
+              interactionState.pendingRitualSpellHandIndex = null;
+              interactionState.pendingRitualSpellCard = null;
               console.log(
                 '[HF:onPicked] Hiding prompt and clearing selection (offline)'
               );
-              pendingDiscardSelection = null;
+              interactionState.pendingDiscardSelection = null;
               window.__ui.panels.hidePrompt();
               pl.discard.push(tpl);
               updateHand();
@@ -365,9 +369,9 @@ export const handlers = {
         addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`);
         setTimeout(() => {
           try {
-            if (pendingDiscardSelection) {
+            if (interactionState.pendingDiscardSelection) {
               window.__ui.panels.hidePrompt();
-              pendingDiscardSelection = null;
+              interactionState.pendingDiscardSelection = null;
               updateHand();
               updateUI();
             }
@@ -378,10 +382,10 @@ export const handlers = {
       const singleIdx = pl.hand.findIndex(x => x && x.type === 'UNIT');
       if (singleIdx >= 0) {
         const toDiscardTpl = pl.hand[singleIdx];
-        const handMesh = handCardMeshes.find(m => m.userData?.handIndex === singleIdx);
+        const handMesh = getCtx().handCardMeshes.find(m => m.userData?.handIndex === singleIdx);
         const localSpellIdx =
-          pendingRitualSpellHandIndex != null
-            ? pendingRitualSpellHandIndex
+          interactionState.pendingRitualSpellHandIndex != null
+            ? interactionState.pendingRitualSpellHandIndex
             : pl.hand.indexOf(tpl);
         try {
           if (NET_ON()) {
@@ -409,17 +413,17 @@ export const handlers = {
               });
           } catch {}
           try {
-            if (pendingRitualBoardMesh) {
+            if (interactionState.pendingRitualBoardMesh) {
               window.__fx.dissolveAndAsh(
-                pendingRitualBoardMesh,
+                interactionState.pendingRitualBoardMesh,
                 new THREE.Vector3(0, 0.6, 0),
                 0.9
               );
               setTimeout(() => {
                 try {
-                  pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh);
+                  interactionState.pendingRitualBoardMesh.parent.remove(interactionState.pendingRitualBoardMesh);
                 } catch {}
-                pendingRitualBoardMesh = null;
+                interactionState.pendingRitualBoardMesh = null;
               }, 950);
             }
           } catch {}
@@ -454,8 +458,8 @@ export const handlers = {
                 });
             } catch {}
           }, 350);
-          pendingRitualSpellHandIndex = null;
-          pendingRitualSpellCard = null;
+          interactionState.pendingRitualSpellHandIndex = null;
+          interactionState.pendingRitualSpellCard = null;
           window.__ui.panels.hidePrompt();
           updateHand();
           updateUI();
@@ -466,17 +470,17 @@ export const handlers = {
           pl.mana = capMana(pl.mana + 2);
           addLog(`${tpl.name}: ритуал — +2 маны.`);
           try {
-            if (pendingRitualBoardMesh) {
+            if (interactionState.pendingRitualBoardMesh) {
               window.__fx.dissolveAndAsh(
-                pendingRitualBoardMesh,
+                interactionState.pendingRitualBoardMesh,
                 new THREE.Vector3(0, 0.6, 0),
                 0.9
               );
               setTimeout(() => {
                 try {
-                  pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh);
+                  interactionState.pendingRitualBoardMesh.parent.remove(interactionState.pendingRitualBoardMesh);
                 } catch {}
-                pendingRitualBoardMesh = null;
+                interactionState.pendingRitualBoardMesh = null;
               }, 950);
             }
           } catch {}
@@ -484,9 +488,9 @@ export const handlers = {
           if (spellIdx >= 0) {
             pl.hand.splice(spellIdx, 1);
           }
-          pendingRitualSpellHandIndex = null;
-          pendingRitualSpellCard = null;
-          pendingDiscardSelection = null;
+          interactionState.pendingRitualSpellHandIndex = null;
+          interactionState.pendingRitualSpellCard = null;
+          interactionState.pendingDiscardSelection = null;
           pl.discard.push(tpl);
           updateHand();
           updateUI();
@@ -526,10 +530,11 @@ export const handlers = {
         if (u.currentHP <= 0) {
           const owner = u.owner;
           try { gameState.players[owner].graveyard.push(CARDS[u.tplId]); } catch {}
-          const pos = tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
+          const pos = getCtx().tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
           animateManaGainFromWorld(pos, owner);
-          if (unitMeshes) {
-            const unitMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
+          const unitMeshesCtx = getCtx().unitMeshes;
+          if (unitMeshesCtx) {
+            const unitMesh = unitMeshesCtx.find(m => m.userData.row === r && m.userData.col === c);
             if (unitMesh) {
               window.__fx.dissolveAndAsh(unitMesh, new THREE.Vector3(0, 0, 0.6), 0.9);
             }
@@ -601,7 +606,7 @@ export const handlers = {
       const nextEl = oppMap[prevEl] || prevEl;
       cell.element = nextEl;
       try {
-        const tile = tileMeshes[r][c];
+        const tile = getCtx().tileMeshes[r][c];
         const mat = getTileMaterial(nextEl);
         window.__fx.dissolveTileCrossfade(
           tile,
