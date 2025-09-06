@@ -323,13 +323,13 @@
     let onMouseMove, onMouseDown, onMouseUp, onMouseLeave;
     let startCardDrag, endCardDrag, returnCardToHand, resetCardSelection;
     let placeUnitWithDirection, cancelPlacement;
-    let selectedUnit = null;
-    let magicFrom = null; // { r, c }
+    window.selectedUnit = null;
+    window.magicFrom = null; // { r, c }
     // Паузы/состояния для новых механик
-    let pendingSpellOrientation = null; // { spellCardMesh, unitMesh }
-      let pendingDiscardSelection = null; // { requiredType: 'UNIT', onPicked: function }
-      let pendingRitualBoardMesh = null; // временный меш спелла на поле
-    let spellDragHandled = false; // флаг, что возврат карты в руку уже не нужен
+    window.pendingSpellOrientation = null; // { spellCardMesh, unitMesh }
+    window.pendingDiscardSelection = null; // { requiredType: 'UNIT', onPicked: function }
+    window.pendingRitualBoardMesh = null; // временный меш спелла на поле
+    window.spellDragHandled = false; // флаг, что возврат карты в руку уже не нужен
 
     // === THREE.JS SCENE INITIALIZATION ===
     function initThreeJS() {
@@ -674,38 +674,38 @@
       document.getElementById('cancel-orient-btn').addEventListener('click', () => {
         if (typeof cancelPlacement === 'function') cancelPlacement();
       });
-        document.getElementById('cancel-action-btn').addEventListener('click', () => { selectedUnit = null; window.__ui.panels.hideUnitActionPanel(); });
-      // Действия в панели юнита
-      document.getElementById('rotate-cw-btn').addEventListener('click', () => {
-        if (selectedUnit) window.__ui.actions.rotateUnit(selectedUnit, 'cw');
+        document.getElementById('cancel-action-btn').addEventListener('click', () => { window.selectedUnit = null; window.__ui.panels.hideUnitActionPanel(); });
+        // Действия в панели юнита
+        document.getElementById('rotate-cw-btn').addEventListener('click', () => {
+          if (window.selectedUnit) window.__ui.actions.rotateUnit(window.selectedUnit, 'cw');
+        });
+      document.getElementById('rotate-ccw-btn').addEventListener('click', () => {
+        if (window.selectedUnit) window.__ui.actions.rotateUnit(window.selectedUnit, 'ccw');
       });
-    document.getElementById('rotate-ccw-btn').addEventListener('click', () => {
-      if (selectedUnit) window.__ui.actions.rotateUnit(selectedUnit, 'ccw');
-    });
-    document.getElementById('attack-btn').addEventListener('click', () => {
-      if (selectedUnit) window.__ui.actions.performUnitAttack(selectedUnit);
-    });
+      document.getElementById('attack-btn').addEventListener('click', () => {
+        if (window.selectedUnit) window.__ui.actions.performUnitAttack(window.selectedUnit);
+      });
     
     document.querySelectorAll('[data-dir]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        // Явное соответствие символов на кнопках и направлений
-        const direction = btn.getAttribute('data-dir'); // 'N' | 'E' | 'S' | 'W'
-        // Если ожидается выбор направления для спелла — применим его и завершим
-        if (pendingSpellOrientation) {
-          const { spellCardMesh, unitMesh } = pendingSpellOrientation;
+        btn.addEventListener('click', () => {
+          // Явное соответствие символов на кнопках и направлений
+          const direction = btn.getAttribute('data-dir'); // 'N' | 'E' | 'S' | 'W'
+          // Если ожидается выбор направления для спелла — применим его и завершим
+          if (window.pendingSpellOrientation) {
+            const { spellCardMesh, unitMesh } = window.pendingSpellOrientation;
           const idx = spellCardMesh.userData.handIndex;
           const pl = gameState.players[gameState.active];
           const tpl = pl.hand[idx];
           const r = unitMesh.userData.row; const c = unitMesh.userData.col; const u = gameState.board[r][c].unit;
-          if (tpl && tpl.id === 'SPELL_BEGUILING_FOG' && u) {
+            if (tpl && tpl.id === 'SPELL_BEGUILING_FOG' && u) {
             u.facing = direction;
             addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут в ${direction}.`);
             pl.discard.push(tpl); pl.hand.splice(idx, 1);
             resetCardSelection(); updateHand(); updateUnits(); updateUI();
-          }
-            pendingSpellOrientation = null; window.__ui.panels.hideOrientationPanel();
-            return;
-          }
+            }
+              window.pendingSpellOrientation = null; window.__ui.panels.hideOrientationPanel();
+              return;
+            }
         // Иначе — штатное размещение юнита
         if (direction === 'N') return placeUnitWithDirection('N');
         if (direction === 'E') return placeUnitWithDirection('E');
