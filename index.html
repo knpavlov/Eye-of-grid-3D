@@ -1642,15 +1642,15 @@
               .then(() => gsap.to(ring.material, { opacity: 0, duration: 0.24, onComplete: ()=> effectsGroup.remove(ring) }));
           } catch {}
         }
-        pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
+        spendAndDiscardSpell(pl, idx);
         resetCardSelection(); updateHand(); updateUnits(); updateUI();
         return;
       }
         // Summoner's Errand: draw two cards immediately.
         if (tpl.id === 'SPELL_SUMMONER_MESMERS_ERRAND') {
-          // Добор двух карт с существующей анимацией
-        if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); resetCardSelection(); return; }
-        pl.mana -= tpl.cost;
+          if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); resetCardSelection(); return; }
+        spendAndDiscardSpell(pl, idx);
+        resetCardSelection(); updateHand(); updateUI();
         (async () => {
           for (let i = 0; i < 2; i++) {
             const drawnTpl = drawOneNoAdd(gameState, gameState.active);
@@ -1662,14 +1662,12 @@
             }
           }
           addLog(`${tpl.name}: вы добираете 2 карты.`);
-          pl.discard.push(tpl); pl.hand.splice(idx, 1); updateUI();
+          updateUI();
         })();
-        resetCardSelection();
         return;
       }
         // Goghlie Altar: each player gains mana for enemy units on board.
         if (tpl.id === 'SPELL_GOGHLIE_ALTAR') {
-          // Оба игрока получают ману = числу вражеских существ на доске
         const countUnits = (ownerIdx) => {
           let n = 0; for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
             const un = gameState.board[rr][cc].unit; if (un && un.owner !== ownerIdx) n++;
@@ -1678,14 +1676,9 @@
         const g0 = countUnits(0), g1 = countUnits(1);
         gameState.players[0].mana = capMana(gameState.players[0].mana + g0);
         gameState.players[1].mana = capMana(gameState.players[1].mana + g1);
-        // Визуальный эффект: вспышки энергии от всех вражеских юнитов к панели маны получателя
-        for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
-          const un = gameState.board[rr][cc].unit; if (!un) continue;
-          const pos = tileMeshes[rr][cc].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-          animateManaGainFromWorld(pos, (un.owner === 0 ? 1 : 0));
-        }
+        for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) { const un = gameState.board[rr][cc].unit; if (!un) continue; const pos = tileMeshes[rr][cc].position.clone().add(new THREE.Vector3(0, 1.2, 0)); animateManaGainFromWorld(pos, (un.owner === 0 ? 1 : 0)); }
         addLog(`${tpl.name}: оба игрока получают ману от вражеских существ (P1 +${g0}, P2 +${g1}).`);
-        pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
+        spendAndDiscardSpell(pl, idx);
         resetCardSelection(); updateHand(); updateUI();
         return;
       }
@@ -1758,7 +1751,7 @@
         const before = u.currentHP; u.currentHP += 2; addLog(`${tpl.name}: ${CARDS[u.tplId].name} получает +2 HP (HP ${before}→${u.currentHP})`);
         try { const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c); if (tMesh) window.__fx.spawnDamageText(tMesh, `+2`, '#22c55e'); } catch {}
       }
-      pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
+      spendAndDiscardSpell(pl, idx);
       resetCardSelection(); updateHand();
       if (!delayedApply) { updateUnits(); updateUI(); }
     }
@@ -1789,22 +1782,10 @@
         // Спеллы без цели
         // Summoner's Errand: burn card and draw two replacements.
         if (id === 'SPELL_SUMMONER_MESMERS_ERRAND') {
-        // Добор двух карт
         if (tpl.cost > pl.mana) { showNotification('Insuffcient mana', 'error'); return; }
-        pl.mana -= tpl.cost;
-        // Немедленно «сожжём» карту спелла на месте броска и пометим, что карту не надо возвращать в руку
-        try {
-          const big = createCard3D(tpl, false);
-          const p = tileMesh ? tileMesh.position.clone().add(new THREE.Vector3(0, 1.0, 0)) : new THREE.Vector3(0, 1.0, 0);
-          big.position.copy(p);
-          (boardGroup || scene).add(big);
-          window.__fx.dissolveAndAsh(big, new THREE.Vector3(0, 0.6, 0), 0.9);
-          spellDragHandled = true;
-          // Скрыть перетягиваемую карту, чтобы не мигала
-          try { cardMesh.visible = false; } catch {}
-        } catch {}
-        // Удалить из руки и положить в сброс сразу, затем анимировать добор 2 карт
-        pl.hand.splice(idx, 1); pl.discard.push(tpl); updateHand(); updateUI();
+        burnSpellCard(tpl, tileMesh, cardMesh);
+        spendAndDiscardSpell(pl, idx);
+        updateHand(); updateUI();
         (async () => {
           for (let i = 0; i < 2; i++) {
             const drawnTpl = drawOneNoAdd(gameState, gameState.active);
@@ -1827,16 +1808,8 @@
         gameState.players[1].mana = capMana(gameState.players[1].mana + g1);
         for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) { const un = gameState.board[rr][cc].unit; if (!un) continue; const pos = tileMeshes[rr][cc].position.clone().add(new THREE.Vector3(0, 1.2, 0)); animateManaGainFromWorld(pos, (un.owner === 0 ? 1 : 0)); }
         addLog(`${tpl.name}: оба игрока получают ману от вражеских существ (P1 +${g0}, P2 +${g1}).`);
-        // Визуально сожжём карту спелла в точке дропа
-        try {
-          const big = createCard3D(tpl, false);
-          const p = tileMesh ? tileMesh.position.clone().add(new THREE.Vector3(0, 1.0, 0)) : new THREE.Vector3(0, 1.0, 0);
-          big.position.copy(p);
-          (boardGroup || scene).add(big);
-          window.__fx.dissolveAndAsh(big, new THREE.Vector3(0, 0.6, 0), 0.9);
-          spellDragHandled = true;
-        } catch {}
-        pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
+        burnSpellCard(tpl, tileMesh, cardMesh);
+        spendAndDiscardSpell(pl, idx);
         updateHand(); updateUI();
         return;
       }
@@ -1876,14 +1849,8 @@
             }
           }
         }
-        // Визуально «сжечь» карту спелла в точке дропа и убрать из руки
-        try {
-          const big = createCard3D(tpl, false);
-          const p = tileMesh.position.clone().add(new THREE.Vector3(0, 1.0, 0));
-          big.position.copy(p); (boardGroup || scene).add(big); window.__fx.dissolveAndAsh(big, new THREE.Vector3(0,0.6,0), 0.9);
-          spellDragHandled = true;
-        } catch {}
-        pl.mana -= tpl.cost; pl.discard.push(tpl); pl.hand.splice(idx, 1);
+        burnSpellCard(tpl, tileMesh, cardMesh);
+        spendAndDiscardSpell(pl, idx);
         updateHand(); updateUnits(); updateUI();
         return;
       }
