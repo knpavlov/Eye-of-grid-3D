@@ -27,6 +27,8 @@ import * as SceneEffects from './scene/effects.js';
 import * as UISpellUtils from './ui/spellUtils.js';
 import * as Spells from './spells/handlers.js';
 import './ui/statusChip.js';
+import * as SceneInteractions from './scene/interactions.js';
+import * as UIGame from './ui/game.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -119,6 +121,7 @@ try {
     worldToScreen: sceneWorldToScreen,
     animate: sceneAnimate,
     getCtx: getSceneCtx,
+    interactions: SceneInteractions,
   };
   window.__board = {
     createBoard: Board.createBoard,
@@ -151,6 +154,7 @@ try {
   window.__ui.actions = UIActions;
   window.__ui.spellUtils = UISpellUtils;
   window.__ui.updateUI = updateUI;
+  window.__ui.game = UIGame;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
