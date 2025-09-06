@@ -25,19 +25,14 @@ export function renderBars(gameState) {
     // Apply pending animation window for both clients so +2 doesn't pop in early
     const pending = (anim && anim.ownerIndex === p) ? anim : null;
     const block = Math.max(0, Number(getBlocks()?.[p]) || 0);
-    
-    // If this bar is scheduled or currently animating, avoid rebuilding to prevent flicker
-    if (pending || getManaGainActive()) {
-      continue;
-    }
-    
-    // Если идет анимация получения маны в начале хода и есть _beforeMana, используем его
+
+    // Always rebuild to allow clamping during pending animation
     let displayMana = currentMana;
-    if (typeof beforeMana === 'number' && beforeMana < currentMana) {
+    if (getManaGainActive() && typeof beforeMana === 'number' && pending) {
       displayMana = beforeMana; // Показываем старое значение во время анимации
     }
-    
-    const blockAdjusted = Math.max(0, displayMana - Math.min(block, displayMana));
+
+    const blockAdjusted = Math.max(0, displayMana - block);
     const renderManaBase = pending ? Math.min(blockAdjusted, Math.max(0, pending.startIdx)) : blockAdjusted;
     const renderMana = Math.max(0, Math.min(total, renderManaBase));
     

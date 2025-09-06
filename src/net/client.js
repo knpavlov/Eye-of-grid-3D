@@ -223,8 +223,8 @@
   // --- RECEIVING: применяем снапшот и перерисовываем ---
   socket.on('state', async (state)=>{
     if (!state) return;
-    const prev = APPLYING ? null : (gameState ? JSON.parse(JSON.stringify(gameState)) : null);
-    // Robust previous snapshot even if prev is null due to concurrent APPLYING
+    const prev = gameState ? JSON.parse(JSON.stringify(gameState)) : null;
+    // Always capture previous snapshot for diffing even if another apply is in progress
     let __lastTurnSeen = 0;
     try { __lastTurnSeen = (typeof window !== 'undefined' && typeof window.__lastTurnSeen === 'number') ? window.__lastTurnSeen : (gameState?.turn || 0); } catch {}
     const __hadNewTurn = (typeof state.turn === 'number') && (state.turn > (__lastTurnSeen || 0));
