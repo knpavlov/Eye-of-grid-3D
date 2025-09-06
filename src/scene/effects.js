@@ -33,6 +33,95 @@ export function scheduleHpPopup(r, c, delta, delayMs) {
   } catch {}
 }
 
+// Visualize differences between previous and next board states.
+// Used by remote observers to replay damage and unit changes.
+export function playDeltaAnimations(prevState, nextState) {
+  try {
+    if (!prevState || !nextState) return;
+    const w = window;
+    const isActivePlayer = (typeof w.MY_SEAT === 'number' && w.gameState &&
+      typeof w.gameState.active === 'number' && w.MY_SEAT === w.gameState.active);
+
+    const prevB = prevState.board || [];
+    const nextB = nextState.board || [];
+
+    // Handle unit disappear/appear
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        const pu = prevB[r]?.[c]?.unit || null;
+        const nu = nextB[r]?.[c]?.unit || null;
+        if (pu && !nu) {
+          try {
+            const tile = w.tileMeshes?.[r]?.[c]; if (!tile) continue;
+            const ghost = w.__cards?.createCard3D ? w.__cards.createCard3D(w.CARDS[pu.tplId], false) : null;
+            if (ghost) {
+              ghost.position.copy(tile.position).add(new w.THREE.Vector3(0, 0.28, 0));
+              try { (w.effectsGroup || w.cardGroup).add(ghost); } catch {}
+              w.__fx?.dissolveAndAsh?.(ghost, new w.THREE.Vector3(0, 0, 0.6), 0.9);
+            }
+            const p = tile.position.clone().add(new w.THREE.Vector3(0, 1.2, 0));
+            const manaFn = w.__ui?.mana?.animateManaGainFromWorld || w.animateManaGainFromWorld;
+            manaFn && manaFn(p, pu.owner, true);
+            if (!w.NET_ACTIVE && w.gameState?.players && typeof pu.owner === 'number') {
+              w.gameState.players[pu.owner].mana = w.capMana((w.gameState.players[pu.owner].mana || 0) + 1);
+              w.updateUI?.();
+            }
+          } catch {}
+        } else if (!pu && nu) {
+          try {
+            const tMesh = w.unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
+            if (tMesh) {
+              const s = tMesh.scale.clone();
+              tMesh.scale.set(s.x * 0.7, s.y * 0.7, s.z * 0.7);
+              w.gsap.to(tMesh.scale, { x: s.x, y: s.y, z: s.z, duration: 0.28, ease: 'power2.out' });
+            }
+          } catch {}
+        }
+      }
+    }
+
+    if (isActivePlayer) return;
+
+    // Compute HP changes
+    const hpChanges = [];
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        const pu = prevB[r]?.[c]?.unit || null;
+        const nu = nextB[r]?.[c]?.unit || null;
+        if (pu && nu) {
+          const pHP = (typeof pu.currentHP === 'number') ? pu.currentHP : pu.hp;
+          const nHP = (typeof nu.currentHP === 'number') ? nu.currentHP : nu.hp;
+          const delta = (typeof pHP === 'number' && typeof nHP === 'number') ? (nHP - pHP) : 0;
+          if (delta !== 0) hpChanges.push({ r, c, delta });
+        }
+      }
+    }
+
+    const now = Date.now();
+    const pendingHpChanges = (w.RECENT_REMOTE_DAMAGE && w.RECENT_REMOTE_DAMAGE.size)
+      ? hpChanges.filter(change => {
+          try {
+            const key = `${change.r},${change.c}`;
+            const rec = w.RECENT_REMOTE_DAMAGE.get(key);
+            return !(rec && rec.delta === change.delta && (now - rec.ts) < 2000);
+          } catch { return true; }
+        })
+      : hpChanges;
+
+    const half = Math.ceil(pendingHpChanges.length / 2);
+    for (let i = 0; i < half && i < pendingHpChanges.length; i++) {
+      const ch = pendingHpChanges[i];
+      w.__fx?.scheduleHpPopup?.(ch.r, ch.c, ch.delta, 800);
+    }
+    if (pendingHpChanges.length > half) {
+      for (let i = half; i < pendingHpChanges.length; i++) {
+        const ch = pendingHpChanges[i];
+        w.__fx?.scheduleHpPopup?.(ch.r, ch.c, ch.delta, 1600);
+      }
+    }
+  } catch {}
+}
+
 export function spawnDamageText(targetMesh, text, color = '#ff5555') {
   if (!targetMesh || typeof window === 'undefined') return;
   const THREE = window.THREE; const gsap = window.gsap;
@@ -236,6 +325,15 @@ export function dissolveTileCrossfade(tileMesh, oldMaterial, newMaterial, durati
   }
 }
 
-const api = { spawnDamageText, shakeMesh, dissolveAndAsh, dissolveTileSwap, dissolveTileCrossfade, scheduleHpPopup, cancelPendingHpPopup };
+const api = {
+  spawnDamageText,
+  shakeMesh,
+  dissolveAndAsh,
+  dissolveTileSwap,
+  dissolveTileCrossfade,
+  scheduleHpPopup,
+  cancelPendingHpPopup,
+  playDeltaAnimations
+};
 try { if (typeof window !== 'undefined') window.__fx = api; } catch {}
 export default api;

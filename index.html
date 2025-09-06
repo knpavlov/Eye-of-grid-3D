@@ -216,75 +216,6 @@
     // Pending HP popups scheduled by playDeltaAnimations, so we can cancel if battleAnim shows earlier
     // HP popup scheduling moved to src/scene/effects.js
     let PENDING_HIDE_HAND_CARDS = [];
-    // Управление анимациями заставки хода и добора карты
-    let lastTurnSplashPromise = Promise.resolve();
-    let lastSplashTurnRequested = 0;
-    let lastSplashTurnShown = 0;
-    let turnSplashTurnQueued = 0;
-    function queueTurnSplash(title) {
-      try {
-        lastTurnSplashPromise = lastTurnSplashPromise.then(() => showTurnSplash(title));
-      } catch {}
-      return lastTurnSplashPromise;
-    }
-    
-    // Функция показа заставки хода
-    async function showTurnSplash(title) {
-      splashActive = true;
-      refreshInputLockUI();
-      
-      const banner = document.getElementById('turn-banner');
-      if (banner) {
-        banner.innerHTML = `<div class="text-4xl font-bold bg-gradient-to-br from-blue-600/80 to-purple-500/80 px-8 py-4 rounded-2xl shadow-2xl ring-4 ring-blue-400/40">${title}</div>`;
-        banner.classList.remove('hidden');
-        banner.classList.add('flex');
-        
-        // Показываем заставку на 1 секунду <-- важно - длительность заставки боя!
-        setTimeout(() => {
-          banner.classList.add('hidden');
-          banner.classList.remove('flex');
-          splashActive = false;
-          refreshInputLockUI();
-        }, 1000);
-      }
-      
-      return new Promise(resolve => setTimeout(resolve, 1000));
-    }
-    // Резерв: гарантированно показать заставку с повтором, если вдруг не отрисовалась
-    async function forceTurnSplashWithRetry(maxRetries = 2) {
-      let tries = 0;
-      let shown = false;
-      while (tries <= maxRetries && !shown) {
-        tries += 1;
-        await requestTurnSplash();
-        // ждем 2 кадра, чтобы DOM успел применить display:flex
-        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-        try {
-          const tb = document.getElementById('turn-banner');
-          shown = !!tb && (tb.classList.contains('flex') || tb.style.display === 'flex');
-        } catch {}
-      }
-      // Страховка от зависания блокировки ввода
-      setTimeout(() => { splashActive = false; refreshInputLockUI(); }, 1000);
-    }
-    async function requestTurnSplash() {
-      if (!gameState) return;
-      const currentTurn = gameState.turn;
-      // если уже показали в этом ходу — ничего не делаем
-      if (lastSplashTurnShown >= currentTurn) return lastTurnSplashPromise;
-      // если уже стоит в очереди на этот ход — возвращаем существующий промис
-      if (turnSplashTurnQueued === currentTurn) return lastTurnSplashPromise;
-      lastSplashTurnRequested = currentTurn;
-      turnSplashTurnQueued = currentTurn;
-      const title = `Ход ${currentTurn} - Игрок ${gameState.active + 1}`;
-      // Оборачиваем в промис, который по завершении отмечает ход показанным
-      lastTurnSplashPromise = queueTurnSplash(title).then(() => {
-        try { lastSplashTurnShown = currentTurn; } catch {}
-        if (turnSplashTurnQueued === currentTurn) turnSplashTurnQueued = 0;
-      });
-      return lastTurnSplashPromise;
-    }
-    
     let manaGainActive = false;
     let PENDING_MANA_ANIM = null; // { ownerIndex, startIdx, endIdx }
     let PENDING_MANA_BLOCK = [0,0]; // by player index
@@ -440,396 +371,6 @@
       }
     }
 
-    // Визуализировать изменения между предыдущим и новым состоянием (для наблюдателя/оппонента)
-    // Показывает визуальные различия на поле между предыдущим и новым состоянием
-    function playDeltaAnimations(prevState, nextState) {
-      try {
-        if (!prevState || !nextState) return;
-        
-        // Для активного игрока не показываем числа HP из playDeltaAnimations - они идут из локальных анимаций
-        const isActivePlayer = (typeof MY_SEAT === 'number' && typeof gameState !== 'undefined' && gameState && typeof gameState.active === 'number' && MY_SEAT === gameState.active);
-        
-        const prevB = prevState.board || [];
-        const nextB = nextState.board || [];
-        
-        // Обрабатываем появление/исчезновение юнитов для всех игроков
-        for (let r = 0; r < 3; r++) {
-          for (let c = 0; c < 3; c++) {
-            const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
-            const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
-            if (pu && !nu) {
-              // Юнит исчез — проигрываем шейдерное «исчезновение» фантома и орб маны
-              try {
-                const tile = tileMeshes?.[r]?.[c]; if (!tile) continue;
-                const ghost = createCard3D(CARDS[pu.tplId], false);
-                ghost.position.copy(tile.position).add(new THREE.Vector3(0, 0.28, 0));
-                try { effectsGroup.add(ghost); } catch { cardGroup.add(ghost); }
-                window.__fx.dissolveAndAsh(ghost, new THREE.Vector3(0,0,0.6), 0.9);
-                const p = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
-                animateManaGainFromWorld(p, pu.owner, true);
-                try { if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') { gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1); updateUI(); } } catch {}
-              } catch {}
-            } else if (!pu && nu) {
-              // Юнит появился — лёгкий «поп» масштаба
-              try {
-                const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-                if (tMesh) {
-                  const s = tMesh.scale.clone();
-                  tMesh.scale.set(s.x * 0.7, s.y * 0.7, s.z * 0.7);
-                  gsap.to(tMesh.scale, { x: s.x, y: s.y, z: s.z, duration: 0.28, ease: 'power2.out' });
-                }
-              } catch {}
-            }
-          }
-        }
-        
-        // Для активного игрока не показываем числа HP - они есть в локальных анимациях
-        if (isActivePlayer) {
-          return;
-        }
-
-        // Для неактивного игрока показываем числа HP с последовательными задержками
-        const hpChanges = [];
-        for (let r = 0; r < 3; r++) {
-          for (let c = 0; c < 3; c++) {
-            const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
-            const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
-            if (pu && nu) {
-              const pHP = (typeof pu.currentHP === 'number') ? pu.currentHP : pu.hp;
-              const nHP = (typeof nu.currentHP === 'number') ? nu.currentHP : nu.hp;
-              const delta = (typeof pHP === 'number' && typeof nHP === 'number') ? (nHP - pHP) : 0;
-              if (delta !== 0) {
-                hpChanges.push({ r, c, delta });
-              }
-            }
-          }
-        }
-
-        // Показываем HP изменения последовательно
-        // Первая половина изменений - через 500мс (после первой атаки)
-        // Вторая половина - через 1300мс (после контратаки)
-        // Filter out recent remote damage already shown during battleAnim/retaliation
-        const __now = Date.now();
-        const pendingHpChanges = (typeof window !== 'undefined' && window.RECENT_REMOTE_DAMAGE && window.RECENT_REMOTE_DAMAGE.size)
-          ? hpChanges.filter(change => {
-              try {
-                const key = `${change.r},${change.c}`;
-                const rec = window.RECENT_REMOTE_DAMAGE.get(key);
-                return !(rec && rec.delta === change.delta && (__now - rec.ts) < 2000);
-              } catch { return true; }
-            })
-          : hpChanges;
-
-        // Schedule HP popups in a cancelable way to sync with remote battle shakes
-        const halfCount = Math.ceil(pendingHpChanges.length / 2);
-        for (let i = 0; i < halfCount && i < pendingHpChanges.length; i++) {
-          const change = pendingHpChanges[i];
-          window.__fx.scheduleHpPopup(change.r, change.c, change.delta, 800);
-        }
-        if (pendingHpChanges.length > halfCount) {
-          for (let i = halfCount; i < pendingHpChanges.length; i++) {
-            const change = pendingHpChanges[i];
-            window.__fx.scheduleHpPopup(change.r, change.c, change.delta, 1600);
-          }
-        }
-      } catch {}
-    }
-    // attachHpOverlay удалён, т.к. HP теперь перерисовывается на самой карте
-    
-      // ====== POINTER INTERACTION HANDLERS ======
-      // Mouse move: update drag position and hand hover.
-    function onMouseMove(event) {
-      if (isInputLocked()) return;
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      
-      if (draggedCard) {
-        raycaster.setFromCamera(mouse, camera);
-        const intersects = raycaster.intersectObjects(tileMeshes.flat());
-        
-        if (hoveredTile) {
-          hoveredTile.material.emissiveIntensity = 0.1;
-        }
-        
-        if (intersects.length > 0) {
-          hoveredTile = intersects[0].object;
-          hoveredTile.material.emissiveIntensity = 0.3;
-          
-          const targetPos = hoveredTile.position.clone();
-          targetPos.y = 2;
-          gsap.to(draggedCard.position, {
-            x: targetPos.x,
-            y: targetPos.y,
-            z: targetPos.z,
-            duration: 0.1
-          });
-        } else {
-          hoveredTile = null;
-        }
-      } else {
-        // Ховер по картам в руке: увеличиваем наведённую, уменьшаем предыдущую, поднимаем над стеком
-        raycaster.setFromCamera(mouse, camera);
-        const handHits = drawAnimationActive ? [] : raycaster.intersectObjects(handCardMeshes, true);
-        const newHover = handHits.length > 0 ? (handHits[0].object.userData?.isInHand ? handHits[0].object : handHits[0].object.parent) : null;
-        if (hoveredHandCard && hoveredHandCard !== newHover) {
-          gsap.to(hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.18 });
-          setHandCardHoverVisual(hoveredHandCard, false);
-          hoveredHandCard = null;
-        }
-        if (newHover && newHover.userData && newHover.userData.isInHand) {
-          hoveredHandCard = newHover;
-          gsap.to(newHover.scale, { x: 0.675, y: 1, z: 0.675, duration: 0.18 });
-          setHandCardHoverVisual(newHover, true);
-        }
-      }
-      // Подсветка потенциальных целей при открытой панели действий юнита
-      if (selectedUnit) {
-        const r = selectedUnit.userData.row; const c = selectedUnit.userData.col;
-        const hits = computeHits(gameState, r, c);
-        // убираем прошлую подсветку
-        unitMeshes.forEach(m => { if (m.material && m.material[2]) { } });
-        // подсветим цели небольшим всплеском по Y
-        for (const h of hits) {
-          const m = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
-          if (m) gsap.to(m.position, { y: 0.7, yoyo: true, repeat: 1, duration: 0.2 });
-        }
-      }
-
-      // Tooltip для колод/кладбищ
-      {
-        raycaster.setFromCamera(mouse, camera);
-        const metaHits = raycaster.intersectObjects([...deckMeshes, ...graveyardMeshes], true);
-        const tip = document.getElementById('hover-tooltip');
-        if (metaHits.length > 0) {
-          const obj = metaHits[0].object;
-          const data = obj.userData || obj.parent?.userData || {};
-          if (data && data.metaType) {
-            const p = data.player ?? 0;
-            hoveredMeta = { metaType: data.metaType, player: p };
-            if (tip) {
-              const deckCount = gameState?.players?.[p]?.deck?.length ?? 0;
-              const gyCount = gameState?.players?.[p]?.graveyard?.length ?? 0;
-              tip.textContent = data.metaType === 'deck' ? `Deck - Player ${p===0? '1':'2'}: ${deckCount}` : `Graveyard - Player ${p===0? '1':'2'}: ${gyCount}`;
-              tip.style.left = (event.clientX + 16) + 'px';
-              tip.style.top = (event.clientY + 16) + 'px';
-              tip.classList.remove('hidden');
-            }
-          }
-        } else {
-          hoveredMeta = null;
-          const tipEl = document.getElementById('hover-tooltip');
-          if (tipEl) tipEl.classList.add('hidden');
-        }
-      }
-    }
-    
-    // Mouse down: start drag or select targets.
-    function onMouseDown(event) {
-      if (!gameState || gameState.winner !== null) return;
-      if (isInputLocked()) return;
-      
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      
-      raycaster.setFromCamera(mouse, camera);
-      
-      const handIntersects = raycaster.intersectObjects(handCardMeshes, true);
-      if (handIntersects.length > 0) {
-        const hitObj = handIntersects[0].object;
-        const card = hitObj.userData?.isInHand ? hitObj : hitObj.parent;
-        const cardData = card.userData.cardData;
-        // Если ждём ритуального дискарда — перехват клика по руке
-        if (pendingDiscardSelection && cardData && cardData.type === (pendingDiscardSelection.requiredType || cardData.type)) {
-          console.log('[HF:click] Clicked on creature card for Holy Feast', {
-            cardType: cardData.type,
-            requiredType: pendingDiscardSelection.requiredType,
-            handIdx: card.userData.handIndex,
-            NET_ACTIVE
-          });
-          const owner = gameState.players[gameState.active];
-          const handIdx = card.userData.handIndex;
-          try { 
-            console.log('[HF:click] Calling onPicked with handIdx:', handIdx);
-            pendingDiscardSelection.onPicked(handIdx); 
-          } catch (e) {
-            console.error('[HF:click] Error in onPicked:', e);
-          }
-          pendingDiscardSelection = null;
-          console.log('[HF:click] Reset pendingDiscardSelection to null');
-          return;
-        }
-        
-        if (cardData.type === 'UNIT') {
-          startCardDrag(card);
-        } else if (cardData.type === 'SPELL') {
-          // Новый принцип: спеллы разыгрываются перетаскиванием, а не кликом
-          startCardDrag(card);
-        }
-        return;
-      }
-      
-      const unitIntersects = raycaster.intersectObjects(unitMeshes, true);
-      if (unitIntersects.length > 0) {
-        const hitObj = unitIntersects[0].object;
-        let unit = hitObj;
-        while (unit && (!unit.userData || unit.userData.type !== 'unit')) unit = unit.parent;
-        if (!unit) return;
-        // если в режиме магической атаки
-        if (magicFrom) {
-          performMagicAttack(magicFrom, unit);
-          magicFrom = null;
-          return;
-        }
-        if (selectedCard && selectedCard.userData.cardData.type === 'SPELL') {
-          castSpellOnUnit(selectedCard, unit);
-        } else if (unit.userData.unitData.owner === gameState.active) {
-          selectedUnit = unit;
-          window.__ui.panels.showUnitActionPanel(unit);
-        }
-        return;
-      }
-      
-      if (selectedCard) {
-        resetCardSelection();
-      }
-      // Отмена ритуального дискарда кликом по полю
-      if (pendingDiscardSelection) {
-        try { window.__ui.panels.hidePrompt(); } catch {}
-        pendingDiscardSelection = null;
-        // Вернём визуально карту спелла, если она была перетянута
-        if (draggedCard && draggedCard.userData && draggedCard.userData.cardData && draggedCard.userData.cardData.type === 'SPELL') {
-          returnCardToHand(draggedCard);
-        }
-      }
-    }
-    
-    // Mouse up: finalize card drops or cancel drag.
-    function onMouseUp(event) {
-      if (isInputLocked()) { endCardDrag(); return; }
-      if (draggedCard) {
-        const cardData = draggedCard.userData.cardData;
-        // Определим, навели ли на юнита
-        const rect = renderer.domElement.getBoundingClientRect();
-        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-        raycaster.setFromCamera(mouse, camera);
-        const unitIntersects = raycaster.intersectObjects(unitMeshes, true);
-        let unitMesh = null;
-        if (unitIntersects.length > 0) {
-          let u = unitIntersects[0].object;
-          while (u && (!u.userData || u.userData.type !== 'unit')) u = u.parent;
-          unitMesh = u;
-        }
-        if (cardData.type === 'SPELL') {
-          // Перетаскивание спелла: каст по цели (юнит/клетка)
-          try { castSpellByDrag(draggedCard, unitMesh, hoveredTile); } catch {}
-          // Если логика каста создала бордовый меш/сожгла карту (spellDragHandled=true) — не возвращаем; иначе вернуть в руку
-          if (!spellDragHandled) {
-            returnCardToHand(draggedCard);
-          }
-          spellDragHandled = false;
-        } else if (cardData.type === 'UNIT') {
-          // Перетаскивание существа: прежняя логика размещения на пустую клетку
-          if (hoveredTile) {
-            const row = hoveredTile.userData.row;
-            const col = hoveredTile.userData.col;
-            if (gameState.board[row][col].unit) {
-              showNotification('Cell is already occupied!', 'error');
-              returnCardToHand(draggedCard);
-            } else {
-              pendingPlacement = {
-                card: draggedCard,
-                row: row,
-                col: col,
-                handIndex: draggedCard.userData.handIndex
-              };
-              window.__ui.panels.showOrientationPanel();
-            }
-          } else {
-            returnCardToHand(draggedCard);
-          }
-        }
-        endCardDrag();
-        return;
-      }
-      endCardDrag();
-    }
-    
-    // ====== CARD DRAG HELPERS ======
-    // Prepare card mesh for dragging from hand.
-    function startCardDrag(card) {
-      draggedCard = card;
-      // если карта была увеличена ховером — вернём к стандартному масштабу руки
-      if (hoveredHandCard) {
-        gsap.to(hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.1 });
-        setHandCardHoverVisual(hoveredHandCard, false);
-        hoveredHandCard = null;
-      }
-      
-      gsap.to(card.position, {
-        y: card.position.y + 1,
-        duration: 0.2,
-        ease: "power2.out"
-      });
-      
-      gsap.to(card.rotation, {
-        x: 0,
-        z: 0,
-        duration: 0.2
-      });
-      
-      gsap.to(card.scale, {
-        x: 1.1,
-        y: 1.1,
-        z: 1.1,
-        duration: 0.2
-      });
-    }
-    
-    // Clean up after drag operation finishes.
-    function endCardDrag() {
-      if (hoveredTile) {
-        hoveredTile.material.emissiveIntensity = 0.1;
-        hoveredTile = null;
-      }
-      draggedCard = null;
-    }
-    
-    // Animate card back to its original hand slot.
-    function returnCardToHand(card) {
-      gsap.to(card.position, {
-        x: card.userData.originalPosition.x,
-        y: card.userData.originalPosition.y,
-        z: card.userData.originalPosition.z,
-        duration: 0.3,
-        ease: "power2.inOut"
-      });
-      
-      gsap.to(card.rotation, {
-        x: card.userData.originalRotation.x,
-        y: card.userData.originalRotation.y,
-        z: card.userData.originalRotation.z,
-        duration: 0.3
-      });
-      
-      gsap.to(card.scale, {
-        x: card.userData && card.userData.isInHand ? 0.54 : 1,
-        y: 1,
-        z: card.userData && card.userData.isInHand ? 0.54 : 1,
-        duration: 0.3
-      });
-    }
-    
-      // Cancel currently selected card and restore its visuals.
-      function resetCardSelection() {
-        if (selectedCard) {
-          returnCardToHand(selectedCard);
-          selectedCard.material[2].emissive = new THREE.Color(0x000000);
-          selectedCard.material[2].emissiveIntensity = 0;
-          selectedCard = null;
-        }
       }
     
     async function initGame() {
@@ -843,15 +384,13 @@
       updateHand();
       updateUI();
       // Заставка хода при старте игры с резервом (ускорена)
-      try { 
-        if (window.__ui && window.__ui.banner) {
-          const b = window.__ui.banner; const t = gameState?.turn;
-          const fn = (typeof b.ensureTurnSplashVisible === 'function') ? b.ensureTurnSplashVisible : b.forceTurnSplashWithRetry;
-          await fn.call(b, 2, t);
-        } else {
-          await forceTurnSplashWithRetry(2, gameState?.turn);
-        }
-      } catch {}
+        try {
+          if (window.__ui && window.__ui.banner) {
+            const b = window.__ui.banner; const t = gameState?.turn;
+            const fn = (typeof b.ensureTurnSplashVisible === 'function') ? b.ensureTurnSplashVisible : b.forceTurnSplashWithRetry;
+            await fn.call(b, 2, t);
+          }
+        } catch {}
       // Запуск таймера на первом ходу
       try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
       window.__turnTimerSeconds = 100;
@@ -970,8 +509,6 @@
           } else if (typeof b.forceTurnSplashWithRetry === 'function') {
             await b.forceTurnSplashWithRetry(3, gameState.turn);
           }
-        } else if (typeof forceTurnSplashWithRetry === 'function') {
-          await forceTurnSplashWithRetry(3);
         }
       } catch {}
       
@@ -1005,13 +542,13 @@
       // Offline: locally apply state, online path returned earlier
       try { schedulePush('endTurn-apply', { force: true }); } catch {}
       
-      resetCardSelection();
+      window.__ui.interaction.resetCardSelection();
       
       updateHand();
       updateUnits();
       // updateUI выполнится вместе с анимацией маны (после заставки)
       // Показ заставки хода: строго блокирующе (визуальная последовательность)
-      try { await forceTurnSplashWithRetry(2, gameState?.turn); } catch {}
+      try { await window.__ui.banner.forceTurnSplashWithRetry(2, gameState?.turn); } catch {}
       // Перезапустить таймер хода на 100 сек после заставки (анимация таймера локально у обоих)
       try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
       window.__turnTimerSeconds = 100;
@@ -1092,7 +629,7 @@
       
         if (cardData.cost > player.mana) {
           showNotification('Insufficient mana!', 'error');
-          returnCardToHand(card);
+          window.__ui.interaction.returnCardToHand(card);
           window.__ui.panels.hideOrientationPanel();
           pendingPlacement = null;
           return;
@@ -1191,9 +728,10 @@
       initGame();
       
       // Привязка обработчиков взаимодействия с трёхмерным полем и картами
-      renderer.domElement.addEventListener('mousemove', onMouseMove);
-      renderer.domElement.addEventListener('mousedown', onMouseDown);
-      renderer.domElement.addEventListener('mouseup', onMouseUp);
+      const inter = window.__ui.interaction;
+      renderer.domElement.addEventListener('mousemove', inter.onMouseMove);
+      renderer.domElement.addEventListener('mousedown', inter.onMouseDown);
+      renderer.domElement.addEventListener('mouseup', inter.onMouseUp);
       renderer.domElement.addEventListener('mouseleave', () => {
         if (hoveredHandCard) {
           gsap.to(hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.18 });
@@ -1273,7 +811,7 @@
       });
       document.getElementById('cancel-orient-btn').addEventListener('click', () => {
         if (pendingPlacement) {
-          returnCardToHand(pendingPlacement.card);
+          window.__ui.interaction.returnCardToHand(pendingPlacement.card);
         }
         window.__ui.panels.hideOrientationPanel();
         pendingPlacement = null;
@@ -1305,7 +843,7 @@
             u.facing = direction;
             addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут в ${direction}.`);
             pl.discard.push(tpl); pl.hand.splice(idx, 1);
-            resetCardSelection(); updateHand(); updateUnits(); updateUI();
+            window.__ui.interaction.resetCardSelection(); updateHand(); updateUnits(); updateUI();
           }
             pendingSpellOrientation = null; window.__ui.panels.hideOrientationPanel();
             return;
@@ -1563,56 +1101,16 @@
       splashActive = false; refreshInputLockUI();
     }
 
-    async function showTurnSplash(title) {
-      splashActive = true; refreshInputLockUI();
-      const tb = document.getElementById('turn-banner');
-      if (!tb) { splashActive = false; refreshInputLockUI(); return; }
-      tb.innerHTML = '';
-      // Разметка нового экрана
-      const wrap = document.createElement('div'); wrap.className = 'ts-wrap';
-      const bg = document.createElement('div'); bg.className = 'ts-bg'; wrap.appendChild(bg);
-      const ringOuter = document.createElement('div'); ringOuter.className = 'ts-ring thin'; wrap.appendChild(ringOuter);
-      const ringInner = document.createElement('div'); ringInner.className = 'ts-ring'; wrap.appendChild(ringInner);
-      const streaks = document.createElement('div'); streaks.className = 'ts-streaks'; wrap.appendChild(streaks);
-      const txt = document.createElement('div'); txt.className = 'ts-title ts-title-solid text-4xl md:text-6xl'; txt.textContent = title; wrap.appendChild(txt);
-      const scan = document.createElement('div'); scan.className = 'ts-scan'; wrap.appendChild(scan);
-      tb.appendChild(wrap);
-      tb.style.display = 'flex'; tb.classList.remove('hidden'); tb.classList.add('flex');
-      // Анимации (ускорены на 30%)
-      const tl = gsap.timeline();
-      tl.set(txt, { scale: 0.65, opacity: 0 })
-        .set(ringOuter, { scale: 0.8, opacity: 0 })
-        .set(ringInner, { scale: 0.5, opacity: 0 })
-        .fromTo(bg, { opacity: 0 }, { opacity: 0.6, duration: 0.126, ease: 'power2.out' }, 0)
-        .to(ringOuter, { opacity: 1, scale: 1.0, duration: 0.196, ease: 'back.out(2.2)' }, 0.014)
-        .to(ringInner, { opacity: 1, scale: 1.0, duration: 0.224, ease: 'back.out(2.2)' }, 0.042)
-        .to(txt, { opacity: 1, scale: 1.08, duration: 0.252, ease: 'back.out(1.9)' }, 0.056)
-        .to(txt, { scale: 1.0, duration: 0.154, ease: 'power2.out' })
-        .to(scan, { yPercent: 200, duration: 0.49, ease: 'power1.inOut' }, 0.084)
-        .to(streaks, { opacity: 0.25, duration: 0.35 }, 0.14)
-        .to([ringOuter, ringInner], { opacity: 0.9, duration: 0.14 }, 0.315)
-        .to([bg, streaks], { opacity: 0.12, duration: 0.266 }, 0.406)
-        .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.196, ease: 'power2.in' }, 1.134)
-        .to(tb, { opacity: 0, duration: 0.14, ease: 'power2.in' }, 1.19);
-      await sleep(1330);
-      tb.classList.add('hidden'); tb.classList.remove('flex'); tb.style.display = 'none';
-      tb.style.opacity = '';
-      tb.innerHTML = '';
-      splashActive = false; refreshInputLockUI();
-      try {
-        lastSplashTurnShown = (gameState?.turn || lastSplashTurnShown);
-      } catch {}
-    }
     
     // === SPELL CASTING LOGIC ===
     // Apply spell card to a specific unit on board.
     function castSpellOnUnit(cardMesh, unitMesh) {
       const idx = cardMesh.userData.handIndex;
       const pl = gameState.players[gameState.active];
-      if (idx == null || idx < 0 || idx >= pl.hand.length) { resetCardSelection(); return; }
+      if (idx == null || idx < 0 || idx >= pl.hand.length) { window.__ui.interaction.resetCardSelection(); return; }
       const tpl = pl.hand[idx];
-      if (!tpl || tpl.type !== 'SPELL') { resetCardSelection(); return; }
-      if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); resetCardSelection(); return; }
+      if (!tpl || tpl.type !== 'SPELL') { window.__ui.interaction.resetCardSelection(); return; }
+      if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); window.__ui.interaction.resetCardSelection(); return; }
       const r = unitMesh.userData.row;
       const c = unitMesh.userData.col;
       const u = gameState.board[r][c].unit;
