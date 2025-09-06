@@ -28,6 +28,11 @@ import * as SceneEffects from './scene/effects.js';
 import * as UISpellUtils from './ui/spellUtils.js';
 import * as Spells from './spells/handlers.js';
 import './ui/statusChip.js';
+import * as InputLock from './ui/inputLock.js';
+import { attachUIEvents } from './ui/domEvents.js';
+import * as BattleSplash from './ui/battleSplash.js';
+import { playDeltaAnimations } from './scene/delta.js';
+import { createMetaObjects } from './scene/meta.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -153,11 +158,20 @@ try {
   window.__ui.actions = UIActions;
   window.__ui.spellUtils = UISpellUtils;
   window.__ui.updateUI = updateUI;
+  window.__ui.inputLock = InputLock;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
   window.burnSpellCard = UISpellUtils.burnSpellCard;
   window.__spells = Spells;
+  window.showTurnSplash = Banner.showTurnSplash;
+  window.queueTurnSplash = Banner.queueTurnSplash;
+  window.forceTurnSplashWithRetry = Banner.forceTurnSplashWithRetry;
+  window.requestTurnSplash = Banner.requestTurnSplash;
+  window.showBattleSplash = BattleSplash.showBattleSplash;
+  window.attachUIEvents = attachUIEvents;
+  window.playDeltaAnimations = playDeltaAnimations;
+  window.createMetaObjects = createMetaObjects;
 } catch {}
 
 import * as UISync from './ui/sync.js';
