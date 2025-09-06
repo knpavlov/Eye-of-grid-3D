@@ -13,6 +13,7 @@ import * as Units from './scene/units.js';
 import * as Hand from './scene/hand.js';
 import * as Interactions from './scene/interactions.js';
 import { getCtx as getSceneCtx } from './scene/context.js';
+import * as Meta from './scene/meta.js';
 // UI modules
 import * as UINotifications from './ui/notifications.js';
 import * as UILog from './ui/log.js';
@@ -21,6 +22,7 @@ import * as UIPanels from './ui/panels.js';
 // UI modules
 import * as TurnTimer from './ui/turnTimer.js';
 import * as Banner from './ui/banner.js';
+import * as BattleBanner from './ui/battleBanner.js';
 import * as HandCount from './ui/handCount.js';
 import { updateUI } from './ui/update.js';
 import * as UIActions from './ui/actions.js';
@@ -141,10 +143,12 @@ try {
     updateHand: Hand.updateHand,
     animateDrawnCardToHand: Hand.animateDrawnCardToHand,
   };
+  window.__meta = Meta;
   window.__interactions = Interactions;
   window.__ui = window.__ui || {};
   window.__ui.turnTimer = TurnTimer;
   window.__ui.banner = Banner;
+  window.__ui.battleBanner = BattleBanner;
   window.__ui.notifications = UINotifications;
   window.__ui.log = UILog;
   window.__ui.mana = UIMana;
@@ -158,6 +162,8 @@ try {
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
   window.burnSpellCard = UISpellUtils.burnSpellCard;
   window.__spells = Spells;
+  window.deckMeshes = Meta.deckMeshes;
+  window.graveyardMeshes = Meta.graveyardMeshes;
 } catch {}
 
 import * as UISync from './ui/sync.js';

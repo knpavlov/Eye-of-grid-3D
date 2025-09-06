@@ -1,6 +1,7 @@
 // Pointer and drag interactions for Three.js scene
 import { getCtx } from './context.js';
 import { setHandCardHoverVisual } from './hand.js';
+import { deckMeshes, graveyardMeshes } from './meta.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -94,8 +95,6 @@ function onMouseMove(event) {
 
   // Tooltip for decks/graveyards
   raycaster.setFromCamera(mouse, ctx.camera);
-  const deckMeshes = (typeof window !== 'undefined' && window.deckMeshes) || [];
-  const graveyardMeshes = (typeof window !== 'undefined' && window.graveyardMeshes) || [];
   const metaHits = raycaster.intersectObjects([...deckMeshes, ...graveyardMeshes], true);
   const tip = document.getElementById('hover-tooltip');
   if (metaHits.length > 0) {

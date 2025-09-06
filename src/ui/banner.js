@@ -16,7 +16,7 @@ function setSplashActive(v) {
   } catch {}
 }
 
-function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+export function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
 export async function showTurnSplash(title) {
   if (_splashInProgress) {
@@ -189,6 +189,6 @@ export function getState(){
   return { _splashActive, _lastRequestedTurn, _lastShownTurn };
 }
 
-const api = { showTurnSplash, queueTurnSplash, requestTurnSplash, forceTurnSplashWithRetry, ensureTurnSplashVisible, getState };
+const api = { showTurnSplash, queueTurnSplash, requestTurnSplash, forceTurnSplashWithRetry, ensureTurnSplashVisible, getState, sleep };
 try { if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.banner = api; } } catch {}
 export default api;
