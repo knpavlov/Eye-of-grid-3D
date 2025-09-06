@@ -12,6 +12,7 @@ import * as Cards from './scene/cards.js';
 import * as Units from './scene/units.js';
 import * as Hand from './scene/hand.js';
 import { getCtx as getSceneCtx } from './scene/context.js';
+import * as SceneInteractions from './scene/interactions.js';
 // UI modules
 import * as UINotifications from './ui/notifications.js';
 import * as UILog from './ui/log.js';
@@ -26,6 +27,7 @@ import * as UIActions from './ui/actions.js';
 import * as SceneEffects from './scene/effects.js';
 import * as UISpellUtils from './ui/spellUtils.js';
 import * as Spells from './spells/handlers.js';
+import * as UIGame from './ui/game.js';
 import './ui/statusChip.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
@@ -120,6 +122,7 @@ try {
     animate: sceneAnimate,
     getCtx: getSceneCtx,
   };
+  window.__scene.interactions = SceneInteractions;
   window.__board = {
     createBoard: Board.createBoard,
     getTileMaterial: Board.getTileMaterial,
@@ -151,6 +154,7 @@ try {
   window.__ui.actions = UIActions;
   window.__ui.spellUtils = UISpellUtils;
   window.__ui.updateUI = updateUI;
+  window.__ui.game = UIGame;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
