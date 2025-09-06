@@ -379,22 +379,18 @@
             console.error('[NETWORK] Turn splash failed:', e);
           }
           
-          // 1. Показываем заставку хода (если еще не показывали этот ход)
-          if (lastSplashTurnShown < state.turn) {
-            console.log(`[NETWORK] Showing turn splash for turn ${state.turn}`);
-            try {
-              if (window.__ui && window.__ui.banner) {
-                const b = window.__ui.banner;
-                if (typeof b.ensureTurnSplashVisible === 'function') {
-                  await b.ensureTurnSplashVisible(3, state.turn);
-                } else if (typeof b.forceTurnSplashWithRetry === 'function') {
-                  await b.forceTurnSplashWithRetry(3, state.turn);
-                }
+          // 1. Показываем заставку хода
+          try {
+            if (window.__ui && window.__ui.banner) {
+              const b = window.__ui.banner;
+              if (typeof b.ensureTurnSplashVisible === 'function') {
+                await b.ensureTurnSplashVisible(3, state.turn);
+              } else if (typeof b.forceTurnSplashWithRetry === 'function') {
+                await b.forceTurnSplashWithRetry(3, state.turn);
               }
-              lastSplashTurnShown = state.turn;
-            } catch (e) {
-              console.error('[NETWORK] Turn splash failed:', e);
             }
+          } catch (e) {
+            console.error('[NETWORK] Turn splash failed:', e);
           }
           
           // 2. Анимация маны активного игрока

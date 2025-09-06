@@ -217,77 +217,12 @@
     // HP popup scheduling moved to src/scene/effects.js
     let PENDING_HIDE_HAND_CARDS = [];
     // Управление анимациями заставки хода и добора карты
-    let lastTurnSplashPromise = Promise.resolve();
-    let lastSplashTurnRequested = 0;
-    let lastSplashTurnShown = 0;
-    let turnSplashTurnQueued = 0;
-    function queueTurnSplash(title) {
-      try {
-        lastTurnSplashPromise = lastTurnSplashPromise.then(() => showTurnSplash(title));
-      } catch {}
-      return lastTurnSplashPromise;
-    }
-    
-    // Функция показа заставки хода
-    async function showTurnSplash(title) {
-      splashActive = true;
-      refreshInputLockUI();
-      
-      const banner = document.getElementById('turn-banner');
-      if (banner) {
-        banner.innerHTML = `<div class="text-4xl font-bold bg-gradient-to-br from-blue-600/80 to-purple-500/80 px-8 py-4 rounded-2xl shadow-2xl ring-4 ring-blue-400/40">${title}</div>`;
-        banner.classList.remove('hidden');
-        banner.classList.add('flex');
-        
-        // Показываем заставку на 1 секунду <-- важно - длительность заставки боя!
-        setTimeout(() => {
-          banner.classList.add('hidden');
-          banner.classList.remove('flex');
-          splashActive = false;
-          refreshInputLockUI();
-        }, 1000);
-      }
-      
-      return new Promise(resolve => setTimeout(resolve, 1000));
-    }
-    // Резерв: гарантированно показать заставку с повтором, если вдруг не отрисовалась
-    async function forceTurnSplashWithRetry(maxRetries = 2) {
-      let tries = 0;
-      let shown = false;
-      while (tries <= maxRetries && !shown) {
-        tries += 1;
-        await requestTurnSplash();
-        // ждем 2 кадра, чтобы DOM успел применить display:flex
-        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-        try {
-          const tb = document.getElementById('turn-banner');
-          shown = !!tb && (tb.classList.contains('flex') || tb.style.display === 'flex');
-        } catch {}
-      }
-      // Страховка от зависания блокировки ввода
-      setTimeout(() => { splashActive = false; refreshInputLockUI(); }, 1000);
-    }
-    async function requestTurnSplash() {
-      if (!gameState) return;
-      const currentTurn = gameState.turn;
-      // если уже показали в этом ходу — ничего не делаем
-      if (lastSplashTurnShown >= currentTurn) return lastTurnSplashPromise;
-      // если уже стоит в очереди на этот ход — возвращаем существующий промис
-      if (turnSplashTurnQueued === currentTurn) return lastTurnSplashPromise;
-      lastSplashTurnRequested = currentTurn;
-      turnSplashTurnQueued = currentTurn;
-      const title = `Ход ${currentTurn} - Игрок ${gameState.active + 1}`;
-      // Оборачиваем в промис, который по завершении отмечает ход показанным
-      lastTurnSplashPromise = queueTurnSplash(title).then(() => {
-        try { lastSplashTurnShown = currentTurn; } catch {}
-        if (turnSplashTurnQueued === currentTurn) turnSplashTurnQueued = 0;
-      });
-      return lastTurnSplashPromise;
-    }
-    
-    let manaGainActive = false;
-    let PENDING_MANA_ANIM = null; // { ownerIndex, startIdx, endIdx }
-    let PENDING_MANA_BLOCK = [0,0]; // by player index
+    // Перенесено в ui/banner.js
+
+      var manaGainActive = false;
+      try { window.manaGainActive = manaGainActive; } catch {}
+      var PENDING_MANA_ANIM = null; // { ownerIndex, startIdx, endIdx }
+      var PENDING_MANA_BLOCK = [0,0]; // by player index
 // Ожидаемая анимация маны: диапазон новых орбов, которые должны появиться синхронно со вспышкой
         try { window.PENDING_MANA_ANIM = PENDING_MANA_ANIM; } catch {}
     // Блокировка появления N последних орбов маны на панели до завершения «полетевших» визуальных орбов (смерть/эффекты)
@@ -297,26 +232,13 @@
     let pendingRitualSpellCard = null; // ссылка на сам объект карты-спелла, чтобы скрывать по идентичности
     // Сколько последних добранных карт временно скрывать из моей руки (для красивой анимации влёта)
     let pendingDrawCount = 0;
-    function isInputLocked() {
-  const splash = (typeof window !== 'undefined' && window.__ui && window.__ui.banner)
-    ? !!window.__ui.banner.getState()._splashActive : false;
-  return (typeof __endTurnInProgress !== 'undefined' && __endTurnInProgress) ||
-         (typeof drawAnimationActive !== 'undefined' && drawAnimationActive) ||
-         splash || manaGainActive;
-}
-    function refreshInputLockUI() {
-      try {
-        const endBtn = document.getElementById('end-turn-btn');
-        if (endBtn) endBtn.disabled = isInputLocked();
-      } catch {}
-    }
+    // Блокировка ввода теперь в ui/inputLock.js
     // Отступ руки по оси Z (положительное — дальше от камеры)
     const HAND_Z_OFFSET = 1.0;
     // Смещение колод/кладбищ от камеры вдоль оси Z (положительное значение — дальше от камеры)
-    const META_Z_AWAY = 1.5;
-    // 3D объекты справа (колоды/кладбища)
-    let deckMeshes = [];
-    let graveyardMeshes = [];
+      const META_Z_AWAY = 1.5;
+      try { window.META_Z_AWAY = META_Z_AWAY; } catch {}
+      // 3D объекты справа (колоды/кладбища) создаются модулем scene/meta.js
 
     // === THREE.JS SCENE INITIALIZATION ===
     function initThreeJS() {
@@ -427,101 +349,9 @@
 
     // Визуализировать изменения между предыдущим и новым состоянием (для наблюдателя/оппонента)
     // Показывает визуальные различия на поле между предыдущим и новым состоянием
-    function playDeltaAnimations(prevState, nextState) {
-      try {
-        if (!prevState || !nextState) return;
-        
-        // Для активного игрока не показываем числа HP из playDeltaAnimations - они идут из локальных анимаций
-        const isActivePlayer = (typeof MY_SEAT === 'number' && typeof gameState !== 'undefined' && gameState && typeof gameState.active === 'number' && MY_SEAT === gameState.active);
-        
-        const prevB = prevState.board || [];
-        const nextB = nextState.board || [];
-        
-        // Обрабатываем появление/исчезновение юнитов для всех игроков
-        for (let r = 0; r < 3; r++) {
-          for (let c = 0; c < 3; c++) {
-            const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
-            const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
-            if (pu && !nu) {
-              // Юнит исчез — проигрываем шейдерное «исчезновение» фантома и орб маны
-              try {
-                const tile = tileMeshes?.[r]?.[c]; if (!tile) continue;
-                const ghost = createCard3D(CARDS[pu.tplId], false);
-                ghost.position.copy(tile.position).add(new THREE.Vector3(0, 0.28, 0));
-                try { effectsGroup.add(ghost); } catch { cardGroup.add(ghost); }
-                window.__fx.dissolveAndAsh(ghost, new THREE.Vector3(0,0,0.6), 0.9);
-                const p = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
-                animateManaGainFromWorld(p, pu.owner, true);
-                try { if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') { gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1); updateUI(); } } catch {}
-              } catch {}
-            } else if (!pu && nu) {
-              // Юнит появился — лёгкий «поп» масштаба
-              try {
-                const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-                if (tMesh) {
-                  const s = tMesh.scale.clone();
-                  tMesh.scale.set(s.x * 0.7, s.y * 0.7, s.z * 0.7);
-                  gsap.to(tMesh.scale, { x: s.x, y: s.y, z: s.z, duration: 0.28, ease: 'power2.out' });
-                }
-              } catch {}
-            }
-          }
-        }
-        
-        // Для активного игрока не показываем числа HP - они есть в локальных анимациях
-        if (isActivePlayer) {
-          return;
-        }
+      // Анимации различий между состояниями вынесены в scene/delta.js
 
-        // Для неактивного игрока показываем числа HP с последовательными задержками
-        const hpChanges = [];
-        for (let r = 0; r < 3; r++) {
-          for (let c = 0; c < 3; c++) {
-            const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
-            const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
-            if (pu && nu) {
-              const pHP = (typeof pu.currentHP === 'number') ? pu.currentHP : pu.hp;
-              const nHP = (typeof nu.currentHP === 'number') ? nu.currentHP : nu.hp;
-              const delta = (typeof pHP === 'number' && typeof nHP === 'number') ? (nHP - pHP) : 0;
-              if (delta !== 0) {
-                hpChanges.push({ r, c, delta });
-              }
-            }
-          }
-        }
-
-        // Показываем HP изменения последовательно
-        // Первая половина изменений - через 500мс (после первой атаки)
-        // Вторая половина - через 1300мс (после контратаки)
-        // Filter out recent remote damage already shown during battleAnim/retaliation
-        const __now = Date.now();
-        const pendingHpChanges = (typeof window !== 'undefined' && window.RECENT_REMOTE_DAMAGE && window.RECENT_REMOTE_DAMAGE.size)
-          ? hpChanges.filter(change => {
-              try {
-                const key = `${change.r},${change.c}`;
-                const rec = window.RECENT_REMOTE_DAMAGE.get(key);
-                return !(rec && rec.delta === change.delta && (__now - rec.ts) < 2000);
-              } catch { return true; }
-            })
-          : hpChanges;
-
-        // Schedule HP popups in a cancelable way to sync with remote battle shakes
-        const halfCount = Math.ceil(pendingHpChanges.length / 2);
-        for (let i = 0; i < halfCount && i < pendingHpChanges.length; i++) {
-          const change = pendingHpChanges[i];
-          window.__fx.scheduleHpPopup(change.r, change.c, change.delta, 800);
-        }
-        if (pendingHpChanges.length > halfCount) {
-          for (let i = halfCount; i < pendingHpChanges.length; i++) {
-            const change = pendingHpChanges[i];
-            window.__fx.scheduleHpPopup(change.r, change.c, change.delta, 1600);
-          }
-        }
-      } catch {}
-    }
-    // attachHpOverlay удалён, т.к. HP теперь перерисовывается на самой карте
-    
-      // Взаимодействия с 3D-сценой вынесены в модуль src/scene/interactions.js
+        // Взаимодействия с 3D-сценой вынесены в модуль src/scene/interactions.js
     
     async function initGame() {
       gameState = startGame(STARTER_FIRESET, STARTER_FIRESET);
@@ -534,15 +364,13 @@
       updateHand();
       updateUI();
       // Заставка хода при старте игры с резервом (ускорена)
-      try { 
-        if (window.__ui && window.__ui.banner) {
-          const b = window.__ui.banner; const t = gameState?.turn;
-          const fn = (typeof b.ensureTurnSplashVisible === 'function') ? b.ensureTurnSplashVisible : b.forceTurnSplashWithRetry;
-          await fn.call(b, 2, t);
-        } else {
-          await forceTurnSplashWithRetry(2, gameState?.turn);
-        }
-      } catch {}
+        try {
+          if (window.__ui && window.__ui.banner) {
+            const b = window.__ui.banner; const t = gameState?.turn;
+            const fn = (typeof b.ensureTurnSplashVisible === 'function') ? b.ensureTurnSplashVisible : b.forceTurnSplashWithRetry;
+            await fn.call(b, 2, t);
+          }
+        } catch {}
       // Запуск таймера на первом ходу
       try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
       window.__turnTimerSeconds = 100;
@@ -587,16 +415,17 @@
       } catch {}
     }
 
-    function init() {
-      wireModules();
-      initThreeJS();
-      // Start render loop early so scene is visible even if game init fails
-      animate();
-      initGame();
-      
-      // Привязка обработчиков взаимодействия теперь в модуле interactions
-      window.__interactions.setupInteractions();
-    }
+      function init() {
+        wireModules();
+        initThreeJS();
+        // Start render loop early so scene is visible even if game init fails
+        animate();
+        initGame();
+
+        // Привязка обработчиков взаимодействия теперь в модуле interactions
+        window.__interactions.setupInteractions();
+        try { window.attachUIEvents && window.attachUIEvents(); } catch {}
+      }
     try { window.init = init; window.initThreeJS = initThreeJS; window.initGame = initGame; window.animate = animate; } catch {}
 
     // UI wrappers: use modules only
@@ -606,116 +435,9 @@
     // animateTurnManaGain теперь вызывается напрямую через модуль
       
 
-    function createMetaObjects() {
-      // Очистить предыдущие
-      deckMeshes.forEach(m => m.parent && m.parent.remove(m));
-      graveyardMeshes.forEach(m => m.parent && m.parent.remove(m));
-      deckMeshes = []; graveyardMeshes = [];
-      if (!gameState) return;
-      const baseX = (6.2 + 0.2) * 1 + 6.6; // правее поля
-      const zA = -5.2 - META_Z_AWAY; const zB = 0.2 + META_Z_AWAY; // Важно (смещение колоды/кладбища от камеры)
-      function buildDeck(player, z) {
-        const g = new THREE.Group(); g.position.set(baseX, 0.5, z); g.userData = { metaType: 'deck', player };
-        const sideMap = (CARD_TEX && CARD_TEX.deckSide) ? CARD_TEX.deckSide : window.__cards.getCachedTexture('textures/card_deck_side_view.jpeg');
-        const backMap = (CARD_TEX && CARD_TEX.back) ? CARD_TEX.back : window.__cards.getCachedTexture('textures/card_back_main.jpeg');
-        const sideMat = new THREE.MeshStandardMaterial({ map: sideMap, color: 0xffffff, metalness: 0.3, roughness: 0.85 });
-        const body = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.8, 5.0), sideMat);
-        body.castShadow = true; body.receiveShadow = true; body.userData = { metaType: 'deck', player };
-        const top = new THREE.Mesh(new THREE.BoxGeometry(3.62, 0.04, 5.02), new THREE.MeshStandardMaterial({ map: backMap, color: 0xffffff }));
-        top.position.y = 0.42; top.userData = { metaType: 'deck', player };
-        g.add(body); g.add(top); metaGroup.add(g); deckMeshes.push(g);
-      }
-      function buildGrave(player, z) {
-        const g = new THREE.Group(); g.position.set(baseX + 4.2, 0.5, z); g.userData = { metaType: 'grave', player };
-        const base = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.3, 20), new THREE.MeshStandardMaterial({ color: 0x334155 }));
-        base.userData = { metaType: 'grave', player };
-        const icon = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x64748b }));
-        icon.position.y = 0.9; icon.rotation.y = Math.PI / 8; icon.userData = { metaType: 'grave', player };
-        g.add(base); g.add(icon); metaGroup.add(g); graveyardMeshes.push(g);
-      }
-      buildDeck(0, zA); buildDeck(1, zB); buildGrave(0, zA); buildGrave(1, zB);
-    }
-    
-    // Обработчики UI
-    document.getElementById('end-turn-btn').addEventListener('click', () => {
-      try { window.__ui?.actions?.endTurn?.(); } catch {}
-    });
-    refreshInputLockUI();
-    document.getElementById('new-game-btn').addEventListener('click', () => location.reload());
-    document.getElementById('log-btn').addEventListener('click', () => {
-      const lp = document.getElementById('log-panel');
-      lp.classList.toggle('hidden');
-      // На всякий случай жёстко позиционируем ниже контролов
-      lp.style.top = (document.getElementById('controls').offsetHeight + 40) + 'px';
-      if (!lp.classList.contains('hidden')) lp.style.pointerEvents = 'auto';
-    });
-    document.getElementById('close-log-btn').addEventListener('click', () => {
-      document.getElementById('log-panel').classList.add('hidden');
-    });
-    document.getElementById('help-btn').addEventListener('click', () => {
-      document.getElementById('help-panel').classList.remove('hidden');
-    });
-    document.getElementById('close-help-btn').addEventListener('click', () => {
-      document.getElementById('help-panel').classList.add('hidden');
-    });
-    // Prompt handlers
-      document.getElementById('cancel-prompt-btn').addEventListener('click', () => {
-        const prompt = window.activePrompt;
-        if (prompt && typeof prompt.onCancel === 'function') {
-          try { prompt.onCancel(); } catch {}
-        }
-        window.__ui.panels.hidePrompt();
-      });
-      document.getElementById('cancel-orient-btn').addEventListener('click', () => {
-        const pp = window.__interactions.getPendingPlacement();
-        if (pp) {
-          window.__interactions.returnCardToHand(pp.card);
-        }
-        window.__ui.panels.hideOrientationPanel();
-        window.__interactions.clearPendingPlacement();
-      });
-      document.getElementById('cancel-action-btn').addEventListener('click', () => {
-        window.__interactions.clearSelectedUnit();
-        window.__ui.panels.hideUnitActionPanel();
-      });
-      // Действия в панели юнита
-      document.getElementById('rotate-cw-btn').addEventListener('click', () => {
-        const u = window.__interactions.getSelectedUnit();
-        if (u) window.__ui.actions.rotateUnit(u, 'cw');
-      });
-      document.getElementById('rotate-ccw-btn').addEventListener('click', () => {
-        const u = window.__interactions.getSelectedUnit();
-        if (u) window.__ui.actions.rotateUnit(u, 'ccw');
-      });
-      document.getElementById('attack-btn').addEventListener('click', () => {
-        const u = window.__interactions.getSelectedUnit();
-        if (u) window.__ui.actions.performUnitAttack(u);
-      });
-    
-    document.querySelectorAll('[data-dir]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const direction = btn.getAttribute('data-dir');
-        const pso = window.__interactions.getPendingSpellOrientation();
-        if (pso) {
-          const { spellCardMesh, unitMesh } = pso;
-          const idx = spellCardMesh.userData.handIndex;
-          const pl = gameState.players[gameState.active];
-          const tpl = pl.hand[idx];
-          const r = unitMesh.userData.row; const c = unitMesh.userData.col; const u = gameState.board[r][c].unit;
-          if (tpl && tpl.id === 'SPELL_BEGUILING_FOG' && u) {
-            u.facing = direction;
-            addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут в ${direction}.`);
-            pl.discard.push(tpl); pl.hand.splice(idx, 1);
-            window.__interactions.resetCardSelection(); updateHand(); updateUnits(); updateUI();
-          }
-          window.__interactions.clearPendingSpellOrientation();
-          window.__ui.panels.hideOrientationPanel();
-          return;
-        }
-        window.__interactions.placeUnitWithDirection(direction);
-      });
-    });
-    
+    // Создание колод и кладбищ вынесено в scene/meta.js
+
+    // Обработчики UI перенесены в ui/domEvents.js
     document.addEventListener('DOMContentLoaded', init);
 
       /* UI action helpers moved to src/ui/actions.js */
@@ -925,85 +647,9 @@
     }
     // Вспомогательные утилиты: задержка и яркая заставка BATTLE на 3 секунды
     function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-    async function showBattleSplash() {
-      splashActive = true; refreshInputLockUI();
-      const bb = document.getElementById('battle-banner');
-      if (!bb) { splashActive = false; refreshInputLockUI(); return; }
-      bb.innerHTML = '';
-      const wrap = document.createElement('div'); wrap.className = 'ts-wrap';
-      const bg = document.createElement('div'); bg.className = 'ts-bg'; wrap.appendChild(bg);
-      const ringOuter = document.createElement('div'); ringOuter.className = 'ts-ring thin'; wrap.appendChild(ringOuter);
-      const ringInner = document.createElement('div'); ringInner.className = 'ts-ring'; wrap.appendChild(ringInner);
-      const streaks = document.createElement('div'); streaks.className = 'ts-streaks'; wrap.appendChild(streaks);
-      const txt = document.createElement('div'); txt.className = 'ts-title ts-title-solid text-6xl md:text-8xl'; txt.textContent = 'BATTLE'; wrap.appendChild(txt);
-      const scan = document.createElement('div'); scan.className = 'ts-scan'; wrap.appendChild(scan);
-      bb.appendChild(wrap);
-      bb.style.display = 'flex'; bb.classList.remove('hidden'); bb.classList.add('flex');
-      const tl = gsap.timeline();
-      tl.set(txt, { scale: 0.65, opacity: 0 })
-        .set(ringOuter, { scale: 0.8, opacity: 0 })
-        .set(ringInner, { scale: 0.5, opacity: 0 })
-        .fromTo(bg, { opacity: 0 }, { opacity: 0.6, duration: 0.126, ease: 'power2.out' }, 0)
-        .to(ringOuter, { opacity: 1, scale: 1.0, duration: 0.196, ease: 'back.out(2.2)' }, 0.014)
-        .to(ringInner, { opacity: 1, scale: 1.0, duration: 0.224, ease: 'back.out(2.2)' }, 0.042)
-        .to(txt, { opacity: 1, scale: 1.08, duration: 0.252, ease: 'back.out(1.9)' }, 0.056)
-        .to(txt, { scale: 1.0, duration: 0.154, ease: 'power2.out' })
-        .to(scan, { yPercent: 200, duration: 0.49, ease: 'power1.inOut' }, 0.084)
-        .to(streaks, { opacity: 0.25, duration: 0.35 }, 0.14)
-        .to([ringOuter, ringInner], { opacity: 0.9, duration: 0.14 }, 0.315)
-        .to([bg, streaks], { opacity: 0.12, duration: 0.266 }, 0.406)
-        .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.196, ease: 'power2.in' }, 1.134)
-        .to(bb, { opacity: 0, duration: 0.14, ease: 'power2.in' }, 1.19);
-      await sleep(1330);
-      bb.classList.add('hidden'); bb.classList.remove('flex'); bb.style.display = 'none';
-      bb.style.opacity = '';
-      bb.innerHTML = '';
-      splashActive = false; refreshInputLockUI();
-    }
-
-    async function showTurnSplash(title) {
-      splashActive = true; refreshInputLockUI();
-      const tb = document.getElementById('turn-banner');
-      if (!tb) { splashActive = false; refreshInputLockUI(); return; }
-      tb.innerHTML = '';
-      // Разметка нового экрана
-      const wrap = document.createElement('div'); wrap.className = 'ts-wrap';
-      const bg = document.createElement('div'); bg.className = 'ts-bg'; wrap.appendChild(bg);
-      const ringOuter = document.createElement('div'); ringOuter.className = 'ts-ring thin'; wrap.appendChild(ringOuter);
-      const ringInner = document.createElement('div'); ringInner.className = 'ts-ring'; wrap.appendChild(ringInner);
-      const streaks = document.createElement('div'); streaks.className = 'ts-streaks'; wrap.appendChild(streaks);
-      const txt = document.createElement('div'); txt.className = 'ts-title ts-title-solid text-4xl md:text-6xl'; txt.textContent = title; wrap.appendChild(txt);
-      const scan = document.createElement('div'); scan.className = 'ts-scan'; wrap.appendChild(scan);
-      tb.appendChild(wrap);
-      tb.style.display = 'flex'; tb.classList.remove('hidden'); tb.classList.add('flex');
-      // Анимации (ускорены на 30%)
-      const tl = gsap.timeline();
-      tl.set(txt, { scale: 0.65, opacity: 0 })
-        .set(ringOuter, { scale: 0.8, opacity: 0 })
-        .set(ringInner, { scale: 0.5, opacity: 0 })
-        .fromTo(bg, { opacity: 0 }, { opacity: 0.6, duration: 0.126, ease: 'power2.out' }, 0)
-        .to(ringOuter, { opacity: 1, scale: 1.0, duration: 0.196, ease: 'back.out(2.2)' }, 0.014)
-        .to(ringInner, { opacity: 1, scale: 1.0, duration: 0.224, ease: 'back.out(2.2)' }, 0.042)
-        .to(txt, { opacity: 1, scale: 1.08, duration: 0.252, ease: 'back.out(1.9)' }, 0.056)
-        .to(txt, { scale: 1.0, duration: 0.154, ease: 'power2.out' })
-        .to(scan, { yPercent: 200, duration: 0.49, ease: 'power1.inOut' }, 0.084)
-        .to(streaks, { opacity: 0.25, duration: 0.35 }, 0.14)
-        .to([ringOuter, ringInner], { opacity: 0.9, duration: 0.14 }, 0.315)
-        .to([bg, streaks], { opacity: 0.12, duration: 0.266 }, 0.406)
-        .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.196, ease: 'power2.in' }, 1.134)
-        .to(tb, { opacity: 0, duration: 0.14, ease: 'power2.in' }, 1.19);
-      await sleep(1330);
-      tb.classList.add('hidden'); tb.classList.remove('flex'); tb.style.display = 'none';
-      tb.style.opacity = '';
-      tb.innerHTML = '';
-      splashActive = false; refreshInputLockUI();
-      try {
-        lastSplashTurnShown = (gameState?.turn || lastSplashTurnShown);
-      } catch {}
-    }
-    
+    // Заставки боя и хода перенесены в ui/battleSplash.js и ui/banner.js
     // (убраны несуществующие обработчики magic-btn и draw-btn)
-  </script>
+    </script>
 <!-- MODULE: network/multiplayer (socket.io sync, queue, indicator) -->
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script type="module" src="./src/net/client.js"></script>
