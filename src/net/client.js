@@ -465,6 +465,12 @@
 
   // Явный сигнал о смене хода (ускоряет разблокировку у оппонента в заанимированных кейсах)
   socket.on('turnSwitched', ({ activeSeat })=>{
+    // Turn switch can arrive before the state snapshot. Immediately
+    // release any end-turn locks and request the latest state so both
+    // players stay in sync even if the authoritative state event is
+    // delayed or dropped.
+    try { __endTurnInProgress = false; refreshInputLockUI(); } catch {}
+    try { socket.emit('requestState'); } catch {}
     try {
       if (typeof activeSeat === 'number') {
         if (!gameState) gameState = {};
