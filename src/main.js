@@ -13,6 +13,7 @@ import * as Units from './scene/units.js';
 import * as Hand from './scene/hand.js';
 import * as Interactions from './scene/interactions.js';
 import { getCtx as getSceneCtx } from './scene/context.js';
+import { playDeltaAnimations, RECENT_REMOTE_DAMAGE } from './scene/delta.js';
 // UI modules
 import * as UINotifications from './ui/notifications.js';
 import * as UILog from './ui/log.js';
@@ -158,6 +159,22 @@ try {
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
   window.burnSpellCard = UISpellUtils.burnSpellCard;
   window.__spells = Spells;
+  // Expose frequently used helpers for legacy inline code
+  window.updateHand = (gs = window.gameState) => Hand.updateHand(gs);
+  window.animateDrawnCardToHand = Hand.animateDrawnCardToHand;
+  window.setHandCardHoverVisual = Hand.setHandCardHoverVisual;
+  window.updateUnits = (gs = window.gameState) => {
+    Units.updateUnits(gs);
+    try { window.unitMeshes = getSceneCtx().unitMeshes; } catch {}
+  };
+  window.animateManaGainFromWorld = UIMana.animateManaGainFromWorld;
+  window.showTurnSplash = Banner.showTurnSplash;
+  window.queueTurnSplash = Banner.queueTurnSplash;
+  window.requestTurnSplash = Banner.requestTurnSplash;
+  window.forceTurnSplashWithRetry = Banner.forceTurnSplashWithRetry;
+  window.ensureTurnSplashVisible = Banner.ensureTurnSplashVisible;
+  window.playDeltaAnimations = playDeltaAnimations;
+  window.RECENT_REMOTE_DAMAGE = RECENT_REMOTE_DAMAGE;
 } catch {}
 
 import * as UISync from './ui/sync.js';
