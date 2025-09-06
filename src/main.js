@@ -155,6 +155,7 @@ try {
   window.__ui.updateUI = updateUI;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
+  window.playDeltaAnimations = SceneEffects.playDeltaAnimations;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
   window.burnSpellCard = UISpellUtils.burnSpellCard;
   window.__spells = Spells;
