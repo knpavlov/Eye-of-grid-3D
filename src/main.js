@@ -28,6 +28,8 @@ import * as SceneEffects from './scene/effects.js';
 import * as UISpellUtils from './ui/spellUtils.js';
 import * as Spells from './spells/handlers.js';
 import './ui/statusChip.js';
+import * as Battle from './scene/battle.js';
+import * as InputLock from './ui/inputLock.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -158,6 +160,21 @@ try {
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
   window.burnSpellCard = UISpellUtils.burnSpellCard;
   window.__spells = Spells;
+  window.__scene.battle = Battle;
+  window.performBattleSequence = Battle.performBattleSequence;
+  window.showBattleSplash = Battle.showBattleSplash;
+  window.isInputLocked = InputLock.isInputLocked;
+  window.refreshInputLockUI = InputLock.refreshInputLockUI;
+  window.showNotification = UINotifications.show;
+  window.addLog = UILog.add;
+  window.animateManaGainFromWorld = UIMana.animateManaGainFromWorld;
+  window.queueTurnSplash = Banner.queueTurnSplash;
+  window.showTurnSplash = Banner.showTurnSplash;
+  window.requestTurnSplash = Banner.requestTurnSplash;
+  window.forceTurnSplashWithRetry = Banner.forceTurnSplashWithRetry;
+  window.manaGainActive = false;
+  window.PENDING_MANA_ANIM = null;
+  window.PENDING_MANA_BLOCK = [0,0];
 } catch {}
 
 import * as UISync from './ui/sync.js';
