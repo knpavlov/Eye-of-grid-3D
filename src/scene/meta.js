@@ -10,7 +10,8 @@ export function createMetaObjects(gameState) {
     deckMeshes.forEach(m => m.parent && m.parent.remove(m));
     graveyardMeshes.forEach(m => m.parent && m.parent.remove(m));
     deckMeshes = []; graveyardMeshes = [];
-    if (!gameState || !THREE || !metaGroup) return;
+    const gs = gameState || window.gameState;
+    if (!gs || !THREE || !metaGroup) return;
 
     const CARD_TEX = window.CARD_TEX || {};
     const baseX = (6.2 + 0.2) * 1 + 6.6;
