@@ -195,6 +195,7 @@
       let tileFrames = [];    // рамки подсветки/выделения клеток
     let unitMeshes = [];      // текущие меши юнитов на поле
     let handCardMeshes = [];  // меши карт в руке игрока
+      try { window.tileMeshes = tileMeshes; window.tileFrames = tileFrames; window.unitMeshes = unitMeshes; window.handCardMeshes = handCardMeshes; } catch {}
       let gameState = window.gameState || null;
       // Tile textures are now managed by scene/board module
     // Настройки показа большой карты при доборе — можно править из консоли
@@ -330,6 +331,13 @@
       let pendingDiscardSelection = null; // { requiredType: 'UNIT', onPicked: function }
       let pendingRitualBoardMesh = null; // временный меш спелла на поле
     let spellDragHandled = false; // флаг, что возврат карты в руку уже не нужен
+    try {
+      window.selectedUnit = selectedUnit;
+      window.magicFrom = magicFrom;
+      window.pendingDiscardSelection = pendingDiscardSelection;
+      window.pendingRitualBoardMesh = pendingRitualBoardMesh;
+      window.spellDragHandled = spellDragHandled;
+    } catch {}
 
     // === THREE.JS SCENE INITIALIZATION ===
     function initThreeJS() {
@@ -412,6 +420,7 @@
           ? window.__scene.getCtx() : null;
         if (ctx && ctx.handCardMeshes) {
           handCardMeshes = ctx.handCardMeshes;
+          try { window.handCardMeshes = handCardMeshes; } catch {}
         }
       }
     }
@@ -674,16 +683,16 @@
       document.getElementById('cancel-orient-btn').addEventListener('click', () => {
         if (typeof cancelPlacement === 'function') cancelPlacement();
       });
-        document.getElementById('cancel-action-btn').addEventListener('click', () => { selectedUnit = null; window.__ui.panels.hideUnitActionPanel(); });
+        document.getElementById('cancel-action-btn').addEventListener('click', () => { window.selectedUnit = null; window.__ui.panels.hideUnitActionPanel(); });
       // Действия в панели юнита
       document.getElementById('rotate-cw-btn').addEventListener('click', () => {
-        if (selectedUnit) window.__ui.actions.rotateUnit(selectedUnit, 'cw');
+        if (window.selectedUnit) window.__ui.actions.rotateUnit(window.selectedUnit, 'cw');
       });
     document.getElementById('rotate-ccw-btn').addEventListener('click', () => {
-      if (selectedUnit) window.__ui.actions.rotateUnit(selectedUnit, 'ccw');
+      if (window.selectedUnit) window.__ui.actions.rotateUnit(window.selectedUnit, 'ccw');
     });
     document.getElementById('attack-btn').addEventListener('click', () => {
-      if (selectedUnit) window.__ui.actions.performUnitAttack(selectedUnit);
+      if (window.selectedUnit) window.__ui.actions.performUnitAttack(window.selectedUnit);
     });
     
     document.querySelectorAll('[data-dir]').forEach(btn => {
