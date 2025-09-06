@@ -167,5 +167,13 @@ export function createBoard(gameState) {
     ctx.tileFrames.push(frameRow);
   }
 
+  // Expose board arrays for legacy code still relying on globals
+  try {
+    if (typeof window !== 'undefined') {
+      window.tileMeshes = ctx.tileMeshes;
+      window.tileFrames = ctx.tileFrames;
+    }
+  } catch {}
+
   return ctx.tileMeshes;
 }

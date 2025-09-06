@@ -540,6 +540,12 @@
       // Start render loop early so scene is visible even if game init fails
       animate();
       window.__ui.game.initGame();
+      // Sync legacy globals for code still accessing them directly
+      try {
+        gameState = window.gameState;
+        tileMeshes = window.tileMeshes || [];
+        tileFrames = window.tileFrames || [];
+      } catch {}
       window.__scene.interactions.attachInteractions();
     }
     try { window.init = init; window.initThreeJS = initThreeJS; window.animate = animate; } catch {}
