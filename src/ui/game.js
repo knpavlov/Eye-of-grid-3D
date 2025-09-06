@@ -5,6 +5,7 @@ import { computeCellBuff, computeHits } from '../core/rules.js';
 import { updateHand, animateDrawnCardToHand } from '../scene/hand.js';
 import { updateUnits } from '../scene/units.js';
 import { createBoard } from '../scene/board.js';
+import { preloadCardTextures } from '../scene/cards.js';
 import { updateUI } from './update.js';
 import { add as addLog } from './log.js';
 import { show as showNotification } from './notifications.js';
@@ -43,10 +44,17 @@ try {
 export async function initGame() {
   gameState = startGame(STARTER_FIRESET, STARTER_FIRESET);
   try { window.gameState = gameState; } catch {}
+  try { preloadCardTextures(); } catch {}
   createBoard(gameState);
+  try {
+    const ctx = getCtx();
+    window.tileMeshes = ctx.tileMeshes;
+    window.tileFrames = ctx.tileFrames;
+  } catch {}
   window.__scene?.interactions?.createMetaObjects(gameState);
   updateUnits(gameState);
   updateHand(gameState);
+  try { window.handCardMeshes = getCtx().handCardMeshes; } catch {}
   updateUI(gameState);
   try {
     if (window.__ui && window.__ui.banner) {
