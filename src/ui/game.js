@@ -44,6 +44,12 @@ export async function initGame() {
   gameState = startGame(STARTER_FIRESET, STARTER_FIRESET);
   try { window.gameState = gameState; } catch {}
   createBoard(gameState);
+  // expose board arrays for legacy code (status chip, inline helpers)
+  try {
+    const ctx = getCtx();
+    window.tileMeshes = ctx.tileMeshes;
+    window.tileFrames = ctx.tileFrames;
+  } catch {}
   window.__scene?.interactions?.createMetaObjects(gameState);
   updateUnits(gameState);
   updateHand(gameState);
@@ -75,6 +81,7 @@ export async function initGame() {
   } catch {}
   addLog('The game has begun! Player 1 goes first.');
   addLog('Drag units to the field, use spells by clicking.');
+  return gameState;
 }
 
 // Установка отложенного размещения существа

@@ -534,12 +534,21 @@
       } catch {}
     }
 
-    function init() {
+    async function init() {
       wireModules();
       initThreeJS();
       // Start render loop early so scene is visible even if game init fails
       animate();
-      window.__ui.game.initGame();
+      await window.__ui.game.initGame();
+      // sync legacy globals used by inline helpers / status chip
+      try {
+        gameState = window.gameState;
+        const ctx = window.__scene.getCtx();
+        tileMeshes = ctx.tileMeshes || [];
+        tileFrames = ctx.tileFrames || [];
+        window.tileMeshes = tileMeshes;
+        window.tileFrames = tileFrames;
+      } catch {}
       window.__scene.interactions.attachInteractions();
     }
     try { window.init = init; window.initThreeJS = initThreeJS; window.animate = animate; } catch {}
