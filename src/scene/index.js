@@ -81,9 +81,17 @@ export function initThreeJS({ canvasId = 'three-canvas', clearColor = 0x0b1220 }
   ctx.effectsGroup = effectsGroup;
   ctx.metaGroup = metaGroup;
 
-  // Convenience exposure for debugging
+  // Convenience exposure for debugging and legacy access
   try {
-    window.renderer = renderer; window.scene = scene; window.camera = camera; window.boardGroup = boardGroup;
+    window.renderer = renderer;
+    window.scene = scene;
+    window.camera = camera;
+    window.boardGroup = boardGroup;
+    window.cardGroup = cardGroup;
+    window.effectsGroup = effectsGroup;
+    window.metaGroup = metaGroup;
+    window.raycaster = raycaster;
+    window.mouse = mouse;
   } catch {}
 
   // Resize handler

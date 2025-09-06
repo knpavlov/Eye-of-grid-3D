@@ -195,6 +195,7 @@
       let tileFrames = [];    // рамки подсветки/выделения клеток
     let unitMeshes = [];      // текущие меши юнитов на поле
     let handCardMeshes = [];  // меши карт в руке игрока
+    try { window.handCardMeshes = handCardMeshes; } catch {}
       let gameState = window.gameState || null;
       // Tile textures are now managed by scene/board module
     // Настройки показа большой карты при доборе — можно править из консоли
@@ -317,6 +318,7 @@
     // 3D объекты справа (колоды/кладбища)
     let deckMeshes = [];
     let graveyardMeshes = [];
+    try { window.deckMeshes = deckMeshes; window.graveyardMeshes = graveyardMeshes; } catch {}
     let hoveredMeta = null; // { metaType: 'deck'|'grave', player: 0|1 }
     
     // Состояние взаимодействия
@@ -412,6 +414,7 @@
           ? window.__scene.getCtx() : null;
         if (ctx && ctx.handCardMeshes) {
           handCardMeshes = ctx.handCardMeshes;
+          try { window.handCardMeshes = handCardMeshes; } catch {}
         }
       }
     }
@@ -639,6 +642,7 @@
         g.add(base); g.add(icon); metaGroup.add(g); graveyardMeshes.push(g);
       }
       buildDeck(0, zA); buildDeck(1, zB); buildGrave(0, zA); buildGrave(1, zB);
+      try { window.deckMeshes = deckMeshes; window.graveyardMeshes = graveyardMeshes; } catch {}
     }
     
     // Обработчики UI
