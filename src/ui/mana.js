@@ -158,11 +158,18 @@ export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true) {
 export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationMs = 1500) {
   return new Promise(resolve => {
     try {
-      // Проверяем, не идет ли уже анимация
+      // Если предыдущая анимация зависла и флаг не сброшен —
+      // очищаем состояние, чтобы не блокировать новые анимации
       if (getManaGainActive()) {
-        console.warn('Mana animation already in progress, skipping');
-        resolve();
-        return;
+        console.warn('Mana animation flag was stuck, force-resetting');
+        setManaGainActive(false);
+        setAnim(null);
+        try {
+          if (typeof window !== 'undefined' && window.gameState && window.gameState.players && window.gameState.players[ownerIndex]) {
+            delete window.gameState.players[ownerIndex]._beforeMana;
+          }
+        } catch {}
+        try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
       }
       
       console.log(`[MANA] Starting animation for player ${ownerIndex}: ${beforeMana} -> ${afterMana}`);
