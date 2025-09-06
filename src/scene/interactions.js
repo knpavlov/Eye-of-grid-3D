@@ -94,8 +94,8 @@ function onMouseMove(event) {
 
   // Tooltip for decks/graveyards
   raycaster.setFromCamera(mouse, ctx.camera);
-  const deckMeshes = (typeof window !== 'undefined' && window.deckMeshes) || [];
-  const graveyardMeshes = (typeof window !== 'undefined' && window.graveyardMeshes) || [];
+  const deckMeshes = ctx.deckMeshes || [];
+  const graveyardMeshes = ctx.graveyardMeshes || [];
   const metaHits = raycaster.intersectObjects([...deckMeshes, ...graveyardMeshes], true);
   const tip = document.getElementById('hover-tooltip');
   if (metaHits.length > 0) {

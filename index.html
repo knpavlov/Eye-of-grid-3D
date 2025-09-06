@@ -216,74 +216,7 @@
     // Pending HP popups scheduled by playDeltaAnimations, so we can cancel if battleAnim shows earlier
     // HP popup scheduling moved to src/scene/effects.js
     let PENDING_HIDE_HAND_CARDS = [];
-    // Управление анимациями заставки хода и добора карты
-    let lastTurnSplashPromise = Promise.resolve();
-    let lastSplashTurnRequested = 0;
-    let lastSplashTurnShown = 0;
-    let turnSplashTurnQueued = 0;
-    function queueTurnSplash(title) {
-      try {
-        lastTurnSplashPromise = lastTurnSplashPromise.then(() => showTurnSplash(title));
-      } catch {}
-      return lastTurnSplashPromise;
-    }
-    
-    // Функция показа заставки хода
-    async function showTurnSplash(title) {
-      splashActive = true;
-      refreshInputLockUI();
-      
-      const banner = document.getElementById('turn-banner');
-      if (banner) {
-        banner.innerHTML = `<div class="text-4xl font-bold bg-gradient-to-br from-blue-600/80 to-purple-500/80 px-8 py-4 rounded-2xl shadow-2xl ring-4 ring-blue-400/40">${title}</div>`;
-        banner.classList.remove('hidden');
-        banner.classList.add('flex');
-        
-        // Показываем заставку на 1 секунду <-- важно - длительность заставки боя!
-        setTimeout(() => {
-          banner.classList.add('hidden');
-          banner.classList.remove('flex');
-          splashActive = false;
-          refreshInputLockUI();
-        }, 1000);
-      }
-      
-      return new Promise(resolve => setTimeout(resolve, 1000));
-    }
-    // Резерв: гарантированно показать заставку с повтором, если вдруг не отрисовалась
-    async function forceTurnSplashWithRetry(maxRetries = 2) {
-      let tries = 0;
-      let shown = false;
-      while (tries <= maxRetries && !shown) {
-        tries += 1;
-        await requestTurnSplash();
-        // ждем 2 кадра, чтобы DOM успел применить display:flex
-        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-        try {
-          const tb = document.getElementById('turn-banner');
-          shown = !!tb && (tb.classList.contains('flex') || tb.style.display === 'flex');
-        } catch {}
-      }
-      // Страховка от зависания блокировки ввода
-      setTimeout(() => { splashActive = false; refreshInputLockUI(); }, 1000);
-    }
-    async function requestTurnSplash() {
-      if (!gameState) return;
-      const currentTurn = gameState.turn;
-      // если уже показали в этом ходу — ничего не делаем
-      if (lastSplashTurnShown >= currentTurn) return lastTurnSplashPromise;
-      // если уже стоит в очереди на этот ход — возвращаем существующий промис
-      if (turnSplashTurnQueued === currentTurn) return lastTurnSplashPromise;
-      lastSplashTurnRequested = currentTurn;
-      turnSplashTurnQueued = currentTurn;
-      const title = `Ход ${currentTurn} - Игрок ${gameState.active + 1}`;
-      // Оборачиваем в промис, который по завершении отмечает ход показанным
-      lastTurnSplashPromise = queueTurnSplash(title).then(() => {
-        try { lastSplashTurnShown = currentTurn; } catch {}
-        if (turnSplashTurnQueued === currentTurn) turnSplashTurnQueued = 0;
-      });
-      return lastTurnSplashPromise;
-    }
+    // Управление анимациями заставки хода и добора карты делегировано модулю src/ui/banner.js
     
     let manaGainActive = false;
     let PENDING_MANA_ANIM = null; // { ownerIndex, startIdx, endIdx }
@@ -312,11 +245,7 @@
     }
     // Отступ руки по оси Z (положительное — дальше от камеры)
     const HAND_Z_OFFSET = 1.0;
-    // Смещение колод/кладбищ от камеры вдоль оси Z (положительное значение — дальше от камеры)
-    const META_Z_AWAY = 1.5;
-    // 3D объекты справа (колоды/кладбища)
-    let deckMeshes = [];
-    let graveyardMeshes = [];
+    // 3D объекты справа (колоды/кладбища) теперь создаются модулем src/scene/meta.js
 
     // === THREE.JS SCENE INITIALIZATION ===
     function initThreeJS() {
@@ -529,7 +458,7 @@
       
       // Сразу строим сцену и мета-объекты, без задержки появления
       createBoard();
-      createMetaObjects();
+      try { window.__meta?.createMetaObjects?.(gameState); } catch {}
       updateUnits();
       updateHand();
       updateUI();
@@ -539,8 +468,6 @@
           const b = window.__ui.banner; const t = gameState?.turn;
           const fn = (typeof b.ensureTurnSplashVisible === 'function') ? b.ensureTurnSplashVisible : b.forceTurnSplashWithRetry;
           await fn.call(b, 2, t);
-        } else {
-          await forceTurnSplashWithRetry(2, gameState?.turn);
         }
       } catch {}
       // Запуск таймера на первом ходу
@@ -661,8 +588,6 @@
           } else if (typeof b.forceTurnSplashWithRetry === 'function') {
             await b.forceTurnSplashWithRetry(3, gameState.turn);
           }
-        } else if (typeof forceTurnSplashWithRetry === 'function') {
-          await forceTurnSplashWithRetry(3);
         }
       } catch {}
       
@@ -702,7 +627,7 @@
       updateUnits();
       // updateUI выполнится вместе с анимацией маны (после заставки)
       // Показ заставки хода: строго блокирующе (визуальная последовательность)
-      try { await forceTurnSplashWithRetry(2, gameState?.turn); } catch {}
+      try { await window.__ui.banner.forceTurnSplashWithRetry(2, gameState?.turn); } catch {}
       // Перезапустить таймер хода на 100 сек после заставки (анимация таймера локально у обоих)
       try { if (window.__turnTimerId) clearInterval(window.__turnTimerId); } catch {}
       window.__turnTimerSeconds = 100;
@@ -798,9 +723,10 @@
       // Start render loop early so scene is visible even if game init fails
       animate();
       initGame();
-      
+
       // Привязка обработчиков взаимодействия теперь в модуле interactions
       window.__interactions.setupInteractions();
+      try { window.__ui.bindings.setupUIBindings(); } catch {}
     }
     try { window.init = init; window.initThreeJS = initThreeJS; window.initGame = initGame; window.animate = animate; } catch {}
 
@@ -811,116 +737,6 @@
     // animateTurnManaGain теперь вызывается напрямую через модуль
       
 
-    function createMetaObjects() {
-      // Очистить предыдущие
-      deckMeshes.forEach(m => m.parent && m.parent.remove(m));
-      graveyardMeshes.forEach(m => m.parent && m.parent.remove(m));
-      deckMeshes = []; graveyardMeshes = [];
-      if (!gameState) return;
-      const baseX = (6.2 + 0.2) * 1 + 6.6; // правее поля
-      const zA = -5.2 - META_Z_AWAY; const zB = 0.2 + META_Z_AWAY; // Важно (смещение колоды/кладбища от камеры)
-      function buildDeck(player, z) {
-        const g = new THREE.Group(); g.position.set(baseX, 0.5, z); g.userData = { metaType: 'deck', player };
-        const sideMap = (CARD_TEX && CARD_TEX.deckSide) ? CARD_TEX.deckSide : window.__cards.getCachedTexture('textures/card_deck_side_view.jpeg');
-        const backMap = (CARD_TEX && CARD_TEX.back) ? CARD_TEX.back : window.__cards.getCachedTexture('textures/card_back_main.jpeg');
-        const sideMat = new THREE.MeshStandardMaterial({ map: sideMap, color: 0xffffff, metalness: 0.3, roughness: 0.85 });
-        const body = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.8, 5.0), sideMat);
-        body.castShadow = true; body.receiveShadow = true; body.userData = { metaType: 'deck', player };
-        const top = new THREE.Mesh(new THREE.BoxGeometry(3.62, 0.04, 5.02), new THREE.MeshStandardMaterial({ map: backMap, color: 0xffffff }));
-        top.position.y = 0.42; top.userData = { metaType: 'deck', player };
-        g.add(body); g.add(top); metaGroup.add(g); deckMeshes.push(g);
-      }
-      function buildGrave(player, z) {
-        const g = new THREE.Group(); g.position.set(baseX + 4.2, 0.5, z); g.userData = { metaType: 'grave', player };
-        const base = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.3, 20), new THREE.MeshStandardMaterial({ color: 0x334155 }));
-        base.userData = { metaType: 'grave', player };
-        const icon = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x64748b }));
-        icon.position.y = 0.9; icon.rotation.y = Math.PI / 8; icon.userData = { metaType: 'grave', player };
-        g.add(base); g.add(icon); metaGroup.add(g); graveyardMeshes.push(g);
-      }
-      buildDeck(0, zA); buildDeck(1, zB); buildGrave(0, zA); buildGrave(1, zB);
-    }
-    
-    // Обработчики UI
-    document.getElementById('end-turn-btn').addEventListener('click', () => {
-      try { if (typeof window.endTurn === 'function') window.endTurn(); } catch {}
-    });
-    refreshInputLockUI();
-    document.getElementById('new-game-btn').addEventListener('click', () => location.reload());
-    document.getElementById('log-btn').addEventListener('click', () => {
-      const lp = document.getElementById('log-panel');
-      lp.classList.toggle('hidden');
-      // На всякий случай жёстко позиционируем ниже контролов
-      lp.style.top = (document.getElementById('controls').offsetHeight + 40) + 'px';
-      if (!lp.classList.contains('hidden')) lp.style.pointerEvents = 'auto';
-    });
-    document.getElementById('close-log-btn').addEventListener('click', () => {
-      document.getElementById('log-panel').classList.add('hidden');
-    });
-    document.getElementById('help-btn').addEventListener('click', () => {
-      document.getElementById('help-panel').classList.remove('hidden');
-    });
-    document.getElementById('close-help-btn').addEventListener('click', () => {
-      document.getElementById('help-panel').classList.add('hidden');
-    });
-    // Prompt handlers
-      document.getElementById('cancel-prompt-btn').addEventListener('click', () => {
-        const prompt = window.activePrompt;
-        if (prompt && typeof prompt.onCancel === 'function') {
-          try { prompt.onCancel(); } catch {}
-        }
-        window.__ui.panels.hidePrompt();
-      });
-      document.getElementById('cancel-orient-btn').addEventListener('click', () => {
-        const pp = window.__interactions.getPendingPlacement();
-        if (pp) {
-          window.__interactions.returnCardToHand(pp.card);
-        }
-        window.__ui.panels.hideOrientationPanel();
-        window.__interactions.clearPendingPlacement();
-      });
-      document.getElementById('cancel-action-btn').addEventListener('click', () => {
-        window.__interactions.clearSelectedUnit();
-        window.__ui.panels.hideUnitActionPanel();
-      });
-      // Действия в панели юнита
-      document.getElementById('rotate-cw-btn').addEventListener('click', () => {
-        const u = window.__interactions.getSelectedUnit();
-        if (u) window.__ui.actions.rotateUnit(u, 'cw');
-      });
-      document.getElementById('rotate-ccw-btn').addEventListener('click', () => {
-        const u = window.__interactions.getSelectedUnit();
-        if (u) window.__ui.actions.rotateUnit(u, 'ccw');
-      });
-      document.getElementById('attack-btn').addEventListener('click', () => {
-        const u = window.__interactions.getSelectedUnit();
-        if (u) window.__ui.actions.performUnitAttack(u);
-      });
-    
-    document.querySelectorAll('[data-dir]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const direction = btn.getAttribute('data-dir');
-        const pso = window.__interactions.getPendingSpellOrientation();
-        if (pso) {
-          const { spellCardMesh, unitMesh } = pso;
-          const idx = spellCardMesh.userData.handIndex;
-          const pl = gameState.players[gameState.active];
-          const tpl = pl.hand[idx];
-          const r = unitMesh.userData.row; const c = unitMesh.userData.col; const u = gameState.board[r][c].unit;
-          if (tpl && tpl.id === 'SPELL_BEGUILING_FOG' && u) {
-            u.facing = direction;
-            addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут в ${direction}.`);
-            pl.discard.push(tpl); pl.hand.splice(idx, 1);
-            window.__interactions.resetCardSelection(); updateHand(); updateUnits(); updateUI();
-          }
-          window.__interactions.clearPendingSpellOrientation();
-          window.__ui.panels.hideOrientationPanel();
-          return;
-        }
-        window.__interactions.placeUnitWithDirection(direction);
-      });
-    });
-    
     document.addEventListener('DOMContentLoaded', init);
 
       /* UI action helpers moved to src/ui/actions.js */

@@ -20,6 +20,9 @@ const ctx = {
   // Scene caches for units and hand cards
   unitMeshes: [],
   handCardMeshes: [],
+  // Меши колод и кладбищ (мета-объекты)
+  deckMeshes: [],
+  graveyardMeshes: [],
   // Textures cache
   TILE_TEXTURES: {},
   PROC_TILE_TEXTURES: {},
