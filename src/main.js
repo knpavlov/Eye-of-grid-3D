@@ -12,6 +12,7 @@ import * as Cards from './scene/cards.js';
 import * as Units from './scene/units.js';
 import * as Hand from './scene/hand.js';
 import { getCtx as getSceneCtx } from './scene/context.js';
+import * as Interactions from './scene/interactions.js';
 // UI modules
 import * as UINotifications from './ui/notifications.js';
 import * as UILog from './ui/log.js';
@@ -23,6 +24,7 @@ import * as Banner from './ui/banner.js';
 import * as HandCount from './ui/handCount.js';
 import { updateUI } from './ui/update.js';
 import * as UIActions from './ui/actions.js';
+import * as UIGame from './ui/game.js';
 import * as SceneEffects from './scene/effects.js';
 import * as UISpellUtils from './ui/spellUtils.js';
 import * as Spells from './spells/handlers.js';
@@ -119,6 +121,7 @@ try {
     worldToScreen: sceneWorldToScreen,
     animate: sceneAnimate,
     getCtx: getSceneCtx,
+    interactions: Interactions,
   };
   window.__board = {
     createBoard: Board.createBoard,
@@ -149,6 +152,7 @@ try {
   window.__ui.panels = UIPanels;
   window.__ui.handCount = HandCount;
   window.__ui.actions = UIActions;
+  window.__ui.game = UIGame;
   window.__ui.spellUtils = UISpellUtils;
   window.__ui.updateUI = updateUI;
   window.updateUI = updateUI;
@@ -156,6 +160,10 @@ try {
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
   window.burnSpellCard = UISpellUtils.burnSpellCard;
   window.__spells = Spells;
+  window.endTurn = UIGame.endTurn;
+  window.initGame = UIGame.initGame;
+  window.placeUnitWithDirection = UIGame.placeUnitWithDirection;
+  window.cancelPlacement = UIGame.cancelPlacement;
 } catch {}
 
 import * as UISync from './ui/sync.js';
