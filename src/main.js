@@ -13,6 +13,8 @@ import * as Units from './scene/units.js';
 import * as Hand from './scene/hand.js';
 import * as Interactions from './scene/interactions.js';
 import { getCtx as getSceneCtx } from './scene/context.js';
+import { performBattleSequence, showBattleSplash, PENDING_BATTLE_ANIMS, PENDING_RETALIATIONS, RECENT_REMOTE_DAMAGE } from './scene/battle.js';
+import { playDeltaAnimations } from './scene/delta.js';
 // UI modules
 import * as UINotifications from './ui/notifications.js';
 import * as UILog from './ui/log.js';
@@ -158,6 +160,16 @@ try {
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
   window.burnSpellCard = UISpellUtils.burnSpellCard;
   window.__spells = Spells;
+  window.performBattleSequence = performBattleSequence;
+  window.showBattleSplash = showBattleSplash;
+  window.PENDING_BATTLE_ANIMS = PENDING_BATTLE_ANIMS;
+  window.PENDING_RETALIATIONS = PENDING_RETALIATIONS;
+  window.RECENT_REMOTE_DAMAGE = RECENT_REMOTE_DAMAGE;
+  window.playDeltaAnimations = playDeltaAnimations;
+  window.forceTurnSplashWithRetry = Banner.forceTurnSplashWithRetry;
+  window.requestTurnSplash = Banner.requestTurnSplash;
+  window.queueTurnSplash = Banner.queueTurnSplash;
+  window.showTurnSplash = Banner.showTurnSplash;
 } catch {}
 
 import * as UISync from './ui/sync.js';
