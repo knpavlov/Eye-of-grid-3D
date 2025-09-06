@@ -141,150 +141,69 @@ export async function endTurn() {
   if (!g.gameState || g.gameState.winner !== null) return;
   if (typeof g.isInputLocked === 'function' && g.isInputLocked()) return;
   try {
-    if (typeof g.MY_SEAT === 'number') {
-      if (g.gameState.active !== g.MY_SEAT) { g.showNotification?.("Opponent's turn", 'error'); return; }
+    if (typeof g.MY_SEAT === 'number' && g.gameState.active !== g.MY_SEAT) {
+      g.showNotification?.("Opponent's turn", 'error');
+      return;
     }
   } catch {}
-  if (typeof g.isInputLocked === 'function' ? g.isInputLocked() : (g.manaGainActive || g.drawAnimationActive || g.splashActive)) {
+
+  if (typeof g.isInputLocked === 'function'
+    ? g.isInputLocked()
+    : (g.manaGainActive || g.drawAnimationActive || g.splashActive)) {
     g.showNotification?.('Wait for animations to complete', 'warning');
     return;
   }
+
   g.__endTurnInProgress = true;
   try { if (g.__turnTimerId) clearInterval(g.__turnTimerId); } catch {}
   g.__turnTimerSeconds = 100;
-  try {
-    const btn = g.document.getElementById('end-turn-btn');
-    if (btn) {
-      const fill = btn.querySelector('.time-fill');
-      const txt = btn.querySelector('.sec-text');
-      if (txt) txt.textContent = `${g.__turnTimerSeconds}`;
-      if (fill) fill.style.top = `0%`;
-    }
-  } catch {}
-  g.__turnTimerId = setInterval(() => {
-    if (typeof g.__turnTimerSeconds !== 'number') g.__turnTimerSeconds = 100;
-    if (g.__turnTimerSeconds > 0) g.__turnTimerSeconds -= 1;
-    try {
-      const btn = g.document.getElementById('end-turn-btn');
-      if (btn) {
-        const fill = btn.querySelector('.time-fill');
-        const txt = btn.querySelector('.sec-text');
-        const s = Math.max(0, Math.min(100, g.__turnTimerSeconds));
-        if (txt) txt.textContent = `${s}`;
-        const percent = s / 100;
-        if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
-        if (s <= 10) { btn.classList.add('urgent'); } else { btn.classList.remove('urgent'); }
-      }
-    } catch {}
-  }, 1000);
 
+  // Remember previous hand sizes to detect drawn card
+  const prevHands = g.gameState.players.map(p => p.hand.length);
+
+  // Apply core END_TURN logic
   try {
-    g.schedulePush?.('endTurn');
+    g.gameState = g.reducer(g.gameState, { type: g.A.END_TURN });
+    try { g.window && (g.window.gameState = g.gameState); } catch {}
   } catch {}
 
-  g.updateHand?.();
-  g.__scene?.interactions?.resetCardSelection?.();
-  g.updateHand?.();
-  g.updateUnits?.();
-  try { await g.forceTurnSplashWithRetry?.(2, g.gameState?.turn); } catch {}
+  const active = g.gameState.active;
+  const player = g.gameState.players[active];
+  const before = player._beforeMana ?? player.mana;
+  const manaAfter = player.mana;
+  const drewCard = player.hand.length > prevHands[active];
+  const drawnTpl = drewCard ? player.hand[player.hand.length - 1] : null;
 
-  try { if (g.__turnTimerId) clearInterval(g.__turnTimerId); } catch {}
-  g.__turnTimerSeconds = 100;
-  try {
-    const btn = g.document.getElementById('end-turn-btn');
-    if (btn) {
-      const fill = btn.querySelector('.time-fill');
-      const txt = btn.querySelector('.sec-text');
-      if (txt) txt.textContent = `${g.__turnTimerSeconds}`;
-      if (fill) fill.style.top = `0%`;
-    }
-  } catch {}
-  g.__turnTimerId = setInterval(() => {
-    if (typeof g.__turnTimerSeconds !== 'number') g.__turnTimerSeconds = 100;
-    if (g.__turnTimerSeconds > 0) g.__turnTimerSeconds -= 1;
-    try {
-      const btn = g.document.getElementById('end-turn-btn');
-      if (btn) {
-        const fill = btn.querySelector('.time-fill');
-        const txt = btn.querySelector('.sec-text');
-        const s = Math.max(0, Math.min(100, g.__turnTimerSeconds));
-        if (txt) txt.textContent = `${s}`;
-        const percent = s / 100;
-        if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
-        if (s <= 10) { btn.classList.add('urgent'); } else { btn.classList.remove('urgent'); }
-      }
-    } catch {}
-  }, 1000);
-  try { if (g.__ui && g.__ui.turnTimer) {
-    const tt = g.__ui.turnTimer.attach('end-turn-btn');
-    const online = (typeof g.NET_ON === 'function') ? g.NET_ON() : !!g.NET_ACTIVE;
-    if (online) { tt.stop(); } else { tt.reset(100).start(); }
-  } } catch {}
-
-  const player = g.gameState.players[g.gameState.active];
-  const before = player.mana;
-  const manaAfter = g.capMana(before + 2);
-  const drawnTpl = g.drawOneNoAdd(g.gameState, g.gameState.active);
-  try {
-    if (!g.PENDING_MANA_ANIM && !g.manaGainActive) {
-      g.PENDING_MANA_ANIM = { ownerIndex: g.gameState.active, startIdx: Math.max(0, Math.min(9, before)), endIdx: Math.max(-1, Math.min(9, manaAfter - 1)) };
-    }
-  } catch {}
-  try { if (g.gameState?.players?.[g.gameState.active]) { g.gameState.players[g.gameState.active]._beforeMana = before; } } catch {}
-  let shouldAnimateDraw = false;
-  try {
-    const amIActiveNow = (typeof g.MY_SEAT === 'number') ? (g.MY_SEAT === g.gameState.active) : true;
-    shouldAnimateDraw = !!(amIActiveNow && drawnTpl);
-    if (!shouldAnimateDraw && drawnTpl) {
-      try { g.gameState.players[g.gameState.active].hand.push(drawnTpl); } catch {}
-    }
-  } catch {}
-  g.updateHand?.();
-  try { g.schedulePush?.('endTurn-apply', { force: true }); } catch {}
+  // Push new state to peers
+  try { g.schedulePush?.('endTurn', { force: true }); } catch {}
 
   g.__scene?.interactions?.resetCardSelection?.();
   g.updateHand?.();
   g.updateUnits?.();
+
   try { await g.forceTurnSplashWithRetry?.(2, g.gameState?.turn); } catch {}
-  try { if (g.__turnTimerId) clearInterval(g.__turnTimerId); } catch {}
-  g.__turnTimerSeconds = 100;
+
+  // Mana gain animation
   try {
-    const btn = g.document.getElementById('end-turn-btn');
-    if (btn) {
-      const fill = btn.querySelector('.time-fill');
-      const txt = btn.querySelector('.sec-text');
-      if (txt) txt.textContent = `${g.__turnTimerSeconds}`;
-      if (fill) fill.style.top = `0%`;
+    if (g.__ui && g.__ui.mana && typeof g.__ui.mana.animateTurnManaGain === 'function') {
+      await g.__ui.mana.animateTurnManaGain(active, before, manaAfter, 1500);
     }
   } catch {}
-  g.__turnTimerId = setInterval(() => {
-    if (typeof g.__turnTimerSeconds !== 'number') g.__turnTimerSeconds = 100;
-    if (g.__turnTimerSeconds > 0) g.__turnTimerSeconds -= 1;
-    try {
-      const btn = g.document.getElementById('end-turn-btn');
-      if (btn) {
-        const fill = btn.querySelector('.time-fill');
-        const txt = btn.querySelector('.sec-text');
-        const s = Math.max(0, Math.min(100, g.__turnTimerSeconds));
-        if (txt) txt.textContent = `${s}`;
-        const percent = s / 100;
-        if (fill) fill.style.top = `${Math.round((1 - percent) * 100)}%`;
-        if (s <= 10) { btn.classList.add('urgent'); } else { btn.classList.remove('urgent'); }
-      }
-    } catch {}
-  }, 1000);
-  try { if (g.__ui && g.__ui.turnTimer) {
-    const tt = g.__ui.turnTimer.attach('end-turn-btn');
-    const online = (typeof g.NET_ON === 'function') ? g.NET_ON() : !!g.NET_ACTIVE;
-    if (online) { tt.stop(); } else { tt.reset(100).start(); }
-  } } catch {}
 
+  // Draw animation only for local player
   try {
-    const ctx = g.tileMeshes[pendingPlacement?.row]?.[pendingPlacement?.col];
-    if (ctx && shouldAnimateDraw && drawnTpl) {
-      g.animateDrawnCardToHand?.(drawnTpl);
-    } else if (drawnTpl) {
-      try { g.gameState.players[g.gameState.active].hand.push(drawnTpl); } catch {}
+    const amIActive = (typeof g.MY_SEAT === 'number') ? (g.MY_SEAT === active) : true;
+    if (amIActive && drawnTpl) {
+      await g.animateDrawnCardToHand?.(drawnTpl);
+    }
+  } catch {}
+
+  // Restart turn timer for the new player
+  try {
+    if (g.__ui && g.__ui.turnTimer) {
+      const tt = g.__ui.turnTimer.attach('end-turn-btn');
+      const online = (typeof g.NET_ON === 'function') ? g.NET_ON() : !!g.NET_ACTIVE;
+      if (online) { tt.stop(); } else { tt.reset(100).start(); }
     }
   } catch {}
 
