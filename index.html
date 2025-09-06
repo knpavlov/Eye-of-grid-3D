@@ -285,7 +285,7 @@
       return lastTurnSplashPromise;
     }
     
-    let manaGainActive = false;
+    window.manaGainActive = false;
     let PENDING_MANA_ANIM = null; // { ownerIndex, startIdx, endIdx }
     let PENDING_MANA_BLOCK = [0,0]; // by player index
 // Ожидаемая анимация маны: диапазон новых орбов, которые должны появиться синхронно со вспышкой
@@ -297,41 +297,10 @@
     let pendingRitualSpellCard = null; // ссылка на сам объект карты-спелла, чтобы скрывать по идентичности
     // Сколько последних добранных карт временно скрывать из моей руки (для красивой анимации влёта)
     let pendingDrawCount = 0;
-    function isInputLocked() {
-  const splash = (typeof window !== 'undefined' && window.__ui && window.__ui.banner)
-    ? !!window.__ui.banner.getState()._splashActive : false;
-  return (typeof __endTurnInProgress !== 'undefined' && __endTurnInProgress) ||
-         (typeof drawAnimationActive !== 'undefined' && drawAnimationActive) ||
-         splash || manaGainActive;
-}
-    function refreshInputLockUI() {
-      try {
-        const endBtn = document.getElementById('end-turn-btn');
-        if (endBtn) endBtn.disabled = isInputLocked();
-      } catch {}
-    }
     // Отступ руки по оси Z (положительное — дальше от камеры)
     const HAND_Z_OFFSET = 1.0;
     // Смещение колод/кладбищ от камеры вдоль оси Z (положительное значение — дальше от камеры)
-    const META_Z_AWAY = 1.5;
-    // 3D объекты справа (колоды/кладбища)
-    let deckMeshes = [];
-    let graveyardMeshes = [];
-    let hoveredMeta = null; // { metaType: 'deck'|'grave', player: 0|1 }
-    
-    // Состояние взаимодействия
-    let draggedCard = null;
-    let hoveredTile = null;
-    let hoveredHandCard = null;
-    let selectedCard = null;
-    let pendingPlacement = null;
-    let selectedUnit = null;
-    let magicFrom = null; // { r, c }
-    // Паузы/состояния для новых механик
-    let pendingSpellOrientation = null; // { spellCardMesh, unitMesh }
-      let pendingDiscardSelection = null; // { requiredType: 'UNIT', onPicked: function }
-      let pendingRitualBoardMesh = null; // временный меш спелла на поле
-    let spellDragHandled = false; // флаг, что возврат карты в руку уже не нужен
+    // Состояние взаимодействия перенесено в src/ui/interactions.js
 
     // === THREE.JS SCENE INITIALIZATION ===
     function initThreeJS() {
@@ -412,7 +381,6 @@
           handCardMeshes = ctx.handCardMeshes;
         }
       }
-      hoveredHandCard = null;
     }
 
     function setHandCardHoverVisual(mesh, hovered) {
@@ -536,301 +504,8 @@
     }
     // attachHpOverlay удалён, т.к. HP теперь перерисовывается на самой карте
     
-      // ====== POINTER INTERACTION HANDLERS ======
-      // Mouse move: update drag position and hand hover.
-    function onMouseMove(event) {
-      if (isInputLocked()) return;
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      
-      if (draggedCard) {
-        raycaster.setFromCamera(mouse, camera);
-        const intersects = raycaster.intersectObjects(tileMeshes.flat());
-        
-        if (hoveredTile) {
-          hoveredTile.material.emissiveIntensity = 0.1;
-        }
-        
-        if (intersects.length > 0) {
-          hoveredTile = intersects[0].object;
-          hoveredTile.material.emissiveIntensity = 0.3;
-          
-          const targetPos = hoveredTile.position.clone();
-          targetPos.y = 2;
-          gsap.to(draggedCard.position, {
-            x: targetPos.x,
-            y: targetPos.y,
-            z: targetPos.z,
-            duration: 0.1
-          });
-        } else {
-          hoveredTile = null;
-        }
-      } else {
-        // Ховер по картам в руке: увеличиваем наведённую, уменьшаем предыдущую, поднимаем над стеком
-        raycaster.setFromCamera(mouse, camera);
-        const handHits = drawAnimationActive ? [] : raycaster.intersectObjects(handCardMeshes, true);
-        const newHover = handHits.length > 0 ? (handHits[0].object.userData?.isInHand ? handHits[0].object : handHits[0].object.parent) : null;
-        if (hoveredHandCard && hoveredHandCard !== newHover) {
-          gsap.to(hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.18 });
-          setHandCardHoverVisual(hoveredHandCard, false);
-          hoveredHandCard = null;
-        }
-        if (newHover && newHover.userData && newHover.userData.isInHand) {
-          hoveredHandCard = newHover;
-          gsap.to(newHover.scale, { x: 0.675, y: 1, z: 0.675, duration: 0.18 });
-          setHandCardHoverVisual(newHover, true);
-        }
-      }
-      // Подсветка потенциальных целей при открытой панели действий юнита
-      if (selectedUnit) {
-        const r = selectedUnit.userData.row; const c = selectedUnit.userData.col;
-        const hits = computeHits(gameState, r, c);
-        // убираем прошлую подсветку
-        unitMeshes.forEach(m => { if (m.material && m.material[2]) { } });
-        // подсветим цели небольшим всплеском по Y
-        for (const h of hits) {
-          const m = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
-          if (m) gsap.to(m.position, { y: 0.7, yoyo: true, repeat: 1, duration: 0.2 });
-        }
-      }
-
-      // Tooltip для колод/кладбищ
-      {
-        raycaster.setFromCamera(mouse, camera);
-        const metaHits = raycaster.intersectObjects([...deckMeshes, ...graveyardMeshes], true);
-        const tip = document.getElementById('hover-tooltip');
-        if (metaHits.length > 0) {
-          const obj = metaHits[0].object;
-          const data = obj.userData || obj.parent?.userData || {};
-          if (data && data.metaType) {
-            const p = data.player ?? 0;
-            hoveredMeta = { metaType: data.metaType, player: p };
-            if (tip) {
-              const deckCount = gameState?.players?.[p]?.deck?.length ?? 0;
-              const gyCount = gameState?.players?.[p]?.graveyard?.length ?? 0;
-              tip.textContent = data.metaType === 'deck' ? `Deck - Player ${p===0? '1':'2'}: ${deckCount}` : `Graveyard - Player ${p===0? '1':'2'}: ${gyCount}`;
-              tip.style.left = (event.clientX + 16) + 'px';
-              tip.style.top = (event.clientY + 16) + 'px';
-              tip.classList.remove('hidden');
-            }
-          }
-        } else {
-          hoveredMeta = null;
-          const tipEl = document.getElementById('hover-tooltip');
-          if (tipEl) tipEl.classList.add('hidden');
-        }
-      }
+      // ====== POINTER INTERACTION HANDLERS ======    // Обработчики взаимодействия перенесены в src/ui/interactions.js
     }
-    
-    // Mouse down: start drag or select targets.
-    function onMouseDown(event) {
-      if (!gameState || gameState.winner !== null) return;
-      if (isInputLocked()) return;
-      
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      
-      raycaster.setFromCamera(mouse, camera);
-      
-      const handIntersects = raycaster.intersectObjects(handCardMeshes, true);
-      if (handIntersects.length > 0) {
-        const hitObj = handIntersects[0].object;
-        const card = hitObj.userData?.isInHand ? hitObj : hitObj.parent;
-        const cardData = card.userData.cardData;
-        // Если ждём ритуального дискарда — перехват клика по руке
-        if (pendingDiscardSelection && cardData && cardData.type === (pendingDiscardSelection.requiredType || cardData.type)) {
-          console.log('[HF:click] Clicked on creature card for Holy Feast', {
-            cardType: cardData.type,
-            requiredType: pendingDiscardSelection.requiredType,
-            handIdx: card.userData.handIndex,
-            NET_ACTIVE
-          });
-          const owner = gameState.players[gameState.active];
-          const handIdx = card.userData.handIndex;
-          try { 
-            console.log('[HF:click] Calling onPicked with handIdx:', handIdx);
-            pendingDiscardSelection.onPicked(handIdx); 
-          } catch (e) {
-            console.error('[HF:click] Error in onPicked:', e);
-          }
-          pendingDiscardSelection = null;
-          console.log('[HF:click] Reset pendingDiscardSelection to null');
-          return;
-        }
-        
-        if (cardData.type === 'UNIT') {
-          startCardDrag(card);
-        } else if (cardData.type === 'SPELL') {
-          // Новый принцип: спеллы разыгрываются перетаскиванием, а не кликом
-          startCardDrag(card);
-        }
-        return;
-      }
-      
-      const unitIntersects = raycaster.intersectObjects(unitMeshes, true);
-      if (unitIntersects.length > 0) {
-        const hitObj = unitIntersects[0].object;
-        let unit = hitObj;
-        while (unit && (!unit.userData || unit.userData.type !== 'unit')) unit = unit.parent;
-        if (!unit) return;
-        // если в режиме магической атаки
-        if (magicFrom) {
-          performMagicAttack(magicFrom, unit);
-          magicFrom = null;
-          return;
-        }
-        if (selectedCard && selectedCard.userData.cardData.type === 'SPELL') {
-          castSpellOnUnit(selectedCard, unit);
-        } else if (unit.userData.unitData.owner === gameState.active) {
-          selectedUnit = unit;
-          window.__ui.panels.showUnitActionPanel(unit);
-        }
-        return;
-      }
-      
-      if (selectedCard) {
-        resetCardSelection();
-      }
-      // Отмена ритуального дискарда кликом по полю
-      if (pendingDiscardSelection) {
-        try { window.__ui.panels.hidePrompt(); } catch {}
-        pendingDiscardSelection = null;
-        // Вернём визуально карту спелла, если она была перетянута
-        if (draggedCard && draggedCard.userData && draggedCard.userData.cardData && draggedCard.userData.cardData.type === 'SPELL') {
-          returnCardToHand(draggedCard);
-        }
-      }
-    }
-    
-    // Mouse up: finalize card drops or cancel drag.
-    function onMouseUp(event) {
-      if (isInputLocked()) { endCardDrag(); return; }
-      if (draggedCard) {
-        const cardData = draggedCard.userData.cardData;
-        // Определим, навели ли на юнита
-        const rect = renderer.domElement.getBoundingClientRect();
-        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-        raycaster.setFromCamera(mouse, camera);
-        const unitIntersects = raycaster.intersectObjects(unitMeshes, true);
-        let unitMesh = null;
-        if (unitIntersects.length > 0) {
-          let u = unitIntersects[0].object;
-          while (u && (!u.userData || u.userData.type !== 'unit')) u = u.parent;
-          unitMesh = u;
-        }
-        if (cardData.type === 'SPELL') {
-          // Перетаскивание спелла: каст по цели (юнит/клетка)
-          try { castSpellByDrag(draggedCard, unitMesh, hoveredTile); } catch {}
-          // Если логика каста создала бордовый меш/сожгла карту (spellDragHandled=true) — не возвращаем; иначе вернуть в руку
-          if (!spellDragHandled) {
-            returnCardToHand(draggedCard);
-          }
-          spellDragHandled = false;
-        } else if (cardData.type === 'UNIT') {
-          // Перетаскивание существа: прежняя логика размещения на пустую клетку
-          if (hoveredTile) {
-            const row = hoveredTile.userData.row;
-            const col = hoveredTile.userData.col;
-            if (gameState.board[row][col].unit) {
-              showNotification('Cell is already occupied!', 'error');
-              returnCardToHand(draggedCard);
-            } else {
-              pendingPlacement = {
-                card: draggedCard,
-                row: row,
-                col: col,
-                handIndex: draggedCard.userData.handIndex
-              };
-              window.__ui.panels.showOrientationPanel();
-            }
-          } else {
-            returnCardToHand(draggedCard);
-          }
-        }
-        endCardDrag();
-        return;
-      }
-      endCardDrag();
-    }
-    
-    // ====== CARD DRAG HELPERS ======
-    // Prepare card mesh for dragging from hand.
-    function startCardDrag(card) {
-      draggedCard = card;
-      // если карта была увеличена ховером — вернём к стандартному масштабу руки
-      if (hoveredHandCard) {
-        gsap.to(hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.1 });
-        setHandCardHoverVisual(hoveredHandCard, false);
-        hoveredHandCard = null;
-      }
-      
-      gsap.to(card.position, {
-        y: card.position.y + 1,
-        duration: 0.2,
-        ease: "power2.out"
-      });
-      
-      gsap.to(card.rotation, {
-        x: 0,
-        z: 0,
-        duration: 0.2
-      });
-      
-      gsap.to(card.scale, {
-        x: 1.1,
-        y: 1.1,
-        z: 1.1,
-        duration: 0.2
-      });
-    }
-    
-    // Clean up after drag operation finishes.
-    function endCardDrag() {
-      if (hoveredTile) {
-        hoveredTile.material.emissiveIntensity = 0.1;
-        hoveredTile = null;
-      }
-      draggedCard = null;
-    }
-    
-    // Animate card back to its original hand slot.
-    function returnCardToHand(card) {
-      gsap.to(card.position, {
-        x: card.userData.originalPosition.x,
-        y: card.userData.originalPosition.y,
-        z: card.userData.originalPosition.z,
-        duration: 0.3,
-        ease: "power2.inOut"
-      });
-      
-      gsap.to(card.rotation, {
-        x: card.userData.originalRotation.x,
-        y: card.userData.originalRotation.y,
-        z: card.userData.originalRotation.z,
-        duration: 0.3
-      });
-      
-      gsap.to(card.scale, {
-        x: card.userData && card.userData.isInHand ? 0.54 : 1,
-        y: 1,
-        z: card.userData && card.userData.isInHand ? 0.54 : 1,
-        duration: 0.3
-      });
-    }
-    
-      // Cancel currently selected card and restore its visuals.
-      function resetCardSelection() {
-        if (selectedCard) {
-          returnCardToHand(selectedCard);
-          selectedCard.material[2].emissive = new THREE.Color(0x000000);
-          selectedCard.material[2].emissiveIntensity = 0;
-          selectedCard = null;
-        }
-      }
     
     async function initGame() {
       gameState = startGame(STARTER_FIRESET, STARTER_FIRESET);
@@ -838,7 +513,7 @@
       
       // Сразу строим сцену и мета-объекты, без задержки появления
       createBoard();
-      createMetaObjects();
+        window.__scene.meta.createMetaObjects(gameState);
       updateUnits();
       updateHand();
       updateUI();
@@ -887,7 +562,7 @@
       } catch {}
       
       // Защита от преждевременного завершения хода во время анимаций
-      if (typeof isInputLocked === 'function' ? isInputLocked() : (manaGainActive || drawAnimationActive || splashActive)) {
+      if (typeof isInputLocked === 'function' ? isInputLocked() : (window.manaGainActive || drawAnimationActive || splashActive)) {
         showNotification('Wait for animations to complete', 'warning');
         return;
       }
@@ -984,7 +659,7 @@
       // ВАЖНО: НЕ применяем ману к gameState до анимации - это предотвратит появление орбов до вспышки
       // Заблокировать преждевременное появление новых орбов до анимации вспышки
       try { 
-        if (!PENDING_MANA_ANIM && !manaGainActive) {
+        if (!PENDING_MANA_ANIM && !window.manaGainActive) {
           PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = { ownerIndex: gameState.active, startIdx: Math.max(0, Math.min(9, before)), endIdx: Math.max(-1, Math.min(9, manaAfter - 1)) }; 
         }
       } catch {}
@@ -1005,7 +680,7 @@
       // Offline: locally apply state, online path returned earlier
       try { schedulePush('endTurn-apply', { force: true }); } catch {}
       
-      resetCardSelection();
+      window.__ui.interactions.resetCardSelection();
       
       updateHand();
       updateUnits();
@@ -1079,22 +754,23 @@
       
       // Гарантированная разблокировка ввода
       __endTurnInProgress = false;
-      manaGainActive = false;
+      window.manaGainActive = false;
       refreshInputLockUI();
     }
     // Resolve unit card placement on board after choosing orientation.
     function placeUnitWithDirection(direction) {
+      const pendingPlacement = window.__ui.interactions.getPendingPlacement();
       if (!pendingPlacement) return;
-      
+
       const { card, row, col, handIndex } = pendingPlacement;
       const cardData = card.userData.cardData;
       const player = gameState.players[gameState.active];
       
         if (cardData.cost > player.mana) {
           showNotification('Insufficient mana!', 'error');
-          returnCardToHand(card);
+          window.__ui.interactions.returnCardToHand(card);
           window.__ui.panels.hideOrientationPanel();
-          pendingPlacement = null;
+          window.__ui.interactions.clearPendingPlacement();
           return;
         }
       
@@ -1162,7 +838,7 @@
       
         addLog(`${player.name} призывает ${cardData.name} на (${row + 1},${col + 1})`);
         window.__ui.panels.hideOrientationPanel();
-        pendingPlacement = null;
+        window.__ui.interactions.clearPendingPlacement();
       }
     
     function animate() {
@@ -1190,17 +866,8 @@
       animate();
       initGame();
       
-      // Привязка обработчиков взаимодействия с трёхмерным полем и картами
-      renderer.domElement.addEventListener('mousemove', onMouseMove);
-      renderer.domElement.addEventListener('mousedown', onMouseDown);
-      renderer.domElement.addEventListener('mouseup', onMouseUp);
-      renderer.domElement.addEventListener('mouseleave', () => {
-        if (hoveredHandCard) {
-          gsap.to(hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.18 });
-          setHandCardHoverVisual(hoveredHandCard, false);
-          hoveredHandCard = null;
-        }
-      });
+      // Привязка обработчиков взаимодействия с трёхмерным полем и картами перенесена в модуль
+      try { window.__ui.interactions.attach(renderer.domElement); } catch {}
     }
     try { window.init = init; window.initThreeJS = initThreeJS; window.initGame = initGame; window.animate = animate; } catch {}
 
@@ -1208,274 +875,7 @@
     try { showNotification = (message, type) => window.__ui.notifications.show(message, type); } catch {}
     try { addLog = (message) => window.__ui.log.add(message); } catch {}
     try { animateManaGainFromWorld = (pos, ownerIndex, visualOnly) => window.__ui.mana.animateManaGainFromWorld(pos, ownerIndex, visualOnly); } catch {}
-    // animateTurnManaGain теперь вызывается напрямую через модуль
-      
-
-    function createMetaObjects() {
-      // Очистить предыдущие
-      deckMeshes.forEach(m => m.parent && m.parent.remove(m));
-      graveyardMeshes.forEach(m => m.parent && m.parent.remove(m));
-      deckMeshes = []; graveyardMeshes = [];
-      if (!gameState) return;
-      const baseX = (6.2 + 0.2) * 1 + 6.6; // правее поля
-      const zA = -5.2 - META_Z_AWAY; const zB = 0.2 + META_Z_AWAY; // Важно (смещение колоды/кладбища от камеры)
-      function buildDeck(player, z) {
-        const g = new THREE.Group(); g.position.set(baseX, 0.5, z); g.userData = { metaType: 'deck', player };
-        const sideMap = (CARD_TEX && CARD_TEX.deckSide) ? CARD_TEX.deckSide : window.__cards.getCachedTexture('textures/card_deck_side_view.jpeg');
-        const backMap = (CARD_TEX && CARD_TEX.back) ? CARD_TEX.back : window.__cards.getCachedTexture('textures/card_back_main.jpeg');
-        const sideMat = new THREE.MeshStandardMaterial({ map: sideMap, color: 0xffffff, metalness: 0.3, roughness: 0.85 });
-        const body = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.8, 5.0), sideMat);
-        body.castShadow = true; body.receiveShadow = true; body.userData = { metaType: 'deck', player };
-        const top = new THREE.Mesh(new THREE.BoxGeometry(3.62, 0.04, 5.02), new THREE.MeshStandardMaterial({ map: backMap, color: 0xffffff }));
-        top.position.y = 0.42; top.userData = { metaType: 'deck', player };
-        g.add(body); g.add(top); metaGroup.add(g); deckMeshes.push(g);
-      }
-      function buildGrave(player, z) {
-        const g = new THREE.Group(); g.position.set(baseX + 4.2, 0.5, z); g.userData = { metaType: 'grave', player };
-        const base = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.3, 20), new THREE.MeshStandardMaterial({ color: 0x334155 }));
-        base.userData = { metaType: 'grave', player };
-        const icon = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x64748b }));
-        icon.position.y = 0.9; icon.rotation.y = Math.PI / 8; icon.userData = { metaType: 'grave', player };
-        g.add(base); g.add(icon); metaGroup.add(g); graveyardMeshes.push(g);
-      }
-      buildDeck(0, zA); buildDeck(1, zB); buildGrave(0, zA); buildGrave(1, zB);
-    }
-    
-    // Обработчики UI
-    document.getElementById('end-turn-btn').addEventListener('click', () => {
-      try { if (typeof window.endTurn === 'function') window.endTurn(); } catch {}
-    });
-    refreshInputLockUI();
-    document.getElementById('new-game-btn').addEventListener('click', () => location.reload());
-    document.getElementById('log-btn').addEventListener('click', () => {
-      const lp = document.getElementById('log-panel');
-      lp.classList.toggle('hidden');
-      // На всякий случай жёстко позиционируем ниже контролов
-      lp.style.top = (document.getElementById('controls').offsetHeight + 40) + 'px';
-      if (!lp.classList.contains('hidden')) lp.style.pointerEvents = 'auto';
-    });
-    document.getElementById('close-log-btn').addEventListener('click', () => {
-      document.getElementById('log-panel').classList.add('hidden');
-    });
-    document.getElementById('help-btn').addEventListener('click', () => {
-      document.getElementById('help-panel').classList.remove('hidden');
-    });
-    document.getElementById('close-help-btn').addEventListener('click', () => {
-      document.getElementById('help-panel').classList.add('hidden');
-    });
-    // Prompt handlers
-      document.getElementById('cancel-prompt-btn').addEventListener('click', () => {
-        const prompt = window.activePrompt;
-        if (prompt && typeof prompt.onCancel === 'function') {
-          try { prompt.onCancel(); } catch {}
-        }
-        window.__ui.panels.hidePrompt();
-      });
-      document.getElementById('cancel-orient-btn').addEventListener('click', () => {
-        if (pendingPlacement) {
-          returnCardToHand(pendingPlacement.card);
-        }
-        window.__ui.panels.hideOrientationPanel();
-        pendingPlacement = null;
-      });
-        document.getElementById('cancel-action-btn').addEventListener('click', () => { selectedUnit = null; window.__ui.panels.hideUnitActionPanel(); });
-      // Действия в панели юнита
-      document.getElementById('rotate-cw-btn').addEventListener('click', () => {
-        if (selectedUnit) window.__ui.actions.rotateUnit(selectedUnit, 'cw');
-      });
-    document.getElementById('rotate-ccw-btn').addEventListener('click', () => {
-      if (selectedUnit) window.__ui.actions.rotateUnit(selectedUnit, 'ccw');
-    });
-    document.getElementById('attack-btn').addEventListener('click', () => {
-      if (selectedUnit) window.__ui.actions.performUnitAttack(selectedUnit);
-    });
-    
-    document.querySelectorAll('[data-dir]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        // Явное соответствие символов на кнопках и направлений
-        const direction = btn.getAttribute('data-dir'); // 'N' | 'E' | 'S' | 'W'
-        // Если ожидается выбор направления для спелла — применим его и завершим
-        if (pendingSpellOrientation) {
-          const { spellCardMesh, unitMesh } = pendingSpellOrientation;
-          const idx = spellCardMesh.userData.handIndex;
-          const pl = gameState.players[gameState.active];
-          const tpl = pl.hand[idx];
-          const r = unitMesh.userData.row; const c = unitMesh.userData.col; const u = gameState.board[r][c].unit;
-          if (tpl && tpl.id === 'SPELL_BEGUILING_FOG' && u) {
-            u.facing = direction;
-            addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут в ${direction}.`);
-            pl.discard.push(tpl); pl.hand.splice(idx, 1);
-            resetCardSelection(); updateHand(); updateUnits(); updateUI();
-          }
-            pendingSpellOrientation = null; window.__ui.panels.hideOrientationPanel();
-            return;
-          }
-        // Иначе — штатное размещение юнита
-        if (direction === 'N') return placeUnitWithDirection('N');
-        if (direction === 'E') return placeUnitWithDirection('E');
-        if (direction === 'S') return placeUnitWithDirection('S');
-        if (direction === 'W') return placeUnitWithDirection('W');
-      });
-    });
-    
-    document.addEventListener('DOMContentLoaded', init);
-
-      /* UI action helpers moved to src/ui/actions.js */
-    
-    /* MODULE: core/battleSequence
-       Combines combat resolution, animations and network sync.
-       Split into logic (src/core/battle.js), FX (src/scene/battleFx.js)
-       and net sync (src/net/battleSync.js). */
-    async function performBattleSequence(r, c, markAttackTurn) {
-      const staged = stagedAttack(gameState, r, c);
-      if (!staged || staged.empty) return;
-      // flashy заставка BATTLE (сокращённая)
-      await showBattleSplash();
-      // небольшая анимация выпада/толчка
-      const aMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-      const hitsPrev = (staged.targetsPreview || computeHits(gameState, r, c));
-      const fromPos = (aMesh ? aMesh.position.clone() : tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 0.8, 0)));
-
-      const doStep1 = () => {
-        // Убраны жёлтые лучи/стрелки под картами
-        // Применяем урон (этап 1) и перерисовываем юниты
-        staged.step1();
-        gameState = staged.n1; updateUnits();
-        // Тряска и всплывающий урон — уже по актуальным мешам после обновления
-        for (const h of hitsPrev) {
-          const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
-          if (tMesh) { 
-            window.__fx.shakeMesh(tMesh, 6, 0.12); 
-            window.__fx.spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555');
-          }
-        }
-        setTimeout(async () => {
-          // Сокращённая пауза перед контратакой
-          await sleep(700);
-          const ret = staged.step2() || { total: 0, retaliators: [] };
-          const retaliation = typeof ret === 'number' ? ret : (ret.total || 0);
-          let animDelayMs = 0;
-          if (retaliation > 0) {
-            // Выпад всех контратакующих
-            const retaliators = (ret.retaliators || []);
-            let maxDur = 0;
-            for (const rrObj of retaliators) {
-              const rMesh = unitMeshes.find(m => m.userData.row === rrObj.r && m.userData.col === rrObj.c);
-              // Пересчитаем актуальный меш атакующего после обновления юнитов
-              const aMeshLive = unitMeshes.find(m => m.userData.row === r && m.userData.col === c) || aMesh;
-              if (rMesh && aMeshLive) {
-                const dir2 = new THREE.Vector3().subVectors(aMeshLive.position, rMesh.position).normalize();
-                const push2 = { x: dir2.x * 0.6, z: dir2.z * 0.6 };
-                const tl2 = gsap.timeline();
-                tl2.to(rMesh.position, { x: `+=${push2.x}`, z: `+=${push2.z}`, duration: 0.22, ease: 'power2.out' })
-                   .to(rMesh.position, { x: `-=${push2.x}`, z: `-=${push2.z}`, duration: 0.30, ease: 'power2.inOut' });
-                maxDur = Math.max(maxDur, 0.52);
-              }
-            }
-            // После лунжей контратаки — тряска и числа урона по атакующему
-            setTimeout(() => { 
-              const aLive = unitMeshes.find(m => m.userData.row === r && m.userData.col === c) || aMesh; 
-              if (aLive) { 
-                window.__fx.shakeMesh(aLive, 6, 0.14); 
-                window.__fx.spawnDamageText(aLive, `-${retaliation}`, '#ffd166');
-              } 
-            }, Math.max(0, maxDur * 1000 - 10));
-            animDelayMs = Math.max(animDelayMs, Math.floor(maxDur * 1000) + 160);
-            // Синхронизация контратаки для наблюдателя
-            try {
-              const shouldSend = (typeof window !== 'undefined' && window.socket && (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) && (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active);
-              console.log('[battleRetaliation] Checking if should send:', {
-                hasWindow: typeof window !== 'undefined',
-                hasSocket: !!(typeof window !== 'undefined' && window.socket),
-                NET_ACTIVE: typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : 'undefined',
-                MY_SEAT: typeof MY_SEAT !== 'undefined' ? MY_SEAT : 'undefined',
-                gameStateActive: gameState.active,
-                seatMatches: (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active,
-                shouldSend,
-                retaliation
-              });
-              if (shouldSend) {
-                window.socket.emit('battleRetaliation', {
-                  attacker: { r, c },
-                  retaliators: retaliators.map(x => ({ r: x.r, c: x.c })),
-                  total: retaliation,
-                  bySeat: typeof window.MY_SEAT === 'number' ? window.MY_SEAT : null
-                });
-                console.log('[battleRetaliation] Sent battleRetaliation event', { attacker: { r, c }, retaliators: retaliators.length, total: retaliation });
-              }
-            } catch (e) {
-              console.error('[battleRetaliation] Error sending battleRetaliation:', e);
-            }
-          }
-          // Финализация: анимация смерти и орбы перед применением состояния
-          const res = staged.finish();
-          if (res.deaths && res.deaths.length) {
-            for (const d of res.deaths) {
-              try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
-              const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
-              if (deadMesh) {
-                const fromMesh = aMesh || deadMesh;
-                const dirUp = new THREE.Vector3().subVectors(deadMesh.position, fromMesh.position).normalize().multiplyScalar(0.4);
-                window.__fx.dissolveAndAsh(deadMesh, dirUp, 0.9);
-              }
-              // Орб маны появляется с задержкой 400мс после начала анимации смерти
-              setTimeout(() => {
-                const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.6, 0));
-                // Показать визуальный орб у обоих игроков; фактическое начисление маны уже в res.n1
-                animateManaGainFromWorld(p, d.owner, true);
-              }, 400);
-            }
-            setTimeout(() => { gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {} }, 1000);
-          } else {
-            // Если смертей нет — подождём, пока анимация контратаки завершится, затем применим состояние
-            setTimeout(() => {
-              gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {}
-            }, Math.max(0, animDelayMs));
-          }
-        }, 420);
-      };
-
-      // Выпад атакующего перед применением урона
-      if (aMesh && hitsPrev.length) {
-        const firstTargetMesh = unitMeshes.find(m => m.userData.row === hitsPrev[0].r && m.userData.col === hitsPrev[0].c);
-        if (firstTargetMesh) {
-          const dir = new THREE.Vector3().subVectors(firstTargetMesh.position, aMesh.position).normalize();
-          const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
-          const tl = gsap.timeline({ onComplete: doStep1 });
-          tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
-            .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.3, ease: 'power2.inOut' });
-          // Онлайновая синхронизация выпадов (атакующий и цели)
-          try {
-            const shouldSend = (typeof window !== 'undefined' && window.socket && (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) && (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active);
-            console.log('[battleAnim] Checking if should send:', {
-              hasWindow: typeof window !== 'undefined',
-              hasSocket: !!(typeof window !== 'undefined' && window.socket),
-              NET_ACTIVE: typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : 'undefined',
-              MY_SEAT: typeof MY_SEAT !== 'undefined' ? MY_SEAT : 'undefined',
-              gameStateActive: gameState.active,
-              seatMatches: (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active,
-              shouldSend
-            });
-            if (shouldSend) {
-              window.socket.emit('battleAnim', {
-                attacker: { r, c },
-                targets: hitsPrev.map(h => ({ r: h.r, c: h.c, dmg: h.dmg })),
-                bySeat: typeof window.MY_SEAT === 'number' ? window.MY_SEAT : null
-              });
-              console.log('[battleAnim] Sent battleAnim event', { attacker: { r, c }, targets: hitsPrev.length });
-            }
-          } catch (e) {
-            console.error('[battleAnim] Error sending battleAnim:', e);
-          }
-        } else {
-          gsap.to(aMesh.position, { y: aMesh.position.y + 0.25, yoyo: true, repeat: 1, duration: 0.2, onComplete: doStep1 });
-        }
-      } else {
-        doStep1();
-      }
-    }
-
-    /* Scene effects moved to src/scene/effects.js */
+    // animateTurnManaGain теперь вызывается напрямую через модуль    /* Scene effects moved to src/scene/effects.js */
     function performMagicAttack(from, targetMesh) {
       const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
       const res = magicAttack(gameState, from.r, from.c, tr, tc);
@@ -1525,6 +925,87 @@
         try { schedulePush('magic-battle-finish'); } catch {}
       }
     }
+
+    // Обработчики UI
+    document.getElementById('end-turn-btn').addEventListener('click', () => {
+      try { if (typeof window.endTurn === 'function') window.endTurn(); } catch {}
+    });
+    refreshInputLockUI();
+    document.getElementById('new-game-btn').addEventListener('click', () => location.reload());
+    document.getElementById('log-btn').addEventListener('click', () => {
+      const lp = document.getElementById('log-panel');
+      lp.classList.toggle('hidden');
+      lp.style.top = (document.getElementById('controls').offsetHeight + 40) + 'px';
+      if (!lp.classList.contains('hidden')) lp.style.pointerEvents = 'auto';
+    });
+    document.getElementById('close-log-btn').addEventListener('click', () => {
+      document.getElementById('log-panel').classList.add('hidden');
+    });
+    document.getElementById('help-btn').addEventListener('click', () => {
+      document.getElementById('help-panel').classList.remove('hidden');
+    });
+    document.getElementById('close-help-btn').addEventListener('click', () => {
+      document.getElementById('help-panel').classList.add('hidden');
+    });
+    document.getElementById('cancel-prompt-btn').addEventListener('click', () => {
+      const prompt = window.activePrompt;
+      if (prompt && typeof prompt.onCancel === 'function') {
+        try { prompt.onCancel(); } catch {}
+      }
+      window.__ui.panels.hidePrompt();
+    });
+    document.getElementById('cancel-orient-btn').addEventListener('click', () => {
+      const pp = window.__ui.interactions.getPendingPlacement();
+      if (pp) {
+        window.__ui.interactions.returnCardToHand(pp.card);
+        window.__ui.interactions.clearPendingPlacement();
+      }
+      window.__ui.panels.hideOrientationPanel();
+    });
+    document.getElementById('cancel-action-btn').addEventListener('click', () => {
+      window.__ui.interactions.clearSelectedUnit();
+      window.__ui.panels.hideUnitActionPanel();
+    });
+    document.getElementById('rotate-cw-btn').addEventListener('click', () => {
+      const su = window.__ui.interactions.getSelectedUnit();
+      if (su) window.__ui.actions.rotateUnit(su, 'cw');
+    });
+    document.getElementById('rotate-ccw-btn').addEventListener('click', () => {
+      const su = window.__ui.interactions.getSelectedUnit();
+      if (su) window.__ui.actions.rotateUnit(su, 'ccw');
+    });
+    document.getElementById('attack-btn').addEventListener('click', () => {
+      const su = window.__ui.interactions.getSelectedUnit();
+      if (su) window.__ui.actions.performUnitAttack(su);
+    });
+    document.querySelectorAll('[data-dir]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const direction = btn.getAttribute('data-dir');
+        const pendingSpellOrientation = window.__ui.interactions.getPendingSpellOrientation();
+        if (pendingSpellOrientation) {
+          const { spellCardMesh, unitMesh } = pendingSpellOrientation;
+          const idx = spellCardMesh.userData.handIndex;
+          const pl = gameState.players[gameState.active];
+          const tpl = pl.hand[idx];
+          const r = unitMesh.userData.row; const c = unitMesh.userData.col; const u = gameState.board[r][c].unit;
+          if (tpl && tpl.id === 'SPELL_BEGUILING_FOG' && u) {
+            u.facing = direction;
+            addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут в ${direction}.`);
+            pl.discard.push(tpl); pl.hand.splice(idx, 1);
+            window.__ui.interactions.resetCardSelection(); updateHand(); updateUnits(); updateUI();
+            window.__ui.interactions.clearPendingSpellOrientation(); window.__ui.panels.hideOrientationPanel();
+            return;
+          }
+        }
+        if (direction === 'N') return placeUnitWithDirection('N');
+        if (direction === 'E') return placeUnitWithDirection('E');
+        if (direction === 'S') return placeUnitWithDirection('S');
+        if (direction === 'W') return placeUnitWithDirection('W');
+      });
+    });
+
+    document.addEventListener('DOMContentLoaded', init);
+
     // Вспомогательные утилиты: задержка и яркая заставка BATTLE на 3 секунды
     function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
     async function showBattleSplash() {
@@ -1609,10 +1090,10 @@
     function castSpellOnUnit(cardMesh, unitMesh) {
       const idx = cardMesh.userData.handIndex;
       const pl = gameState.players[gameState.active];
-      if (idx == null || idx < 0 || idx >= pl.hand.length) { resetCardSelection(); return; }
+      if (idx == null || idx < 0 || idx >= pl.hand.length) { window.__ui.interactions.resetCardSelection(); return; }
       const tpl = pl.hand[idx];
-      if (!tpl || tpl.type !== 'SPELL') { resetCardSelection(); return; }
-      if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); resetCardSelection(); return; }
+      if (!tpl || tpl.type !== 'SPELL') { window.__ui.interactions.resetCardSelection(); return; }
+      if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); window.__ui.interactions.resetCardSelection(); return; }
       const r = unitMesh.userData.row;
       const c = unitMesh.userData.col;
       const u = gameState.board[r][c].unit;

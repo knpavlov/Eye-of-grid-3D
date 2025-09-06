@@ -27,6 +27,9 @@ import * as SceneEffects from './scene/effects.js';
 import * as UISpellUtils from './ui/spellUtils.js';
 import * as Spells from './spells/handlers.js';
 import './ui/statusChip.js';
+import * as InputLock from './ui/inputLock.js';
+import * as Interactions from './ui/interactions.js';
+import * as SceneMeta from './scene/meta.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -120,6 +123,7 @@ try {
     animate: sceneAnimate,
     getCtx: getSceneCtx,
   };
+  window.__scene.meta = SceneMeta;
   window.__board = {
     createBoard: Board.createBoard,
     getTileMaterial: Board.getTileMaterial,
@@ -156,6 +160,11 @@ try {
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
   window.burnSpellCard = UISpellUtils.burnSpellCard;
   window.__spells = Spells;
+  window.isInputLocked = InputLock.isInputLocked;
+  window.refreshInputLockUI = InputLock.refreshInputLockUI;
+  window.__ui.inputLock = InputLock;
+  window.__ui.interactions = Interactions;
+  window.returnCardToHand = Interactions.returnCardToHand;
 } catch {}
 
 import * as UISync from './ui/sync.js';
