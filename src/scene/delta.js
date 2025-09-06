@@ -36,7 +36,8 @@ export function playDeltaAnimations(prevState, nextState) {
               window.__fx?.dissolveAndAsh(ghost, new window.THREE.Vector3(0,0,0.6), 0.9);
             }
             const p = tile.position.clone().add(new window.THREE.Vector3(0, 1.2, 0));
-            animateManaGainFromWorld?.(p, pu.owner, true);
+            const slot = (prevState?.players?.[pu.owner]?.mana ?? 0);
+            animateManaGainFromWorld?.(p, pu.owner, true, slot);
             try {
               if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') {
                 gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1);

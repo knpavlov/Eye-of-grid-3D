@@ -332,7 +332,8 @@ function performMagicAttack(from, targetMesh) {
       if (deadMesh) { window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9); }
       setTimeout(() => {
         const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-        window.animateManaGainFromWorld(p, d.owner, true);
+        const slot = gameState.players?.[d.owner]?.mana || 0;
+        window.animateManaGainFromWorld(p, d.owner, true, slot);
       }, 400);
     }
     setTimeout(() => {
@@ -434,7 +435,8 @@ export function placeUnitWithDirection(direction) {
     const ctx = getCtx();
     const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
     const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-    window.animateManaGainFromWorld(pos, owner);
+    const slot = gameState.players?.[owner]?.mana || 0;
+    window.animateManaGainFromWorld(pos, owner, true, slot);
     gameState.board[row][col].unit = null;
   }
   const ctx = getCtx();

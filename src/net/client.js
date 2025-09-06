@@ -297,7 +297,7 @@
       try { updateInputLock(); } catch {}
       // Сначала переcоберём доску/мета-объекты, затем юниты и UI (исправляет мерцание рамок)
       try{ createBoard && createBoard(); }catch{}
-      try{ createMetaObjects && createMetaObjects(); }catch{}
+      try{ createMetaObjects && createMetaObjects(gameState); }catch{}
       // Defer unit rebuild during remote lunge animation to avoid canceling the push
       try {
         const now = Date.now();
