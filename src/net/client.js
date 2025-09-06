@@ -415,6 +415,13 @@
               console.error('[NETWORK] Mana animation failed:', e);
             }
           }
+          // На случай если анимация была пропущена или оборвалась — очищаем вспомогательные флаги
+          try {
+            if (typeof window !== 'undefined' && window.gameState && window.gameState.players && window.gameState.players[owner]) {
+              delete window.gameState.players[owner]._beforeMana;
+            }
+            if (typeof window !== 'undefined') window.PENDING_MANA_ANIM = null;
+          } catch {}
         }
       } catch (e) {
         console.error('[NETWORK] Error processing new turn:', e);
@@ -422,8 +429,13 @@
       // Анимация добора у приёмника (только для своей руки)
       try {
         const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
-        if (mySeat !== null && prev && prev.players && state.players) {
-          const prevHand = (prev.players[mySeat]?.hand) || [];
+        if (mySeat !== null && state.players) {
+          let prevHand = [];
+          if (prev && prev.players) {
+            prevHand = (prev.players[mySeat]?.hand) || [];
+          } else if (typeof window !== 'undefined' && window.__lastHandsSeen && Array.isArray(window.__lastHandsSeen[mySeat])) {
+            prevHand = window.__lastHandsSeen[mySeat].slice();
+          }
           const nextHand = (state.players[mySeat]?.hand) || [];
           const delta = Math.max(0, nextHand.length - prevHand.length);
           if (delta > 0) {
@@ -455,6 +467,9 @@
           if (!window.__lastManaSeen) window.__lastManaSeen = [0,0];
           try { window.__lastManaSeen[0] = Number(state.players?.[0]?.mana || 0); } catch {}
           try { window.__lastManaSeen[1] = Number(state.players?.[1]?.mana || 0); } catch {}
+          if (!window.__lastHandsSeen) window.__lastHandsSeen = [[],[]];
+          try { window.__lastHandsSeen[0] = (state.players?.[0]?.hand || []).slice(); } catch {}
+          try { window.__lastHandsSeen[1] = (state.players?.[1]?.hand || []).slice(); } catch {}
         }
       } catch {}
     } finally {

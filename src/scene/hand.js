@@ -122,6 +122,10 @@ export async function animateDrawnCardToHand(cardTpl) {
   const THREE = getTHREE();
   const { cardGroup, camera } = ctx;
 
+  // Если предыдущая анимация по какой-то причине не очистила флаг — сбрасываем его
+  if (typeof window !== 'undefined' && window.drawAnimationActive) {
+    window.drawAnimationActive = false;
+  }
   if (typeof window !== 'undefined') window.drawAnimationActive = true;
   try { if (typeof window !== 'undefined' && window.refreshInputLockUI) window.refreshInputLockUI(); } catch {}
 

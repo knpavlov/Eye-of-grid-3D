@@ -158,11 +158,19 @@ export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true) {
 export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationMs = 1500) {
   return new Promise(resolve => {
     try {
-      // Проверяем, не идет ли уже анимация
+      // Проверяем, не "застряла" ли предыдущая анимация
       if (getManaGainActive()) {
-        console.warn('Mana animation already in progress, skipping');
-        resolve();
-        return;
+        // Иногда флаг может остаться из-за ошибки — принудительно очищаем его
+        console.warn('Mana animation already in progress, forcing cleanup');
+        setManaGainActive(false);
+        setAnim(null);
+        try {
+          if (typeof window !== 'undefined' && window.gameState && window.gameState.players && window.gameState.players[ownerIndex]) {
+            delete window.gameState.players[ownerIndex]._beforeMana;
+          }
+        } catch {}
+        try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+        // После очистки продолжаем запуск новой анимации
       }
       
       console.log(`[MANA] Starting animation for player ${ownerIndex}: ${beforeMana} -> ${afterMana}`);
@@ -180,8 +188,16 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
       const bar = document.getElementById(`mana-display-${ownerIndex}`);
       if (!bar) {
         console.warn(`[MANA] Mana display not found for player ${ownerIndex}`);
+        // Очищаем все флаги, чтобы UI не "завис" в предыдущем состоянии
         setManaGainActive(false);
+        setAnim(null);
+        try {
+          if (typeof window !== 'undefined' && window.gameState && window.gameState.players && window.gameState.players[ownerIndex]) {
+            delete window.gameState.players[ownerIndex]._beforeMana;
+          }
+        } catch {}
         try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
+        try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
         resolve();
         return;
       }
