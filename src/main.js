@@ -129,6 +129,9 @@ try {
     updateTileMaterialsFor: Board.updateTileMaterialsFor,
     createProceduralTileTexture: Board.createProceduralTileTexture,
   };
+  // legacy global aliases (until inline script fully refactored)
+  window.createBoard = Board.createBoard;
+  window.updateTileMaterialsFor = Board.updateTileMaterialsFor;
   window.__cards = {
     getCachedTexture: Cards.getCachedTexture,
     preloadCardTextures: Cards.preloadCardTextures,
@@ -138,11 +141,15 @@ try {
   window.__units = {
     updateUnits: Units.updateUnits,
   };
+  window.updateUnits = Units.updateUnits;
   window.__hand = {
     setHandCardHoverVisual: Hand.setHandCardHoverVisual,
     updateHand: Hand.updateHand,
     animateDrawnCardToHand: Hand.animateDrawnCardToHand,
   };
+  window.setHandCardHoverVisual = Hand.setHandCardHoverVisual;
+  window.updateHand = Hand.updateHand;
+  window.animateDrawnCardToHand = Hand.animateDrawnCardToHand;
   window.__ui = window.__ui || {};
   window.__ui.turnTimer = TurnTimer;
   window.__ui.banner = Banner;
