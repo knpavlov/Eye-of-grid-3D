@@ -3,10 +3,11 @@
 let deckMeshes = [];
 let graveyardMeshes = [];
 
-export function createMetaObjects(gameState) {
+export function createMetaObjects(gs) {
   try {
     const THREE = window.THREE;
     const metaGroup = window.metaGroup || window.__scene?.getCtx?.().metaGroup;
+    const gameState = gs || (typeof window !== 'undefined' ? window.gameState : null);
     deckMeshes.forEach(m => m.parent && m.parent.remove(m));
     graveyardMeshes.forEach(m => m.parent && m.parent.remove(m));
     deckMeshes = []; graveyardMeshes = [];

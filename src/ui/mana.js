@@ -77,21 +77,23 @@ export function renderBars(gameState) {
   }
 }
 
-export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true) {
+export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true, targetSlot = null) {
   try {
     const start = worldToScreen(pos);
     const barEl = document.getElementById(`mana-display-${ownerIndex}`);
     if (!barEl) return;
     const gameState = (typeof window !== 'undefined') ? window.gameState : null;
     
-    // Более точное вычисление целевого индекса с учетом блокировок и текущего состояния
+    // Текущее количество маны и блокировок
     let currentMana = Math.max(0, (gameState?.players?.[ownerIndex]?.mana) || 0);
     const currentBlocks = Math.max(0, Number(getBlocks()?.[ownerIndex]) || 0);
-    
-    // Исправление: для visualOnly анимации нужно учесть уже запланированные блокировки
-    // и лететь в правильную позицию с учетом реального количества орбов на экране
+
+    // Итоговый целевой индекс слота маны
     let targetIdx;
-    if (visualOnly) {
+    if (typeof targetSlot === 'number') {
+      // Явно заданный слот имеет приоритет
+      targetIdx = Math.max(0, Math.min(9, targetSlot));
+    } else if (visualOnly) {
       // Показываем визуально в следующем свободном слоте, учитывая существующие блокировки
       try {
         const filledNow = Array.from(barEl.children).filter(el => el && el.classList && el.classList.contains('mana-orb')).length;
