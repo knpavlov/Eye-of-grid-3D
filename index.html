@@ -545,7 +545,13 @@
                 animateManaGainFromWorld(p, d.owner, true);
               }, 400);
             }
-            setTimeout(() => { gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {} }, 1000);
+            gameState = res.n1;
+            if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
+            setTimeout(() => {
+              updateUnits(); updateUI();
+              for (const l of res.logLines.reverse()) addLog(l);
+              try { schedulePush('battle-finish'); } catch {}
+            }, 1000);
           } else {
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем применим состояние
             setTimeout(() => {
@@ -600,7 +606,6 @@
       const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
       const res = magicAttack(gameState, from.r, from.c, tr, tc);
       if (!res) { showNotification('Incorrect target', 'error'); return; }
-      // Не обновляем состояние немедленно, чтобы дать пройти анимации смерти
       for (const l of res.logLines.reverse()) addLog(l);
       const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
       if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
@@ -620,22 +625,22 @@
           window.__fx.spawnDamageText(tMesh, `-${res.dmg}`, '#ff5555');
         }
       }
-      // Манасфера и кладбище для погибших от магии; откладываем перерисовку до конца дизолва
+      // Манасфера и кладбище для погибших от магии; обновляем состояние сразу
       if (res.deaths && res.deaths.length) {
         for (const d of res.deaths) {
           try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
           const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
           if (deadMesh) { window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9); }
-          // Орб маны появляется с задержкой 400мс после начала анимации смерти
           setTimeout(() => {
             const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
             // Только визуальный орб; фактическое начисление — в res.n1
             animateManaGainFromWorld(p, d.owner, true);
           }, 400);
         }
+        gameState = res.n1;
+        const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
         setTimeout(() => {
-          gameState = res.n1; updateUnits(); updateUI();
-          const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
+          updateUnits(); updateUI();
           try { schedulePush('magic-battle-finish'); } catch {}
         }, 1000);
       } else {

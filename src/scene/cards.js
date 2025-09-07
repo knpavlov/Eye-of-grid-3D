@@ -114,10 +114,11 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     const hpToShow = (hpOverride != null) ? hpOverride : (cardData.hp || 0);
     const atkToShow = (atkOverride != null) ? atkOverride : (cardData.atk || 0);
     ctx.fillText(`\u2694${atkToShow}  \u2764${hpToShow}`, width - 16, height - 15);
-    const cell = 10, gap = 2, spacing = 8;
+    // Чуть опускаем схемы и разводим их шире
+    const cell = 10, gap = 2, spacing = 16; // большее расстояние для запаса под доп. клетку
     const gridW = cell * 3 + gap * 2;
     const startX = (width - (gridW * 2 + spacing)) / 2;
-    const gridY = 220; // нижняя центральная область
+    const gridY = 250; // нижняя часть карты
     drawAttacksGrid(ctx, cardData, startX, gridY, cell, gap);
     drawBlindspotGrid(ctx, cardData, startX + gridW + spacing, gridY, cell, gap);
   }
@@ -139,9 +140,11 @@ function getElementColor(element) {
 
 function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
   const attacks = cardData.attacks || [];
+  // базовая сетка
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 3; c++) {
-      const cx = x + c * (cell + gap); const cy = y + r * (cell + gap);
+      const cx = x + c * (cell + gap);
+      const cy = y + r * (cell + gap);
       ctx.fillStyle = 'rgba(148,163,184,0.35)';
       if (r === 1 && c === 1) ctx.fillStyle = 'rgba(0,0,0,0.8)';
       ctx.fillRect(cx, cy, cell, cell);
@@ -150,31 +153,25 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
   const map = { N: [-1,0], E:[0,1], S:[1,0], W:[0,-1] };
   for (const a of attacks) {
     const isChoice = cardData.chooseDir || a.mode === 'ANY';
+    const minDist = Math.min(...(a.ranges || [1]));
     for (const dist of a.ranges || []) {
-      const vec = map[a.dir]; if (!vec) continue;
+      const vec = map[a.dir];
+      if (!vec) continue;
       const rr = 1 + vec[0] * dist;
       const cc = 1 + vec[1] * dist;
       const cx = x + cc * (cell + gap);
       const cy = y + rr * (cell + gap);
-      const inGrid = rr >= 0 && rr < 3 && cc >= 0 && cc < 3;
-      if (inGrid) {
-        // Возможные клетки — голубое заполнение
-        ctx.fillStyle = 'rgba(56,189,248,0.35)';
-        ctx.fillRect(cx, cy, cell, cell);
-        // Обязательные атаки помечаем красной рамкой
-        if (!isChoice) {
-          ctx.strokeStyle = '#ef4444';
-          ctx.lineWidth = 1.5;
-          ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
-        }
-      } else {
-        ctx.strokeStyle = isChoice ? 'rgba(56,189,248,0.6)' : '#ef4444';
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
-      }
+      // заливаем все потенциальные клетки (включая выходящие за 3x3)
+      ctx.fillStyle = 'rgba(56,189,248,0.35)';
+      ctx.fillRect(cx, cy, cell, cell);
+      // красная рамка, если атака обязательна или это ближняя клетка при выборе дистанции
+      const mustHit = !isChoice || dist === minDist;
+      ctx.strokeStyle = mustHit ? '#ef4444' : 'rgba(56,189,248,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
     }
   }
-  // Если направлений несколько и нужно выбрать одно — подсвечиваем клетку перед существом
+  // Подсветка клетки перед существом при выборе направления
   if (cardData.chooseDir && (attacks.length > 1)) {
     const cx = x + 1 * (cell + gap);
     const cy = y + 0 * (cell + gap);
