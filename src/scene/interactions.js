@@ -480,8 +480,31 @@ export function placeUnitWithDirection(direction) {
       window.updateHand();
       window.updateUnits();
       window.updateUI();
-      const hitsNow = window.computeHits(gameState, row, col);
-      if (hitsNow && hitsNow.length) window.performBattleSequence(row, col, false);
+      // После постановки проверяем, нужно ли выбирать цель
+      const tpl = cardData;
+      const attacks = tpl?.attacks || [];
+      const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
+      const hitsAll = window.computeHits(gameState, row, col, { union: true });
+      if (hitsAll && hitsAll.length) {
+        if (needsChoice && hitsAll.length > 1) {
+          // Несколько целей – просим выбрать
+          interactionState.pendingAttack = { r: row, c: col };
+          window.addLog(`${tpl.name}: выберите цель для атаки.`);
+        } else {
+          // Одна цель или выбор не нужен – атакуем сразу
+          let opts = {};
+          if (needsChoice && hitsAll.length === 1) {
+            const h = hitsAll[0];
+            const dr = h.r - row, dc = h.c - col;
+            const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
+            const ORDER = ['N', 'E', 'S', 'W'];
+            const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(unit.facing) + 4) % 4];
+            const dist = Math.max(Math.abs(dr), Math.abs(dc));
+            opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
+          }
+          window.performBattleSequence(row, col, false, opts);
+        }
+      }
     },
   });
   window.addLog(`${player.name} призывает ${cardData.name} на (${row + 1},${col + 1})`);

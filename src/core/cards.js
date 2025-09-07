@@ -67,6 +67,7 @@ export const CARDS = {
       { dir: 'W', ranges: [1] }
     ],
     blindspots: ['S'], penaltyByTargets: true,
+    canHitAllies: true, // урон наносится и дружественным целям
     desc: 'If attacks 2 creatures, -2 ATK; if 3 creatures, -4 ATK.'
   },
   FIRE_PURSUER: {
