@@ -134,23 +134,31 @@ function getElementColor(element) {
 }
 
 function drawPatternGrid(ctx, cardData, x, y, cell, gap) {
-  const dirsForPattern = (typeof window !== 'undefined' && window.dirsForPattern) || (()=>['N']);
-  const pattern = cardData.pattern || 'FRONT';
-  const range = cardData.range || 1;
+  const attacks = cardData.attacks || [];
+  const hasDir = (dir) => attacks.some(a => (a.dir === dir) && (a.range || []).includes(1));
+  const maxRange = (dir) => attacks.filter(a => a.dir === dir).reduce((m,a)=>Math.max(m, ...(a.range||[])),0);
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 3; c++) {
       const cx = x + c * (cell + gap); const cy = y + r * (cell + gap);
       ctx.fillStyle = 'rgba(148,163,184,0.35)'; if (r === 1 && c === 1) ctx.fillStyle = 'rgba(250,204,21,0.7)';
       ctx.fillRect(cx, cy, cell, cell);
-      const dirs = dirsForPattern('N', pattern);
       const isN = (r === 0 && c === 1), isE = (r === 1 && c === 2), isS = (r === 2 && c === 1), isW = (r === 1 && c === 0);
-      if ((isN && dirs.includes('N')) || (isE && dirs.includes('E')) || (isS && dirs.includes('S')) || (isW && dirs.includes('W'))) {
+      if ((isN && hasDir('N')) || (isE && hasDir('E')) || (isS && hasDir('S')) || (isW && hasDir('W'))){
         ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5; ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
       }
     }
   }
-  if (range > 1) { ctx.fillStyle = 'rgba(148,163,184,0.5)'; ctx.fillRect(x + 1*(cell+gap) + 0.5, y + 1*(cell+gap) + 2, cell-1, cell-1); }
+  const moreN = maxRange('N');
+  const moreE = maxRange('E');
+  const moreS = maxRange('S');
+  const moreW = maxRange('W');
+  ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1;
+  if (moreN > 1) ctx.strokeRect(x + cell + gap, y - (cell + gap), cell, cell);
+  if (moreS > 1) ctx.strokeRect(x + cell + gap, y + 3*(cell+gap), cell, cell);
+  if (moreE > 1) ctx.strokeRect(x + 3*(cell+gap), y + cell + gap, cell, cell);
+  if (moreW > 1) ctx.strokeRect(x - (cell + gap), y + cell + gap, cell, cell);
 }
+
 
 function drawBlindspotGrid(ctx, cardData, x, y, cell, gap) {
   const blind = (cardData.blindspots && cardData.blindspots.length) ? cardData.blindspots : ['S'];

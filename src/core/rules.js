@@ -14,25 +14,39 @@ export function hasAdjacentGuard(state, r, c) {
   return false;
 }
 
-// Returns arrays of directions based on pattern and current facing
-export function dirsForPattern(facing, pattern) {
-  const patterns = {
-    FRONT: () => [facing],
-    SIDES: () => {
-      const left = { N:'W', W:'S', S:'E', E:'N' }[facing] || facing;
-      const right = { N:'E', E:'S', S:'W', W:'N' }[facing] || facing;
-      return [left, right];
-    },
-    ALL: () => ['N','E','S','W'],
-    FRONT_SIDES: () => {
-      if (facing === 'N') return ['N','E','W'];
-      if (facing === 'S') return ['S','E','W'];
-      if (facing === 'E') return ['E','N','S'];
-      if (facing === 'W') return ['W','N','S'];
-      return [facing];
-    },
-  };
-  return (patterns[pattern] || patterns.FRONT)();
+// Поворот относительного направления в абсолютное
+function rotateDir(facing, dir) {
+  const ORDER = ['N','E','S','W'];
+  const fi = ORDER.indexOf(facing);
+  const di = ORDER.indexOf(dir);
+  return ORDER[(fi + di) % 4];
+}
+
+// Проверяем, может ли юнит ударить клетку (используется для контратаки)
+function unitCanHit(state, fr, fc, tr, tc) {
+  const unit = state.board?.[fr]?.[fc]?.unit;
+  if (!unit) return false;
+  const tpl = CARDS[unit.tplId];
+  const attacks = tpl.attacks || [];
+  for (const atk of attacks) {
+    const absDir = rotateDir(unit.facing, atk.dir);
+    const [dr, dc] = DIR_VECTORS[absDir];
+    const ranges = Array.isArray(atk.range) ? atk.range : [atk.range];
+    for (const step of ranges) {
+      const nr = fr + dr * step, nc = fc + dc * step;
+      if (!inBounds(nr, nc)) break;
+      if (nr === tr && nc === tc) {
+        const flying = (tpl.keywords || []).includes('FLYING');
+        const targetTplId = state.board?.[tr]?.[tc]?.unit?.tplId;
+        if (!flying && hasAdjacentGuard(state, tr, tc) && !(CARDS[targetTplId]?.keywords || []).includes('GUARD')) {
+          return false;
+        }
+        return true;
+      }
+      if (state.board[nr][nc]?.unit) break;
+    }
+  }
+  return false;
 }
 
 // Compute effective stats (handles temp buffs if present on cell)
@@ -54,19 +68,27 @@ export function effectiveStats(cell, unit) {
   return { atk, hp };
 }
 
-export function computeHits(state, r, c) {
+export function computeHits(state, r, c, opts = {}) {
   const attacker = state.board?.[r]?.[c]?.unit;
   if (!attacker) return [];
   const tplA = CARDS[attacker.tplId];
-  const dirs = dirsForPattern(attacker.facing, tplA.pattern || 'FRONT');
+  const attacks = tplA.attacks || [];
+  const select = tplA.attackSelect || 'ALL';
+  const chosen = opts.chosenIndex ?? 0;
+  const rangeChoice = opts.rangeChoice || {};
   const { atk } = effectiveStats(state.board[r][c], attacker);
   const hits = [];
-  for (const d of dirs) {
-    const [dr, dc] = DIR_VECTORS[d];
-    const maxRange = Math.max(1, tplA.range || 1);
-    for (let step = 1; step <= maxRange; step++) {
+
+  attacks.forEach((atkDef, idx) => {
+    if (select === 'ONE' && idx !== chosen) return;
+    const absDir = rotateDir(attacker.facing, atkDef.dir);
+    const [dr, dc] = DIR_VECTORS[absDir];
+    const ranges = Array.isArray(atkDef.range) ? atkDef.range : [atkDef.range];
+    const multi = atkDef.multi !== false; // по умолчанию бьём все клетки по порядку
+    const steps = multi ? ranges : [rangeChoice[idx] || ranges[0]];
+    for (const step of steps) {
       const nr = r + dr * step, nc = c + dc * step;
-      if (!inBounds(nr, nc)) break;
+      if (!inBounds(nr, nc)) continue;
       const B = state.board[nr][nc]?.unit;
       if (!B) continue;
       if (B.owner === attacker.owner) break;
@@ -77,13 +99,7 @@ export function computeHits(state, r, c) {
       const backDir = { N:'S', S:'N', E:'W', W:'E' }[B.facing];
       const [bdr, bdc] = DIR_VECTORS[backDir] || [0,0];
       const isBack = (nr + bdr === r && nc + bdc === c);
-      // Absolute direction from B to attacker
-      const dirAbs = (() => {
-        if (r === nr - 1 && c === nc) return 'N';
-        if (r === nr + 1 && c === nc) return 'S';
-        if (r === nr && c === nc - 1) return 'W';
-        return 'E';
-      })();
+      const dirAbs = (r === nr - 1 && c === nc) ? 'N' : (r === nr + 1 && c === nc) ? 'S' : (r === nr && c === nc - 1) ? 'W' : 'E';
       const ORDER = ['N','E','S','W'];
       const absIdx = ORDER.indexOf(dirAbs);
       const faceIdx = ORDER.indexOf(B.facing);
@@ -96,67 +112,11 @@ export function computeHits(state, r, c) {
       hits.push({ r: nr, c: nc, dmg, backstab: isBack });
       break;
     }
-  }
+  });
+
   return hits;
 }
 
-function stagedAttackOld(state, r, c) {
-  const n1 = JSON.parse(JSON.stringify(state));
-  const attacker = n1.board?.[r]?.[c]?.unit;
-  if (!attacker) return null;
-  const hits = computeHits(n1, r, c);
-  if (!hits.length) return { empty: true };
-  const logLines = [];
-  const deaths = [];
-  const applyDeaths = () => {
-    for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
-      const u = n1.board[rr][cc].unit;
-      if (u && u.currentHP <= 0) { deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId }); n1.board[rr][cc].unit = null; }
-    }
-  };
-  // Step 1: apply direct hits
-  for (const h of hits) {
-    const B = n1.board[h.r][h.c]?.unit; if (!B) continue;
-    const before = B.currentHP ?? B.hp;
-    const attackerTpl = CARDS[attacker.tplId];
-    const isMagic = attackerTpl.attackType === 'MAGIC';
-    const dodge = CARDS[B.tplId].dodge50 && !isMagic && Math.random() < 0.5;
-    const dealt = dodge ? 0 : h.dmg;
-    B.currentHP = Math.max(0, before - dealt);
-    const afterHP = B.currentHP;
-    logLines.push(`${CARDS[attacker.tplId].name} → ${CARDS[B.tplId].name}: ${dealt} dmg (HP ${before}→${afterHP})`);
-  }
-  // Step 2: retaliation if applicable
-  const still = hits.map(h => ({ h, B: n1.board[h.r][h.c]?.unit })).filter(x => x.B && (x.B.currentHP ?? x.B.hp) > 0);
-  let totalRetaliation = 0; const retaliators = [];
-  for (const { h, B } of still) {
-    const tplB = CARDS[B.tplId];
-    const dirsB = dirsForPattern(B.facing, tplB.pattern || 'FRONT');
-    let retaliates = false;
-    for (const d of dirsB) {
-      const [dr, dc] = DIR_VECTORS[d];
-      if (h.r + dr === r && h.c + dc === c) { retaliates = true; break; }
-    }
-    if (retaliates) {
-      const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B);
-      totalRetaliation += Math.max(0, batk);
-      retaliators.push({ r: h.r, c: h.c });
-    }
-  }
-  if (totalRetaliation > 0 && n1.board?.[r]?.[c]?.unit) {
-    const A = n1.board[r][c].unit;
-    const before = A.currentHP ?? A.hp;
-    A.currentHP = Math.max(0, before - totalRetaliation);
-    const afterHP = A.currentHP;
-    logLines.push(`Retaliation to ${CARDS[A.tplId].name}: ${totalRetaliation} (HP ${before}→${afterHP})`);
-  }
-  applyDeaths();
-  // Attacker spends activation
-  const attackerTpl = CARDS[attacker.tplId];
-  attacker.lastAttackTurn = n1.turn;
-  attacker.apSpent = (attacker.apSpent || 0) + attackCost(attackerTpl);
-return { n1, logLines, targets: hits.map(h => ({ r: h.r, c: h.c, dmg: h.dmg })), deaths, retaliators };
-}
 
 // New staged attack that exposes step1/step2/finish for UI animation
 export function stagedAttack(state, r, c) {
@@ -212,14 +172,7 @@ export function stagedAttack(state, r, c) {
       if (!B) continue;
       const alive = (B.currentHP ?? B.hp) > 0;
       if (!alive) continue;
-      const tplB = CARDS[B.tplId];
-      const dirsB = dirsForPattern(B.facing, tplB.pattern || 'FRONT');
-      let retaliates = false;
-      for (const d of dirsB) {
-        const [dr, dc] = DIR_VECTORS[d];
-        if (h.r + dr === r && h.c + dc === c) { retaliates = true; break; }
-      }
-      if (retaliates) {
+      if (unitCanHit(n1, h.r, h.c, r, c)) {
         const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B);
         totalRetaliation += Math.max(0, batk);
         retaliators.push({ r: h.r, c: h.c });
