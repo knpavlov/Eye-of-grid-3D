@@ -198,15 +198,6 @@
       let gameState = null;
       // Tile textures are now managed by scene/board module
     // Настройки показа большой карты при доборе — можно править из консоли
-    window.DRAW_CARD_TUNE = {
-      posY: 8.5,   // высота
-      posZ: 2.4,    // дистанция к камере (чем меньше, тем ближе)
-      scale: 1.7,   // масштаб
-      // Ручная довращалка (в градусах):
-      pitchDeg: 45,  // наклон вперёд/назад (ось X)
-      yawDeg: 0,    // поворот влево/вправо (ось Y)
-      rollDeg: 0    // крен (ось Z)
-    };
     // Очереди догоняющих анимаций боя для наблюдателя
     let PENDING_BATTLE_ANIMS = [];
     let PENDING_RETALIATIONS = [];
@@ -219,14 +210,6 @@
     // Управление анимациями заставки хода и добора карты
     // Перенесено в ui/banner.js
 
-      var manaGainActive = false;
-      try { window.manaGainActive = manaGainActive; } catch {}
-      var PENDING_MANA_ANIM = null; // { ownerIndex, startIdx, endIdx }
-      var PENDING_MANA_BLOCK = [0,0]; // by player index
-// Ожидаемая анимация маны: диапазон новых орбов, которые должны появиться синхронно со вспышкой
-        try { window.PENDING_MANA_ANIM = PENDING_MANA_ANIM; } catch {}
-    // Блокировка появления N последних орбов маны на панели до завершения «полетевших» визуальных орбов (смерть/эффекты)
-        try { window.PENDING_MANA_BLOCK = PENDING_MANA_BLOCK; } catch {}
     // Прячет один экземпляр ритуального спелла в руке активного игрока, пока ждём выбора жертвы
     let pendingRitualSpellHandIndex = null;
     let pendingRitualSpellCard = null; // ссылка на сам объект карты-спелла, чтобы скрывать по идентичности

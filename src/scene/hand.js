@@ -1,6 +1,7 @@
 // Hand rendering and card draw animations
 import { getCtx } from './context.js';
 import { createCard3D } from './cards.js';
+import { DRAW_CARD_TUNE } from '../config/drawCardTune.js';
 
 function getTHREE() {
   const ctx = getCtx();
@@ -126,7 +127,7 @@ export async function animateDrawnCardToHand(cardTpl) {
   try { if (typeof window !== 'undefined' && window.refreshInputLockUI) window.refreshInputLockUI(); } catch {}
 
   const big = createCard3D(cardTpl, false);
-  const T = (typeof window !== 'undefined' ? window.DRAW_CARD_TUNE || {} : {});
+  const T = DRAW_CARD_TUNE;
   big.position.set(0, (T.posY ?? 10.0), (T.posZ ?? 2.4));
 
   try {

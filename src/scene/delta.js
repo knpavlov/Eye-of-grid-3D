@@ -37,13 +37,15 @@ export function playDeltaAnimations(prevState, nextState) {
             }
             const p = tile.position.clone().add(new window.THREE.Vector3(0, 1.2, 0));
             const slot = (prevState?.players?.[pu.owner]?.mana ?? 0);
-            animateManaGainFromWorld?.(p, pu.owner, true, slot);
+            // Сначала обновляем локальное состояние маны у активного игрока,
+            // чтобы панель не показывала временное уменьшение
             try {
-              if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') {
-                gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1);
-                updateUI?.(gameState);
+              if (isActivePlayer && gameState && gameState.players && typeof pu.owner === 'number') {
+                gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana || 0) + 1);
               }
             } catch {}
+            // Затем запускаем анимацию появления орба
+            animateManaGainFromWorld?.(p, pu.owner, true, slot);
           } catch {}
         } else if (!pu && nu) {
           try {
