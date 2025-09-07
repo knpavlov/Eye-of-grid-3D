@@ -14,25 +14,11 @@ export function hasAdjacentGuard(state, r, c) {
   return false;
 }
 
-// Returns arrays of directions based on pattern and current facing
-export function dirsForPattern(facing, pattern) {
-  const patterns = {
-    FRONT: () => [facing],
-    SIDES: () => {
-      const left = { N:'W', W:'S', S:'E', E:'N' }[facing] || facing;
-      const right = { N:'E', E:'S', S:'W', W:'N' }[facing] || facing;
-      return [left, right];
-    },
-    ALL: () => ['N','E','S','W'],
-    FRONT_SIDES: () => {
-      if (facing === 'N') return ['N','E','W'];
-      if (facing === 'S') return ['S','E','W'];
-      if (facing === 'E') return ['E','N','S'];
-      if (facing === 'W') return ['W','N','S'];
-      return [facing];
-    },
-  };
-  return (patterns[pattern] || patterns.FRONT)();
+// Поворачиваем относительное направление относительно взгляда юнита
+function applyFacing(dir, facing) {
+  const ORDER = ['N','E','S','W'];
+  const idx = (ORDER.indexOf(dir) + ORDER.indexOf(facing) + 4) % 4;
+  return ORDER[idx];
 }
 
 // Compute effective stats (handles temp buffs if present on cell)
@@ -54,47 +40,74 @@ export function effectiveStats(cell, unit) {
   return { atk, hp };
 }
 
-export function computeHits(state, r, c) {
+// Проверка, может ли юнит атаковать конкретную клетку (для контратаки)
+function canAttackCell(state, sr, sc, unit, targetR, targetC) {
+  const tpl = CARDS[unit.tplId];
+  const arcs = tpl.attacks || [];
+  for (const arc of arcs) {
+    const dirAbs = applyFacing(arc.dir, unit.facing);
+    const [dr, dc] = DIR_VECTORS[dirAbs];
+    const ranges = arc.ranges || [];
+    const max = Math.max(...ranges);
+    const set = new Set(ranges);
+    for (let step = 1; step <= max; step++) {
+      const nr = sr + dr * step, nc = sc + dc * step;
+      if (!inBounds(nr, nc)) break;
+      const occup = state.board?.[nr]?.[nc]?.unit;
+      if (nr === targetR && nc === targetC && set.has(step)) return true;
+      if (occup) break;
+    }
+  }
+  return false;
+}
+
+export function computeHits(state, r, c, selection = {}) {
   const attacker = state.board?.[r]?.[c]?.unit;
   if (!attacker) return [];
   const tplA = CARDS[attacker.tplId];
-  const dirs = dirsForPattern(attacker.facing, tplA.pattern || 'FRONT');
   const { atk } = effectiveStats(state.board[r][c], attacker);
+  const arcs = tplA.attacks || [];
   const hits = [];
-  for (const d of dirs) {
-    const [dr, dc] = DIR_VECTORS[d];
-    const maxRange = Math.max(1, tplA.range || 1);
-    for (let step = 1; step <= maxRange; step++) {
+  for (const arc of arcs) {
+    if (tplA.choose === 'ONE_DIR' && selection.dir && arc.dir !== selection.dir) continue;
+    const dirAbs = applyFacing(arc.dir, attacker.facing);
+    const [dr, dc] = DIR_VECTORS[dirAbs];
+    const ranges = arc.ranges || [];
+    const chosenRanges = arc.chooseRange && selection.dir === arc.dir && selection.range ? [selection.range] : ranges;
+    const max = Math.max(...chosenRanges);
+    const set = new Set(chosenRanges);
+    for (let step = 1; step <= max; step++) {
       const nr = r + dr * step, nc = c + dc * step;
       if (!inBounds(nr, nc)) break;
       const B = state.board[nr][nc]?.unit;
-      if (!B) continue;
-      if (B.owner === attacker.owner) break;
-      const aFlying = (tplA.keywords || []).includes('FLYING');
-      if (!aFlying && hasAdjacentGuard(state, nr, nc) && !(CARDS[B.tplId].keywords || []).includes('GUARD')) {
+      if (B && B.owner === attacker.owner) break;
+      if (B) {
+        if (!set.has(step)) break;
+        const aFlying = (tplA.keywords || []).includes('FLYING');
+        if (!aFlying && hasAdjacentGuard(state, nr, nc) && !(CARDS[B.tplId].keywords || []).includes('GUARD')) {
+          break;
+        }
+        const backDir = { N:'S', S:'N', E:'W', W:'E' }[B.facing];
+        const [bdr, bdc] = DIR_VECTORS[backDir] || [0,0];
+        const isBack = (nr + bdr === r && nc + bdc === c);
+        const dirAbs = (() => {
+          if (r === nr - 1 && c === nc) return 'N';
+          if (r === nr + 1 && c === nc) return 'S';
+          if (r === nr && c === nc - 1) return 'W';
+          return 'E';
+        })();
+        const ORDER = ['N','E','S','W'];
+        const absIdx = ORDER.indexOf(dirAbs);
+        const faceIdx = ORDER.indexOf(B.facing);
+        const relIdx = (absIdx - faceIdx + 4) % 4;
+        const dirRel = ORDER[relIdx];
+        const blind = CARDS[B.tplId].blindspots || ['S'];
+        const inBlind = blind.includes(dirRel);
+        const extraTotal = isBack ? 1 : (inBlind ? 1 : 0);
+        const dmg = Math.max(0, atk + extraTotal);
+        hits.push({ r: nr, c: nc, dmg, backstab: isBack });
         break;
       }
-      const backDir = { N:'S', S:'N', E:'W', W:'E' }[B.facing];
-      const [bdr, bdc] = DIR_VECTORS[backDir] || [0,0];
-      const isBack = (nr + bdr === r && nc + bdc === c);
-      // Absolute direction from B to attacker
-      const dirAbs = (() => {
-        if (r === nr - 1 && c === nc) return 'N';
-        if (r === nr + 1 && c === nc) return 'S';
-        if (r === nr && c === nc - 1) return 'W';
-        return 'E';
-      })();
-      const ORDER = ['N','E','S','W'];
-      const absIdx = ORDER.indexOf(dirAbs);
-      const faceIdx = ORDER.indexOf(B.facing);
-      const relIdx = (absIdx - faceIdx + 4) % 4;
-      const dirRel = ORDER[relIdx];
-      const blind = CARDS[B.tplId].blindspots || ['S'];
-      const inBlind = blind.includes(dirRel);
-      const extraTotal = isBack ? 1 : (inBlind ? 1 : 0);
-      const dmg = Math.max(0, atk + extraTotal);
-      hits.push({ r: nr, c: nc, dmg, backstab: isBack });
-      break;
     }
   }
   return hits;
@@ -130,14 +143,7 @@ function stagedAttackOld(state, r, c) {
   const still = hits.map(h => ({ h, B: n1.board[h.r][h.c]?.unit })).filter(x => x.B && (x.B.currentHP ?? x.B.hp) > 0);
   let totalRetaliation = 0; const retaliators = [];
   for (const { h, B } of still) {
-    const tplB = CARDS[B.tplId];
-    const dirsB = dirsForPattern(B.facing, tplB.pattern || 'FRONT');
-    let retaliates = false;
-    for (const d of dirsB) {
-      const [dr, dc] = DIR_VECTORS[d];
-      if (h.r + dr === r && h.c + dc === c) { retaliates = true; break; }
-    }
-    if (retaliates) {
+    if (canAttackCell(n1, h.r, h.c, B, r, c)) {
       const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B);
       totalRetaliation += Math.max(0, batk);
       retaliators.push({ r: h.r, c: h.c });
@@ -212,14 +218,7 @@ export function stagedAttack(state, r, c) {
       if (!B) continue;
       const alive = (B.currentHP ?? B.hp) > 0;
       if (!alive) continue;
-      const tplB = CARDS[B.tplId];
-      const dirsB = dirsForPattern(B.facing, tplB.pattern || 'FRONT');
-      let retaliates = false;
-      for (const d of dirsB) {
-        const [dr, dc] = DIR_VECTORS[d];
-        if (h.r + dr === r && h.c + dc === c) { retaliates = true; break; }
-      }
-      if (retaliates) {
+      if (canAttackCell(n1, h.r, h.c, B, r, c)) {
         const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B);
         totalRetaliation += Math.max(0, batk);
         retaliators.push({ r: h.r, c: h.c });

@@ -164,7 +164,7 @@
     let STARTER_FIRESET;
     
     // Функции игровой логики (полные реализации находятся в core/*)
-    let dirsForPattern, computeCellBuff, effectiveStats;
+    let computeCellBuff, effectiveStats;
 
     let shuffle;
 
@@ -409,7 +409,7 @@
         turnCW = window.turnCW; turnCCW = window.turnCCW; facingDeg = window.facingDeg;
         uid = window.uid; inBounds = window.inBounds; capMana = window.capMana; attackCost = window.attackCost;
         CARDS = window.CARDS; STARTER_FIRESET = window.STARTER_FIRESET || [];
-        dirsForPattern = window.dirsForPattern; computeCellBuff = window.computeCellBuff; effectiveStats = window.effectiveStats;
+        computeCellBuff = window.computeCellBuff; effectiveStats = window.effectiveStats;
         hasAdjacentGuard = window.hasAdjacentGuard; computeHits = window.computeHits; stagedAttack = window.stagedAttack; magicAttack = window.magicAttack;
         shuffle = window.shuffle; drawOne = window.drawOne; drawOneNoAdd = window.drawOneNoAdd; countControlled = window.countControlled; startGame = window.startGame;
       } catch {}

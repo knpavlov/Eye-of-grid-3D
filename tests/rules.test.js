@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { dirsForPattern, computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack } from '../src/core/rules.js';
+import { computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack } from '../src/core/rules.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -8,17 +8,6 @@ function makeBoard() {
   return b;
 }
 
-describe('dirsForPattern', () => {
-  it('FRONT, SIDES, ALL, FRONT_SIDES', () => {
-    expect(dirsForPattern('N', 'FRONT')).toEqual(['N']);
-    expect(dirsForPattern('E', 'FRONT')).toEqual(['E']);
-    expect(dirsForPattern('N', 'SIDES')).toEqual(['W','E']);
-    expect(dirsForPattern('S', 'SIDES')).toEqual(['E','W']);
-    expect(dirsForPattern('N', 'ALL')).toEqual(['N','E','S','W']);
-    expect(dirsForPattern('N', 'FRONT_SIDES')).toEqual(['N','E','W']);
-    expect(dirsForPattern('S', 'FRONT_SIDES')).toEqual(['S','E','W']);
-  });
-});
 
 describe('buffs and stats', () => {
   it('computeCellBuff and effectiveStats', () => {
@@ -43,7 +32,11 @@ describe('guards and hits', () => {
 
   beforeEach(() => {
     if (!CARDS.TEST_GUARD) {
-      CARDS.TEST_GUARD = { id: 'TEST_GUARD', name: 'Test Guard', type: 'UNIT', cost: 0, element: 'FIRE', atk: 0, hp: 1, keywords: ['GUARD'], pattern: 'FRONT', range: 1 };
+      CARDS.TEST_GUARD = {
+        id: 'TEST_GUARD', name: 'Test Guard', type: 'UNIT', cost: 0,
+        element: 'FIRE', atk: 0, hp: 1, keywords: ['GUARD'],
+        attackType: 'STANDARD', attacks: [{ dir: 'N', ranges: [1] }]
+      };
       addedGuard = true;
     }
   });
@@ -64,7 +57,7 @@ describe('guards and hits', () => {
 
   it('computeHits: attacker hits enemy in front within range', () => {
     const state = { board: makeBoard() };
-    // Attacker at (1,1) facing East, pattern FRONT, range 1
+    // Атакующий на (1,1) смотрит на восток и бьёт на 1 клетку вперёд
     state.board[1][1].unit = { owner: 0, tplId: 'FIRE_FLAME_LIZARD', facing: 'E' };
     // Enemy directly in front at (1,2)
     state.board[1][2].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'W' };
