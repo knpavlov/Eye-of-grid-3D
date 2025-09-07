@@ -61,8 +61,12 @@ export function performUnitAttack(unitMesh) {
     const attacks = tpl?.attacks || [];
     const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
     const hitsAll = typeof computeHits === 'function' ? computeHits(gameState, r, c, { union: true }) : [];
-    if (!hitsAll.length) {
-      window.__ui?.notifications?.show('No available targets for attack', 'error');
+    const enemyHits = hitsAll.filter(h => {
+      const target = gameState.board?.[h.r]?.[h.c]?.unit;
+      return target && target.owner !== unit.owner;
+    });
+    if (!enemyHits.length) {
+      window.__ui?.notifications?.show('No enemy targets for attack', 'error');
       return;
     }
     if (gameState.players[gameState.active].mana < cost) {
@@ -72,16 +76,16 @@ export function performUnitAttack(unitMesh) {
     gameState.players[gameState.active].mana -= cost;
     window.__ui?.updateUI?.(gameState);
     try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
-    if (needsChoice && hitsAll.length > 1) {
+    if (needsChoice && enemyHits.length > 1) {
       if (iState) iState.pendingAttack = { r, c };
       window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
       window.__ui?.notifications?.show('Выберите цель', 'info');
       return;
     }
-    // если выбор не нужен или доступна единственная цель, атакуем сразу
+    // если выбор не нужен или доступна единственная вражеская цель, атакуем сразу
     let opts = {};
-    if (needsChoice && hitsAll.length === 1) {
-      const h = hitsAll[0];
+    if (needsChoice && enemyHits.length === 1) {
+      const h = enemyHits[0];
       const dr = h.r - r, dc = h.c - c;
       const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
       const ORDER = ['N', 'E', 'S', 'W'];

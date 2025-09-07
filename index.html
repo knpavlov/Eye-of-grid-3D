@@ -529,6 +529,8 @@
           }
           // Финализация: анимация смерти и орбы перед применением состояния
           const res = staged.finish();
+          // Обновляем состояние сразу, чтобы освободить клетки для новых призывов
+          gameState = res.n1;
           if (res.deaths && res.deaths.length) {
             for (const d of res.deaths) {
               try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
@@ -545,11 +547,11 @@
                 animateManaGainFromWorld(p, d.owner, true);
               }, 400);
             }
-            setTimeout(() => { gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {} }, 1000);
+            setTimeout(() => { updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {} }, 1000);
           } else {
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем применим состояние
             setTimeout(() => {
-              gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {}
+              updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {}
             }, Math.max(0, animDelayMs));
           }
         }, 420);
@@ -600,7 +602,8 @@
       const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
       const res = magicAttack(gameState, from.r, from.c, tr, tc);
       if (!res) { showNotification('Incorrect target', 'error'); return; }
-      // Не обновляем состояние немедленно, чтобы дать пройти анимации смерти
+      // Сразу сохраняем новое состояние, чтобы клетка освободилась после смерти
+      gameState = res.n1;
       for (const l of res.logLines.reverse()) addLog(l);
       const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
       if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
@@ -634,13 +637,13 @@
           }, 400);
         }
         setTimeout(() => {
-          gameState = res.n1; updateUnits(); updateUI();
+          updateUnits(); updateUI();
           const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
           try { schedulePush('magic-battle-finish'); } catch {}
         }, 1000);
       } else {
-        // Если смертей нет — применяем состояние сразу
-        gameState = res.n1; updateUnits(); updateUI();
+        // Если смертей нет — просто перерисовываем состояние
+        updateUnits(); updateUI();
         const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
         try { schedulePush('magic-battle-finish'); } catch {}
       }

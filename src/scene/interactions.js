@@ -311,9 +311,12 @@ function performMagicAttack(from, targetMesh) {
   const ctx = getCtx();
   const { unitMeshes, effectsGroup, tileMeshes } = ctx;
   const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
-  const gameState = window.gameState;
-  const res = window.magicAttack(gameState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
+  const prevState = window.gameState;
+  const res = window.magicAttack(prevState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
   if (!res) { showNotification('Incorrect target', 'error'); return; }
+  // Сразу применяем новое состояние, чтобы освободить клетку при смерти
+  window.gameState = res.n1;
+  const gameState = window.gameState;
   for (const l of res.logLines.reverse()) window.addLog(l);
   const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
   if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
@@ -343,13 +346,13 @@ function performMagicAttack(from, targetMesh) {
       }, 400);
     }
     setTimeout(() => {
-      window.gameState = res.n1; window.updateUnits(); window.updateUI();
-      const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
+      window.updateUnits(); window.updateUI();
+      const attacker = gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
       try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
     }, 1000);
   } else {
-    window.gameState = res.n1; window.updateUnits(); window.updateUI();
-    const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
+    window.updateUnits(); window.updateUI();
+    const attacker = gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
     try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
   }
 }
@@ -484,15 +487,19 @@ export function placeUnitWithDirection(direction) {
       const attacks = tpl?.attacks || [];
       const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
       const hitsAll = window.computeHits(gameState, row, col, { union: true });
-      if (hitsAll.length) {
-        if (needsChoice && hitsAll.length > 1) {
+      const enemyHits = hitsAll.filter(h => {
+        const target = gameState.board?.[h.r]?.[h.c]?.unit;
+        return target && target.owner !== unit.owner;
+      });
+      if (enemyHits.length) {
+        if (needsChoice && enemyHits.length > 1) {
           interactionState.pendingAttack = { r: row, c: col };
           window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
           window.__ui?.notifications?.show('Выберите цель', 'info');
         } else {
           let opts = {};
-          if (needsChoice && hitsAll.length === 1) {
-            const h = hitsAll[0];
+          if (needsChoice && enemyHits.length === 1) {
+            const h = enemyHits[0];
             const dr = h.r - row, dc = h.c - col;
             const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
             const ORDER = ['N', 'E', 'S', 'W'];
