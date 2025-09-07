@@ -164,7 +164,7 @@
     let STARTER_FIRESET;
     
     // Функции игровой логики (полные реализации находятся в core/*)
-    let dirsForPattern, computeCellBuff, effectiveStats;
+    let computeCellBuff, effectiveStats;
 
     let shuffle;
 
@@ -409,7 +409,7 @@
         turnCW = window.turnCW; turnCCW = window.turnCCW; facingDeg = window.facingDeg;
         uid = window.uid; inBounds = window.inBounds; capMana = window.capMana; attackCost = window.attackCost;
         CARDS = window.CARDS; STARTER_FIRESET = window.STARTER_FIRESET || [];
-        dirsForPattern = window.dirsForPattern; computeCellBuff = window.computeCellBuff; effectiveStats = window.effectiveStats;
+        computeCellBuff = window.computeCellBuff; effectiveStats = window.effectiveStats;
         hasAdjacentGuard = window.hasAdjacentGuard; computeHits = window.computeHits; stagedAttack = window.stagedAttack; magicAttack = window.magicAttack;
         shuffle = window.shuffle; drawOne = window.drawOne; drawOneNoAdd = window.drawOneNoAdd; countControlled = window.countControlled; startGame = window.startGame;
       } catch {}
@@ -446,14 +446,14 @@
        Combines combat resolution, animations and network sync.
        Split into logic (src/core/battle.js), FX (src/scene/battleFx.js)
        and net sync (src/net/battleSync.js). */
-    async function performBattleSequence(r, c, markAttackTurn) {
-      const staged = stagedAttack(gameState, r, c);
+    async function performBattleSequence(r, c, markAttackTurn, opts = {}) {
+      const staged = stagedAttack(gameState, r, c, opts);
       if (!staged || staged.empty) return;
       // flashy заставка BATTLE (сокращённая)
       await showBattleSplash();
       // небольшая анимация выпада/толчка
       const aMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-      const hitsPrev = (staged.targetsPreview || computeHits(gameState, r, c));
+      const hitsPrev = (staged.targetsPreview || computeHits(gameState, r, c, opts));
       const fromPos = (aMesh ? aMesh.position.clone() : tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 0.8, 0)));
 
       const doStep1 = () => {

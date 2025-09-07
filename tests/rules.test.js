@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { dirsForPattern, computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack } from '../src/core/rules.js';
+import { computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack } from '../src/core/rules.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -8,17 +8,6 @@ function makeBoard() {
   return b;
 }
 
-describe('dirsForPattern', () => {
-  it('FRONT, SIDES, ALL, FRONT_SIDES', () => {
-    expect(dirsForPattern('N', 'FRONT')).toEqual(['N']);
-    expect(dirsForPattern('E', 'FRONT')).toEqual(['E']);
-    expect(dirsForPattern('N', 'SIDES')).toEqual(['W','E']);
-    expect(dirsForPattern('S', 'SIDES')).toEqual(['E','W']);
-    expect(dirsForPattern('N', 'ALL')).toEqual(['N','E','S','W']);
-    expect(dirsForPattern('N', 'FRONT_SIDES')).toEqual(['N','E','W']);
-    expect(dirsForPattern('S', 'FRONT_SIDES')).toEqual(['S','E','W']);
-  });
-});
 
 describe('buffs and stats', () => {
   it('computeCellBuff and effectiveStats', () => {
@@ -43,7 +32,7 @@ describe('guards and hits', () => {
 
   beforeEach(() => {
     if (!CARDS.TEST_GUARD) {
-      CARDS.TEST_GUARD = { id: 'TEST_GUARD', name: 'Test Guard', type: 'UNIT', cost: 0, element: 'FIRE', atk: 0, hp: 1, keywords: ['GUARD'], pattern: 'FRONT', range: 1 };
+      CARDS.TEST_GUARD = { id: 'TEST_GUARD', name: 'Test Guard', type: 'UNIT', cost: 0, element: 'FIRE', atk: 0, hp: 1, keywords: ['GUARD'], attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [1] } ] };
       addedGuard = true;
     }
   });
@@ -64,7 +53,7 @@ describe('guards and hits', () => {
 
   it('computeHits: attacker hits enemy in front within range', () => {
     const state = { board: makeBoard() };
-    // Attacker at (1,1) facing East, pattern FRONT, range 1
+    // Атакующий в (1,1) смотрит на восток, атака вперёд на 1 клетку
     state.board[1][1].unit = { owner: 0, tplId: 'FIRE_FLAME_LIZARD', facing: 'E' };
     // Enemy directly in front at (1,2)
     state.board[1][2].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'W' };
@@ -73,6 +62,32 @@ describe('guards and hits', () => {
     const h = hits.find(h => h.r === 1 && h.c === 2);
     expect(h).toBeTruthy();
     expect(h.dmg).toBeGreaterThan(0);
+  });
+
+  it('computeHits: chooseDir attacks only selected direction', () => {
+    const state = { board: makeBoard() };
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'S' };
+    state.board[1][2].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'W' };
+    // без выбранного направления ничего не происходит
+    expect(computeHits(state, 1, 1)).toEqual([]);
+    // union=true возвращает все возможные цели
+    const allHits = computeHits(state, 1, 1, { union: true });
+    expect(allHits.length).toBe(2);
+    // выбираем север
+    const northHits = computeHits(state, 1, 1, { chosenDir: 'N' });
+    expect(northHits.length).toBe(1);
+    expect(northHits[0]).toMatchObject({ r: 0, c: 1 });
+  });
+
+  it('computeHits: unit hits both adjacent and next cell', () => {
+    const state = { board: makeBoard() };
+    state.board[2][1].unit = { owner: 0, tplId: 'FIRE_GREAT_MINOS', facing: 'N' };
+    state.board[1][1].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'S' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'S' };
+    const hits = computeHits(state, 2, 1);
+    const coords = hits.map(h => `${h.r},${h.c}`).sort();
+    expect(coords).toEqual(['0,1', '1,1']);
   });
 });
 

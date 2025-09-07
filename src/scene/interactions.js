@@ -11,6 +11,7 @@ export const interactionState = {
   pendingPlacement: null,
   selectedUnit: null,
   magicFrom: null,
+  pendingAttack: null,
   hoveredMeta: null,
   pendingSpellOrientation: null,
   pendingDiscardSelection: null,
@@ -159,6 +160,11 @@ function onMouseDown(event) {
     if (interactionState.magicFrom) {
       performMagicAttack(interactionState.magicFrom, unit);
       interactionState.magicFrom = null;
+      return;
+    }
+    if (interactionState.pendingAttack) {
+      performChosenAttack(interactionState.pendingAttack, unit);
+      interactionState.pendingAttack = null;
       return;
     }
     if (interactionState.selectedCard && interactionState.selectedCard.userData.cardData.type === 'SPELL') {
@@ -346,6 +352,22 @@ function performMagicAttack(from, targetMesh) {
     const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
     try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
   }
+}
+
+// Обычная атака с предварительным выбором клетки
+function performChosenAttack(from, targetMesh) {
+  const gameState = window.gameState;
+  const attacker = gameState.board?.[from.r]?.[from.c]?.unit; if (!attacker) return;
+  const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
+  const dr = tr - from.r; const dc = tc - from.c;
+  const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
+  const ORDER = ['N', 'E', 'S', 'W'];
+  const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(attacker.facing) + 4) % 4];
+  const dist = Math.max(Math.abs(dr), Math.abs(dc));
+  const opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
+  const hits = window.computeHits(gameState, from.r, from.c, opts);
+  if (!hits.length) { showNotification('Incorrect target', 'error'); return; }
+  window.performBattleSequence(from.r, from.c, true, opts);
 }
 
 function castSpellOnUnit(cardMesh, unitMesh) {
