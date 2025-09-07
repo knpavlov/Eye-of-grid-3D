@@ -1,5 +1,8 @@
 // Shared scene effects: damage popups, shakes, dissolves, and HP popup scheduling
 // Relies on global THREE/gsap and scene context; exported for reuse across modules.
+// Дополнительно содержит логику подсветки доступных ячеек.
+
+import { getCtx } from './context.js';
 
 let PENDING_HP_POPUPS = [];
 
@@ -77,6 +80,77 @@ export function shakeMesh(mesh, times = 3, duration = 0.1) {
       .to(mesh.position, { x: ox, z: oz, duration: duration/2 });
   }
   return tl;
+}
+
+// --- Подсветка ячеек для выбора цели ---
+let ACTIVE_ATTACK_HIGHLIGHTS = [];
+let ACTIVE_ATTACK_UNIFORMS = [];
+let ATTACK_RAF_ID = null;
+
+// Показываем сияющую рамку на указанных клетках
+export function showAttackHighlights(cells = []) {
+  try {
+    const ctx = getCtx();
+    const { THREE, tileFrames, effectsGroup } = ctx;
+    if (!THREE || !tileFrames || !effectsGroup) return;
+
+    clearAttackHighlights();
+
+    for (const cell of cells) {
+      const { r, c } = cell;
+      const src = tileFrames?.[r]?.[c];
+      if (!src) continue;
+
+      const clone = src.clone(true);
+      clone.traverse(obj => {
+        if (obj.isMesh) {
+          const mat = new THREE.ShaderMaterial({
+            uniforms: {
+              uTime: { value: 0 },
+              uColor: { value: new THREE.Color(0.55, 0.80, 1.0) },
+            },
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+            fragmentShader: `uniform float uTime; uniform vec3 uColor; varying vec2 vUv; float glow = 0.5 + 0.5 * sin((vUv.x + vUv.y + uTime * 3.0) * 8.0); gl_FragColor = vec4(uColor * glow, glow);`,
+          });
+          obj.material = mat;
+          ACTIVE_ATTACK_UNIFORMS.push(mat.uniforms);
+        }
+      });
+      effectsGroup.add(clone);
+      ACTIVE_ATTACK_HIGHLIGHTS.push(clone);
+    }
+
+    if (!ATTACK_RAF_ID && ACTIVE_ATTACK_UNIFORMS.length) {
+      const tick = () => {
+        const t = performance.now() / 1000;
+        for (const u of ACTIVE_ATTACK_UNIFORMS) {
+          try { if (u.uTime) u.uTime.value = t; } catch {}
+        }
+        ATTACK_RAF_ID = requestAnimationFrame(tick);
+      };
+      tick();
+    }
+  } catch {}
+}
+
+// Снимаем подсветку
+export function clearAttackHighlights() {
+  try {
+    const ctx = getCtx();
+    const { effectsGroup } = ctx;
+    for (const h of ACTIVE_ATTACK_HIGHLIGHTS) {
+      try {
+        effectsGroup.remove(h);
+        h.traverse(obj => { if (obj.material) obj.material.dispose?.(); });
+      } catch {}
+    }
+    ACTIVE_ATTACK_HIGHLIGHTS = [];
+    ACTIVE_ATTACK_UNIFORMS = [];
+    if (ATTACK_RAF_ID) { try { cancelAnimationFrame(ATTACK_RAF_ID); } catch {} ATTACK_RAF_ID = null; }
+  } catch {}
 }
 
 export function dissolveAndAsh(mesh, awayVec, durationSec = 1.0) {
@@ -236,6 +310,16 @@ export function dissolveTileCrossfade(tileMesh, oldMaterial, newMaterial, durati
   }
 }
 
-const api = { spawnDamageText, shakeMesh, dissolveAndAsh, dissolveTileSwap, dissolveTileCrossfade, scheduleHpPopup, cancelPendingHpPopup };
+const api = {
+  spawnDamageText,
+  shakeMesh,
+  dissolveAndAsh,
+  dissolveTileSwap,
+  dissolveTileCrossfade,
+  scheduleHpPopup,
+  cancelPendingHpPopup,
+  showAttackHighlights,
+  clearAttackHighlights,
+};
 try { if (typeof window !== 'undefined') window.__fx = api; } catch {}
 export default api;

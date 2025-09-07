@@ -54,6 +54,8 @@ export function performUnitAttack(unitMesh) {
       window.__ui?.updateUI?.(gameState);
       try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
       if (iState) iState.magicFrom = { r, c };
+      const hitsAll = typeof window.computeHits === 'function' ? window.computeHits(gameState, r, c, { union: true }) : [];
+      window.__fx?.showAttackHighlights?.(hitsAll);
       window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
       return;
     }
@@ -77,6 +79,7 @@ export function performUnitAttack(unitMesh) {
       if (iState) iState.pendingAttack = { r, c };
       window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
       window.__ui?.notifications?.show('Выберите цель', 'info');
+      window.__fx?.showAttackHighlights?.(hitsAll);
       return;
     }
     // если выбор не нужен или доступна единственная цель, атакуем сразу

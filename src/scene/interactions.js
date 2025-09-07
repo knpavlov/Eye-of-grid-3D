@@ -176,6 +176,12 @@ function onMouseDown(event) {
     return;
   }
 
+  if (interactionState.magicFrom || interactionState.pendingAttack) {
+    window.__fx?.clearAttackHighlights?.();
+    interactionState.magicFrom = null;
+    interactionState.pendingAttack = null;
+  }
+
   if (interactionState.selectedCard) {
     resetCardSelection();
   }
@@ -240,6 +246,20 @@ function onMouseUp(event) {
 
 function startCardDrag(card) {
   interactionState.draggedCard = card;
+  // Если карта заклинания требует выбора цели, подсветим возможные клетки
+  try {
+    const cardData = card.userData?.cardData;
+    if (cardData?.type === 'SPELL' && window.__spells?.requiresUnitTarget?.(cardData.id)) {
+      const gameState = window.gameState;
+      const cells = [];
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          if (gameState.board?.[r]?.[c]?.unit) cells.push({ r, c });
+        }
+      }
+      window.__fx?.showAttackHighlights?.(cells);
+    }
+  } catch {}
   if (interactionState.hoveredHandCard) {
     gsap.to(interactionState.hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.1 });
     setHandCardHoverVisual(interactionState.hoveredHandCard, false);
@@ -269,6 +289,7 @@ function endCardDrag() {
     interactionState.hoveredTile = null;
   }
   interactionState.draggedCard = null;
+  try { window.__fx?.clearAttackHighlights?.(); } catch {}
 }
 
 function returnCardToHand(card) {
@@ -305,6 +326,7 @@ export function resetCardSelection() {
     } catch {}
     interactionState.selectedCard = null;
   }
+  try { window.__fx?.clearAttackHighlights?.(); } catch {}
 }
 
 function performMagicAttack(from, targetMesh) {
@@ -312,6 +334,7 @@ function performMagicAttack(from, targetMesh) {
   const { unitMeshes, effectsGroup, tileMeshes } = ctx;
   const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
   const gameState = window.gameState;
+  try { window.__fx?.clearAttackHighlights?.(); } catch {}
   const res = window.magicAttack(gameState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
   if (!res) { showNotification('Incorrect target', 'error'); return; }
   for (const l of res.logLines.reverse()) window.addLog(l);
@@ -360,6 +383,7 @@ function performMagicAttack(from, targetMesh) {
 function performChosenAttack(from, targetMesh) {
   const gameState = window.gameState;
   const attacker = gameState.board?.[from.r]?.[from.c]?.unit; if (!attacker) return;
+  try { window.__fx?.clearAttackHighlights?.(); } catch {}
   const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
   const dr = tr - from.r; const dc = tc - from.c;
   const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
