@@ -27,12 +27,22 @@ import * as UIActions from './ui/actions.js';
 import * as SceneEffects from './scene/effects.js';
 import * as UISpellUtils from './ui/spellUtils.js';
 import * as Spells from './spells/handlers.js';
+import { performBattleSequence } from './scene/battleSequence.js';
 import './ui/statusChip.js';
 import * as InputLock from './ui/inputLock.js';
 import { attachUIEvents } from './ui/domEvents.js';
 import * as BattleSplash from './ui/battleSplash.js';
 import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
+
+// Перерисовка руки и юнитов по требованию (глобальная совместимость)
+function requestCardsRedraw() {
+  try { clearTimeout(window.__cardsRedrawT); } catch {}
+  window.__cardsRedrawT = setTimeout(() => {
+    try { Units.updateUnits(window.gameState); } catch {}
+    try { Hand.updateHand(window.gameState); } catch {}
+  }, 10);
+}
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -172,6 +182,20 @@ try {
   window.attachUIEvents = attachUIEvents;
   window.playDeltaAnimations = playDeltaAnimations;
   window.createMetaObjects = createMetaObjects;
+  window.performBattleSequence = performBattleSequence;
+  window.createBoard = Board.createBoard;
+  window.getTileMaterial = Board.getTileMaterial;
+  window.updateTileMaterialsFor = Board.updateTileMaterialsFor;
+  window.createCard3D = Cards.createCard3D;
+  window.drawCardFace = Cards.drawCardFace;
+  window.updateUnits = Units.updateUnits;
+  window.updateHand = Hand.updateHand;
+  window.setHandCardHoverVisual = Hand.setHandCardHoverVisual;
+  window.animateDrawnCardToHand = Hand.animateDrawnCardToHand;
+  window.showNotification = UINotifications.show;
+  window.addLog = UILog.add;
+  window.animateManaGainFromWorld = UIMana.animateManaGainFromWorld;
+  window.requestCardsRedraw = requestCardsRedraw;
 } catch {}
 
 import * as UISync from './ui/sync.js';

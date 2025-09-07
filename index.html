@@ -148,55 +148,11 @@
          Extracted to src/core/netState.js */
       // ====== ИГРОВАЯ ЛОГИКА (полная версия из 2D) ======
     
-    let DIR_VECTORS, OPPOSITE_ELEMENT, elementEmoji, turnCW, turnCCW;
-    // Переопределяем ориентации: N должен смотреть к верхнему краю (−Z), S — к нижнему (+Z)
-    // В three.js «вперёд» меша по умолчанию это +Z (0°), поэтому:
-    // S: 0°, E: -90°, W: 90°, N: 180°
-    // Исправление: N (стрелка вверх) = 0°, S (стрелка вниз) = 180°; E/W оставляем как есть
-    let facingDeg;
-    
-    let uid, inBounds, capMana, attackCost;
-    
-    // Карты
-    let CARDS;
-    
-    // Стартер: только Fire Set + несколько спеллов
-    let STARTER_FIRESET;
-    
-    // Функции игровой логики (полные реализации находятся в core/*)
-    let dirsForPattern, computeCellBuff, effectiveStats;
-
-    let shuffle;
-
-    let drawOne;
-
-    // Специальная версия: вынуть верхнюю карту, но НЕ класть в руку (для эффектной анимации)
-    let drawOneNoAdd;
-
-    let countControlled;
-
-    let startGame;
-      // ====== БОЕВАЯ СИСТЕМА (порт из 2D) ======
-      let hasAdjacentGuard;
-      let computeHits;
-
-    let stagedAttack;
-    let magicAttack;
-    
-      /* MODULE: 3D scene setup and rendering
-         Target module: src/scene/*.js (board, cards, units). Inline code below
-         duplicates logic already present in modules; keep until migration
-         complete. */
-      // ====== THREE.JS СЦЕНА ======
-
-      let scene, camera, renderer, raycaster, mouse;
-      let boardGroup, cardGroup, effectsGroup, metaGroup;
-      let tileMeshes = [];    // 2D массив мешей клеток игрового поля
-      let tileFrames = [];    // рамки подсветки/выделения клеток
-    let unitMeshes = [];      // текущие меши юнитов на поле
-    let handCardMeshes = [];  // меши карт в руке игрока
-      let gameState = null;
-      // Tile textures are now managed by scene/board module
+    /* Упрощённые глобальные ссылки на объекты сцены */
+    let scene, camera, renderer, raycaster, mouse;
+    let boardGroup, cardGroup, effectsGroup, metaGroup;
+    let gameState = null;
+    // Tile textures are now managed by scene/board module
     // Настройки показа большой карты при доборе — можно править из консоли
     window.DRAW_CARD_TUNE = {
       posY: 8.5,   // высота
@@ -260,98 +216,8 @@
     }
     // preloadCardImages removed (module handles lazy loading)
 
-    // Request deferred redraw of units and hand after state mutations.
-    function requestCardsRedraw() {
-      clearTimeout(window.__cardsRedrawT);
-      window.__cardsRedrawT = setTimeout(() => { updateUnits(); updateHand(); }, 10);
-    }
-
-    // Возврат материала тайла по его элементу; делегируется модулю доски
-    function getTileMaterial(element) {
-      if (window.__board && window.__board.getTileMaterial) {
-        return window.__board.getTileMaterial(element);
-      }
-      return null;
-    }
-
-    function updateTileMaterialsFor(elementKey) {
-      if (window.__board && window.__board.updateTileMaterialsFor) {
-        window.__board.updateTileMaterialsFor(elementKey);
-      }
-    }
-
-    // Build or rebuild the 3D board tiles.
-    function createBoard() {
-      try { window.__cards.preloadCardTextures(); } catch {}
-      if (window.__board && window.__scene) {
-        window.__board.createBoard(gameState);
-        const ctx = window.__scene.getCtx();
-        tileMeshes = ctx.tileMeshes || [];
-        tileFrames = ctx.tileFrames || [];
-        try { window.tileMeshes = tileMeshes; window.tileFrames = tileFrames; } catch {}
-      }
-    }
-    
-    // Delegator: module cards implementation
-    function createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
-      if (window.__cards && typeof window.__cards.createCard3D === 'function') {
-        return window.__cards.createCard3D(cardData, isInHand, hpOverride, atkOverride);
-      }
-      throw new Error('[bridge] __cards.createCard3D not available; modules must be loaded.');
-    }
-    // Delegator: module cards implementation
-    function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
-      if (window.__cards && typeof window.__cards.drawCardFace === 'function') {
-        return window.__cards.drawCardFace(ctx, cardData, width, height, hpOverride, atkOverride);
-      }
-      throw new Error('[bridge] __cards.drawCardFace not available; modules must be loaded.');
-    }
-    
-
-    
-    // ====== HAND RENDERING AND LAYOUT ======
-    function updateHand() {
-      if (window.__hand && typeof window.__hand.updateHand === 'function') {
-        window.__hand.updateHand(gameState);
-        const ctx = window.__scene && typeof window.__scene.getCtx === 'function'
-          ? window.__scene.getCtx() : null;
-        if (ctx && ctx.handCardMeshes) {
-          handCardMeshes = ctx.handCardMeshes;
-        }
-      }
-      hoveredHandCard = null;
-    }
-
-    function setHandCardHoverVisual(mesh, hovered) {
-      if (window.__hand && typeof window.__hand.setHandCardHoverVisual === 'function') {
-        window.__hand.setHandCardHoverVisual(mesh, hovered);
-      }
-    }
-
-    async function animateDrawnCardToHand(cardTpl) {
-      if (window.__hand && typeof window.__hand.animateDrawnCardToHand === 'function') {
-        return window.__hand.animateDrawnCardToHand(cardTpl);
-      }
-    }
-
-    // Синхронизирует 3D-модели юнитов с текущим состоянием gameState
-    function updateUnits() {
-      if (window.__units && typeof window.__units.updateUnits === 'function') {
-        window.__units.updateUnits(gameState);
-        const ctx = window.__scene && typeof window.__scene.getCtx === 'function'
-          ? window.__scene.getCtx() : null;
-        if (ctx && ctx.unitMeshes) {
-          unitMeshes = ctx.unitMeshes;
-          try { window.unitMeshes = unitMeshes; } catch {}
-        }
-      }
-    }
-
-    // Визуализировать изменения между предыдущим и новым состоянием (для наблюдателя/оппонента)
-    // Показывает визуальные различия на поле между предыдущим и новым состоянием
-      // Анимации различий между состояниями вынесены в scene/delta.js
-
-        // Взаимодействия с 3D-сценой вынесены в модуль src/scene/interactions.js
+    // Визуализация различий между состояниями и взаимодействия теперь в отдельных модулях
+    // (delta.js и interactions.js)
     
     async function initGame() {
       gameState = startGame(STARTER_FIRESET, STARTER_FIRESET);
@@ -403,20 +269,7 @@
       }
     }
 
-    function wireModules() {
-      try {
-        DIR_VECTORS = window.DIR_VECTORS; OPPOSITE_ELEMENT = window.OPPOSITE_ELEMENT; elementEmoji = window.elementEmoji;
-        turnCW = window.turnCW; turnCCW = window.turnCCW; facingDeg = window.facingDeg;
-        uid = window.uid; inBounds = window.inBounds; capMana = window.capMana; attackCost = window.attackCost;
-        CARDS = window.CARDS; STARTER_FIRESET = window.STARTER_FIRESET || [];
-        dirsForPattern = window.dirsForPattern; computeCellBuff = window.computeCellBuff; effectiveStats = window.effectiveStats;
-        hasAdjacentGuard = window.hasAdjacentGuard; computeHits = window.computeHits; stagedAttack = window.stagedAttack; magicAttack = window.magicAttack;
-        shuffle = window.shuffle; drawOne = window.drawOne; drawOneNoAdd = window.drawOneNoAdd; countControlled = window.countControlled; startGame = window.startGame;
-      } catch {}
-    }
-
       function init() {
-        wireModules();
         initThreeJS();
         // Start render loop early so scene is visible even if game init fails
         animate();
@@ -428,225 +281,12 @@
       }
     try { window.init = init; window.initThreeJS = initThreeJS; window.initGame = initGame; window.animate = animate; } catch {}
 
-    // UI wrappers: use modules only
-    try { showNotification = (message, type) => window.__ui.notifications.show(message, type); } catch {}
-    try { addLog = (message) => window.__ui.log.add(message); } catch {}
-    try { animateManaGainFromWorld = (pos, ownerIndex, visualOnly) => window.__ui.mana.animateManaGainFromWorld(pos, ownerIndex, visualOnly); } catch {}
-    // animateTurnManaGain теперь вызывается напрямую через модуль
-      
-
     // Создание колод и кладбищ вынесено в scene/meta.js
 
     // Обработчики UI перенесены в ui/domEvents.js
     document.addEventListener('DOMContentLoaded', init);
 
       /* UI action helpers moved to src/ui/actions.js */
-    
-    /* MODULE: core/battleSequence
-       Combines combat resolution, animations and network sync.
-       Split into logic (src/core/battle.js), FX (src/scene/battleFx.js)
-       and net sync (src/net/battleSync.js). */
-    async function performBattleSequence(r, c, markAttackTurn) {
-      const staged = stagedAttack(gameState, r, c);
-      if (!staged || staged.empty) return;
-      // flashy заставка BATTLE (сокращённая)
-      await showBattleSplash();
-      // небольшая анимация выпада/толчка
-      const aMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-      const hitsPrev = (staged.targetsPreview || computeHits(gameState, r, c));
-      const fromPos = (aMesh ? aMesh.position.clone() : tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 0.8, 0)));
-
-      const doStep1 = () => {
-        // Убраны жёлтые лучи/стрелки под картами
-        // Применяем урон (этап 1) и перерисовываем юниты
-        staged.step1();
-        gameState = staged.n1; updateUnits();
-        // Тряска и всплывающий урон — уже по актуальным мешам после обновления
-        for (const h of hitsPrev) {
-          const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
-          if (tMesh) { 
-            window.__fx.shakeMesh(tMesh, 6, 0.12); 
-            window.__fx.spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555');
-          }
-        }
-        setTimeout(async () => {
-          // Сокращённая пауза перед контратакой
-          await sleep(700);
-          const ret = staged.step2() || { total: 0, retaliators: [] };
-          const retaliation = typeof ret === 'number' ? ret : (ret.total || 0);
-          let animDelayMs = 0;
-          if (retaliation > 0) {
-            // Выпад всех контратакующих
-            const retaliators = (ret.retaliators || []);
-            let maxDur = 0;
-            for (const rrObj of retaliators) {
-              const rMesh = unitMeshes.find(m => m.userData.row === rrObj.r && m.userData.col === rrObj.c);
-              // Пересчитаем актуальный меш атакующего после обновления юнитов
-              const aMeshLive = unitMeshes.find(m => m.userData.row === r && m.userData.col === c) || aMesh;
-              if (rMesh && aMeshLive) {
-                const dir2 = new THREE.Vector3().subVectors(aMeshLive.position, rMesh.position).normalize();
-                const push2 = { x: dir2.x * 0.6, z: dir2.z * 0.6 };
-                const tl2 = gsap.timeline();
-                tl2.to(rMesh.position, { x: `+=${push2.x}`, z: `+=${push2.z}`, duration: 0.22, ease: 'power2.out' })
-                   .to(rMesh.position, { x: `-=${push2.x}`, z: `-=${push2.z}`, duration: 0.30, ease: 'power2.inOut' });
-                maxDur = Math.max(maxDur, 0.52);
-              }
-            }
-            // После лунжей контратаки — тряска и числа урона по атакующему
-            setTimeout(() => { 
-              const aLive = unitMeshes.find(m => m.userData.row === r && m.userData.col === c) || aMesh; 
-              if (aLive) { 
-                window.__fx.shakeMesh(aLive, 6, 0.14); 
-                window.__fx.spawnDamageText(aLive, `-${retaliation}`, '#ffd166');
-              } 
-            }, Math.max(0, maxDur * 1000 - 10));
-            animDelayMs = Math.max(animDelayMs, Math.floor(maxDur * 1000) + 160);
-            // Синхронизация контратаки для наблюдателя
-            try {
-              const shouldSend = (typeof window !== 'undefined' && window.socket && (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) && (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active);
-              console.log('[battleRetaliation] Checking if should send:', {
-                hasWindow: typeof window !== 'undefined',
-                hasSocket: !!(typeof window !== 'undefined' && window.socket),
-                NET_ACTIVE: typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : 'undefined',
-                MY_SEAT: typeof MY_SEAT !== 'undefined' ? MY_SEAT : 'undefined',
-                gameStateActive: gameState.active,
-                seatMatches: (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active,
-                shouldSend,
-                retaliation
-              });
-              if (shouldSend) {
-                window.socket.emit('battleRetaliation', {
-                  attacker: { r, c },
-                  retaliators: retaliators.map(x => ({ r: x.r, c: x.c })),
-                  total: retaliation,
-                  bySeat: typeof window.MY_SEAT === 'number' ? window.MY_SEAT : null
-                });
-                console.log('[battleRetaliation] Sent battleRetaliation event', { attacker: { r, c }, retaliators: retaliators.length, total: retaliation });
-              }
-            } catch (e) {
-              console.error('[battleRetaliation] Error sending battleRetaliation:', e);
-            }
-          }
-          // Финализация: анимация смерти и орбы перед применением состояния
-          const res = staged.finish();
-          if (res.deaths && res.deaths.length) {
-            for (const d of res.deaths) {
-              try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
-              const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
-              if (deadMesh) {
-                const fromMesh = aMesh || deadMesh;
-                const dirUp = new THREE.Vector3().subVectors(deadMesh.position, fromMesh.position).normalize().multiplyScalar(0.4);
-                window.__fx.dissolveAndAsh(deadMesh, dirUp, 0.9);
-              }
-              // Орб маны появляется с задержкой 400мс после начала анимации смерти
-              setTimeout(() => {
-                const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.6, 0));
-                // Показать визуальный орб у обоих игроков; фактическое начисление маны уже в res.n1
-                animateManaGainFromWorld(p, d.owner, true);
-              }, 400);
-            }
-            setTimeout(() => { gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {} }, 1000);
-          } else {
-            // Если смертей нет — подождём, пока анимация контратаки завершится, затем применим состояние
-            setTimeout(() => {
-              gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {}
-            }, Math.max(0, animDelayMs));
-          }
-        }, 420);
-      };
-
-      // Выпад атакующего перед применением урона
-      if (aMesh && hitsPrev.length) {
-        const firstTargetMesh = unitMeshes.find(m => m.userData.row === hitsPrev[0].r && m.userData.col === hitsPrev[0].c);
-        if (firstTargetMesh) {
-          const dir = new THREE.Vector3().subVectors(firstTargetMesh.position, aMesh.position).normalize();
-          const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
-          const tl = gsap.timeline({ onComplete: doStep1 });
-          tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
-            .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.3, ease: 'power2.inOut' });
-          // Онлайновая синхронизация выпадов (атакующий и цели)
-          try {
-            const shouldSend = (typeof window !== 'undefined' && window.socket && (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) && (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active);
-            console.log('[battleAnim] Checking if should send:', {
-              hasWindow: typeof window !== 'undefined',
-              hasSocket: !!(typeof window !== 'undefined' && window.socket),
-              NET_ACTIVE: typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : 'undefined',
-              MY_SEAT: typeof MY_SEAT !== 'undefined' ? MY_SEAT : 'undefined',
-              gameStateActive: gameState.active,
-              seatMatches: (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active,
-              shouldSend
-            });
-            if (shouldSend) {
-              window.socket.emit('battleAnim', {
-                attacker: { r, c },
-                targets: hitsPrev.map(h => ({ r: h.r, c: h.c, dmg: h.dmg })),
-                bySeat: typeof window.MY_SEAT === 'number' ? window.MY_SEAT : null
-              });
-              console.log('[battleAnim] Sent battleAnim event', { attacker: { r, c }, targets: hitsPrev.length });
-            }
-          } catch (e) {
-            console.error('[battleAnim] Error sending battleAnim:', e);
-          }
-        } else {
-          gsap.to(aMesh.position, { y: aMesh.position.y + 0.25, yoyo: true, repeat: 1, duration: 0.2, onComplete: doStep1 });
-        }
-      } else {
-        doStep1();
-      }
-    }
-
-    /* Scene effects moved to src/scene/effects.js */
-    function performMagicAttack(from, targetMesh) {
-      const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
-      const res = magicAttack(gameState, from.r, from.c, tr, tc);
-      if (!res) { showNotification('Incorrect target', 'error'); return; }
-      // Не обновляем состояние немедленно, чтобы дать пройти анимации смерти
-      for (const l of res.logLines.reverse()) addLog(l);
-      const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
-      if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
-      // вспышка по цели
-      const tMesh = unitMeshes.find(m => m.userData.row === tr && m.userData.col === tc);
-      if (tMesh) {
-        const flashGeom = new THREE.SphereGeometry(0.25, 12, 12);
-        const flashMat = new THREE.MeshBasicMaterial({ color: 0xff6666, transparent: true, opacity: 0.8 });
-        const flash = new THREE.Mesh(flashGeom, flashMat);
-        flash.position.copy(tMesh.position).add(new THREE.Vector3(0, 0.4, 0));
-        effectsGroup.add(flash);
-        gsap.to(flash.scale, { x: 2, y: 2, z: 2, duration: 0.3 });
-        gsap.to(flash.material, { opacity: 0, duration: 0.3, onComplete: ()=> effectsGroup.remove(flash) });
-        // тряска цели и всплывающий урон для магии
-        window.__fx.shakeMesh(tMesh, 6, 0.12);
-        if (typeof res.dmg === 'number' && res.dmg > 0) {
-          window.__fx.spawnDamageText(tMesh, `-${res.dmg}`, '#ff5555');
-        }
-      }
-      // Манасфера и кладбище для погибших от магии; откладываем перерисовку до конца дизолва
-      if (res.deaths && res.deaths.length) {
-        for (const d of res.deaths) {
-          try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
-          const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
-          if (deadMesh) { window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9); }
-          // Орб маны появляется с задержкой 400мс после начала анимации смерти
-          setTimeout(() => {
-            const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-            // Только визуальный орб; фактическое начисление — в res.n1
-            animateManaGainFromWorld(p, d.owner, true);
-          }, 400);
-        }
-        setTimeout(() => {
-          gameState = res.n1; updateUnits(); updateUI();
-          const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
-          try { schedulePush('magic-battle-finish'); } catch {}
-        }, 1000);
-      } else {
-        // Если смертей нет — применяем состояние сразу
-        gameState = res.n1; updateUnits(); updateUI();
-        const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
-        try { schedulePush('magic-battle-finish'); } catch {}
-      }
-    }
-    // Вспомогательные утилиты: задержка и яркая заставка BATTLE на 3 секунды
-    function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
     // Заставки боя и хода перенесены в ui/battleSplash.js и ui/banner.js
     // (убраны несуществующие обработчики magic-btn и draw-btn)
     </script>

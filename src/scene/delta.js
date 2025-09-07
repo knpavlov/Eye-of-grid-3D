@@ -36,14 +36,15 @@ export function playDeltaAnimations(prevState, nextState) {
               window.__fx?.dissolveAndAsh(ghost, new window.THREE.Vector3(0,0,0.6), 0.9);
             }
             const p = tile.position.clone().add(new window.THREE.Vector3(0, 1.2, 0));
-            const slot = (prevState?.players?.[pu.owner]?.mana ?? 0);
-            animateManaGainFromWorld?.(p, pu.owner, true, slot);
+            const before = (prevState?.players?.[pu.owner]?.mana ?? 0);
             try {
               if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') {
-                gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1);
-                updateUI?.(gameState);
+                gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana || 0) + 1);
               }
             } catch {}
+            const target = Math.max(0, (gameState?.players?.[pu.owner]?.mana ?? (before + 1)) - 1);
+            // Сначала обновляем состояние, затем запускаем полёт орба без скрытия существующей маны
+            animateManaGainFromWorld?.(p, pu.owner, true, target);
           } catch {}
         } else if (!pu && nu) {
           try {

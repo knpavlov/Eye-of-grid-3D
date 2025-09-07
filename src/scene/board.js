@@ -166,6 +166,12 @@ export function createBoard(gameState) {
     ctx.tileMeshes.push(row);
     ctx.tileFrames.push(frameRow);
   }
-
+  // Экспортируем массивы для совместимости со старым кодом
+  try {
+    if (typeof window !== 'undefined') {
+      window.tileMeshes = ctx.tileMeshes;
+      window.tileFrames = ctx.tileFrames;
+    }
+  } catch {}
   return ctx.tileMeshes;
 }
