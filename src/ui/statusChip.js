@@ -11,7 +11,7 @@ export function mount() {
   function upd(){
     const cardsOk = !!(window.CARDS && Object.keys(window.CARDS||{}).length);
     const starterLen = (window.STARTER_FIRESET && window.STARTER_FIRESET.length) || 0;
-    const rulesOk = ['dirsForPattern','computeCellBuff','effectiveStats','computeHits','stagedAttack','magicAttack'].every(k=>typeof window[k]==='function');
+    const rulesOk = ['computeCellBuff','effectiveStats','computeHits','stagedAttack','magicAttack','hasAdjacentGuard'].every(k=>typeof window[k]==='function');
     const stateOk = ['startGame','drawOne','drawOneNoAdd','shuffle','countControlled'].every(k=>typeof window[k]==='function');
     const threeOk = !!(window.renderer && window.scene && window.camera);
     const boardOk = !!(window.tileMeshes && window.tileMeshes.length && window.tileMeshes[0] && window.tileMeshes[0].length);

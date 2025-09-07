@@ -114,7 +114,7 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     const hpToShow = (hpOverride != null) ? hpOverride : (cardData.hp || 0);
     const atkToShow = (atkOverride != null) ? atkOverride : (cardData.atk || 0);
     ctx.fillText(`\u2694${atkToShow}  \u2764${hpToShow}`, width - 16, height - 15);
-    drawPatternGrid(ctx, cardData, width - 76, 178, 10, 2);
+    drawAttacksGrid(ctx, cardData, width - 76, 178, 10, 2);
     drawBlindspotGrid(ctx, cardData, width - 36, 178, 10, 2);
   }
 }
@@ -133,23 +133,31 @@ function getElementColor(element) {
   return colors[element] || '#64748b';
 }
 
-function drawPatternGrid(ctx, cardData, x, y, cell, gap) {
-  const dirsForPattern = (typeof window !== 'undefined' && window.dirsForPattern) || (()=>['N']);
-  const pattern = cardData.pattern || 'FRONT';
-  const range = cardData.range || 1;
+function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
+  const attacks = cardData.attacks || [];
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 3; c++) {
       const cx = x + c * (cell + gap); const cy = y + r * (cell + gap);
-      ctx.fillStyle = 'rgba(148,163,184,0.35)'; if (r === 1 && c === 1) ctx.fillStyle = 'rgba(250,204,21,0.7)';
+      ctx.fillStyle = 'rgba(148,163,184,0.35)';
+      if (r === 1 && c === 1) ctx.fillStyle = 'rgba(0,0,0,0.8)';
       ctx.fillRect(cx, cy, cell, cell);
-      const dirs = dirsForPattern('N', pattern);
-      const isN = (r === 0 && c === 1), isE = (r === 1 && c === 2), isS = (r === 2 && c === 1), isW = (r === 1 && c === 0);
-      if ((isN && dirs.includes('N')) || (isE && dirs.includes('E')) || (isS && dirs.includes('S')) || (isW && dirs.includes('W'))) {
-        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5; ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
+    }
+  }
+  const map = { N: [-1,0], E:[0,1], S:[1,0], W:[0,-1] };
+  for (const a of attacks) {
+    const color = a.mode === 'ANY' ? 'rgba(71,85,105,0.4)' : 'rgba(71,85,105,0.8)';
+    for (const dist of a.ranges || []) {
+      const vec = map[a.dir]; if (!vec) continue;
+      const rr = 1 + vec[0] * dist;
+      const cc = 1 + vec[1] * dist;
+      const cx = x + cc * (cell + gap); const cy = y + rr * (cell + gap);
+      if (rr >= 0 && rr < 3 && cc >= 0 && cc < 3) {
+        ctx.fillStyle = color; ctx.fillRect(cx, cy, cell, cell);
+      } else {
+        ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
       }
     }
   }
-  if (range > 1) { ctx.fillStyle = 'rgba(148,163,184,0.5)'; ctx.fillRect(x + 1*(cell+gap) + 0.5, y + 1*(cell+gap) + 2, cell-1, cell-1); }
 }
 
 function drawBlindspotGrid(ctx, cardData, x, y, cell, gap) {
