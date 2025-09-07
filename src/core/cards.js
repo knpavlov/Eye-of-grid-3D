@@ -66,7 +66,7 @@ export const CARDS = {
       { dir: 'E', ranges: [1] },
       { dir: 'W', ranges: [1] }
     ],
-    blindspots: ['S'], penaltyByTargets: true,
+    blindspots: ['S'], penaltyByTargets: true, friendlyFire: true, // задевает и союзников
     desc: 'If attacks 2 creatures, -2 ATK; if 3 creatures, -4 ATK.'
   },
   FIRE_PURSUER: {

@@ -97,8 +97,10 @@ export function computeHits(state, r, c, opts = {}) {
     if (opts.target && (opts.target.r !== nr || opts.target.c !== nc)) continue;
 
     const B = state.board?.[nr]?.[nc]?.unit;
-    if (!B || B.owner === attacker.owner) continue;
-    if (!aFlying && hasAdjacentGuard(state, nr, nc) && !(CARDS[B.tplId].keywords || []).includes('GUARD')) {
+    const allowFriendly = tplA.friendlyFire; // допускаем ли урон по своим
+    if (!B || (!allowFriendly && B.owner === attacker.owner)) continue;
+    const isAlly = B.owner === attacker.owner;
+    if (!aFlying && !isAlly && hasAdjacentGuard(state, nr, nc) && !(CARDS[B.tplId].keywords || []).includes('GUARD')) {
       continue;
     }
     const backDir = { N: 'S', S: 'N', E: 'W', W: 'E' }[B.facing];
