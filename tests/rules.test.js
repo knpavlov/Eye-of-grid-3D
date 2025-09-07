@@ -89,6 +89,17 @@ describe('guards and hits', () => {
     const coords = hits.map(h => `${h.r},${h.c}`).sort();
     expect(coords).toEqual(['0,1', '1,1']);
   });
+
+  it('computeHits: splashAllies включает союзников в зону поражения', () => {
+    const state = { board: makeBoard() };
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_TRICEPTAUR', facing: 'N' };
+    state.board[1][0].unit = { owner: 0, tplId: 'FIRE_FLAME_LIZARD', facing: 'E' };
+    state.board[1][2].unit = { owner: 0, tplId: 'FIRE_FLAME_LIZARD', facing: 'W' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'S' };
+    const hits = computeHits(state, 1, 1);
+    const coords = hits.map(h => `${h.r},${h.c}`).sort();
+    expect(coords).toEqual(['0,1', '1,0', '1,2']);
+  });
 });
 
 describe('magicAttack', () => {

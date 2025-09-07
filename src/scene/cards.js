@@ -114,8 +114,14 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     const hpToShow = (hpOverride != null) ? hpOverride : (cardData.hp || 0);
     const atkToShow = (atkOverride != null) ? atkOverride : (cardData.atk || 0);
     ctx.fillText(`\u2694${atkToShow}  \u2764${hpToShow}`, width - 16, height - 15);
-    drawAttacksGrid(ctx, cardData, width - 76, 178, 10, 2);
-    drawBlindspotGrid(ctx, cardData, width - 36, 178, 10, 2);
+    // Переносим схемы атак и слепых зон вниз по центру
+    const cell = 10, gap = 2;
+    const gridSize = cell * 3 + gap * 2;
+    const totalW = gridSize * 2 + 10; // расстояние между двумя таблицами 10px
+    const gx = (width - totalW) / 2;
+    const gy = height - 40 - gridSize - 6; // небольшой отступ от нижней панели
+    drawAttacksGrid(ctx, cardData, gx, gy, cell, gap);
+    drawBlindspotGrid(ctx, cardData, gx + gridSize + 10, gy, cell, gap);
   }
 }
 
@@ -135,6 +141,9 @@ function getElementColor(element) {
 
 function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
   const attacks = cardData.attacks || [];
+  // Определяем, требуется ли выбор направления
+  const uniqueDirs = new Set(attacks.map(a => a.dir));
+  const needDirChoice = cardData.chooseDir && uniqueDirs.size > 1;
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 3; c++) {
       const cx = x + c * (cell + gap); const cy = y + r * (cell + gap);
@@ -169,6 +178,14 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
         ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
       }
     }
+  }
+  // Если направлений несколько и нужно выбрать одно — красная рамка спереди
+  if (needDirChoice) {
+    const cx = x + 1 * (cell + gap);
+    const cy = y + 0 * (cell + gap);
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
   }
 }
 

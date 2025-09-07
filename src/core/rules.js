@@ -77,6 +77,7 @@ export function computeHits(state, r, c, opts = {}) {
   const hits = [];
   const aFlying = (tplA.keywords || []).includes('FLYING');
   const allowPierce = tplA.pierce;
+  const allowFriendly = tplA.splashAllies;
   for (const cell of cells) {
     const [dr, dc] = DIR_VECTORS[cell.dirAbs];
     const nr = r + dr * cell.range;
@@ -97,8 +98,14 @@ export function computeHits(state, r, c, opts = {}) {
     if (opts.target && (opts.target.r !== nr || opts.target.c !== nc)) continue;
 
     const B = state.board?.[nr]?.[nc]?.unit;
-    if (!B || B.owner === attacker.owner) continue;
-    if (!aFlying && hasAdjacentGuard(state, nr, nc) && !(CARDS[B.tplId].keywords || []).includes('GUARD')) {
+    if (!B) continue;
+    if (B.owner === attacker.owner && !allowFriendly) continue;
+    if (
+      B.owner !== attacker.owner &&
+      !aFlying &&
+      hasAdjacentGuard(state, nr, nc) &&
+      !(CARDS[B.tplId].keywords || []).includes('GUARD')
+    ) {
       continue;
     }
     const backDir = { N: 'S', S: 'N', E: 'W', W: 'E' }[B.facing];
