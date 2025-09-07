@@ -136,28 +136,39 @@ function getElementColor(element) {
 function drawPatternGrid(ctx, cardData, x, y, cell, gap) {
   const attacks = cardData.attacks || [];
   const baseDirs = { N: [-1,0], E: [0,1], S: [1,0], W: [0,-1] };
-
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 3; c++) {
-      const cx = x + c * (cell + gap);
-      const cy = y + r * (cell + gap);
-      ctx.fillStyle = 'rgba(148,163,184,0.35)';
-      if (r === 1 && c === 1) ctx.fillStyle = 'rgba(250,204,21,0.7)';
-      ctx.fillRect(cx, cy, cell, cell);
-    }
-  }
-
+  const possible = new Set(); // Возможные клетки
+  const guaranteed = new Set(); // Клетки, которые всегда поражаются
   for (const arc of attacks) {
     for (const rng of arc.ranges || []) {
       const [dr, dc] = baseDirs[arc.dir] || [0,0];
       const rr = 1 + dr * rng;
       const cc = 1 + dc * rng;
-      const cx = x + cc * (cell + gap);
-      const cy = y + rr * (cell + gap);
       if (rr >= 0 && rr < 3 && cc >= 0 && cc < 3) {
-        ctx.fillStyle = 'rgba(51,65,85,0.75)';
-        ctx.fillRect(cx, cy, cell, cell);
+        possible.add(`${rr},${cc}`);
+        if (cardData.choose !== 'ONE_DIR' && !arc.chooseRange) {
+          guaranteed.add(`${rr},${cc}`);
+        }
       } else {
+        // Отрисовываем за пределами сетки как атакуемую клетку
+        const cx = x + cc * (cell + gap);
+        const cy = y + rr * (cell + gap);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+      }
+    }
+  }
+
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const key = `${r},${c}`;
+      const cx = x + c * (cell + gap);
+      const cy = y + r * (cell + gap);
+      ctx.fillStyle = 'rgba(148,163,184,0.35)';
+      if (r === 1 && c === 1) ctx.fillStyle = 'rgba(250,204,21,0.7)';
+      if (possible.has(key)) ctx.fillStyle = 'rgba(56,189,248,0.55)';
+      ctx.fillRect(cx, cy, cell, cell);
+      if (guaranteed.has(key)) {
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = 1.5;
         ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);

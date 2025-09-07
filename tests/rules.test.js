@@ -67,6 +67,44 @@ describe('guards and hits', () => {
     expect(h).toBeTruthy();
     expect(h.dmg).toBeGreaterThan(0);
   });
+
+  it('computeHits: выбор направления обязателен для Hellfire Spitter', () => {
+    const state = { board: makeBoard() };
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'S' };
+    // Без выбора направления удар не должен происходить
+    expect(computeHits(state, 1, 1).length).toBe(0);
+    // Указываем направление на север
+    const hits = computeHits(state, 1, 1, { dir: 'N' });
+    expect(hits.length).toBe(1);
+    expect(hits[0].r).toBe(0);
+  });
+
+  it('computeHits: выбор дистанции', () => {
+    // Временная карта с выбором дистанции
+    CARDS.TEST_RANGE = {
+      id: 'TEST_RANGE', name: 'Test Range', type: 'UNIT', cost: 0,
+      element: 'FIRE', atk: 1, hp: 1,
+      attackType: 'STANDARD',
+      attacks: [{ dir: 'N', ranges: [1, 2], chooseRange: true }]
+    };
+    const state = { board: makeBoard() };
+    state.board[2][1].unit = { owner: 0, tplId: 'TEST_RANGE', facing: 'N' };
+    state.board[1][1].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'S' };
+    // Без выбора дистанции удар не происходит
+    expect(computeHits(state, 2, 1).length).toBe(0);
+    // Атака на дистанцию 1
+    const h1 = computeHits(state, 2, 1, { range: 1 });
+    expect(h1.length).toBe(1);
+    expect(h1[0].r).toBe(1);
+    // Освобождаем клетку на дистанции 1 и ставим врага на дистанции 2
+    state.board[1][1].unit = null;
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'S' };
+    const h2 = computeHits(state, 2, 1, { range: 2 });
+    expect(h2.length).toBe(1);
+    expect(h2[0].r).toBe(0);
+    delete CARDS.TEST_RANGE;
+  });
 });
 
 describe('magicAttack', () => {

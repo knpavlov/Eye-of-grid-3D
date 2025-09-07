@@ -68,12 +68,17 @@ export function computeHits(state, r, c, selection = {}) {
   const { atk } = effectiveStats(state.board[r][c], attacker);
   const arcs = tplA.attacks || [];
   const hits = [];
+  // Если у карты выбор направления, без выбранного направления атака не выполняется
+  if (tplA.choose === 'ONE_DIR' && !selection.dir) return [];
   for (const arc of arcs) {
-    if (tplA.choose === 'ONE_DIR' && selection.dir && arc.dir !== selection.dir) continue;
+    // Фильтруем направление, если оно выбрано
+    if (tplA.choose === 'ONE_DIR' && arc.dir !== selection.dir) continue;
     const dirAbs = applyFacing(arc.dir, attacker.facing);
     const [dr, dc] = DIR_VECTORS[dirAbs];
     const ranges = arc.ranges || [];
-    const chosenRanges = arc.chooseRange && selection.dir === arc.dir && selection.range ? [selection.range] : ranges;
+    // Для дуг с выбором дистанции требуется указать range
+    if (arc.chooseRange && !selection.range) continue;
+    const chosenRanges = arc.chooseRange ? [selection.range] : ranges;
     const max = Math.max(...chosenRanges);
     const set = new Set(chosenRanges);
     for (let step = 1; step <= max; step++) {

@@ -13,6 +13,8 @@ export const CARDS = {
     id: 'FIRE_HELLFIRE_SPITTER', name: 'Hellfire Spitter', type: 'UNIT', cost: 1, activation: 1,
     element: 'FIRE', atk: 1, hp: 1,
     attackType: 'STANDARD',
+    // Может атаковать в одном выбранном направлении
+    choose: 'ONE_DIR',
     attacks: [
       { dir: 'N', ranges: [1] },
       { dir: 'E', ranges: [1] },
