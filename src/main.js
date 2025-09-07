@@ -96,6 +96,21 @@ try {
       set: v => { netState.splashActive = v; },
       configurable: true,
     },
+    manaGainActive: {
+      get: () => netState.manaGainActive,
+      set: v => { netState.manaGainActive = !!v; },
+      configurable: true,
+    },
+    PENDING_MANA_ANIM: {
+      get: () => netState.PENDING_MANA_ANIM,
+      set: v => { netState.PENDING_MANA_ANIM = v; },
+      configurable: true,
+    },
+    PENDING_MANA_BLOCK: {
+      get: () => netState.PENDING_MANA_BLOCK,
+      set: v => { netState.PENDING_MANA_BLOCK = v; },
+      configurable: true,
+    },
   });
   window.__netState = netState;
   window.NET_ON = NET_ON;

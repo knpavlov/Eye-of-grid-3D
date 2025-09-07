@@ -333,7 +333,14 @@ function performMagicAttack(from, targetMesh) {
       setTimeout(() => {
         const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
         const slot = gameState.players?.[d.owner]?.mana || 0;
+        try {
+          // Обновляем локальное состояние маны до запуска анимации,
+          // чтобы орб не исчезал у активного игрока
+          const capMana = window.capMana || (x => x);
+          gameState.players[d.owner].mana = capMana((gameState.players[d.owner].mana || 0) + 1);
+        } catch {}
         window.animateManaGainFromWorld(p, d.owner, true, slot);
+        try { window.updateUI(); } catch {}
       }, 400);
     }
     setTimeout(() => {

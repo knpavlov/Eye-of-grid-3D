@@ -37,12 +37,14 @@ export function playDeltaAnimations(prevState, nextState) {
             }
             const p = tile.position.clone().add(new window.THREE.Vector3(0, 1.2, 0));
             const slot = (prevState?.players?.[pu.owner]?.mana ?? 0);
-            animateManaGainFromWorld?.(p, pu.owner, true, slot);
             try {
+              // Сначала обновляем реальное состояние маны, чтобы панель не теряла орб
               if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') {
-                gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1);
-                updateUI?.(gameState);
+                gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana || 0) + 1);
               }
+              // Затем запускаем визуальный полёт орба в нужный слот
+              animateManaGainFromWorld?.(p, pu.owner, true, slot);
+              updateUI?.(gameState);
             } catch {}
           } catch {}
         } else if (!pu && nu) {

@@ -219,14 +219,7 @@
     // Управление анимациями заставки хода и добора карты
     // Перенесено в ui/banner.js
 
-      var manaGainActive = false;
-      try { window.manaGainActive = manaGainActive; } catch {}
-      var PENDING_MANA_ANIM = null; // { ownerIndex, startIdx, endIdx }
-      var PENDING_MANA_BLOCK = [0,0]; // by player index
-// Ожидаемая анимация маны: диапазон новых орбов, которые должны появиться синхронно со вспышкой
-        try { window.PENDING_MANA_ANIM = PENDING_MANA_ANIM; } catch {}
-    // Блокировка появления N последних орбов маны на панели до завершения «полетевших» визуальных орбов (смерть/эффекты)
-        try { window.PENDING_MANA_BLOCK = PENDING_MANA_BLOCK; } catch {}
+      // Флаги анимации маны теперь управляются модулем netState через main.js
     // Прячет один экземпляр ритуального спелла в руке активного игрока, пока ждём выбора жертвы
     let pendingRitualSpellHandIndex = null;
     let pendingRitualSpellCard = null; // ссылка на сам объект карты-спелла, чтобы скрывать по идентичности

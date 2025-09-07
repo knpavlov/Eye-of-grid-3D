@@ -5,6 +5,10 @@ export const netState = {
   __endTurnInProgress: false,
   drawAnimationActive: false,
   splashActive: false,
+  // Флаги анимации маны перенесены сюда из index.html
+  manaGainActive: false,
+  PENDING_MANA_ANIM: null,
+  PENDING_MANA_BLOCK: [0, 0],
 };
 
 export const NET_ON = () => netState.NET_ACTIVE;
