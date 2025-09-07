@@ -1,4 +1,5 @@
 // Анимация различий между предыдущим и новым состоянием
+import { recentRemoteDamage } from './recentRemoteDamage.js';
 
 export function playDeltaAnimations(prevState, nextState) {
   try {
@@ -13,7 +14,6 @@ export function playDeltaAnimations(prevState, nextState) {
     const createCard3D = window.__cards?.createCard3D;
     const animateManaGainFromWorld = window.__ui?.mana?.animateManaGainFromWorld;
     const updateUI = window.updateUI;
-    const NET_ACTIVE = typeof window.NET_ACTIVE !== 'undefined' ? window.NET_ACTIVE : false;
     const capMana = window.capMana || (x => x);
     const CARDS = window.CARDS || {};
 
@@ -37,13 +37,14 @@ export function playDeltaAnimations(prevState, nextState) {
             }
             const p = tile.position.clone().add(new window.THREE.Vector3(0, 1.2, 0));
             const slot = (prevState?.players?.[pu.owner]?.mana ?? 0);
-            animateManaGainFromWorld?.(p, pu.owner, true, slot);
+            // Сначала обновляем состояние маны локально, чтобы панель не моргала
             try {
-              if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') {
-                gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1);
-                updateUI?.(gameState);
+              if (gameState && gameState.players && typeof pu.owner === 'number') {
+                gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana || 0) + 1);
               }
             } catch {}
+            // Затем запускаем анимацию появления орба
+            animateManaGainFromWorld?.(p, pu.owner, true, slot);
           } catch {}
         } else if (!pu && nu) {
           try {
@@ -79,11 +80,11 @@ export function playDeltaAnimations(prevState, nextState) {
     }
 
     const __now = Date.now();
-    const pendingHpChanges = (window.RECENT_REMOTE_DAMAGE && window.RECENT_REMOTE_DAMAGE.size)
+    const pendingHpChanges = (recentRemoteDamage.size)
       ? hpChanges.filter(change => {
           try {
             const key = `${change.r},${change.c}`;
-            const rec = window.RECENT_REMOTE_DAMAGE.get(key);
+            const rec = recentRemoteDamage.get(key);
             return !(rec && rec.delta === change.delta && (__now - rec.ts) < 2000);
           } catch { return true; }
         })

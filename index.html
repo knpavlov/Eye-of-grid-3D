@@ -207,26 +207,11 @@
       yawDeg: 0,    // поворот влево/вправо (ось Y)
       rollDeg: 0    // крен (ось Z)
     };
-    // Очереди догоняющих анимаций боя для наблюдателя
-    let PENDING_BATTLE_ANIMS = [];
-    let PENDING_RETALIATIONS = [];
-    // Recently shown remote damage (to avoid duplicate delta popups)
-    let RECENT_REMOTE_DAMAGE = new Map();
-    try { window.RECENT_REMOTE_DAMAGE = RECENT_REMOTE_DAMAGE; } catch {}
-    // Pending HP popups scheduled by playDeltaAnimations, so we can cancel if battleAnim shows earlier
-    // HP popup scheduling moved to src/scene/effects.js
-    let PENDING_HIDE_HAND_CARDS = [];
+    // Очереди анимаций боя и кэш урона перенесены в модули
+    // см. src/net/battleQueue.js и src/scene/recentRemoteDamage.js
     // Управление анимациями заставки хода и добора карты
     // Перенесено в ui/banner.js
 
-      var manaGainActive = false;
-      try { window.manaGainActive = manaGainActive; } catch {}
-      var PENDING_MANA_ANIM = null; // { ownerIndex, startIdx, endIdx }
-      var PENDING_MANA_BLOCK = [0,0]; // by player index
-// Ожидаемая анимация маны: диапазон новых орбов, которые должны появиться синхронно со вспышкой
-        try { window.PENDING_MANA_ANIM = PENDING_MANA_ANIM; } catch {}
-    // Блокировка появления N последних орбов маны на панели до завершения «полетевших» визуальных орбов (смерть/эффекты)
-        try { window.PENDING_MANA_BLOCK = PENDING_MANA_BLOCK; } catch {}
     // Прячет один экземпляр ритуального спелла в руке активного игрока, пока ждём выбора жертвы
     let pendingRitualSpellHandIndex = null;
     let pendingRitualSpellCard = null; // ссылка на сам объект карты-спелла, чтобы скрывать по идентичности

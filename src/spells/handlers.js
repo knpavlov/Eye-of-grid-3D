@@ -7,6 +7,7 @@ import { spendAndDiscardSpell, burnSpellCard } from '../ui/spellUtils.js';
 import { getCtx } from '../scene/context.js';
 import { interactionState, resetCardSelection } from '../scene/interactions.js';
 import { discardHandCard } from '../scene/discard.js';
+import { setPendingHideHandCards } from '../ui/handHide.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -61,7 +62,7 @@ function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
         ? interactionState.pendingRitualSpellHandIndex
         : pl.hand.indexOf(tpl);
       if (NET_ON()) {
-        try { PENDING_HIDE_HAND_CARDS = Array.from(new Set([handIdx, spellIdx])).filter(i => i >= 0); } catch {}
+        setPendingHideHandCards(Array.from(new Set([handIdx, spellIdx])).filter(i => i >= 0));
       }
       const before = pl.mana;
       pl.mana = capMana(pl.mana + 2);

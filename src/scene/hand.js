@@ -1,6 +1,7 @@
 // Hand rendering and card draw animations
 import { getCtx } from './context.js';
 import { createCard3D } from './cards.js';
+import { pendingHideHandCards } from '../ui/handHide.js';
 
 function getTHREE() {
   const ctx = getCtx();
@@ -91,7 +92,7 @@ export function updateHand(gameState) {
   const indices = [];
   for (let i = 0; i < hand.length; i++) {
     if (viewerSeat === gameState.active && typeof window !== 'undefined' && typeof window.pendingRitualSpellHandIndex === 'number' && i === window.pendingRitualSpellHandIndex) continue;
-    if (typeof window !== 'undefined' && Array.isArray(window.PENDING_HIDE_HAND_CARDS) && window.PENDING_HIDE_HAND_CARDS.includes(i)) continue;
+    if (pendingHideHandCards.includes(i)) continue;
     indices.push(i);
   }
   const handSize = indices.length;

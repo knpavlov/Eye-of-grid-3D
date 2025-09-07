@@ -1,6 +1,10 @@
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
      countdowns, and input locking. */
+import { pendingBattleAnims, pendingRetaliations, clearBattleQueues } from './battleQueue.js';
+import { recentRemoteDamage, clearRecentRemoteDamage } from '../scene/recentRemoteDamage.js';
+import { clearPendingHideHandCards } from '../ui/handHide.js';
+
 (() => {
   // ===== 0) Config =====
   const SERVER_URL = (location.hostname === "localhost")
@@ -533,7 +537,7 @@
               try { window.__fx?.spawnDamageText(tMesh, `-${target.dmg}`, '#ff5555'); } catch {}
               try {
                 const key = `${target.r},${target.c}`;
-                RECENT_REMOTE_DAMAGE.set(key, { delta: -target.dmg, ts: Date.now() });
+                recentRemoteDamage.set(key, { delta: -target.dmg, ts: Date.now() });
               } catch {}
             }
           }
@@ -554,15 +558,15 @@
     
     // Defer during state apply to avoid losing animation due to re-render
     if (typeof APPLYING !== 'undefined' && APPLYING) {
-      try { PENDING_BATTLE_ANIMS.push({ attacker, targets, ts: Date.now(), id: __id }); } catch {}
+      try { pendingBattleAnims.push({ attacker, targets, ts: Date.now(), id: __id }); } catch {}
       return;
     }
-    
+
     const success = tryPlayBattleAnim(attacker, targets);
     console.log('[battleAnim] Animation result:', success);
     if (!success) {
       // Отложим анимацию
-      PENDING_BATTLE_ANIMS.push({ attacker, targets, ts: Date.now(), id: __id });
+      pendingBattleAnims.push({ attacker, targets, ts: Date.now(), id: __id });
     }
   });
   // Визуальная поддержка: если пришло событие ритуала у оппонента — мягко отобразим +2 маны у него
@@ -575,7 +579,7 @@
         try { pendingDiscardSelection = null; } catch {}
         try { pendingRitualSpellHandIndex = null; } catch {}
         try { pendingRitualSpellCard = null; } catch {}
-        try { PENDING_HIDE_HAND_CARDS = []; } catch {}
+        try { clearPendingHideHandCards(); } catch {}
         try { resetCardSelection(); } catch {}
         // Убираем карту-спелл с поля если она там есть
         try { 
@@ -629,7 +633,7 @@
             try { window.__fx?.spawnDamageText(aLive, `-${total}`, '#ffd166'); } catch {}
             try {
               const key = `${attacker.r},${attacker.c}`;
-              RECENT_REMOTE_DAMAGE.set(key, { delta: -total, ts: Date.now() });
+              recentRemoteDamage.set(key, { delta: -total, ts: Date.now() });
             } catch {}
           }
         }, Math.max(0, maxDur * 1000 - 10));
@@ -649,17 +653,23 @@
     const success = tryPlayRetaliation(attacker, retaliators, total);
     console.log('[battleRetaliation] Animation result:', success);
     if (!success) {
-      PENDING_RETALIATIONS.push({ attacker, retaliators, total, ts: Date.now(), id: __id });
+      pendingRetaliations.push({ attacker, retaliators, total, ts: Date.now(), id: __id });
     }
   });
 
   function flushPendingBattleQueues(){
     try {
-      if (PENDING_BATTLE_ANIMS.length) {
-        PENDING_BATTLE_ANIMS = PENDING_BATTLE_ANIMS.filter(ev => !tryPlayBattleAnim(ev.attacker, ev.targets));
+      if (pendingBattleAnims.length) {
+        for (let i = pendingBattleAnims.length - 1; i >= 0; i--) {
+          const ev = pendingBattleAnims[i];
+          if (tryPlayBattleAnim(ev.attacker, ev.targets)) pendingBattleAnims.splice(i, 1);
+        }
       }
-      if (PENDING_RETALIATIONS.length) {
-        PENDING_RETALIATIONS = PENDING_RETALIATIONS.filter(ev => !tryPlayRetaliation(ev.attacker, ev.retaliators, ev.total));
+      if (pendingRetaliations.length) {
+        for (let i = pendingRetaliations.length - 1; i >= 0; i--) {
+          const ev = pendingRetaliations[i];
+          if (tryPlayRetaliation(ev.attacker, ev.retaliators, ev.total)) pendingRetaliations.splice(i, 1);
+        }
       }
     } catch {}
   }
@@ -691,7 +701,7 @@
     
     // Полный сброс локального состояния предыдущего матча перед стартом нового
     try { if (window.__pendingBattleFlushTimer) { clearInterval(window.__pendingBattleFlushTimer); window.__pendingBattleFlushTimer = null; } } catch {}
-    try { PENDING_BATTLE_ANIMS = []; PENDING_RETALIATIONS = []; } catch {}
+    try { clearBattleQueues(); clearPendingHideHandCards(); clearRecentRemoteDamage(); } catch {}
     try { PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = null; PENDING_MANA_BLOCK = [0,0]; } catch {}
     try { pendingDrawCount = 0; pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null; } catch {}
     try { lastDigest = ''; } catch {}
