@@ -63,6 +63,32 @@ describe('guards and hits', () => {
     expect(h).toBeTruthy();
     expect(h.dmg).toBeGreaterThan(0);
   });
+
+  it('computeHits: chooseDir attacks only selected direction', () => {
+    const state = { board: makeBoard() };
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'S' };
+    state.board[1][2].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'W' };
+    // без выбранного направления ничего не происходит
+    expect(computeHits(state, 1, 1)).toEqual([]);
+    // union=true возвращает все возможные цели
+    const allHits = computeHits(state, 1, 1, { union: true });
+    expect(allHits.length).toBe(2);
+    // выбираем север
+    const northHits = computeHits(state, 1, 1, { chosenDir: 'N' });
+    expect(northHits.length).toBe(1);
+    expect(northHits[0]).toMatchObject({ r: 0, c: 1 });
+  });
+
+  it('computeHits: unit hits both adjacent and next cell', () => {
+    const state = { board: makeBoard() };
+    state.board[2][1].unit = { owner: 0, tplId: 'FIRE_GREAT_MINOS', facing: 'N' };
+    state.board[1][1].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'S' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'S' };
+    const hits = computeHits(state, 2, 1);
+    const coords = hits.map(h => `${h.r},${h.c}`).sort();
+    expect(coords).toEqual(['0,1', '1,1']);
+  });
 });
 
 describe('magicAttack', () => {

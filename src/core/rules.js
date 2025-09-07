@@ -76,6 +76,7 @@ export function computeHits(state, r, c, opts = {}) {
   const { atk } = effectiveStats(state.board[r][c], attacker);
   const hits = [];
   const aFlying = (tplA.keywords || []).includes('FLYING');
+  const allowPierce = tplA.pierce;
   for (const cell of cells) {
     const [dr, dc] = DIR_VECTORS[cell.dirAbs];
     const nr = r + dr * cell.range;
@@ -83,13 +84,15 @@ export function computeHits(state, r, c, opts = {}) {
     if (!inBounds(nr, nc)) continue;
 
     // проверяем препятствия
-    let blocked = false;
-    for (let step = 1; step < cell.range; step++) {
-      const tr = r + dr * step;
-      const tc = c + dc * step;
-      if (state.board?.[tr]?.[tc]?.unit) { blocked = true; break; }
+    if (!allowPierce) {
+      let blocked = false;
+      for (let step = 1; step < cell.range; step++) {
+        const tr = r + dr * step;
+        const tc = c + dc * step;
+        if (state.board?.[tr]?.[tc]?.unit) { blocked = true; break; }
+      }
+      if (blocked) continue;
     }
-    if (blocked) continue;
 
     if (opts.target && (opts.target.r !== nr || opts.target.c !== nc)) continue;
 
@@ -122,13 +125,14 @@ export function computeHits(state, r, c, opts = {}) {
 }
 
 // New staged attack that exposes step1/step2/finish for UI animation
-export function stagedAttack(state, r, c) {
+// Постановочный (staged) бой с поддержкой выбора направления/дистанции
+export function stagedAttack(state, r, c, opts = {}) {
   const base = JSON.parse(JSON.stringify(state));
   const attacker = base.board?.[r]?.[c]?.unit;
   if (!attacker) return null;
 
   const tplA = CARDS[attacker.tplId];
-  const hitsRaw = computeHits(base, r, c);
+  const hitsRaw = computeHits(base, r, c, opts);
   if (!hitsRaw.length) return { empty: true };
 
   // Precompute damages once to keep behavior deterministic across calls

@@ -446,14 +446,14 @@
        Combines combat resolution, animations and network sync.
        Split into logic (src/core/battle.js), FX (src/scene/battleFx.js)
        and net sync (src/net/battleSync.js). */
-    async function performBattleSequence(r, c, markAttackTurn) {
-      const staged = stagedAttack(gameState, r, c);
+    async function performBattleSequence(r, c, markAttackTurn, opts = {}) {
+      const staged = stagedAttack(gameState, r, c, opts);
       if (!staged || staged.empty) return;
       // flashy заставка BATTLE (сокращённая)
       await showBattleSplash();
       // небольшая анимация выпада/толчка
       const aMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-      const hitsPrev = (staged.targetsPreview || computeHits(gameState, r, c));
+      const hitsPrev = (staged.targetsPreview || computeHits(gameState, r, c, opts));
       const fromPos = (aMesh ? aMesh.position.clone() : tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 0.8, 0)));
 
       const doStep1 = () => {
