@@ -114,10 +114,12 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     const hpToShow = (hpOverride != null) ? hpOverride : (cardData.hp || 0);
     const atkToShow = (atkOverride != null) ? atkOverride : (cardData.atk || 0);
     ctx.fillText(`\u2694${atkToShow}  \u2764${hpToShow}`, width - 16, height - 15);
-    const cell = 10, gap = 2, spacing = 8;
+    // Параметры мини-сеток 3x3: ячейка, промежуток и расстояние между сетками
+    const cell = 10, gap = 2, spacing = 24; // spacing увеличен, чтобы слева можно было дорисовать ещё клетку
     const gridW = cell * 3 + gap * 2;
     const startX = (width - (gridW * 2 + spacing)) / 2;
-    const gridY = 220; // нижняя центральная область
+    // Опускаем схемы к нижней части карты
+    const gridY = height - 90;
     drawAttacksGrid(ctx, cardData, startX, gridY, cell, gap);
     drawBlindspotGrid(ctx, cardData, startX + gridW + spacing, gridY, cell, gap);
   }
@@ -158,19 +160,23 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
       const cy = y + rr * (cell + gap);
       const inGrid = rr >= 0 && rr < 3 && cc >= 0 && cc < 3;
       if (inGrid) {
-        // Возможные клетки — голубое заполнение
+        // Возможные клетки внутри 3x3 — голубое заполнение
         ctx.fillStyle = 'rgba(56,189,248,0.35)';
         ctx.fillRect(cx, cy, cell, cell);
         // Обязательные атаки помечаем красной рамкой
         if (!isChoice) {
           ctx.strokeStyle = '#ef4444';
           ctx.lineWidth = 1.5;
-          ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
+          ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
         }
       } else {
+        // Клетки за пределами 3x3: тоже заливаем синим,
+        // а рамку выбираем по ситуации (красная — обязательная цель)
+        ctx.fillStyle = 'rgba(56,189,248,0.35)';
+        ctx.fillRect(cx, cy, cell, cell);
         ctx.strokeStyle = isChoice ? 'rgba(56,189,248,0.6)' : '#ef4444';
         ctx.lineWidth = 1.5;
-        ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
+        ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
       }
     }
   }

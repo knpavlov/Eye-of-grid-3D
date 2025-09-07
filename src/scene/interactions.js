@@ -216,7 +216,10 @@ function onMouseUp(event) {
       if (interactionState.hoveredTile) {
         const row = interactionState.hoveredTile.userData.row;
         const col = interactionState.hoveredTile.userData.col;
-        if (gameState.board[row][col].unit) {
+        const cellUnit = gameState.board[row][col].unit;
+        // Считаем клетку свободной, если в ней остался только "труп" (HP ≤ 0)
+        const alive = cellUnit && ((cellUnit.currentHP ?? cellUnit.hp) > 0);
+        if (alive) {
           showNotification('Cell is already occupied!', 'error');
           returnCardToHand(interactionState.draggedCard);
         } else {

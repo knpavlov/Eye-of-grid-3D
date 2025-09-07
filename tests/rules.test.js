@@ -90,12 +90,17 @@ describe('guards and hits', () => {
     expect(coords).toEqual(['0,1', '1,1']);
   });
 
-  it('computeHits: friendlyFire позволяет бить своих', () => {
+  it('computeHits: friendlyFire бьёт союзников только при наличии врага', () => {
     const state = { board: makeBoard() };
     state.board[1][1].unit = { owner: 0, tplId: 'FIRE_TRICEPTAUR', facing: 'N' };
-    state.board[0][1].unit = { owner: 0, tplId: 'FIRE_FLAME_LIZARD', facing: 'S' };
+    state.board[0][1].unit = { owner: 0, tplId: 'FIRE_FLAME_LIZARD', facing: 'S' }; // союзник спереди
+    // Нет врагов — атака не происходит
+    expect(computeHits(state, 1, 1)).toEqual([]);
+    // Добавляем врага сбоку, теперь удар заденет и союзника
+    state.board[1][2].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'W' };
     const hits = computeHits(state, 1, 1);
-    expect(hits.some(h => h.r === 0 && h.c === 1)).toBe(true);
+    const coords = hits.map(h => `${h.r},${h.c}`).sort();
+    expect(coords).toEqual(['0,1', '1,2']);
   });
 });
 

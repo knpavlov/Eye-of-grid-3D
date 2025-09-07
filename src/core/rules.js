@@ -126,6 +126,9 @@ export function computeHits(state, r, c, opts = {}) {
     const dmg = Math.max(0, atk + extraTotal);
     hits.push({ r: nr, c: nc, dmg, backstab: isBack });
   }
+  // Если среди потенциальных целей нет врагов, атака с FriendlyFire не выполняется
+  const hasEnemy = hits.some(h => state.board?.[h.r]?.[h.c]?.unit?.owner !== attacker.owner);
+  if (hits.length && !hasEnemy) return [];
   return hits;
 }
 
