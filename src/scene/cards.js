@@ -145,16 +145,28 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
   }
   const map = { N: [-1,0], E:[0,1], S:[1,0], W:[0,-1] };
   for (const a of attacks) {
-    const color = a.mode === 'ANY' ? 'rgba(71,85,105,0.4)' : 'rgba(71,85,105,0.8)';
+    const isChoice = cardData.chooseDir || a.mode === 'ANY';
     for (const dist of a.ranges || []) {
       const vec = map[a.dir]; if (!vec) continue;
       const rr = 1 + vec[0] * dist;
       const cc = 1 + vec[1] * dist;
-      const cx = x + cc * (cell + gap); const cy = y + rr * (cell + gap);
-      if (rr >= 0 && rr < 3 && cc >= 0 && cc < 3) {
-        ctx.fillStyle = color; ctx.fillRect(cx, cy, cell, cell);
+      const cx = x + cc * (cell + gap);
+      const cy = y + rr * (cell + gap);
+      const inGrid = rr >= 0 && rr < 3 && cc >= 0 && cc < 3;
+      if (inGrid) {
+        // Возможные клетки — голубое заполнение
+        ctx.fillStyle = 'rgba(56,189,248,0.35)';
+        ctx.fillRect(cx, cy, cell, cell);
+        // Обязательные атаки помечаем красной рамкой
+        if (!isChoice) {
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
+        }
       } else {
-        ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
+        ctx.strokeStyle = isChoice ? 'rgba(56,189,248,0.6)' : '#ef4444';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
       }
     }
   }

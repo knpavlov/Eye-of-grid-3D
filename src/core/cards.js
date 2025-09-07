@@ -14,6 +14,7 @@ export const CARDS = {
     id: 'FIRE_HELLFIRE_SPITTER', name: 'Hellfire Spitter', type: 'UNIT', cost: 1, activation: 1,
     element: 'FIRE', atk: 1, hp: 1,
     attackType: 'STANDARD', firstStrike: true,
+    chooseDir: true, // выбирает одно направление атаки
     attacks: [
       { dir: 'N', ranges: [1] },
       { dir: 'E', ranges: [1] },
@@ -43,7 +44,8 @@ export const CARDS = {
     id: 'FIRE_GREAT_MINOS', name: 'Great Minos of Sciondar', type: 'UNIT', cost: 3, activation: 2,
     element: 'FIRE', atk: 2, hp: 1,
     attackType: 'STANDARD',
-    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY' } ], // выбор клетки на 1 или 2 вперёд
+    attacks: [ { dir: 'N', ranges: [1, 2] } ], // бьёт сразу на 1 и 2 клетки вперёд
+    pierce: true, // игнорирует стоящих на пути
     blindspots: ['S'], dodge50: true, diesOffElement: 'FIRE',
     desc: 'Dodge 50% (non-magic). Destroy if not on Fire tile.'
   },

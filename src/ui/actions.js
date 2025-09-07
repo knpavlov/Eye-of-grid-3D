@@ -44,6 +44,7 @@ export function performUnitAttack(unitMesh) {
     const unit = gameState.board?.[r]?.[c]?.unit; if (!unit) return;
     const tpl = window.CARDS?.[unit.tplId];
     const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
+    const iState = window.__interactions?.interactionState;
     if (tpl?.attackType === 'MAGIC') {
       if (gameState.players[gameState.active].mana < cost) {
         window.__ui?.notifications?.show(`${cost} mana is required to attack`, 'error');
@@ -52,13 +53,15 @@ export function performUnitAttack(unitMesh) {
       gameState.players[gameState.active].mana -= cost;
       window.__ui?.updateUI?.(gameState);
       try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
-      window.magicFrom = { r, c };
+      if (iState) iState.magicFrom = { r, c };
       window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
       return;
     }
     const computeHits = window.computeHits;
-    const hits = typeof computeHits === 'function' ? computeHits(gameState, r, c) : [];
-    if (!hits.length) {
+    const attacks = tpl?.attacks || [];
+    const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
+    const hitsAll = typeof computeHits === 'function' ? computeHits(gameState, r, c, { union: true }) : [];
+    if (!hitsAll.length) {
       window.__ui?.notifications?.show('No available targets for attack', 'error');
       return;
     }
@@ -69,8 +72,24 @@ export function performUnitAttack(unitMesh) {
     gameState.players[gameState.active].mana -= cost;
     window.__ui?.updateUI?.(gameState);
     try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
+    if (needsChoice && hitsAll.length > 1) {
+      if (iState) iState.pendingAttack = { r, c };
+      window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
+      return;
+    }
+    // если выбор не нужен или доступна единственная цель, атакуем сразу
+    let opts = {};
+    if (needsChoice && hitsAll.length === 1) {
+      const h = hitsAll[0];
+      const dr = h.r - r, dc = h.c - c;
+      const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
+      const ORDER = ['N', 'E', 'S', 'W'];
+      const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(unit.facing) + 4) % 4];
+      const dist = Math.max(Math.abs(dr), Math.abs(dc));
+      opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
+    }
     if (typeof window.performBattleSequence === 'function') {
-      window.performBattleSequence(r, c, true);
+      window.performBattleSequence(r, c, true, opts);
     }
   } catch {}
 }
