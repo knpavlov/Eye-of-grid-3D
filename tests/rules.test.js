@@ -89,6 +89,14 @@ describe('guards and hits', () => {
     const coords = hits.map(h => `${h.r},${h.c}`).sort();
     expect(coords).toEqual(['0,1', '1,1']);
   });
+
+  it('computeHits: friendlyFire позволяет бить своих', () => {
+    const state = { board: makeBoard() };
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_TRICEPTAUR', facing: 'N' };
+    state.board[0][1].unit = { owner: 0, tplId: 'FIRE_FLAME_LIZARD', facing: 'S' };
+    const hits = computeHits(state, 1, 1);
+    expect(hits.some(h => h.r === 0 && h.c === 1)).toBe(true);
+  });
 });
 
 describe('magicAttack', () => {

@@ -38,6 +38,7 @@ function attackCellsForTpl(tpl, facing, opts = {}) {
     const dirAbs = rotateDir(facing, a.dir);
     const ranges = Array.isArray(a.ranges) ? a.ranges.slice() : [1];
     let used = ranges;
+    // mode: 'ANY' означает выбор одной из дистанций (напр. ближняя или дальняя)
     if (a.mode === 'ANY' && !union) {
       const chosen = rangeChoices?.[a.dir];
       used = [chosen ?? ranges[0]];
@@ -72,11 +73,13 @@ export function computeHits(state, r, c, opts = {}) {
   const attacker = state.board?.[r]?.[c]?.unit;
   if (!attacker) return [];
   const tplA = CARDS[attacker.tplId];
+  // tplA.friendlyFire — может ли атака задевать союзников
   const cells = attackCellsForTpl(tplA, attacker.facing, opts);
   const { atk } = effectiveStats(state.board[r][c], attacker);
   const hits = [];
   const aFlying = (tplA.keywords || []).includes('FLYING');
   const allowPierce = tplA.pierce;
+  const allowFriendly = !!tplA.friendlyFire; // может ли существо задевать союзников
   for (const cell of cells) {
     const [dr, dc] = DIR_VECTORS[cell.dirAbs];
     const nr = r + dr * cell.range;
@@ -97,9 +100,11 @@ export function computeHits(state, r, c, opts = {}) {
     if (opts.target && (opts.target.r !== nr || opts.target.c !== nc)) continue;
 
     const B = state.board?.[nr]?.[nc]?.unit;
-    if (!B || B.owner === attacker.owner) continue;
-    if (!aFlying && hasAdjacentGuard(state, nr, nc) && !(CARDS[B.tplId].keywords || []).includes('GUARD')) {
-      continue;
+    if (!B) continue;
+    if (B.owner === attacker.owner && !allowFriendly) continue; // по умолчанию союзников не бьём
+    if (B.owner !== attacker.owner &&
+        !aFlying && hasAdjacentGuard(state, nr, nc) && !(CARDS[B.tplId].keywords || []).includes('GUARD')) {
+      continue; // охрана работает только против врагов
     }
     const backDir = { N: 'S', S: 'N', E: 'W', W: 'E' }[B.facing];
     const [bdr, bdc] = DIR_VECTORS[backDir] || [0, 0];

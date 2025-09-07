@@ -114,8 +114,12 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     const hpToShow = (hpOverride != null) ? hpOverride : (cardData.hp || 0);
     const atkToShow = (atkOverride != null) ? atkOverride : (cardData.atk || 0);
     ctx.fillText(`\u2694${atkToShow}  \u2764${hpToShow}`, width - 16, height - 15);
-    drawAttacksGrid(ctx, cardData, width - 76, 178, 10, 2);
-    drawBlindspotGrid(ctx, cardData, width - 36, 178, 10, 2);
+    const cell = 10, gap = 2, spacing = 8;
+    const gridW = cell * 3 + gap * 2;
+    const startX = (width - (gridW * 2 + spacing)) / 2;
+    const gridY = 220; // нижняя центральная область
+    drawAttacksGrid(ctx, cardData, startX, gridY, cell, gap);
+    drawBlindspotGrid(ctx, cardData, startX + gridW + spacing, gridY, cell, gap);
   }
 }
 
@@ -169,6 +173,14 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
         ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
       }
     }
+  }
+  // Если направлений несколько и нужно выбрать одно — подсвечиваем клетку перед существом
+  if (cardData.chooseDir && (attacks.length > 1)) {
+    const cx = x + 1 * (cell + gap);
+    const cy = y + 0 * (cell + gap);
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
   }
 }
 
