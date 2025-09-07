@@ -54,6 +54,17 @@ export function performUnitAttack(unitMesh) {
       window.__ui?.updateUI?.(gameState);
       try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
       if (iState) iState.magicFrom = { r, c };
+      // Подсветка всех вражеских существ для магической атаки
+      try {
+        const cells = [];
+        for (let rr = 0; rr < 3; rr++) {
+          for (let cc = 0; cc < 3; cc++) {
+            const u = gameState.board?.[rr]?.[cc]?.unit;
+            if (u && u.owner !== unit.owner) cells.push({ r: rr, c: cc });
+          }
+        }
+        window.__tileHighlights?.highlightCells(cells);
+      } catch {}
       window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
       return;
     }
@@ -75,6 +86,8 @@ export function performUnitAttack(unitMesh) {
     try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
     if (needsChoice && hitsAll.length > 1) {
       if (iState) iState.pendingAttack = { r, c };
+      // Подсветка всех доступных целей
+      try { window.__tileHighlights?.highlightCells(hitsAll); } catch {}
       window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
       window.__ui?.notifications?.show('Выберите цель', 'info');
       return;

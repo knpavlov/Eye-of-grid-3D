@@ -160,11 +160,13 @@ function onMouseDown(event) {
     if (interactionState.magicFrom) {
       performMagicAttack(interactionState.magicFrom, unit);
       interactionState.magicFrom = null;
+      try { window.__tileHighlights?.clearHighlights(); } catch {}
       return;
     }
     if (interactionState.pendingAttack) {
       performChosenAttack(interactionState.pendingAttack, unit);
       interactionState.pendingAttack = null;
+      try { window.__tileHighlights?.clearHighlights(); } catch {}
       return;
     }
     if (interactionState.selectedCard && interactionState.selectedCard.userData.cardData.type === 'SPELL') {
@@ -490,6 +492,8 @@ export function placeUnitWithDirection(direction) {
       if (hitsAll.length && hasEnemy) {
         if (needsChoice && hitsAll.length > 1) {
           interactionState.pendingAttack = { r: row, c: col };
+          // Подсветка всех доступных целей для только что призванного существа
+          try { window.__tileHighlights?.highlightCells(hitsAll); } catch {}
           window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
           window.__ui?.notifications?.show('Выберите цель', 'info');
         } else {

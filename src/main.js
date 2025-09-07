@@ -12,6 +12,7 @@ import * as Cards from './scene/cards.js';
 import * as Units from './scene/units.js';
 import * as Hand from './scene/hand.js';
 import * as Interactions from './scene/interactions.js';
+import * as TileHighlight from './scene/highlight.js';
 import { getCtx as getSceneCtx } from './scene/context.js';
 // UI modules
 import * as UINotifications from './ui/notifications.js';
