@@ -33,6 +33,7 @@ import { attachUIEvents } from './ui/domEvents.js';
 import * as BattleSplash from './ui/battleSplash.js';
 import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
+import * as UIRedraw from './ui/redraw.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -156,10 +157,12 @@ try {
   window.__ui.panels = UIPanels;
   window.__ui.handCount = HandCount;
   window.__ui.actions = UIActions;
+  window.__ui.redraw = UIRedraw;
   window.__ui.spellUtils = UISpellUtils;
   window.__ui.updateUI = updateUI;
   window.__ui.inputLock = InputLock;
   window.updateUI = updateUI;
+  window.requestCardsRedraw = UIRedraw.requestCardsRedraw;
   window.__fx = SceneEffects;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
   window.burnSpellCard = UISpellUtils.burnSpellCard;

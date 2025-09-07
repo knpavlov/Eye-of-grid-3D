@@ -43,8 +43,8 @@ export function playDeltaAnimations(prevState, nextState) {
                 gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana || 0) + 1);
               }
             } catch {}
-            // Затем запускаем анимацию появления орба
-            animateManaGainFromWorld?.(p, pu.owner, true, slot);
+            // Состояние уже обновлено, поэтому анимацию запускаем без "визуальной" блокировки
+            animateManaGainFromWorld?.(p, pu.owner, false, slot);
           } catch {}
         } else if (!pu && nu) {
           try {

@@ -252,12 +252,6 @@
     }
     // preloadCardImages removed (module handles lazy loading)
 
-    // Request deferred redraw of units and hand after state mutations.
-    function requestCardsRedraw() {
-      clearTimeout(window.__cardsRedrawT);
-      window.__cardsRedrawT = setTimeout(() => { updateUnits(); updateHand(); }, 10);
-    }
-
     // Возврат материала тайла по его элементу; делегируется модулю доски
     function getTileMaterial(element) {
       if (window.__board && window.__board.getTileMaterial) {
