@@ -20,6 +20,8 @@ export const CARDS = {
       { dir: 'S', ranges: [1] },
       { dir: 'W', ranges: [1] }
     ],
+    // chooseDir указывает, что из доступных направлений атакует только одно выбранное
+    chooseDir: true,
     blindspots: [],
     desc: 'Quickness: always strikes first.'
   },
@@ -43,7 +45,8 @@ export const CARDS = {
     id: 'FIRE_GREAT_MINOS', name: 'Great Minos of Sciondar', type: 'UNIT', cost: 3, activation: 2,
     element: 'FIRE', atk: 2, hp: 1,
     attackType: 'STANDARD',
-    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY' } ], // выбор клетки на 1 или 2 вперёд
+    // без mode: 'ANY' юнит атакует обе клетки на 1 и 2 вперёд одновременно
+    attacks: [ { dir: 'N', ranges: [1, 2] } ],
     blindspots: ['S'], dodge50: true, diesOffElement: 'FIRE',
     desc: 'Dodge 50% (non-magic). Destroy if not on Fire tile.'
   },

@@ -72,7 +72,33 @@ export function computeHits(state, r, c, opts = {}) {
   const attacker = state.board?.[r]?.[c]?.unit;
   if (!attacker) return [];
   const tplA = CARDS[attacker.tplId];
-  const cells = attackCellsForTpl(tplA, attacker.facing, opts);
+
+  // если направление должно быть выбрано, но оно не передано,
+  // пытаемся определить первое доступное с противником
+  let chosenDir = opts.chosenDir;
+  if (tplA.chooseDir && !opts.union && !chosenDir) {
+    const dirs = (tplA.attacks || []).map(a => a.dir);
+    outer: for (const dir of dirs) {
+      const candidates = attackCellsForTpl(tplA, attacker.facing, { chosenDir: dir });
+      for (const cell of candidates) {
+        const [dr, dc] = DIR_VECTORS[cell.dirAbs];
+        const nr = r + dr * cell.range;
+        const nc = c + dc * cell.range;
+        if (!inBounds(nr, nc)) continue;
+        let blocked = false;
+        for (let step = 1; step < cell.range; step++) {
+          const tr = r + dr * step;
+          const tc = c + dc * step;
+          if (state.board?.[tr]?.[tc]?.unit) { blocked = true; break; }
+        }
+        if (blocked) continue;
+        const B = state.board?.[nr]?.[nc]?.unit;
+        if (B && B.owner !== attacker.owner) { chosenDir = dir; break outer; }
+      }
+    }
+  }
+
+  const cells = attackCellsForTpl(tplA, attacker.facing, { ...opts, chosenDir });
   const { atk } = effectiveStats(state.board[r][c], attacker);
   const hits = [];
   const aFlying = (tplA.keywords || []).includes('FLYING');

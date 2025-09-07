@@ -144,19 +144,37 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
     }
   }
   const map = { N: [-1,0], E:[0,1], S:[1,0], W:[0,-1] };
+  const chooseDir = !!cardData.chooseDir;
+  const possible = [];
+  const guaranteed = [];
   for (const a of attacks) {
-    const color = a.mode === 'ANY' ? 'rgba(71,85,105,0.4)' : 'rgba(71,85,105,0.8)';
+    const optional = chooseDir || a.mode === 'ANY';
     for (const dist of a.ranges || []) {
       const vec = map[a.dir]; if (!vec) continue;
       const rr = 1 + vec[0] * dist;
       const cc = 1 + vec[1] * dist;
-      const cx = x + cc * (cell + gap); const cy = y + rr * (cell + gap);
-      if (rr >= 0 && rr < 3 && cc >= 0 && cc < 3) {
-        ctx.fillStyle = color; ctx.fillRect(cx, cy, cell, cell);
-      } else {
-        ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
-      }
+      possible.push({ rr, cc });
+      if (!optional) guaranteed.push({ rr, cc });
     }
+  }
+  // голубая подсветка всех потенциальных целей
+  for (const p of possible) {
+    const cx = x + p.cc * (cell + gap); const cy = y + p.rr * (cell + gap);
+    if (p.rr >= 0 && p.rr < 3 && p.cc >= 0 && p.cc < 3) {
+      ctx.fillStyle = 'rgba(56,189,248,0.35)';
+      ctx.fillRect(cx, cy, cell, cell);
+    } else {
+      ctx.strokeStyle = 'rgba(56,189,248,0.35)';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
+    }
+  }
+  // красная рамка вокруг клеток, которые гарантированно атакуются
+  ctx.strokeStyle = '#ef4444';
+  ctx.lineWidth = 1.5;
+  for (const g of guaranteed) {
+    const cx = x + g.cc * (cell + gap); const cy = y + g.rr * (cell + gap);
+    ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
   }
 }
 
