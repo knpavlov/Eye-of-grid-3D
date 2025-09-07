@@ -61,7 +61,8 @@ export function performUnitAttack(unitMesh) {
     const attacks = tpl?.attacks || [];
     const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
     const hitsAll = typeof computeHits === 'function' ? computeHits(gameState, r, c, { union: true }) : [];
-    if (!hitsAll.length) {
+    const hasEnemy = hitsAll.some(h => gameState.board?.[h.r]?.[h.c]?.unit?.owner !== unit.owner);
+    if (!hitsAll.length || !hasEnemy) {
       window.__ui?.notifications?.show('No available targets for attack', 'error');
       return;
     }

@@ -342,9 +342,11 @@ function performMagicAttack(from, targetMesh) {
         window.animateManaGainFromWorld(p, d.owner, true, slot);
       }, 400);
     }
+    // Обновляем состояние сразу, чтобы клетка считалась свободной
+    window.gameState = res.n1;
+    const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
     setTimeout(() => {
-      window.gameState = res.n1; window.updateUnits(); window.updateUI();
-      const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
+      window.updateUnits(); window.updateUI();
       try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
     }, 1000);
   } else {
@@ -484,7 +486,8 @@ export function placeUnitWithDirection(direction) {
       const attacks = tpl?.attacks || [];
       const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
       const hitsAll = window.computeHits(gameState, row, col, { union: true });
-      if (hitsAll.length) {
+      const hasEnemy = hitsAll.some(h => gameState.board?.[h.r]?.[h.c]?.unit?.owner !== unit.owner);
+      if (hitsAll.length && hasEnemy) {
         if (needsChoice && hitsAll.length > 1) {
           interactionState.pendingAttack = { r: row, c: col };
           window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
