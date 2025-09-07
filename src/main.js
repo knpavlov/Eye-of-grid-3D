@@ -51,7 +51,6 @@ try {
   window.STARTER_FIRESET = STARTER_FIRESET;
 
   window.hasAdjacentGuard = Rules.hasAdjacentGuard;
-  window.dirsForPattern = Rules.dirsForPattern;
   window.computeCellBuff = Rules.computeCellBuff;
   window.effectiveStats = Rules.effectiveStats;
   window.computeHits = Rules.computeHits;
