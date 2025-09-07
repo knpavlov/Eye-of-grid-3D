@@ -75,6 +75,7 @@ export function performUnitAttack(unitMesh) {
     if (needsChoice && hitsAll.length > 1) {
       if (iState) iState.pendingAttack = { r, c };
       window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
+      window.__ui?.notifications?.show('Выберите цель', 'info');
       return;
     }
     // если выбор не нужен или доступна единственная цель, атакуем сразу
