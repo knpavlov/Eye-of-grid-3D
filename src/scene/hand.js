@@ -83,7 +83,7 @@ export function updateHand(gameState) {
     : [];
 
   try {
-    if (viewerSeat === (typeof window !== 'undefined' ? window.MY_SEAT : viewerSeat) && (typeof window !== 'undefined' && window.pendingDrawCount > 0)) {
+    if (typeof window !== 'undefined' && window.pendingDrawCount > 0) {
       hand = hand.slice(0, Math.max(0, hand.length - window.pendingDrawCount));
     }
   } catch {}

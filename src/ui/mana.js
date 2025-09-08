@@ -31,9 +31,9 @@ export function renderBars(gameState) {
       continue;
     }
     
-    // Если идет анимация получения маны в начале хода и есть _beforeMana, используем его
+    // Используем _beforeMana только во время анимации прироста хода
     let displayMana = currentMana;
-    if (typeof beforeMana === 'number' && beforeMana < currentMana) {
+    if (getManaGainActive() && typeof beforeMana === 'number' && beforeMana < currentMana) {
       displayMana = beforeMana; // Показываем старое значение во время анимации
     }
     
