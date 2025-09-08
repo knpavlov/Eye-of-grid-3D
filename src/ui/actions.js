@@ -1,5 +1,6 @@
 // UI action helpers for rotating units and triggering attacks
 // These functions rely on existing globals to minimize coupling.
+import { highlightTiles, clearHighlights } from '../scene/highlight.js';
 
 export function rotateUnit(unitMesh, dir) {
   try {
@@ -53,7 +54,11 @@ export function performUnitAttack(unitMesh) {
       gameState.players[gameState.active].mana -= cost;
       window.__ui?.updateUI?.(gameState);
       try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
-      if (iState) iState.magicFrom = { r, c };
+      if (iState) {
+        iState.magicFrom = { r, c };
+        const hits = typeof window.computeHits === 'function' ? window.computeHits(gameState, r, c) : [];
+        highlightTiles(hits);
+      }
       window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
       return;
     }
@@ -75,6 +80,7 @@ export function performUnitAttack(unitMesh) {
     try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
     if (needsChoice && hitsAll.length > 1) {
       if (iState) iState.pendingAttack = { r, c };
+      highlightTiles(hitsAll);
       window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
       window.__ui?.notifications?.show('Выберите цель', 'info');
       return;
