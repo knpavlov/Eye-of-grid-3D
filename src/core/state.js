@@ -39,9 +39,8 @@ export function reducer(state, action) {
       pl._beforeMana = before;
       pl.mana = capMana(before + 2);
       
-      // Optional draw: only enqueue for animation elsewhere; here push straight for logic
-      const drawn = drawOneNoAdd(s, s.active);
-      if (drawn) pl.hand.push(drawn);
+      // Карта берётся из колоды, но в руку попадёт позже через анимацию
+      drawOneNoAdd(s, s.active);
       s.__ver = (s.__ver || 0) + 1;
       return s;
     }

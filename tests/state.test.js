@@ -96,7 +96,8 @@ describe('reducer', () => {
     expect(next.turn).toBe(2);
     // player 1 became active (index 1): mana increased by 2 but capped at 10
     expect(next.players[1].mana).toBe(10);
-    expect(next.players[1].hand).toEqual(['X']);
+    // карта снимается с колоды, но в руку не добавляется сразу
+    expect(next.players[1].hand).toEqual([]);
     expect(next.players[1].deck).toEqual([]);
     expect(next.__ver).toBeGreaterThan(state.__ver);
   });

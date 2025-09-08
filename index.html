@@ -196,6 +196,10 @@
     let unitMeshes = [];      // текущие меши юнитов на поле
     let handCardMeshes = [];  // меши карт в руке игрока
       let gameState = null;
+      function setGameState(s) {
+        gameState = s;
+        try { window.gameState = s; } catch {}
+      }
       // Tile textures are now managed by scene/board module
     // Настройки показа большой карты при доборе — можно править из консоли
     window.DRAW_CARD_TUNE = {
@@ -354,8 +358,7 @@
         // Взаимодействия с 3D-сценой вынесены в модуль src/scene/interactions.js
     
     async function initGame() {
-      gameState = startGame(STARTER_FIRESET, STARTER_FIRESET);
-      try { window.gameState = gameState; } catch {}
+      setGameState(startGame(STARTER_FIRESET, STARTER_FIRESET));
       
       // Сразу строим сцену и мета-объекты, без задержки появления
       createBoard();
@@ -460,7 +463,7 @@
         // Убраны жёлтые лучи/стрелки под картами
         // Применяем урон (этап 1) и перерисовываем юниты
         staged.step1();
-        gameState = staged.n1; updateUnits();
+        setGameState(staged.n1); updateUnits();
         // Тряска и всплывающий урон — уже по актуальным мешам после обновления
         for (const h of hitsPrev) {
           const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
@@ -545,7 +548,7 @@
                 animateManaGainFromWorld(p, d.owner, true);
               }, 400);
             }
-            gameState = res.n1;
+            setGameState(res.n1);
             if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
             setTimeout(() => {
               updateUnits(); updateUI();
@@ -555,7 +558,7 @@
           } else {
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем применим состояние
             setTimeout(() => {
-              gameState = res.n1; updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {}
+              setGameState(res.n1); updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {}
             }, Math.max(0, animDelayMs));
           }
         }, 420);
@@ -637,7 +640,7 @@
             animateManaGainFromWorld(p, d.owner, true);
           }, 400);
         }
-        gameState = res.n1;
+        setGameState(res.n1);
         const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
         setTimeout(() => {
           updateUnits(); updateUI();
@@ -645,7 +648,7 @@
         }, 1000);
       } else {
         // Если смертей нет — применяем состояние сразу
-        gameState = res.n1; updateUnits(); updateUI();
+        setGameState(res.n1); updateUnits(); updateUI();
         const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
         try { schedulePush('magic-battle-finish'); } catch {}
       }
