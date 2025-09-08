@@ -102,12 +102,17 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   wrapText(ctx, text, 16, 210, width - 32, 14);
   ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; ctx.fillRect(0, height - 40, width, 40);
   ctx.fillStyle = '#f1f5f9'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'left';
-  const summonCostText = `\u20A9${cardData.cost || 0}`; // placeholder currency glyph
-  ctx.fillText(summonCostText, 16, height - 15);
+  const iconSize = 14; // Размер иконок маны и активации
+  drawManaOrbIcon(ctx, 16 + iconSize / 2, height - 20, iconSize);
+  ctx.textAlign = 'left';
+  ctx.font = 'bold 14px Arial';
+  ctx.fillText(String(cardData.cost || 0), 16 + iconSize + 4, height - 15);
   if (cardData.type === 'UNIT') {
     ctx.textAlign = 'left'; ctx.font = 'bold 13px Arial';
     const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
-    const shift = ctx.measureText(summonCostText).width + 10; ctx.fillText(`\u23F3${act}`, 16 + shift, height - 15);
+    const shift = iconSize + 4 + ctx.measureText(String(cardData.cost || 0)).width + 10;
+    drawPlayIcon(ctx, 16 + shift + iconSize / 2, height - 20, iconSize);
+    ctx.fillText(String(act), 16 + shift + iconSize + 4, height - 15);
   }
   if (cardData.type === 'UNIT') {
     ctx.textAlign = 'right';
@@ -118,7 +123,7 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     const cell = 10, gap = 2, spacing = 16; // большее расстояние для запаса под доп. клетку
     const gridW = cell * 3 + gap * 2;
     const startX = (width - (gridW * 2 + spacing)) / 2;
-    const gridY = 250; // нижняя часть карты
+    const gridY = 260; // опускаем схемы ближе к нижней полоске
     drawAttacksGrid(ctx, cardData, startX, gridY, cell, gap);
     drawBlindspotGrid(ctx, cardData, startX + gridW + spacing, gridY, cell, gap);
   }
@@ -136,6 +141,32 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
 function getElementColor(element) {
   const colors = { FIRE: '#dc2626', WATER: '#0369a1', EARTH: '#525252', FOREST: '#166534' };
   return colors[element] || '#64748b';
+}
+
+// Рисуем иконку орба маны
+function drawManaOrbIcon(ctx, x, y, size) {
+  const r = size / 2;
+  const grd = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r);
+  grd.addColorStop(0, '#ffffff');
+  grd.addColorStop(0.3, '#8bd5ff');
+  grd.addColorStop(0.7, '#1ea0ff');
+  grd.addColorStop(1, '#0a67b7');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Рисуем иконку play (треугольник)
+function drawPlayIcon(ctx, x, y, size) {
+  const r = size / 2;
+  ctx.fillStyle = '#f1f5f9';
+  ctx.beginPath();
+  ctx.moveTo(x - r * 0.6, y - r * 0.7);
+  ctx.lineTo(x - r * 0.6, y + r * 0.7);
+  ctx.lineTo(x + r * 0.8, y);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
@@ -164,15 +195,15 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
       // заливаем все потенциальные клетки (включая выходящие за 3x3)
       ctx.fillStyle = 'rgba(56,189,248,0.35)';
       ctx.fillRect(cx, cy, cell, cell);
-      // красная рамка, если атака обязательна или это ближняя клетка при выборе дистанции
-      const mustHit = !isChoice || dist === minDist;
+      // красная рамка только если направление фиксировано
+      const mustHit = (!isChoice) && dist === minDist;
       ctx.strokeStyle = mustHit ? '#ef4444' : 'rgba(56,189,248,0.6)';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
     }
   }
   // Подсветка клетки перед существом при выборе направления
-  if (cardData.chooseDir && (attacks.length > 1)) {
+  if (cardData.chooseDir || attacks.some(a => a.mode === 'ANY')) {
     const cx = x + 1 * (cell + gap);
     const cy = y + 0 * (cell + gap);
     ctx.strokeStyle = '#ef4444';
