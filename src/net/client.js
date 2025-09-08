@@ -246,6 +246,24 @@
       }
     } catch {}
     
+    // --- Прячем карту, которая будет добрана, ещё до запуска любых анимаций ---
+    // Вычисляем, сколько карт добавилось в руку активного игрока, и запоминаем их шаблоны
+    let __drawDelta = 0;
+    let __newHandCards = [];
+    try {
+      const mySeatEarly = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
+      if (mySeatEarly !== null && prev && prev.players && state.players) {
+        const prevHandEarly = (prev.players[mySeatEarly]?.hand) || [];
+        const nextHandEarly = (state.players[mySeatEarly]?.hand) || [];
+        __drawDelta = Math.max(0, nextHandEarly.length - prevHandEarly.length);
+        if (__drawDelta > 0) {
+          __newHandCards = nextHandEarly.slice(-__drawDelta);
+          // Скрываем соответствующее количество карт в руке до окончания анимации
+          pendingDrawCount = __drawDelta;
+        }
+      }
+    } catch {}
+
     // WebSocket анимации отключены, флаги не используются
     
     // Pre-clamp incoming turn mana to avoid early +2 before splash/animation
@@ -355,6 +373,8 @@
         }
       } catch {}
       try { updateUI(); }catch{}
+      // Уже сейчас обновим руку, чтобы лишняя карта не мелькнула до анимации
+      try { if (__drawDelta > 0) updateHand(); } catch {}
       // Если начался новый ход — синхронизируем порядок анимаций как в офлайне:
       // 1) Заставка хода с корректным заголовком, 2) Анимация маны, 3) Добор
       // Упрощенная и надежная система обработки нового хода
@@ -417,24 +437,12 @@
       }
       // Анимация добора у приёмника (только для своей руки)
       try {
-        const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
-        if (mySeat !== null && prev && prev.players && state.players) {
-          const prevHand = (prev.players[mySeat]?.hand) || [];
-          const nextHand = (state.players[mySeat]?.hand) || [];
-          const delta = Math.max(0, nextHand.length - prevHand.length);
-          if (delta > 0) {
-            // Спрячем последние delta карт на время анимации
-            pendingDrawCount = delta; updateHand();
-            // Определим какие именно шаблоны анимировать — возьмём последние delta карт
-            const newCards = nextHand.slice(-delta);
-            for (let i = 0; i < newCards.length; i++) {
-              const tpl = newCards[i];
-              await animateDrawnCardToHand(tpl);
-              // По одной открываем карту в руке
-              pendingDrawCount = Math.max(0, pendingDrawCount - 1);
-              updateHand();
-            }
-          } else {
+        if (__drawDelta > 0) {
+          for (let i = 0; i < __newHandCards.length; i++) {
+            const tpl = __newHandCards[i];
+            await animateDrawnCardToHand(tpl);
+            // По одной открываем карту в руке
+            pendingDrawCount = Math.max(0, pendingDrawCount - 1);
             updateHand();
           }
         } else {
