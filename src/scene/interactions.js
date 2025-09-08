@@ -219,10 +219,12 @@ function onMouseUp(event) {
       if (interactionState.hoveredTile) {
         const row = interactionState.hoveredTile.userData.row;
         const col = interactionState.hoveredTile.userData.col;
-        if (gameState.board[row][col].unit) {
+        const occupant = gameState.board[row][col].unit;
+        if (occupant && ((occupant.currentHP ?? occupant.hp) > 0)) {
           showNotification('Cell is already occupied!', 'error');
           returnCardToHand(interactionState.draggedCard);
         } else {
+          if (occupant) gameState.board[row][col].unit = null; // на всякий случай очищаем погибшего
           interactionState.pendingPlacement = {
             card: interactionState.draggedCard,
             row,

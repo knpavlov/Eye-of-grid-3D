@@ -227,6 +227,7 @@ export async function endTurn() {
         try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}
       }
     } catch {}
+    w.pendingDrawCount = shouldAnimateDraw ? 1 : 0;
     w.updateHand?.();
     try { w.schedulePush?.('endTurn-apply', { force: true }); } catch {}
 
@@ -282,7 +283,6 @@ export async function endTurn() {
     w.updateUI?.();
     try {
       if (shouldAnimateDraw && drawnTpl) {
-        w.pendingDrawCount = 1; w.updateHand?.();
         w.refreshInputLockUI?.();
         await w.animateDrawnCardToHand?.(drawnTpl);
         try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}

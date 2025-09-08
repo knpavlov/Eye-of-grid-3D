@@ -37,18 +37,19 @@ export function renderBars(gameState) {
       displayMana = beforeMana; // Показываем старое значение во время анимации
     }
     
-    const blockAdjusted = Math.max(0, displayMana - Math.min(block, displayMana));
-    const renderManaBase = pending ? Math.min(blockAdjusted, Math.max(0, pending.startIdx)) : blockAdjusted;
-    const renderMana = Math.max(0, Math.min(total, renderManaBase));
-    
-    // Сохраняем текущие видимые орбы, чтобы избежать мерцания
-    const existingOrbs = Array.from(manaDisplay.querySelectorAll('.mana-orb, .mana-slot'));
-    
-    manaDisplay.innerHTML = '';
     const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
     const activeSeat = (typeof window !== 'undefined' && window.gameState && typeof window.gameState.active === 'number')
       ? window.gameState.active : (gameState?.active ?? null);
     const animateAllowed = (typeof mySeat === 'number') ? (mySeat === p) : (typeof activeSeat === 'number' ? activeSeat === p : true);
+
+    const blockAdjusted = animateAllowed ? displayMana : Math.max(0, displayMana - Math.min(block, displayMana));
+    const renderManaBase = pending ? Math.min(blockAdjusted, Math.max(0, pending.startIdx)) : blockAdjusted;
+    const renderMana = Math.max(0, Math.min(total, renderManaBase));
+
+    // Сохраняем текущие видимые орбы, чтобы избежать мерцания
+    const existingOrbs = Array.from(manaDisplay.querySelectorAll('.mana-orb, .mana-slot'));
+
+    manaDisplay.innerHTML = '';
     for (let i = 0; i < total; i++) {
       const orb = document.createElement('div');
       const filled = i < renderMana;

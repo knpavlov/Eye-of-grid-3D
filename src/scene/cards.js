@@ -38,6 +38,36 @@ export function preloadCardTextures() {
   try { if (typeof window !== 'undefined') window.CARD_TEX = CARD_TEX; } catch {}
 }
 
+// Рисуем простой орб маны
+function drawManaOrb(ctx, x, y, r, value) {
+  const grad = ctx.createRadialGradient(x - r * 0.4, y - r * 0.4, r * 0.2, x, y, r);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(1, '#60a5fa');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#1e40af';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = '#000';
+  ctx.font = 'bold 12px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(value), x, y + 1);
+}
+
+// Иконка запуска (play) вместо песочных часов
+function drawPlayIcon(ctx, x, y, size) {
+  ctx.fillStyle = '#f1f5f9';
+  ctx.beginPath();
+  ctx.moveTo(x, y - size / 2);
+  ctx.lineTo(x + size, y);
+  ctx.lineTo(x, y + size / 2);
+  ctx.closePath();
+  ctx.fill();
+}
+
 export function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
   const THREE = getTHREE();
   // Front background
@@ -101,13 +131,15 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   const text = cardData.desc || cardData.text || (cardData.keywords ? cardData.keywords.join(', ') : '');
   wrapText(ctx, text, 16, 210, width - 32, 14);
   ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; ctx.fillRect(0, height - 40, width, 40);
-  ctx.fillStyle = '#f1f5f9'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'left';
-  const summonCostText = `\u20A9${cardData.cost || 0}`; // placeholder currency glyph
-  ctx.fillText(summonCostText, 16, height - 15);
+  const cost = cardData.cost || 0;
+  drawManaOrb(ctx, 24, height - 20, 10, cost);
   if (cardData.type === 'UNIT') {
-    ctx.textAlign = 'left'; ctx.font = 'bold 13px Arial';
-    const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
-    const shift = ctx.measureText(summonCostText).width + 10; ctx.fillText(`\u23F3${act}`, 16 + shift, height - 15);
+    const act = (cardData.activation != null) ? cardData.activation : Math.max(0, cost - 1);
+    drawPlayIcon(ctx, 48, height - 20, 10);
+    ctx.fillStyle = '#f1f5f9';
+    ctx.font = 'bold 13px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText(String(act), 62, height - 15);
   }
   if (cardData.type === 'UNIT') {
     ctx.textAlign = 'right';
@@ -118,7 +150,8 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     const cell = 10, gap = 2, spacing = 16; // большее расстояние для запаса под доп. клетку
     const gridW = cell * 3 + gap * 2;
     const startX = (width - (gridW * 2 + spacing)) / 2;
-    const gridY = 250; // нижняя часть карты
+    const gridH = cell * 3 + gap * 2;
+    const gridY = height - 44 - gridH; // ближе к нижней затемнённой полоске
     drawAttacksGrid(ctx, cardData, startX, gridY, cell, gap);
     drawBlindspotGrid(ctx, cardData, startX + gridW + spacing, gridY, cell, gap);
   }
@@ -139,7 +172,12 @@ function getElementColor(element) {
 }
 
 function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
-  const attacks = cardData.attacks || [];
+  let attacks = cardData.attacks || [];
+  const dirChoice = cardData.chooseDir && attacks.length > 1;
+  if (dirChoice) {
+    const first = attacks[0] || { dir: 'N', ranges: [1] };
+    attacks = [{ dir: 'N', ranges: first.ranges || [1] }];
+  }
   // базовая сетка
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 3; c++) {
@@ -165,14 +203,13 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
       ctx.fillStyle = 'rgba(56,189,248,0.35)';
       ctx.fillRect(cx, cy, cell, cell);
       // красная рамка, если атака обязательна или это ближняя клетка при выборе дистанции
-      const mustHit = !isChoice || dist === minDist;
+      const mustHit = !isChoice || (dist === minDist && !dirChoice);
       ctx.strokeStyle = mustHit ? '#ef4444' : 'rgba(56,189,248,0.6)';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
     }
   }
-  // Подсветка клетки перед существом при выборе направления
-  if (cardData.chooseDir && (attacks.length > 1)) {
+  if (dirChoice) {
     const cx = x + 1 * (cell + gap);
     const cy = y + 0 * (cell + gap);
     ctx.strokeStyle = '#ef4444';
