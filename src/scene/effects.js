@@ -66,6 +66,68 @@ export function spawnDamageText(targetMesh, text, color = '#ff5555') {
     .to(sprite.material, { opacity: 0, duration: 0.5 }, 'end');
 }
 
+// Эффект мощного столба магической энергии
+export function magicColumnBurst(targetMesh) {
+  if (!targetMesh || typeof window === 'undefined') return;
+  const THREE = window.THREE; const gsap = window.gsap;
+  const effectsGroup = window.effectsGroup || window.__scene?.getCtx()?.effectsGroup;
+  if (!THREE || !gsap || !effectsGroup) return;
+
+  // Группа для всех объектов эффекта
+  const group = new THREE.Group();
+  group.position.copy(targetMesh.position);
+  effectsGroup.add(group);
+
+  // Полупрозрачный столб
+  const geom = new THREE.CylinderGeometry(0.3, 0.3, 2.0, 16);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0x66ccff,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+  const pillar = new THREE.Mesh(geom, mat);
+  pillar.position.y = 1.0;
+  group.add(pillar);
+
+  // Частицы искр внутри столба
+  const count = 80;
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.random() * 0.25;
+    pos[i*3] = Math.cos(angle) * radius;
+    pos[i*3+1] = Math.random() * 2.0;
+    pos[i*3+2] = Math.sin(angle) * radius;
+  }
+  const pGeom = new THREE.BufferGeometry();
+  pGeom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const pMat = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: 0.12,
+    transparent: true,
+    opacity: 1.0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+  const sparks = new THREE.Points(pGeom, pMat);
+  group.add(sparks);
+
+  // Анимация взрывного появления и исчезновения за 0.5 сек
+  group.scale.set(0.2, 0.2, 0.2);
+  const tl = gsap.timeline({
+    onComplete: () => {
+      effectsGroup.remove(group);
+      geom.dispose(); mat.dispose(); pGeom.dispose(); pMat.dispose();
+    }
+  });
+  tl.to(group.scale, { x: 1, y: 1, z: 1, duration: 0.25, ease: 'power2.out' })
+    .to(group.scale, { x: 1.2, y: 1.6, z: 1.2, duration: 0.25, ease: 'power2.in' }, 0.25)
+    .to([mat, pMat], { opacity: 0, duration: 0.25, ease: 'power1.in' }, 0.25)
+    .to(group.rotation, { y: group.rotation.y + Math.PI * 2, duration: 0.5, ease: 'none' }, 0);
+}
+
 export function shakeMesh(mesh, times = 3, duration = 0.1) {
   const gsap = window.gsap; if (!gsap || !mesh) return;
   const tl = gsap.timeline();
@@ -236,6 +298,6 @@ export function dissolveTileCrossfade(tileMesh, oldMaterial, newMaterial, durati
   }
 }
 
-const api = { spawnDamageText, shakeMesh, dissolveAndAsh, dissolveTileSwap, dissolveTileCrossfade, scheduleHpPopup, cancelPendingHpPopup };
+const api = { spawnDamageText, magicColumnBurst, shakeMesh, dissolveAndAsh, dissolveTileSwap, dissolveTileCrossfade, scheduleHpPopup, cancelPendingHpPopup };
 try { if (typeof window !== 'undefined') window.__fx = api; } catch {}
 export default api;

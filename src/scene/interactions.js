@@ -341,13 +341,7 @@ function performMagicAttack(from, targetMesh) {
   if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
   const tMesh = unitMeshes.find(m => m.userData.row === targetMesh.userData.row && m.userData.col === targetMesh.userData.col);
   if (tMesh) {
-    const flashGeom = new THREE.SphereGeometry(0.25, 12, 12);
-    const flashMat = new THREE.MeshBasicMaterial({ color: 0xff6666, transparent: true, opacity: 0.8 });
-    const flash = new THREE.Mesh(flashGeom, flashMat);
-    flash.position.copy(tMesh.position).add(new THREE.Vector3(0, 0.4, 0));
-    effectsGroup.add(flash);
-    gsap.to(flash.scale, { x: 2, y: 2, z: 2, duration: 0.3 });
-    gsap.to(flash.material, { opacity: 0, duration: 0.3, onComplete: () => effectsGroup.remove(flash) });
+    window.__fx.magicColumnBurst(tMesh);
     window.__fx.shakeMesh(tMesh, 6, 0.12);
     if (typeof res.dmg === 'number' && res.dmg > 0) {
       window.__fx.spawnDamageText(tMesh, `-${res.dmg}`, '#ff5555');
