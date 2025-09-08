@@ -22,7 +22,9 @@ async function ensureComposer() {
   if (!renderer || !scene || !camera) return;
   state.composerPromise = (async () => {
     try {
-      const mod = await import('https://cdn.jsdelivr.net/npm/postprocessing@6.33.3/build/postprocessing.esm.js');
+      // Загружаем ESM-версию postprocessing с CDN; прежний путь давал 404
+      // Использование суффикса +esm гарантирует корректный модульный билд
+      const mod = await import('https://cdn.jsdelivr.net/npm/postprocessing@6.33.3/+esm');
       const { EffectComposer, RenderPass, EffectPass, GodRaysEffect } = mod;
       const composer = new EffectComposer(renderer);
       composer.addPass(new RenderPass(scene, camera));
