@@ -102,12 +102,15 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   wrapText(ctx, text, 16, 210, width - 32, 14);
   ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; ctx.fillRect(0, height - 40, width, 40);
   ctx.fillStyle = '#f1f5f9'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'left';
-  const summonCostText = `\u20A9${cardData.cost || 0}`; // placeholder currency glyph
-  ctx.fillText(summonCostText, 16, height - 15);
+  const orbR = 8; // радиус орба маны
+  const orbX = 16 + orbR; // отступ слева 16px
+  const orbY = height - 20; // немного выше нижней кромки
+  drawManaOrb(ctx, orbX, orbY, orbR, cardData.cost || 0);
   if (cardData.type === 'UNIT') {
     ctx.textAlign = 'left'; ctx.font = 'bold 13px Arial';
     const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
-    const shift = ctx.measureText(summonCostText).width + 10; ctx.fillText(`\u23F3${act}`, 16 + shift, height - 15);
+    const shift = 16 + orbR * 2 + 6; // ширина орба + небольшой отступ
+    ctx.fillText(`\u25B6${act}`, shift, height - 15); // заменяем песочные часы на play
   }
   if (cardData.type === 'UNIT') {
     ctx.textAlign = 'right';
@@ -118,7 +121,8 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     const cell = 10, gap = 2, spacing = 16; // большее расстояние для запаса под доп. клетку
     const gridW = cell * 3 + gap * 2;
     const startX = (width - (gridW * 2 + spacing)) / 2;
-    const gridY = 250; // нижняя часть карты
+    const gridH = gridW; // сетка 3x3 квадратная
+    const gridY = height - 40 - gridH - 4; // ближе к затемненной полоске
     drawAttacksGrid(ctx, cardData, startX, gridY, cell, gap);
     drawBlindspotGrid(ctx, cardData, startX + gridW + spacing, gridY, cell, gap);
   }
@@ -138,6 +142,24 @@ function getElementColor(element) {
   return colors[element] || '#64748b';
 }
 
+// Рисуем орб маны с числом внутри
+function drawManaOrb(ctx, x, y, r, value) {
+  const grad = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.2, x, y, r);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(0.3, '#8bd5ff');
+  grad.addColorStop(0.7, '#1ea0ff');
+  grad.addColorStop(1, '#0a67b7');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#0f172a';
+  ctx.font = `bold ${r * 1.5}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(value), x, y + 1);
+}
+
 function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
   const attacks = cardData.attacks || [];
   // базовая сетка
@@ -151,9 +173,10 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
     }
   }
   const map = { N: [-1,0], E:[0,1], S:[1,0], W:[0,-1] };
+  const directionChoice = cardData.chooseDir && (attacks.length > 1);
   for (const a of attacks) {
-    const isChoice = cardData.chooseDir || a.mode === 'ANY';
     const minDist = Math.min(...(a.ranges || [1]));
+    const rangeChoice = a.mode === 'ANY';
     for (const dist of a.ranges || []) {
       const vec = map[a.dir];
       if (!vec) continue;
@@ -164,15 +187,15 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
       // заливаем все потенциальные клетки (включая выходящие за 3x3)
       ctx.fillStyle = 'rgba(56,189,248,0.35)';
       ctx.fillRect(cx, cy, cell, cell);
-      // красная рамка, если атака обязательна или это ближняя клетка при выборе дистанции
-      const mustHit = !isChoice || dist === minDist;
+      // красная рамка только если нет выбора направления и дистанции
+      const mustHit = !directionChoice && (!rangeChoice || dist === minDist);
       ctx.strokeStyle = mustHit ? '#ef4444' : 'rgba(56,189,248,0.6)';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
     }
   }
-  // Подсветка клетки перед существом при выборе направления
-  if (cardData.chooseDir && (attacks.length > 1)) {
+  // Подсветка клетки прямо перед существом при выборе направления
+  if (directionChoice) {
     const cx = x + 1 * (cell + gap);
     const cy = y + 0 * (cell + gap);
     ctx.strokeStyle = '#ef4444';

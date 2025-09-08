@@ -82,9 +82,18 @@ export function updateHand(gameState) {
     ? gameState.players[viewerSeat].hand.slice()
     : [];
 
+  // Автоматически скрываем вновь пришедшие карты до проигрывания анимации
   try {
-    if (viewerSeat === (typeof window !== 'undefined' ? window.MY_SEAT : viewerSeat) && (typeof window !== 'undefined' && window.pendingDrawCount > 0)) {
-      hand = hand.slice(0, Math.max(0, hand.length - window.pendingDrawCount));
+    if (typeof window !== 'undefined' && viewerSeat === window.MY_SEAT) {
+      const fullLen = hand.length;
+      const prevLen = window.__prevHandLen ?? fullLen;
+      if (!window.pendingDrawCount && !drawAnimationActive && fullLen > prevLen) {
+        window.pendingDrawCount = fullLen - prevLen;
+      }
+      window.__prevHandLen = fullLen;
+      if (window.pendingDrawCount > 0) {
+        hand = hand.slice(0, Math.max(0, hand.length - window.pendingDrawCount));
+      }
     }
   } catch {}
 

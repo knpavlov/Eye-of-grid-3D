@@ -219,7 +219,12 @@ function onMouseUp(event) {
       if (interactionState.hoveredTile) {
         const row = interactionState.hoveredTile.userData.row;
         const col = interactionState.hoveredTile.userData.col;
-        if (gameState.board[row][col].unit) {
+        const cell = gameState.board[row][col];
+        // Если в клетке висит "мертвый" юнит, убираем его сразу
+        if (cell.unit && (cell.unit.currentHP ?? cell.unit.hp) <= 0) {
+          cell.unit = null;
+        }
+        if (cell.unit) {
           showNotification('Cell is already occupied!', 'error');
           returnCardToHand(interactionState.draggedCard);
         } else {

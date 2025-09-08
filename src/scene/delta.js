@@ -37,13 +37,13 @@ export function playDeltaAnimations(prevState, nextState) {
             }
             const p = tile.position.clone().add(new window.THREE.Vector3(0, 1.2, 0));
             const slot = (prevState?.players?.[pu.owner]?.mana ?? 0);
+            // Сначала обновляем количество маны, но не трогаем UI
+            if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') {
+              gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana || 0) + 1);
+            }
+            // Затем запускаем анимацию, которая сама пересоберёт панель
             animateManaGainFromWorld?.(p, pu.owner, true, slot);
-            try {
-              if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') {
-                gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1);
-                updateUI?.(gameState);
-              }
-            } catch {}
+            try { updateUI?.(gameState); } catch {}
           } catch {}
         } else if (!pu && nu) {
           try {
