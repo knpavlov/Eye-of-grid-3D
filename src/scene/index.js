@@ -109,10 +109,15 @@ export function worldToScreen(vec3) {
 }
 
 export function animate() {
-  const { renderer, scene, camera } = getCtx();
+  const ctx = getCtx();
+  const { renderer, scene, camera } = ctx;
   if (!renderer || !scene || !camera) return;
   function loop() {
-    try { renderer.render(scene, camera); } catch {}
+    try {
+      // Если активен EffectComposer, рендерим через него
+      if (ctx.composer) ctx.composer.render();
+      else renderer.render(scene, camera);
+    } catch {}
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);

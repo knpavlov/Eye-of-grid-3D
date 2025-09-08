@@ -9,6 +9,8 @@ const ctx = {
   camera: null,
   raycaster: null,
   mouse: null,
+  // Постпроцессор (EffectComposer) для спецэффектов
+  composer: null,
   // Groups
   boardGroup: null,
   cardGroup: null,
