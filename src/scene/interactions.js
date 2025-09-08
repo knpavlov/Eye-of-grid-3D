@@ -1,6 +1,7 @@
 // Pointer and drag interactions for Three.js scene
 import { getCtx } from './context.js';
 import { setHandCardHoverVisual } from './hand.js';
+import { highlightTiles, clearHighlights } from './highlight.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -160,11 +161,13 @@ function onMouseDown(event) {
     if (interactionState.magicFrom) {
       performMagicAttack(interactionState.magicFrom, unit);
       interactionState.magicFrom = null;
+      clearHighlights();
       return;
     }
     if (interactionState.pendingAttack) {
       performChosenAttack(interactionState.pendingAttack, unit);
       interactionState.pendingAttack = null;
+      clearHighlights();
       return;
     }
     if (interactionState.selectedCard && interactionState.selectedCard.userData.cardData.type === 'SPELL') {
@@ -261,6 +264,23 @@ function startCardDrag(card) {
     z: 1.1,
     duration: 0.2,
   });
+  // Если карта – заклинание с выбором цели, подсвечиваем все клетки с юнитами
+  try {
+    const data = card.userData?.cardData;
+    if (data && data.type === 'SPELL') {
+      const needUnit = window.__spells?.requiresUnitTarget?.(data.id);
+      if (needUnit) {
+        const gs = window.gameState;
+        const cells = [];
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            if (gs?.board?.[r]?.[c]?.unit) cells.push({ r, c });
+          }
+        }
+        highlightTiles(cells);
+      }
+    }
+  } catch {}
 }
 
 function endCardDrag() {
@@ -269,6 +289,7 @@ function endCardDrag() {
     interactionState.hoveredTile = null;
   }
   interactionState.draggedCard = null;
+  clearHighlights();
 }
 
 function returnCardToHand(card) {
@@ -305,6 +326,7 @@ export function resetCardSelection() {
     } catch {}
     interactionState.selectedCard = null;
   }
+  clearHighlights();
 }
 
 function performMagicAttack(from, targetMesh) {
@@ -490,6 +512,7 @@ export function placeUnitWithDirection(direction) {
       if (hitsAll.length && hasEnemy) {
         if (needsChoice && hitsAll.length > 1) {
           interactionState.pendingAttack = { r: row, c: col };
+          highlightTiles(hitsAll);
           window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
           window.__ui?.notifications?.show('Выберите цель', 'info');
         } else {
@@ -530,7 +553,12 @@ export function setupInteractions() {
 }
 
 export function getSelectedUnit() { return interactionState.selectedUnit; }
-export function clearSelectedUnit() { interactionState.selectedUnit = null; }
+export function clearSelectedUnit() {
+  interactionState.selectedUnit = null;
+  interactionState.pendingAttack = null;
+  interactionState.magicFrom = null;
+  clearHighlights();
+}
 export function getPendingPlacement() { return interactionState.pendingPlacement; }
 export function clearPendingPlacement() { interactionState.pendingPlacement = null; }
 export function getPendingSpellOrientation() { return interactionState.pendingSpellOrientation; }

@@ -80,6 +80,7 @@ export function initThreeJS({ canvasId = 'three-canvas', clearColor = 0x0b1220 }
   ctx.cardGroup = cardGroup;
   ctx.effectsGroup = effectsGroup;
   ctx.metaGroup = metaGroup;
+  ctx.composer = null; // будет создан при подключении постобработки
 
   // Convenience exposure for debugging
   try {
@@ -92,6 +93,7 @@ export function initThreeJS({ canvasId = 'three-canvas', clearColor = 0x0b1220 }
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
+      if (ctx.composer) ctx.composer.setSize(window.innerWidth, window.innerHeight);
     } catch {}
   }
   window.addEventListener('resize', onWindowResize);
@@ -109,10 +111,13 @@ export function worldToScreen(vec3) {
 }
 
 export function animate() {
-  const { renderer, scene, camera } = getCtx();
-  if (!renderer || !scene || !camera) return;
+  const ctx = getCtx();
+  if (!ctx.renderer || !ctx.scene || !ctx.camera) return;
   function loop() {
-    try { renderer.render(scene, camera); } catch {}
+    try {
+      if (ctx.composer) ctx.composer.render();
+      else ctx.renderer.render(ctx.scene, ctx.camera);
+    } catch {}
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);

@@ -14,6 +14,7 @@ const ctx = {
   cardGroup: null,
   effectsGroup: null,
   metaGroup: null,
+  composer: null,
   // Board caches (module-local, but exposed for convenience)
   tileMeshes: [],
   tileFrames: [],
