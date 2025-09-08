@@ -66,6 +66,63 @@ export function spawnDamageText(targetMesh, text, color = '#ff5555') {
     .to(sprite.material, { opacity: 0, duration: 0.5 }, 'end');
 }
 
+// Яркий взрыв магического столба с частицами
+export function spawnMagicColumn(position, duration = 0.5) {
+  const THREE = window.THREE; const gsap = window.gsap;
+  const effectsGroup = window.effectsGroup || window.__scene?.getCtx()?.effectsGroup;
+  if (!THREE || !gsap || !effectsGroup || !position) return;
+
+  // Группа для всех объектов эффекта
+  const group = new THREE.Group();
+  group.position.copy(position);
+  effectsGroup.add(group);
+
+  // Центральный полупрозрачный столб
+  const coreGeom = new THREE.CylinderGeometry(0.2, 0.2, 2, 16, 1, true);
+  const coreMat = new THREE.MeshBasicMaterial({
+    color: 0x88ccff,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const core = new THREE.Mesh(coreGeom, coreMat);
+  core.position.y = 1;
+  group.add(core);
+  gsap.to(core.scale, { x: 1.6, z: 1.6, duration: duration / 2, yoyo: true, repeat: 1, ease: 'power2.out' });
+  gsap.to(core.material, { opacity: 0, duration, ease: 'power2.in' });
+
+  // Частицы, разлетающиеся от центра
+  for (let i = 0; i < 30; i++) {
+    const geom = new THREE.SphereGeometry(0.06, 8, 8);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x88ddff,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false,
+    });
+    const p = new THREE.Mesh(geom, mat);
+    p.position.set(0, 1, 0);
+    group.add(p);
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 0.6 + Math.random() * 0.8;
+    const vx = Math.cos(angle) * speed;
+    const vz = Math.sin(angle) * speed;
+    const vy = 1 + Math.random() * 0.5;
+    gsap.to(p.position, { x: vx, y: vy + 1, z: vz, duration, ease: 'power2.out' });
+    gsap.to(p.material, { opacity: 0, duration });
+  }
+
+  // Очистка после завершения
+  gsap.delayedCall(duration, () => {
+    effectsGroup.remove(group);
+    group.traverse(obj => {
+      if (obj.material && obj.material.dispose) obj.material.dispose();
+      if (obj.geometry && obj.geometry.dispose) obj.geometry.dispose();
+    });
+  });
+}
+
 export function shakeMesh(mesh, times = 3, duration = 0.1) {
   const gsap = window.gsap; if (!gsap || !mesh) return;
   const tl = gsap.timeline();
