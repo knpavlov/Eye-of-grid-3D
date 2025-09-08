@@ -224,6 +224,25 @@
   socket.on('state', async (state)=>{
     if (!state) return;
     const prev = APPLYING ? null : (gameState ? JSON.parse(JSON.stringify(gameState)) : null);
+    // Предварительно определяем добор карты, чтобы скрыть её до окончания анимации
+    let __drawDelta = 0;
+    let __drawCards = [];
+    try {
+      const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
+      if (mySeat !== null && prev && prev.players && state.players) {
+        const prevHand = prev.players[mySeat]?.hand || [];
+        const nextHand = state.players[mySeat]?.hand || [];
+        __drawDelta = Math.max(0, nextHand.length - prevHand.length);
+        if (__drawDelta > 0) {
+          __drawCards = nextHand.slice(-__drawDelta);
+          pendingDrawCount = __drawDelta;
+          try { window.pendingDrawCount = __drawDelta; } catch {}
+        } else {
+          pendingDrawCount = 0;
+          try { window.pendingDrawCount = 0; } catch {}
+        }
+      }
+    } catch {}
     // Robust previous snapshot even if prev is null due to concurrent APPLYING
     let __lastTurnSeen = 0;
     try { __lastTurnSeen = (typeof window !== 'undefined' && typeof window.__lastTurnSeen === 'number') ? window.__lastTurnSeen : (gameState?.turn || 0); } catch {}
@@ -275,6 +294,8 @@
       gameState = state;
       try { window.gameState = state; } catch {}
       lastDigest = digest(state);
+      // Сразу обновим руку, чтобы скрыть добранные карты до анимации
+      try { updateHand(); } catch {}
       // Immediately reflect active seat and mana bars before any animations
         const leftSide = document.getElementById('left-side');
         const rightSide = document.getElementById('right-side');
@@ -418,29 +439,26 @@
       // Анимация добора у приёмника (только для своей руки)
       try {
         const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
-        if (mySeat !== null && prev && prev.players && state.players) {
-          const prevHand = (prev.players[mySeat]?.hand) || [];
-          const nextHand = (state.players[mySeat]?.hand) || [];
-          const delta = Math.max(0, nextHand.length - prevHand.length);
-          if (delta > 0) {
-            // Спрячем последние delta карт на время анимации
-            pendingDrawCount = delta; updateHand();
-            // Определим какие именно шаблоны анимировать — возьмём последние delta карт
-            const newCards = nextHand.slice(-delta);
-            for (let i = 0; i < newCards.length; i++) {
-              const tpl = newCards[i];
-              await animateDrawnCardToHand(tpl);
-              // По одной открываем карту в руке
-              pendingDrawCount = Math.max(0, pendingDrawCount - 1);
-              updateHand();
-            }
-          } else {
+        if (mySeat !== null && __drawDelta > 0 && __drawCards.length === __drawDelta) {
+          for (let i = 0; i < __drawCards.length; i++) {
+            const tpl = __drawCards[i];
+            await animateDrawnCardToHand(tpl);
+            // После каждой анимации показываем карту в руке
+            pendingDrawCount = Math.max(0, pendingDrawCount - 1);
+            // Синхронизируем глобальный счётчик, чтобы карта не скрывалась повторно
+            try { window.pendingDrawCount = pendingDrawCount; } catch {}
             updateHand();
           }
         } else {
+          pendingDrawCount = 0;
+          try { window.pendingDrawCount = 0; } catch {}
           updateHand();
         }
-      } catch { updateHand(); }
+      } catch {
+        pendingDrawCount = 0;
+        try { window.pendingDrawCount = 0; } catch {}
+        updateHand();
+      }
     __endTurnInProgress = false;
     updateIndicator();
     updateInputLock();
