@@ -109,10 +109,13 @@ export function worldToScreen(vec3) {
 }
 
 export function animate() {
-  const { renderer, scene, camera } = getCtx();
+  const { renderer, scene, camera, composer } = getCtx();
   if (!renderer || !scene || !camera) return;
   function loop() {
-    try { renderer.render(scene, camera); } catch {}
+    try {
+      if (composer) composer.render();
+      else renderer.render(scene, camera);
+    } catch {}
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);

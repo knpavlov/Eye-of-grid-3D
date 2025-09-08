@@ -9,6 +9,8 @@ const ctx = {
   camera: null,
   raycaster: null,
   mouse: null,
+  // Постпроцессинг
+  composer: null,
   // Groups
   boardGroup: null,
   cardGroup: null,
