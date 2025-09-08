@@ -66,6 +66,105 @@ export function spawnDamageText(targetMesh, text, color = '#ff5555') {
     .to(sprite.material, { opacity: 0, duration: 0.5 }, 'end');
 }
 
+// Мощный столб магической энергии с разлетающимися частицами и обломками земли
+export function magicBurst(pos, durationSec = 0.75) {
+  const THREE = window.THREE; const gsap = window.gsap;
+  const effectsGroup = window.effectsGroup || window.__scene?.getCtx()?.effectsGroup;
+  if (!THREE || !gsap || !effectsGroup || !pos) return;
+
+  // Группа, содержащая все части эффекта
+  const group = new THREE.Group();
+  group.position.copy(pos);
+  effectsGroup.add(group);
+
+  // Светящийся столб
+  const beamGeom = new THREE.CylinderGeometry(0.9, 0.9, 6, 16, 1, true);
+  const beamMat = new THREE.MeshBasicMaterial({
+    color: 0x66ccff,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  const beam = new THREE.Mesh(beamGeom, beamMat);
+  beam.position.y = 3.0;
+  group.add(beam);
+  gsap.to(beam.scale, { x: 1.8, z: 1.8, duration: durationSec / 2, yoyo: true, repeat: 1, ease: 'power2.out' });
+  gsap.to(beam.material, { opacity: 0, duration: durationSec });
+
+  // Энергетические частицы
+  const count = 240;
+  const geom = new THREE.BufferGeometry();
+  const positions = new Float32Array(count * 3);
+  const velocities = [];
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.random() * 0.75;
+    const px = Math.cos(angle) * radius;
+    const pz = Math.sin(angle) * radius;
+    positions[i * 3] = px;
+    positions[i * 3 + 1] = 0;
+    positions[i * 3 + 2] = pz;
+    velocities.push(new THREE.Vector3(px * 6, Math.random() * 6 + 3, pz * 6));
+  }
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const mat = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: 0.25,
+    transparent: true,
+    opacity: 1.0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const points = new THREE.Points(geom, mat);
+  group.add(points);
+
+  // Разлетающиеся обломки земли
+  const debrisCount = 30;
+  const debrisGeom = new THREE.BoxGeometry(0.2, 0.1, 0.2);
+  const debrisMat = new THREE.MeshStandardMaterial({ color: 0x70513a, flatShading: true });
+  const debris = [];
+  const debrisVel = [];
+  for (let i = 0; i < debrisCount; i++) {
+    const m = new THREE.Mesh(debrisGeom, debrisMat);
+    m.position.set(0, 0, 0);
+    group.add(m);
+    const ang = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 3;
+    debrisVel.push(new THREE.Vector3(Math.cos(ang) * speed, Math.random() * 4 + 2, Math.sin(ang) * speed));
+    debris.push(m);
+  }
+
+  const start = performance.now();
+  (function tick() {
+    const elapsed = (performance.now() - start) / 1000;
+    for (let i = 0; i < count; i++) {
+      positions[i * 3] += velocities[i].x * 0.016;
+      positions[i * 3 + 1] += velocities[i].y * 0.016;
+      positions[i * 3 + 2] += velocities[i].z * 0.016;
+    }
+    geom.attributes.position.needsUpdate = true;
+    for (let i = 0; i < debrisCount; i++) {
+      debrisVel[i].y -= 9.8 * 0.016;
+      debris[i].position.addScaledVector(debrisVel[i], 0.016);
+      debris[i].rotation.x += 0.2;
+      debris[i].rotation.y += 0.3;
+    }
+    if (elapsed < durationSec) requestAnimationFrame(tick);
+  })();
+
+  gsap.to(mat, {
+    opacity: 0,
+    duration: durationSec,
+    onComplete: () => {
+      try { effectsGroup.remove(group); } catch {}
+      geom.dispose(); mat.dispose(); beamGeom.dispose(); beamMat.dispose();
+      debrisGeom.dispose(); debrisMat.dispose();
+    },
+  });
+}
+
 export function shakeMesh(mesh, times = 3, duration = 0.1) {
   const gsap = window.gsap; if (!gsap || !mesh) return;
   const tl = gsap.timeline();
@@ -236,6 +335,6 @@ export function dissolveTileCrossfade(tileMesh, oldMaterial, newMaterial, durati
   }
 }
 
-const api = { spawnDamageText, shakeMesh, dissolveAndAsh, dissolveTileSwap, dissolveTileCrossfade, scheduleHpPopup, cancelPendingHpPopup };
+const api = { spawnDamageText, magicBurst, shakeMesh, dissolveAndAsh, dissolveTileSwap, dissolveTileCrossfade, scheduleHpPopup, cancelPendingHpPopup };
 try { if (typeof window !== 'undefined') window.__fx = api; } catch {}
 export default api;
