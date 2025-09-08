@@ -22,8 +22,13 @@ async function ensureComposer() {
   if (!renderer || !scene || !camera) return;
   state.composerPromise = (async () => {
     try {
-      const mod = await import('https://cdn.jsdelivr.net/npm/postprocessing@6.33.3/build/postprocessing.esm.js');
-      const { EffectComposer, RenderPass, EffectPass, GodRaysEffect } = mod;
+      // Загружаем ESM-версию postprocessing с jsDelivr
+      const mod = await import('https://cdn.jsdelivr.net/npm/postprocessing@6.33.3/+esm');
+      const pp = mod?.default ?? mod; // подстраховка на случай различий экспорта
+      const { EffectComposer, RenderPass, EffectPass, GodRaysEffect } = pp;
+      if (!EffectComposer || !RenderPass || !EffectPass || !GodRaysEffect) {
+        throw new Error('postprocessing не содержит нужных классов');
+      }
       const composer = new EffectComposer(renderer);
       composer.addPass(new RenderPass(scene, camera));
       ctx.composer = composer;
