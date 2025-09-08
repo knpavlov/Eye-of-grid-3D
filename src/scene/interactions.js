@@ -331,7 +331,7 @@ export function resetCardSelection() {
 
 function performMagicAttack(from, targetMesh) {
   const ctx = getCtx();
-  const { unitMeshes, effectsGroup, tileMeshes } = ctx;
+  const { unitMeshes, tileMeshes } = ctx;
   const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
   const gameState = window.gameState;
   const res = window.magicAttack(gameState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
@@ -341,13 +341,8 @@ function performMagicAttack(from, targetMesh) {
   if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
   const tMesh = unitMeshes.find(m => m.userData.row === targetMesh.userData.row && m.userData.col === targetMesh.userData.col);
   if (tMesh) {
-    const flashGeom = new THREE.SphereGeometry(0.25, 12, 12);
-    const flashMat = new THREE.MeshBasicMaterial({ color: 0xff6666, transparent: true, opacity: 0.8 });
-    const flash = new THREE.Mesh(flashGeom, flashMat);
-    flash.position.copy(tMesh.position).add(new THREE.Vector3(0, 0.4, 0));
-    effectsGroup.add(flash);
-    gsap.to(flash.scale, { x: 2, y: 2, z: 2, duration: 0.3 });
-    gsap.to(flash.material, { opacity: 0, duration: 0.3, onComplete: () => effectsGroup.remove(flash) });
+    // зрелищный взрыв магии
+    window.__fx.spawnMagicColumn(tMesh);
     window.__fx.shakeMesh(tMesh, 6, 0.12);
     if (typeof res.dmg === 'number' && res.dmg > 0) {
       window.__fx.spawnDamageText(tMesh, `-${res.dmg}`, '#ff5555');

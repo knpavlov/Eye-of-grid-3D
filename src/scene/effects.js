@@ -66,6 +66,70 @@ export function spawnDamageText(targetMesh, text, color = '#ff5555') {
     .to(sprite.material, { opacity: 0, duration: 0.5 }, 'end');
 }
 
+// Яркий столб магической энергии при магической атаке
+export function spawnMagicColumn(targetMesh) {
+  if (!targetMesh || typeof window === 'undefined') return;
+  const THREE = window.THREE; const gsap = window.gsap;
+  const effectsGroup = window.effectsGroup || window.__scene?.getCtx()?.effectsGroup;
+  if (!THREE || !gsap || !effectsGroup) return;
+  try {
+    const group = new THREE.Group();
+    group.position.copy(targetMesh.position);
+    effectsGroup.add(group);
+
+    // полупрозрачный столб
+    const colGeom = new THREE.CylinderGeometry(0.25, 0.4, 2.4, 16, 1, true);
+    const colMat = new THREE.MeshBasicMaterial({
+      color: 0x6ec1ff,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const column = new THREE.Mesh(colGeom, colMat);
+    column.position.y = 1.2;
+    group.add(column);
+
+    // частицы внутри столба
+    const count = 90;
+    const pGeom = new THREE.BufferGeometry();
+    const arr = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const r = Math.random() * 0.4;
+      const a = Math.random() * Math.PI * 2;
+      arr[i*3] = Math.cos(a) * r;
+      arr[i*3 + 1] = Math.random() * 2.0;
+      arr[i*3 + 2] = Math.sin(a) * r;
+    }
+    pGeom.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    const pMat = new THREE.PointsMaterial({
+      color: 0x99ccff,
+      size: 0.15,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const points = new THREE.Points(pGeom, pMat);
+    group.add(points);
+
+    // анимация взрыва и затухания
+    const tl = gsap.timeline({
+      onComplete: () => {
+        try { effectsGroup.remove(group); } catch {}
+        colGeom.dispose(); colMat.dispose();
+        pGeom.dispose(); pMat.dispose();
+      }
+    });
+    tl.fromTo(column.scale, { x: 0.1, y: 0.1, z: 0.1 },
+      { x: 1.6, y: 1.0, z: 1.6, duration: 0.25, ease: 'power3.out' })
+      .to(column.material, { opacity: 0, duration: 0.25, ease: 'power2.in' }, 0.25)
+      .to(points.material, { opacity: 0, duration: 0.5, ease: 'power1.out' }, 0)
+      .to(group.position, { y: group.position.y + 0.6, duration: 0.5, ease: 'power1.out' }, 0);
+  } catch {}
+}
+
 export function shakeMesh(mesh, times = 3, duration = 0.1) {
   const gsap = window.gsap; if (!gsap || !mesh) return;
   const tl = gsap.timeline();
@@ -236,6 +300,6 @@ export function dissolveTileCrossfade(tileMesh, oldMaterial, newMaterial, durati
   }
 }
 
-const api = { spawnDamageText, shakeMesh, dissolveAndAsh, dissolveTileSwap, dissolveTileCrossfade, scheduleHpPopup, cancelPendingHpPopup };
+const api = { spawnDamageText, spawnMagicColumn, shakeMesh, dissolveAndAsh, dissolveTileSwap, dissolveTileCrossfade, scheduleHpPopup, cancelPendingHpPopup };
 try { if (typeof window !== 'undefined') window.__fx = api; } catch {}
 export default api;
