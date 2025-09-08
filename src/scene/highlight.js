@@ -1,42 +1,47 @@
 // Подсветка клеток на поле для выбора цели
-// Использует шейдерный материал с простым "магическим" сиянием
-// вокруг границ клетки.
+// Теперь вместо тонкой рамки поверх клетки
+// создаётся пульсирующая водяная плёнка,
+// полностью покрывающая ячейку.
 import { getCtx } from './context.js';
 
 // Внутреннее состояние активной подсветки
+// overlays — плоские меши поверх тайлов
 const state = {
-  frames: [],
+  overlays: [],
   uniforms: [],
   rafId: 0,
 };
 
-// Создаёт материал для рамки с анимированными лучами
-function createMagicMaterial(THREE) {
-  const mat = new THREE.MeshBasicMaterial({
-    color: 0x7dd3fc,
+// Создаёт материал с пульсирующим эффектом воды
+function createPulseMaterial(THREE) {
+  const mat = new THREE.ShaderMaterial({
     transparent: true,
-    opacity: 0.9,
-    depthTest: true,
     depthWrite: false,
+    depthTest: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      uTime: { value: 0 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main(){
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec2 vUv;
+      uniform float uTime;
+      void main(){
+        float wave = sin((vUv.x*4.0 + uTime*1.5)*3.14159) * cos((vUv.y*4.0 - uTime*1.3)*3.14159);
+        float pulse = 0.5 + 0.5 * sin(uTime * 2.0 * 3.14159 / 2.5); // цикл ~2.5с
+        vec3 base = vec3(0.3,0.7,1.0);
+        vec3 col = base + wave*0.15;
+        gl_FragColor = vec4(col, pulse*0.8);
+      }
+    `,
   });
-  mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = { value: 0 };
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vUv;')
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\n vUv = uv;');
-    const fragHead = `\n varying vec2 vUv;\n uniform float uTime;\n`;
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>' + fragHead)
-      .replace(
-        '#include <dithering_fragment>',
-        `#include <dithering_fragment>\n{
-          float wave = sin((vUv.x + vUv.y + uTime*2.0)*10.0)*0.5 + 0.5;
-          vec3 glow = vec3(0.5,0.8,1.0) * wave;
-          gl_FragColor.rgb = mix(gl_FragColor.rgb, glow, 0.7);
-        }`
-      );
-    state.uniforms.push(shader.uniforms.uTime);
-  };
+  state.uniforms.push(mat.uniforms.uTime);
   return mat;
 }
 
@@ -56,23 +61,27 @@ function startAnim() {
 // Подсветка переданных координат {r,c}
 export function highlightTiles(cells = []) {
   const ctx = getCtx();
-  const { tileFrames, THREE } = ctx;
-  if (!tileFrames || !THREE) return;
+  const { tileMeshes, boardGroup, THREE } = ctx;
+  if (!tileMeshes || !boardGroup || !THREE) return;
 
   clearHighlights();
 
-  const baseMat = createMagicMaterial(THREE);
+  const baseMat = createPulseMaterial(THREE);
 
   for (const { r, c } of cells) {
-    const frame = tileFrames?.[r]?.[c];
-    if (!frame) continue;
-    frame.traverse(obj => {
-      if (obj.isMesh) {
-        obj.userData._origMat = obj.material;
-        obj.material = baseMat.clone();
-      }
-    });
-    state.frames.push(frame);
+    const tile = tileMeshes?.[r]?.[c];
+    if (!tile) continue;
+    const size = tile.geometry?.parameters?.width || 6.2;
+    const h = tile.geometry?.parameters?.height || 0.35;
+    const overlay = new THREE.Mesh(
+      new THREE.PlaneGeometry(size, size),
+      baseMat.clone()
+    );
+    overlay.rotation.x = -Math.PI / 2;
+    overlay.position.set(tile.position.x, tile.position.y + h / 2 + 0.01, tile.position.z);
+    overlay.renderOrder = 900;
+    boardGroup.add(overlay);
+    state.overlays.push(overlay);
   }
   startAnim();
 }
@@ -84,17 +93,15 @@ export function clearHighlights() {
     else clearTimeout(state.rafId);
     state.rafId = 0;
   }
+  const ctx = getCtx();
+  const { boardGroup } = ctx;
   state.uniforms = [];
-  state.frames.forEach(frame => {
-    frame.traverse(obj => {
-      if (obj.isMesh && obj.userData._origMat) {
-        try { obj.material.dispose(); } catch {}
-        obj.material = obj.userData._origMat;
-        delete obj.userData._origMat;
-      }
-    });
+  state.overlays.forEach(ov => {
+    try { boardGroup.remove(ov); } catch {}
+    try { ov.geometry.dispose(); } catch {}
+    try { ov.material.dispose(); } catch {}
   });
-  state.frames = [];
+  state.overlays = [];
 }
 
 // Экспорт в глобальную область для отладки
