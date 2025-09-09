@@ -61,16 +61,20 @@ export async function playUnlockAnimation() {
   const rect = _container.getBoundingClientRect();
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
-  // Вспышка
+  // Вспышка (круг с прозрачным градиентом)
   const flash = document.createElement('div');
   flash.style.position = 'fixed';
-  const fSize = Math.max(window.innerWidth, window.innerHeight) / 3;
-  flash.style.left = `${cx - fSize / 2}px`;
-  flash.style.top = `${cy - fSize / 2}px`;
+  // Размер вспышки на 50% меньше предыдущего
+  const fSize = Math.max(window.innerWidth, window.innerHeight) / 6;
+  flash.style.left = `${cx}px`;
+  flash.style.top = `${cy}px`;
   flash.style.width = `${fSize}px`;
   flash.style.height = `${fSize}px`;
-  flash.style.background = 'white';
-  flash.style.opacity = '0';
+  flash.style.borderRadius = '50%';
+  flash.style.background = 'radial-gradient(circle, rgba(255,255,200,0.9) 0%, rgba(255,255,0,0) 70%)';
+  flash.style.opacity = '1';
+  flash.style.transform = 'translate(-50%, -50%) scale(0.2)';
+  flash.style.transformOrigin = 'center';
   flash.style.pointerEvents = 'none';
   flash.style.zIndex = '1000';
   document.body.appendChild(flash);
@@ -81,7 +85,9 @@ export async function playUnlockAnimation() {
   slash.style.top = `${cy}px`;
   slash.style.width = '3px';
   slash.style.height = `${rect.height * 2}px`;
-  slash.style.background = 'white';
+  // Яркая полоса разреза
+  slash.style.background = 'linear-gradient(to bottom, #ffff00, #ff0000)';
+  slash.style.boxShadow = '0 0 10px rgba(255,255,0,0.8)';
   slash.style.transformOrigin = 'center center';
   slash.style.transform = 'translate(-50%, -50%) rotate(45deg)';
   slash.style.opacity = '0';
@@ -89,10 +95,11 @@ export async function playUnlockAnimation() {
   slash.style.zIndex = '1001';
   document.body.appendChild(slash);
   const tl = gsap.timeline({ onComplete: () => { flash.remove(); slash.remove(); } });
-  tl.to(flash, { opacity: 1, duration: 0.25 })
-    .to(flash, { opacity: 0, duration: 0.25 })
-    .to(slash, { opacity: 1, duration: 0.25 }, 0)
-    .to(slash, { opacity: 0, duration: 0.25 }, 0.25);
+  // Вспышка резко расширяется и гаснет
+  tl.to(flash, { scale: 1.5, opacity: 0, duration: 0.2, ease: 'power2.out' })
+    // Полоса разреза появляется и быстро исчезает
+    .to(slash, { opacity: 1, duration: 0.1 }, 0)
+    .to(slash, { opacity: 0, duration: 0.2 }, 0.1);
   // Раскалывание замка
   tl.to(_left, { rotation: -20, x: -20, y: -10, duration: 0.1 }, 0.5);
   tl.to(_right, { rotation: 20, x: 20, y: 10, duration: 0.1 }, 0.5);
