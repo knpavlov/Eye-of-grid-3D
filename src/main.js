@@ -2,7 +2,7 @@
 import * as Constants from './core/constants.js';
 import { CARDS, STARTER_FIRESET } from './core/cards.js';
 import * as Rules from './core/rules.js';
-import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled } from './core/state.js';
+import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled, countUnits } from './core/state.js';
 import { netState, NET_ON } from './core/netState.js';
 import { createStore, makeMiddleware } from './lib/store.js';
 // Scene modules (new)
@@ -18,6 +18,7 @@ import * as UINotifications from './ui/notifications.js';
 import * as UILog from './ui/log.js';
 import * as UIMana from './ui/mana.js';
 import * as UIPanels from './ui/panels.js';
+import * as SummoningLock from './ui/summoningLock.js';
 // UI modules
 import * as TurnTimer from './ui/turnTimer.js';
 import * as Banner from './ui/banner.js';
@@ -61,6 +62,7 @@ try {
   window.drawOne = drawOne;
   window.drawOneNoAdd = drawOneNoAdd;
   window.countControlled = countControlled;
+  window.countUnits = countUnits;
   window.startGame = startGame;
 
   // Runtime net state globals
@@ -156,6 +158,7 @@ try {
   window.__ui.handCount = HandCount;
   window.__ui.actions = UIActions;
   window.__ui.spellUtils = UISpellUtils;
+  window.__ui.summoningLock = SummoningLock;
   window.__ui.updateUI = updateUI;
   window.__ui.inputLock = InputLock;
   window.updateUI = updateUI;

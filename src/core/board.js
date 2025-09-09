@@ -33,6 +33,15 @@ export function countControlled(state, player) {
   return count;
 }
 
+// Подсчёт всех существ на поле независимо от владельца
+export function countUnits(state) {
+  let count = 0;
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+    if (state.board[r][c].unit) count++;
+  }
+  return count;
+}
+
 export function randomBoard() {
   // 3x3 board with element constraints:
   // - Center (1,1) is always MECH
@@ -65,6 +74,7 @@ export function startGame(deck0 = STARTER_FIRESET, deck1 = STARTER_FIRESET) {
     turn: 1,
     winner: null,
     __ver: 0,
+    summoningUnlocked: false, // поле изначально заблокировано
   };
   for (let i = 0; i < 5; i++) { drawOne(state, 0); drawOne(state, 1); }
   return state;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shuffle, drawOne, drawOneNoAdd, countControlled, randomBoard, reducer, A } from '../src/core/state.js';
+import { shuffle, drawOne, drawOneNoAdd, countControlled, countUnits, randomBoard, reducer, A, startGame } from '../src/core/state.js';
 
 function makeEmptyBoard() {
   // 3x3 with MECH in center and FIRE elsewhere by default
@@ -44,6 +44,19 @@ describe('state helpers', () => {
     const state = { board };
     expect(countControlled(state, 0)).toBe(2);
     expect(countControlled(state, 1)).toBe(1);
+  });
+
+  it('countUnits: counts all units on board', () => {
+    const board = makeEmptyBoard();
+    board[0][0].unit = { owner: 0 };
+    board[2][2].unit = { owner: 1 };
+    const state = { board };
+    expect(countUnits(state)).toBe(2);
+  });
+
+  it('startGame sets summoning lock initially', () => {
+    const s = startGame();
+    expect(s.summoningUnlocked).toBe(false);
   });
 
   it('randomBoard: center is MECH and other elements appear exactly twice', () => {

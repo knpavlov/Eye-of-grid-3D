@@ -59,6 +59,7 @@ export const CARDS = {
   },
   FIRE_TRICEPTAUR: {
     id: 'FIRE_TRICEPTAUR', name: 'Triceptaur Behemoth', type: 'UNIT', cost: 5, activation: 4,
+    locked: true,
     element: 'FIRE', atk: 5, hp: 4,
     attackType: 'STANDARD',
     attacks: [
@@ -72,6 +73,7 @@ export const CARDS = {
   },
   FIRE_PURSUER: {
     id: 'FIRE_PURSUER', name: 'Pursuer of Saint Dhees', type: 'UNIT', cost: 6, activation: 3,
+    locked: true,
     element: 'FIRE', atk: 5, hp: 4,
     attackType: 'STANDARD',
     attacks: [ { dir: 'N', ranges: [1] } ],

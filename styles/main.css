@@ -106,3 +106,50 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
   background: #0f172a;
   transform-origin: bottom center;
 }
+
+/* Иконка замка призыва над номером хода */
+#summoning-lock {
+  position: relative;
+  width: 32px;
+  height: 32px;
+}
+#summoning-lock.hidden { display: none; }
+#summoning-lock .lock-half {
+  position: absolute;
+  top: 0;
+  width: 50%;
+  height: 100%;
+  overflow: hidden;
+  transform-origin: center center;
+}
+#summoning-lock .lock-half .icon {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 64px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+#summoning-lock .lock-half.right { left: 50%; }
+#summoning-lock .lock-half.right .icon { left: -32px; }
+#summoning-lock .lock-flash {
+  position: absolute;
+  inset: -6px;
+  background: white;
+  opacity: 0;
+  filter: blur(4px);
+}
+#summoning-lock .lock-slash {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  width: 4px;
+  height: 40px;
+  background: white;
+  transform: translateX(-50%) rotate(-45deg);
+  opacity: 0;
+  box-shadow: 0 0 8px rgba(255,255,255,0.8);
+}

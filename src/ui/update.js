@@ -17,6 +17,7 @@ export function updateUI(gameState) {
 
   const turnInfo = doc.getElementById('turn-info');
   if (turnInfo) turnInfo.textContent = `Ход: ${state.turn}`;
+  try { window.__ui?.summoningLock?.render(state); } catch {}
 
   // Update timer button
   try {

@@ -106,11 +106,18 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   drawManaOrbIcon(ctx, 16 + iconSize / 2, height - 20, iconSize);
   ctx.textAlign = 'left';
   ctx.font = 'bold 14px Arial';
-  ctx.fillText(String(cardData.cost || 0), 16 + iconSize + 4, height - 15);
+  const costText = String(cardData.cost || 0);
+  ctx.fillText(costText, 16 + iconSize + 4, height - 15);
+  let shiftExtra = ctx.measureText(costText).width;
+  if (cardData.locked) {
+    const lx = 16 + iconSize + 4 + shiftExtra + 4;
+    ctx.fillText('🔒', lx, height - 15);
+    shiftExtra += ctx.measureText('🔒').width + 4;
+  }
   if (cardData.type === 'UNIT') {
     ctx.textAlign = 'left'; ctx.font = 'bold 13px Arial';
     const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
-    const shift = iconSize + 4 + ctx.measureText(String(cardData.cost || 0)).width + 10;
+    const shift = iconSize + 4 + shiftExtra + 10;
     drawPlayIcon(ctx, 16 + shift + iconSize / 2, height - 20, iconSize);
     ctx.fillText(String(act), 16 + shift + iconSize + 4, height - 15);
   }
