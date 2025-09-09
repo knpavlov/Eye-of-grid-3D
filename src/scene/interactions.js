@@ -20,6 +20,8 @@ export const interactionState = {
   pendingRitualSpellHandIndex: null,
   pendingRitualSpellCard: null,
   spellDragHandled: false,
+  // флаг для автоматического завершения хода после атаки
+  autoEndTurnAfterAttack: false,
 };
 
 function isInputLocked() {
@@ -338,6 +340,11 @@ function performMagicAttack(from, targetMesh) {
   const { unitMeshes, tileMeshes } = ctx;
   const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
   const gameState = window.gameState;
+  const attacker = gameState.board?.[from.r]?.[from.c]?.unit;
+  if (!attacker || attacker.lastAttackTurn === gameState.turn) {
+    showNotification('Некорректная атака', 'error');
+    return;
+  }
   const res = window.magicAttack(gameState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
   if (!res) { showNotification('Incorrect target', 'error'); return; }
   for (const l of res.logLines.reverse()) window.addLog(l);
@@ -370,11 +377,19 @@ function performMagicAttack(from, targetMesh) {
     setTimeout(() => {
       window.updateUnits(); window.updateUI();
       try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
+      if (interactionState.autoEndTurnAfterAttack) {
+        interactionState.autoEndTurnAfterAttack = false;
+        try { window.endTurn && window.endTurn(); } catch {}
+      }
     }, 1000);
   } else {
     window.gameState = res.n1; window.updateUnits(); window.updateUI();
     const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
     try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
+    if (interactionState.autoEndTurnAfterAttack) {
+      interactionState.autoEndTurnAfterAttack = false;
+      try { window.endTurn && window.endTurn(); } catch {}
+    }
   }
 }
 
@@ -382,6 +397,10 @@ function performMagicAttack(from, targetMesh) {
 function performChosenAttack(from, targetMesh) {
   const gameState = window.gameState;
   const attacker = gameState.board?.[from.r]?.[from.c]?.unit; if (!attacker) return;
+  if (attacker.lastAttackTurn === gameState.turn) {
+    showNotification('Некорректная атака', 'error');
+    return;
+  }
   const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
   const dr = tr - from.r; const dc = tc - from.c;
   const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
@@ -528,12 +547,16 @@ export function placeUnitWithDirection(direction) {
         }
         if (cells.length && (allowFriendly || hasEnemy)) {
           interactionState.magicFrom = { r: row, c: col };
+          interactionState.autoEndTurnAfterAttack = true;
           highlightTiles(cells);
           window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
-        }
-        if (unlockTriggered) {
-          const delay = cells.length && (allowFriendly || hasEnemy) ? 1200 : 0;
-          setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, delay);
+          if (unlockTriggered) {
+            const delay = 1200;
+            setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, delay);
+          }
+        } else {
+          if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
+          try { window.endTurn && window.endTurn(); } catch {}
         }
       } else {
         const attacks = tpl?.attacks || [];
@@ -543,6 +566,7 @@ export function placeUnitWithDirection(direction) {
         if (hitsAll.length && hasEnemy) {
           if (needsChoice && hitsAll.length > 1) {
             interactionState.pendingAttack = { r: row, c: col };
+            interactionState.autoEndTurnAfterAttack = true;
             highlightTiles(hitsAll);
             window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
             window.__ui?.notifications?.show('Выберите цель', 'info');
@@ -557,12 +581,16 @@ export function placeUnitWithDirection(direction) {
               const dist = Math.max(Math.abs(dr), Math.abs(dc));
               opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
             }
-            window.performBattleSequence(row, col, false, opts);
+            interactionState.autoEndTurnAfterAttack = true;
+            window.performBattleSequence(row, col, true, opts);
           }
-        }
-        if (unlockTriggered) {
-          const delay = hitsAll.length && hasEnemy ? 1200 : 0;
-          setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, delay);
+          if (unlockTriggered) {
+            const delay = 1200;
+            setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, delay);
+          }
+        } else {
+          if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
+          try { window.endTurn && window.endTurn(); } catch {}
         }
       }
     },
