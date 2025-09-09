@@ -245,27 +245,57 @@ export function stagedAttack(state, r, c, opts = {}) {
 
 export function magicAttack(state, fr, fc, tr, tc) {
   const n1 = JSON.parse(JSON.stringify(state));
-  const attacker = n1.board?.[fr]?.[fc]?.unit; const target = n1.board?.[tr]?.[tc]?.unit;
-  if (!attacker || !target || target.owner === attacker.owner) return null;
+  const attacker = n1.board?.[fr]?.[fc]?.unit;
+  if (!attacker) return null;
   const tplA = CARDS[attacker.tplId];
+  const allowFriendly = !!tplA.friendlyFire;
+  const mainTarget = n1.board?.[tr]?.[tc]?.unit;
+  if (!allowFriendly && (!mainTarget || mainTarget.owner === attacker.owner)) return null;
+
   const atkStats = effectiveStats(n1.board[fr][fc], attacker);
   const dmg = Math.max(0, (atkStats.atk || 0) + (tplA.randomPlus2 && Math.random() < 0.5 ? 2 : 0));
-  const before = target.currentHP ?? target.hp;
-  target.currentHP = Math.max(0, before - dmg);
-  const afterHP = target.currentHP;
-  const logLines = [`${CARDS[attacker.tplId].name} (Magic) → ${CARDS[target.tplId].name}: ${dmg} dmg (HP ${before}→${afterHP})`];
+
+  const cells = [{ r: tr, c: tc }];
+  const splash = tplA.splash || 0;
+  if (splash > 0) {
+    const dirs = [ [-1,0], [1,0], [0,-1], [0,1] ];
+    for (const [dr, dc] of dirs) {
+      for (let dist = 1; dist <= splash; dist++) {
+        const rr = tr + dr * dist;
+        const cc = tc + dc * dist;
+        if (inBounds(rr, cc)) cells.push({ r: rr, c: cc });
+      }
+    }
+  }
+
+  const targets = [];
+  const logLines = [];
+  for (const cell of cells) {
+    const u = n1.board?.[cell.r]?.[cell.c]?.unit;
+    if (!u) continue;
+    if (!allowFriendly && u.owner === attacker.owner) continue;
+    const before = u.currentHP ?? u.hp;
+    u.currentHP = Math.max(0, before - dmg);
+    targets.push({ r: cell.r, c: cell.c, dmg });
+    logLines.push(`${CARDS[attacker.tplId].name} (Magic) → ${CARDS[u.tplId].name}: ${dmg} dmg (HP ${before}→${u.currentHP})`);
+  }
+
   const deaths = [];
   for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
-    const u = n1.board[rr][cc].unit; if (u && (u.currentHP ?? u.hp) <= 0) { deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId }); n1.board[rr][cc].unit = null; }
+    const u = n1.board[rr][cc].unit;
+    if (u && (u.currentHP ?? u.hp) <= 0) {
+      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId });
+      n1.board[rr][cc].unit = null;
+    }
   }
   try {
     for (const d of deaths) {
       if (n1 && n1.players && n1.players[d.owner]) {
-        n1.players[d.owner].mana = Math.min(10, (n1.players[d.owner].mana || 0) + 1);
+        n1.players[d.owner].mana = capMana((n1.players[d.owner].mana || 0) + 1);
       }
     }
   } catch {}
   attacker.lastAttackTurn = n1.turn;
   attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA);
-  return { n1, logLines, dmg, deaths };
+  return { n1, logLines, targets, deaths };
 }

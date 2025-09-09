@@ -343,12 +343,14 @@ function performMagicAttack(from, targetMesh) {
   for (const l of res.logLines.reverse()) window.addLog(l);
   const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
   if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
-  const tMesh = unitMeshes.find(m => m.userData.row === targetMesh.userData.row && m.userData.col === targetMesh.userData.col);
-  if (tMesh) {
-    window.__fx.magicBurst(tMesh.position.clone().add(new THREE.Vector3(0, 0.4, 0)));
-    window.__fx.shakeMesh(tMesh, 6, 0.12);
-    if (typeof res.dmg === 'number' && res.dmg > 0) {
-      window.__fx.spawnDamageText(tMesh, `-${res.dmg}`, '#ff5555');
+  for (const t of res.targets || []) {
+    const tMesh = unitMeshes.find(m => m.userData.row === t.r && m.userData.col === t.c);
+    if (tMesh) {
+      window.__fx.magicBurst(tMesh.position.clone().add(new THREE.Vector3(0, 0.4, 0)));
+      window.__fx.shakeMesh(tMesh, 6, 0.12);
+      if (typeof t.dmg === 'number' && t.dmg > 0) {
+        window.__fx.spawnDamageText(tMesh, `-${t.dmg}`, '#ff5555');
+      }
     }
   }
   if (res.deaths && res.deaths.length) {
@@ -510,33 +512,58 @@ export function placeUnitWithDirection(direction) {
       window.updateUnits();
       window.updateUI();
       const tpl = window.CARDS?.[cardData.id];
-      const attacks = tpl?.attacks || [];
-      const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
-      const hitsAll = window.computeHits(gameState, row, col, { union: true });
-      const hasEnemy = hitsAll.some(h => gameState.board?.[h.r]?.[h.c]?.unit?.owner !== unit.owner);
-      if (hitsAll.length && hasEnemy) {
-      if (needsChoice && hitsAll.length > 1) {
-        interactionState.pendingAttack = { r: row, c: col };
-        highlightTiles(hitsAll);
-        window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
-        window.__ui?.notifications?.show('Выберите цель', 'info');
-      } else {
-        let opts = {};
-        if (needsChoice && hitsAll.length === 1) {
-          const h = hitsAll[0];
-          const dr = h.r - row, dc = h.c - col;
-          const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
-          const ORDER = ['N', 'E', 'S', 'W'];
-          const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(unit.facing) + 4) % 4];
-          const dist = Math.max(Math.abs(dr), Math.abs(dc));
-          opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
+      if (tpl?.attackType === 'MAGIC') {
+        const allowFriendly = !!tpl.friendlyFire;
+        const cells = [];
+        let hasEnemy = false;
+        for (let rr = 0; rr < 3; rr++) {
+          for (let cc = 0; cc < 3; cc++) {
+            if (rr === row && cc === col) continue;
+            const u = gameState.board?.[rr]?.[cc]?.unit;
+            if (allowFriendly || (u && u.owner !== unit.owner)) {
+              cells.push({ r: rr, c: cc });
+            }
+            if (u && u.owner !== unit.owner) hasEnemy = true;
+          }
         }
-        window.performBattleSequence(row, col, false, opts);
-      }
-      }
-      if (unlockTriggered) {
-        const delay = hitsAll.length && hasEnemy ? 1200 : 0;
-        setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, delay);
+        if (cells.length && (allowFriendly || hasEnemy)) {
+          interactionState.magicFrom = { r: row, c: col };
+          highlightTiles(cells);
+          window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
+        }
+        if (unlockTriggered) {
+          const delay = cells.length && (allowFriendly || hasEnemy) ? 1200 : 0;
+          setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, delay);
+        }
+      } else {
+        const attacks = tpl?.attacks || [];
+        const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
+        const hitsAll = window.computeHits(gameState, row, col, { union: true });
+        const hasEnemy = hitsAll.some(h => gameState.board?.[h.r]?.[h.c]?.unit?.owner !== unit.owner);
+        if (hitsAll.length && hasEnemy) {
+          if (needsChoice && hitsAll.length > 1) {
+            interactionState.pendingAttack = { r: row, c: col };
+            highlightTiles(hitsAll);
+            window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
+            window.__ui?.notifications?.show('Выберите цель', 'info');
+          } else {
+            let opts = {};
+            if (needsChoice && hitsAll.length === 1) {
+              const h = hitsAll[0];
+              const dr = h.r - row, dc = h.c - col;
+              const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
+              const ORDER = ['N', 'E', 'S', 'W'];
+              const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(unit.facing) + 4) % 4];
+              const dist = Math.max(Math.abs(dr), Math.abs(dc));
+              opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
+            }
+            window.performBattleSequence(row, col, false, opts);
+          }
+        }
+        if (unlockTriggered) {
+          const delay = hitsAll.length && hasEnemy ? 1200 : 0;
+          setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, delay);
+        }
       }
     },
   });
