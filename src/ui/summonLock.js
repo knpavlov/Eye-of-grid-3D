@@ -61,19 +61,23 @@ export async function playUnlockAnimation() {
   const rect = _container.getBoundingClientRect();
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
-  // Вспышка
-  const flash = document.createElement('div');
-  flash.style.position = 'fixed';
-  const fSize = Math.max(window.innerWidth, window.innerHeight) / 3;
-  flash.style.left = `${cx - fSize / 2}px`;
-  flash.style.top = `${cy - fSize / 2}px`;
-  flash.style.width = `${fSize}px`;
-  flash.style.height = `${fSize}px`;
-  flash.style.background = 'white';
-  flash.style.opacity = '0';
-  flash.style.pointerEvents = 'none';
-  flash.style.zIndex = '1000';
-  document.body.appendChild(flash);
+    // Вспышка
+    const flash = document.createElement('div');
+    flash.style.position = 'fixed';
+    const fSize = Math.max(window.innerWidth, window.innerHeight) / 6; // 50% меньше
+    flash.style.left = `${cx - fSize / 2}px`;
+    flash.style.top = `${cy - fSize / 2}px`;
+    flash.style.width = `${fSize}px`;
+    flash.style.height = `${fSize}px`;
+    // Круглая вспышка с постепенным затуханием к краям
+    flash.style.background = 'radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 70%)';
+    flash.style.borderRadius = '50%';
+    flash.style.opacity = '0';
+    flash.style.transform = 'scale(0)';
+    flash.style.transformOrigin = 'center';
+    flash.style.pointerEvents = 'none';
+    flash.style.zIndex = '1000';
+    document.body.appendChild(flash);
   // Эффект удара мечом
   const slash = document.createElement('div');
   slash.style.position = 'fixed';
@@ -81,18 +85,21 @@ export async function playUnlockAnimation() {
   slash.style.top = `${cy}px`;
   slash.style.width = '3px';
   slash.style.height = `${rect.height * 2}px`;
-  slash.style.background = 'white';
+    // Яркий след от разреза
+    slash.style.background = 'yellow';
   slash.style.transformOrigin = 'center center';
   slash.style.transform = 'translate(-50%, -50%) rotate(45deg)';
   slash.style.opacity = '0';
   slash.style.pointerEvents = 'none';
   slash.style.zIndex = '1001';
   document.body.appendChild(slash);
-  const tl = gsap.timeline({ onComplete: () => { flash.remove(); slash.remove(); } });
-  tl.to(flash, { opacity: 1, duration: 0.25 })
-    .to(flash, { opacity: 0, duration: 0.25 })
-    .to(slash, { opacity: 1, duration: 0.25 }, 0)
-    .to(slash, { opacity: 0, duration: 0.25 }, 0.25);
+    const tl = gsap.timeline({ onComplete: () => { flash.remove(); slash.remove(); } });
+    // Короткая вспышка, быстро растёт и гаснет
+    tl.to(flash, { opacity: 0.8, scale: 1, duration: 0.1, ease: 'power2.out' })
+      .to(flash, { opacity: 0, scale: 1.5, duration: 0.1, ease: 'power2.in' });
+    // Эффект разреза
+    tl.to(slash, { opacity: 1, duration: 0.25 }, 0)
+      .to(slash, { opacity: 0, duration: 0.25 }, 0.25);
   // Раскалывание замка
   tl.to(_left, { rotation: -20, x: -20, y: -10, duration: 0.1 }, 0.5);
   tl.to(_right, { rotation: 20, x: 20, y: 10, duration: 0.1 }, 0.5);
