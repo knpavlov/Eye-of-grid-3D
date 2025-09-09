@@ -555,11 +555,19 @@
               updateUnits(); updateUI();
               for (const l of res.logLines.reverse()) addLog(l);
               try { schedulePush('battle-finish'); } catch {}
+              if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
+                window.__interactions.interactionState.autoEndTurnAfterAttack = false;
+                try { endTurn(); } catch {}
+              }
             }, 1000);
           } else {
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем обновим визуально
             setTimeout(() => {
               updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {}
+              if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
+                window.__interactions.interactionState.autoEndTurnAfterAttack = false;
+                try { endTurn(); } catch {}
+              }
             }, Math.max(0, animDelayMs));
           }
         }, 420);
@@ -608,6 +616,8 @@
     /* Scene effects moved to src/scene/effects.js */
     function performMagicAttack(from, targetMesh) {
       const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
+      const attacker = gameState.board?.[from.r]?.[from.c]?.unit;
+      if (!attacker || attacker.lastAttackTurn === gameState.turn) { showNotification('Incorrect target', 'error'); return; }
       const res = magicAttack(gameState, from.r, from.c, tr, tc);
       if (!res) { showNotification('Incorrect target', 'error'); return; }
       for (const l of res.logLines.reverse()) addLog(l);
@@ -647,6 +657,10 @@
         setTimeout(() => {
           updateUnits(); updateUI();
           try { schedulePush('magic-battle-finish'); } catch {}
+          if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
+            window.__interactions.interactionState.autoEndTurnAfterAttack = false;
+            try { endTurn(); } catch {}
+          }
         }, 1000);
       } else {
         // Если смертей нет — применяем состояние сразу
@@ -654,6 +668,10 @@
         updateUnits(); updateUI();
         const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
         try { schedulePush('magic-battle-finish'); } catch {}
+        if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
+          window.__interactions.interactionState.autoEndTurnAfterAttack = false;
+          try { endTurn(); } catch {}
+        }
       }
     }
     // Вспомогательные утилиты: задержка и яркая заставка BATTLE на 3 секунды

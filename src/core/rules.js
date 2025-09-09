@@ -135,6 +135,8 @@ export function stagedAttack(state, r, c, opts = {}) {
   const base = JSON.parse(JSON.stringify(state));
   const attacker = base.board?.[r]?.[c]?.unit;
   if (!attacker) return null;
+  // не позволяем атаковать более одного раза за ход
+  if (attacker.lastAttackTurn === base.turn) return null;
 
   const tplA = CARDS[attacker.tplId];
   const hitsRaw = computeHits(base, r, c, opts);
@@ -247,6 +249,8 @@ export function magicAttack(state, fr, fc, tr, tc) {
   const n1 = JSON.parse(JSON.stringify(state));
   const attacker = n1.board?.[fr]?.[fc]?.unit;
   if (!attacker) return null;
+  // не позволяем магам бить дважды в одном ходу
+  if (attacker.lastAttackTurn === n1.turn) return null;
   const tplA = CARDS[attacker.tplId];
   const allowFriendly = !!tplA.friendlyFire;
   const mainTarget = n1.board?.[tr]?.[tc]?.unit;
