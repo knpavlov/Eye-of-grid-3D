@@ -38,6 +38,7 @@
     <!-- Верхний центр: номер хода и круглая кнопка с таймером -->
     <div id="top-center" class="ui-panel fixed top-3 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center">
       <div class="overlay-panel px-4 py-3 flex flex-col items-center gap-2">
+        <div id="summoning-lock" class="text-3xl text-yellow-300">🔒</div>
         <div id="turn-info" class="text-sm tracking-wide">Turn: 1</div>
         <button id="end-turn-btn" class="end-turn-btn" aria-label="End Turn">
           <span class="time-fill"></span>
@@ -553,12 +554,25 @@
             setTimeout(() => {
               updateUnits(); updateUI();
               for (const l of res.logLines.reverse()) addLog(l);
+              if (window.__unlockPending) {
+                try { window.__ui?.summoningLock?.playUnlockAnimation(); } catch {}
+                updateUI();
+                window.__unlockPending = false;
+              }
               try { schedulePush('battle-finish'); } catch {}
             }, 1000);
           } else {
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем обновим визуально
             setTimeout(() => {
-              updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {}
+              updateUnits(); updateUI();
+              for (const l of res.logLines.reverse()) addLog(l);
+              if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
+              if (window.__unlockPending) {
+                try { window.__ui?.summoningLock?.playUnlockAnimation(); } catch {}
+                updateUI();
+                window.__unlockPending = false;
+              }
+              try { schedulePush('battle-finish'); } catch {}
             }, Math.max(0, animDelayMs));
           }
         }, 420);

@@ -107,10 +107,17 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   ctx.textAlign = 'left';
   ctx.font = 'bold 14px Arial';
   ctx.fillText(String(cardData.cost || 0), 16 + iconSize + 4, height - 15);
+  let lockShift = 0;
+  if (cardData.locked) {
+    const w = ctx.measureText(String(cardData.cost || 0)).width;
+    const lx = 16 + iconSize + 4 + w + 4;
+    ctx.fillText('🔒', lx, height - 15);
+    lockShift = ctx.measureText('🔒').width + 4;
+  }
   if (cardData.type === 'UNIT') {
     ctx.textAlign = 'left'; ctx.font = 'bold 13px Arial';
     const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
-    const shift = iconSize + 4 + ctx.measureText(String(cardData.cost || 0)).width + 10;
+    const shift = iconSize + 4 + ctx.measureText(String(cardData.cost || 0)).width + lockShift + 10;
     drawPlayIcon(ctx, 16 + shift + iconSize / 2, height - 20, iconSize);
     ctx.fillText(String(act), 16 + shift + iconSize + 4, height - 15);
   }

@@ -64,6 +64,8 @@ export function startGame(deck0 = STARTER_FIRESET, deck1 = STARTER_FIRESET) {
     active: 0,
     turn: 1,
     winner: null,
+    // Флаг Summoning Lock: изначально поле закрыто
+    unlocked: false,
     __ver: 0,
   };
   for (let i = 0; i < 5; i++) { drawOne(state, 0); drawOne(state, 1); }

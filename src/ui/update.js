@@ -18,6 +18,13 @@ export function updateUI(gameState) {
   const turnInfo = doc.getElementById('turn-info');
   if (turnInfo) turnInfo.textContent = `Ход: ${state.turn}`;
 
+  // Отрисовка иконки замка Summoning Lock
+  try {
+    if (window.__ui && window.__ui.summoningLock && typeof window.__ui.summoningLock.render === 'function') {
+      window.__ui.summoningLock.render(state);
+    }
+  } catch {}
+
   // Update timer button
   try {
     const btn = doc.getElementById('end-turn-btn');

@@ -148,6 +148,10 @@ function onMouseDown(event) {
       return;
     }
     if (cardData.type === 'UNIT' || cardData.type === 'SPELL') {
+      if (cardData.locked && !gameState.unlocked) {
+        showNotification('Summoning Lock: This card cannot be played until there are at least 4 units on the board at the same time', 'error');
+        return;
+      }
       startCardDrag(card);
     }
     return;
@@ -395,6 +399,7 @@ function castSpellOnUnit(cardMesh, unitMesh) {
   if (idx == null || idx < 0 || idx >= pl.hand.length) { resetCardSelection(); return; }
   const tpl = pl.hand[idx];
   if (!tpl || tpl.type !== 'SPELL') { resetCardSelection(); return; }
+  if (tpl.locked && !gameState.unlocked) { showNotification('Summoning Lock: This card cannot be played until there are at least 4 units on the board at the same time', 'error'); resetCardSelection(); return; }
   if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); resetCardSelection(); return; }
   const r = unitMesh.userData.row;
   const c = unitMesh.userData.col;
@@ -410,6 +415,7 @@ function castSpellByDrag(cardMesh, unitMesh, tileMesh) {
   if (idx == null || idx < 0 || idx >= pl.hand.length) { return; }
   const tpl = pl.hand[idx];
   if (!tpl || tpl.type !== 'SPELL') { return; }
+  if (tpl.locked && !gameState.unlocked) { showNotification('Summoning Lock: This card cannot be played until there are at least 4 units on the board at the same time', 'error'); return; }
   if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); return; }
   const id = tpl.id;
   const requiresUnitTarget = window.__spells.requiresUnitTarget(id);
@@ -442,6 +448,13 @@ export function placeUnitWithDirection(direction) {
   const { card, row, col, handIndex } = interactionState.pendingPlacement;
   const cardData = card.userData.cardData;
   const player = gameState.players[gameState.active];
+  if (cardData.locked && !gameState.unlocked) {
+    showNotification('Summoning Lock: This card cannot be played until there are at least 4 units on the board at the same time', 'error');
+    returnCardToHand(card);
+    try { window.__ui.panels.hideOrientationPanel(); } catch {}
+    interactionState.pendingPlacement = null;
+    return;
+  }
   if (cardData.cost > player.mana) {
     showNotification('Insufficient mana!', 'error');
     returnCardToHand(card);
@@ -498,12 +511,14 @@ export function placeUnitWithDirection(direction) {
       window.updateHand();
       window.updateUnits();
       window.updateUI();
+      const unlockTriggered = window.maybeUnlock ? window.maybeUnlock(gameState) : false;
       const tpl = window.CARDS?.[cardData.id];
       const attacks = tpl?.attacks || [];
       const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
       const hitsAll = window.computeHits(gameState, row, col, { union: true });
       const hasEnemy = hitsAll.some(h => gameState.board?.[h.r]?.[h.c]?.unit?.owner !== unit.owner);
       if (hitsAll.length && hasEnemy) {
+        if (unlockTriggered) window.__unlockPending = true;
         if (needsChoice && hitsAll.length > 1) {
           interactionState.pendingAttack = { r: row, c: col };
           highlightTiles(hitsAll);
@@ -522,6 +537,10 @@ export function placeUnitWithDirection(direction) {
           }
           window.performBattleSequence(row, col, false, opts);
         }
+      }
+      if (!(hitsAll.length && hasEnemy) && unlockTriggered) {
+        try { window.__ui?.summoningLock?.playUnlockAnimation(); } catch {}
+        window.updateUI();
       }
     },
   });

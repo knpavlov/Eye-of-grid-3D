@@ -4,6 +4,7 @@ import { CARDS, STARTER_FIRESET } from './core/cards.js';
 import * as Rules from './core/rules.js';
 import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled } from './core/state.js';
 import { netState, NET_ON } from './core/netState.js';
+import * as SummoningLock from './core/summoningLock.js';
 import { createStore, makeMiddleware } from './lib/store.js';
 // Scene modules (new)
 import { initThreeJS as sceneInitThreeJS, worldToScreen as sceneWorldToScreen, animate as sceneAnimate } from './scene/index.js';
@@ -33,6 +34,7 @@ import { attachUIEvents } from './ui/domEvents.js';
 import * as BattleSplash from './ui/battleSplash.js';
 import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
+import * as SummoningLockUI from './ui/summoningLock.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -62,6 +64,7 @@ try {
   window.drawOneNoAdd = drawOneNoAdd;
   window.countControlled = countControlled;
   window.startGame = startGame;
+  window.maybeUnlock = SummoningLock.maybeUnlock;
 
   // Runtime net state globals
   Object.defineProperties(window, {
@@ -158,6 +161,7 @@ try {
   window.__ui.spellUtils = UISpellUtils;
   window.__ui.updateUI = updateUI;
   window.__ui.inputLock = InputLock;
+  window.__ui.summoningLock = SummoningLockUI;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;

@@ -58,7 +58,7 @@ export const CARDS = {
     desc: 'Attack +2 half the time.'
   },
   FIRE_TRICEPTAUR: {
-    id: 'FIRE_TRICEPTAUR', name: 'Triceptaur Behemoth', type: 'UNIT', cost: 5, activation: 4,
+    id: 'FIRE_TRICEPTAUR', name: 'Triceptaur Behemoth', type: 'UNIT', cost: 5, activation: 4, locked: true,
     element: 'FIRE', atk: 5, hp: 4,
     attackType: 'STANDARD',
     attacks: [
@@ -71,7 +71,7 @@ export const CARDS = {
     desc: 'If attacks 2 creatures, -2 ATK; if 3 creatures, -4 ATK.'
   },
   FIRE_PURSUER: {
-    id: 'FIRE_PURSUER', name: 'Pursuer of Saint Dhees', type: 'UNIT', cost: 6, activation: 3,
+    id: 'FIRE_PURSUER', name: 'Pursuer of Saint Dhees', type: 'UNIT', cost: 6, activation: 3, locked: true,
     element: 'FIRE', atk: 5, hp: 4,
     attackType: 'STANDARD',
     attacks: [ { dir: 'N', ranges: [1] } ],
