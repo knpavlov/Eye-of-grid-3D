@@ -43,6 +43,11 @@ export function performUnitAttack(unitMesh) {
     const r = unitMesh.userData?.row; const c = unitMesh.userData?.col;
     if (r == null || c == null || !gameState) return;
     const unit = gameState.board?.[r]?.[c]?.unit; if (!unit) return;
+    // проверяем, не атаковал ли юнит уже в этот ход
+    if (unit.lastAttackTurn === gameState.turn) {
+      window.__ui?.notifications?.show('Существо уже атаковало в этом ходу', 'error');
+      return;
+    }
     const tpl = window.CARDS?.[unit.tplId];
     const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
     const iState = window.__interactions?.interactionState;

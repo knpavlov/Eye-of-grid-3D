@@ -20,6 +20,8 @@ export const interactionState = {
   pendingRitualSpellHandIndex: null,
   pendingRitualSpellCard: null,
   spellDragHandled: false,
+  // флаг для автоматического завершения хода после ближайшей атаки
+  autoEndTurn: false,
 };
 
 function isInputLocked() {
@@ -370,11 +372,19 @@ function performMagicAttack(from, targetMesh) {
     setTimeout(() => {
       window.updateUnits(); window.updateUI();
       try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
+      if (interactionState.autoEndTurn) {
+        interactionState.autoEndTurn = false;
+        window.endTurn?.();
+      }
     }, 1000);
   } else {
     window.gameState = res.n1; window.updateUnits(); window.updateUI();
     const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
     try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
+    if (interactionState.autoEndTurn) {
+      interactionState.autoEndTurn = false;
+      window.endTurn?.();
+    }
   }
 }
 
@@ -392,6 +402,14 @@ function performChosenAttack(from, targetMesh) {
   const hits = window.computeHits(gameState, from.r, from.c, opts);
   if (!hits.length) { showNotification('Incorrect target', 'error'); return; }
   window.performBattleSequence(from.r, from.c, true, opts);
+  if (interactionState.autoEndTurn) {
+    setTimeout(() => {
+      if (interactionState.autoEndTurn) {
+        interactionState.autoEndTurn = false;
+        window.endTurn?.();
+      }
+    }, 1800);
+  }
 }
 
 function castSpellOnUnit(cardMesh, unitMesh) {
@@ -528,8 +546,13 @@ export function placeUnitWithDirection(direction) {
         }
         if (cells.length && (allowFriendly || hasEnemy)) {
           interactionState.magicFrom = { r: row, c: col };
+          interactionState.autoEndTurn = true;
           highlightTiles(cells);
           window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
+        } else {
+          // если целей нет, завершаем ход сразу
+          interactionState.autoEndTurn = false;
+          window.endTurn?.();
         }
         if (unlockTriggered) {
           const delay = cells.length && (allowFriendly || hasEnemy) ? 1200 : 0;
@@ -543,6 +566,7 @@ export function placeUnitWithDirection(direction) {
         if (hitsAll.length && hasEnemy) {
           if (needsChoice && hitsAll.length > 1) {
             interactionState.pendingAttack = { r: row, c: col };
+            interactionState.autoEndTurn = true;
             highlightTiles(hitsAll);
             window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
             window.__ui?.notifications?.show('Выберите цель', 'info');
@@ -557,8 +581,20 @@ export function placeUnitWithDirection(direction) {
               const dist = Math.max(Math.abs(dr), Math.abs(dc));
               opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
             }
+            interactionState.autoEndTurn = true;
             window.performBattleSequence(row, col, false, opts);
+            // после завершения анимации боя передаём ход
+            setTimeout(() => {
+              if (interactionState.autoEndTurn) {
+                interactionState.autoEndTurn = false;
+                window.endTurn?.();
+              }
+            }, 1800);
           }
+        } else {
+          // нет доступных целей — ход заканчивается
+          interactionState.autoEndTurn = false;
+          window.endTurn?.();
         }
         if (unlockTriggered) {
           const delay = hitsAll.length && hasEnemy ? 1200 : 0;
