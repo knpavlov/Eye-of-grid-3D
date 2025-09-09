@@ -78,8 +78,8 @@ export function magicColumnBurst(targetMesh) {
   group.position.copy(targetMesh.position);
   effectsGroup.add(group);
 
-  // Полупрозрачный столб
-  const geom = new THREE.CylinderGeometry(0.3, 0.3, 2.0, 16);
+  // Полупрозрачный столб (увеличен в 3 раза)
+  const geom = new THREE.CylinderGeometry(0.9, 0.9, 6.0, 24);
   const mat = new THREE.MeshBasicMaterial({
     color: 0x66ccff,
     transparent: true,
@@ -88,24 +88,24 @@ export function magicColumnBurst(targetMesh) {
     blending: THREE.AdditiveBlending
   });
   const pillar = new THREE.Mesh(geom, mat);
-  pillar.position.y = 1.0;
+  pillar.position.y = 3.0;
   group.add(pillar);
 
-  // Частицы искр внутри столба
-  const count = 80;
+  // Частицы искр внутри столба (больше и ярче)
+  const count = 320;
   const pos = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const radius = Math.random() * 0.25;
+    const radius = Math.random() * 0.75;
     pos[i*3] = Math.cos(angle) * radius;
-    pos[i*3+1] = Math.random() * 2.0;
+    pos[i*3+1] = Math.random() * 6.0;
     pos[i*3+2] = Math.sin(angle) * radius;
   }
   const pGeom = new THREE.BufferGeometry();
   pGeom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   const pMat = new THREE.PointsMaterial({
     color: 0xffffff,
-    size: 0.12,
+    size: 0.36,
     transparent: true,
     opacity: 1.0,
     depthWrite: false,
@@ -114,18 +114,43 @@ export function magicColumnBurst(targetMesh) {
   const sparks = new THREE.Points(pGeom, pMat);
   group.add(sparks);
 
-  // Анимация взрывного появления и исчезновения за 0.5 сек
+  // Разлетающиеся комья земли и камней у основания
+  const debrisGeom = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+  const debrisPieces = [];
+  for (let i = 0; i < 40; i++) {
+    const dMat = new THREE.MeshBasicMaterial({
+      color: 0x8b6a3d,
+      transparent: true,
+      opacity: 1.0,
+      depthWrite: false
+    });
+    const piece = new THREE.Mesh(debrisGeom, dMat);
+    piece.position.set((Math.random() - 0.5) * 1.5, 0, (Math.random() - 0.5) * 1.5);
+    group.add(piece); debrisPieces.push(piece);
+    // Анимация разлёта и падения
+    const dir = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize().multiplyScalar(2 + Math.random() * 1.5);
+    const up = Math.random() * 1.5 + 1.0;
+    const target = piece.position.clone().add(dir); target.y = up;
+    gsap.to(piece.position, { x: target.x, y: target.y, z: target.z, duration: 0.75, ease: 'power2.out' });
+    gsap.to(piece.position, { y: 0, duration: 0.75, delay: 0.75, ease: 'bounce.in' });
+    gsap.to(dMat, { opacity: 0, duration: 0.5, delay: 1.0 });
+  }
+
+  // Анимация взрывного появления и исчезновения за 0.75 сек
   group.scale.set(0.2, 0.2, 0.2);
   const tl = gsap.timeline({
     onComplete: () => {
       effectsGroup.remove(group);
       geom.dispose(); mat.dispose(); pGeom.dispose(); pMat.dispose();
+      debrisGeom.dispose(); debrisPieces.forEach(p => p.material.dispose());
     }
   });
-  tl.to(group.scale, { x: 1, y: 1, z: 1, duration: 0.25, ease: 'power2.out' })
-    .to(group.scale, { x: 1.2, y: 1.6, z: 1.2, duration: 0.25, ease: 'power2.in' }, 0.25)
-    .to([mat, pMat], { opacity: 0, duration: 0.25, ease: 'power1.in' }, 0.25)
-    .to(group.rotation, { y: group.rotation.y + Math.PI * 2, duration: 0.5, ease: 'none' }, 0);
+  tl.to(group.scale, { x: 1, y: 1, z: 1, duration: 0.375, ease: 'power2.out' })
+    .to(group.scale, { x: 1.2, y: 1.6, z: 1.2, duration: 0.375, ease: 'power2.in' }, 0.375)
+    .to([mat, pMat], { opacity: 0, duration: 0.375, ease: 'power1.in' }, 0.375)
+    .to(group.rotation, { y: group.rotation.y + Math.PI * 2, duration: 0.75, ease: 'none' }, 0)
+    // Держим группу дольше, чтобы дождаться падения обломков
+    .to({}, { duration: 0.75 });
 }
 
 export function shakeMesh(mesh, times = 3, duration = 0.1) {
