@@ -47,6 +47,23 @@ export function performUnitAttack(unitMesh) {
     const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
     const iState = window.__interactions?.interactionState;
     if (tpl?.attackType === 'MAGIC') {
+      const allowFriendly = !!tpl.friendlyFire;
+      const cells = [];
+      let hasEnemy = false;
+      for (let rr = 0; rr < 3; rr++) {
+        for (let cc = 0; cc < 3; cc++) {
+          if (rr === r && cc === c) continue; // нельзя бить себя
+          const u = gameState.board?.[rr]?.[cc]?.unit;
+          if (allowFriendly || (u && u.owner !== unit.owner)) {
+            cells.push({ r: rr, c: cc });
+          }
+          if (u && u.owner !== unit.owner) hasEnemy = true;
+        }
+      }
+      if (!cells.length || (!allowFriendly && !hasEnemy)) {
+        window.__ui?.notifications?.show('No available targets for magic attack', 'error');
+        return;
+      }
       if (gameState.players[gameState.active].mana < cost) {
         window.__ui?.notifications?.show(`${cost} mana is required to attack`, 'error');
         return;
@@ -56,8 +73,7 @@ export function performUnitAttack(unitMesh) {
       try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
       if (iState) {
         iState.magicFrom = { r, c };
-        const hits = typeof window.computeHits === 'function' ? window.computeHits(gameState, r, c) : [];
-        highlightTiles(hits);
+        highlightTiles(cells);
       }
       window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
       return;
