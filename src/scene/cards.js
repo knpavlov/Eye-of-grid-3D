@@ -231,6 +231,25 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
       ctx.fillRect(cx, cy, cell, cell);
     }
   }
+  if (cardData.attackType === 'MAGIC') {
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        const cx = x + c * (cell + gap);
+        const cy = y + r * (cell + gap);
+        ctx.fillStyle = 'rgba(56,189,248,0.35)';
+        ctx.fillRect(cx, cy, cell, cell);
+        ctx.strokeStyle = 'rgba(56,189,248,0.6)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+      }
+    }
+    const cx = x + 1 * (cell + gap);
+    const cy = y + 0 * (cell + gap);
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+    return;
+  }
   const map = { N: [-1,0], E:[0,1], S:[1,0], W:[0,-1] };
   for (const a of attacks) {
     const isChoice = cardData.chooseDir || a.mode === 'ANY';

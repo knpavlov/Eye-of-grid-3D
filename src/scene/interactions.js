@@ -128,7 +128,7 @@ function onMouseDown(event) {
   if (!gameState || gameState.winner !== null) return;
   if (isInputLocked()) return;
   const ctx = getCtx();
-  const { renderer, mouse, raycaster, unitMeshes, handCardMeshes } = ctx;
+  const { renderer, mouse, raycaster, unitMeshes, handCardMeshes, tileMeshes } = ctx;
   const rect = renderer.domElement.getBoundingClientRect();
   mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -181,6 +181,19 @@ function onMouseDown(event) {
       try { window.__ui.panels.showUnitActionPanel(unit); } catch {}
     }
     return;
+  }
+
+  const tileIntersects = raycaster.intersectObjects(tileMeshes.flat(), true);
+  if (tileIntersects.length > 0) {
+    let tile = tileIntersects[0].object;
+    while (tile && (!tile.userData || tile.userData.type !== 'tile')) tile = tile.parent;
+    if (!tile) return;
+    if (interactionState.magicFrom) {
+      performMagicAttack(interactionState.magicFrom, tile);
+      interactionState.magicFrom = null;
+      clearHighlights();
+      return;
+    }
   }
 
   if (interactionState.selectedCard) {
@@ -338,19 +351,30 @@ function performMagicAttack(from, targetMesh) {
   const { unitMeshes, tileMeshes } = ctx;
   const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
   const gameState = window.gameState;
-  const res = window.magicAttack(gameState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
+  const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
+  const res = window.magicAttack(gameState, from.r, from.c, tr, tc);
   if (!res) { showNotification('Incorrect target', 'error'); return; }
   for (const l of res.logLines.reverse()) window.addLog(l);
   const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
   if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
-  const tMesh = unitMeshes.find(m => m.userData.row === targetMesh.userData.row && m.userData.col === targetMesh.userData.col);
-  if (tMesh) {
-    window.__fx.magicBurst(tMesh.position.clone().add(new THREE.Vector3(0, 0.4, 0)));
-    window.__fx.shakeMesh(tMesh, 6, 0.12);
-    if (typeof res.dmg === 'number' && res.dmg > 0) {
-      window.__fx.spawnDamageText(tMesh, `-${res.dmg}`, '#ff5555');
+
+  const effectTargets = (res.targets && res.targets.length)
+    ? res.targets
+    : [{ r: tr, c: tc, dmg: res.dmg }];
+  for (const t of effectTargets) {
+    const uMesh = unitMeshes.find(m => m.userData.row === t.r && m.userData.col === t.c);
+    const pos = uMesh
+      ? uMesh.position.clone().add(new THREE.Vector3(0, 0.4, 0))
+      : tileMeshes[t.r][t.c].position.clone().add(new THREE.Vector3(0, 0.4, 0));
+    window.__fx.magicBurst(pos);
+    if (uMesh) {
+      window.__fx.shakeMesh(uMesh, 6, 0.12);
+      if (typeof t.dmg === 'number' && t.dmg > 0) {
+        window.__fx.spawnDamageText(uMesh, `-${t.dmg}`, '#ff5555');
+      }
     }
   }
+
   if (res.deaths && res.deaths.length) {
     for (const d of res.deaths) {
       try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
@@ -510,29 +534,42 @@ export function placeUnitWithDirection(direction) {
       window.updateUnits();
       window.updateUI();
       const tpl = window.CARDS?.[cardData.id];
+      if (tpl?.attackType === 'MAGIC') {
+        const targets = window.magicTargets(gameState, row, col);
+        if (targets.length) {
+          interactionState.magicFrom = { r: row, c: col };
+          highlightTiles(targets);
+          window.__ui?.log?.add?.(`${tpl.name}: выберите цель для магической атаки.`);
+          window.__ui?.notifications?.show('Выберите цель', 'info');
+        }
+        if (unlockTriggered) {
+          setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0);
+        }
+        return;
+      }
       const attacks = tpl?.attacks || [];
       const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
       const hitsAll = window.computeHits(gameState, row, col, { union: true });
       const hasEnemy = hitsAll.some(h => gameState.board?.[h.r]?.[h.c]?.unit?.owner !== unit.owner);
       if (hitsAll.length && hasEnemy) {
-      if (needsChoice && hitsAll.length > 1) {
-        interactionState.pendingAttack = { r: row, c: col };
-        highlightTiles(hitsAll);
-        window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
-        window.__ui?.notifications?.show('Выберите цель', 'info');
-      } else {
-        let opts = {};
-        if (needsChoice && hitsAll.length === 1) {
-          const h = hitsAll[0];
-          const dr = h.r - row, dc = h.c - col;
-          const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
-          const ORDER = ['N', 'E', 'S', 'W'];
-          const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(unit.facing) + 4) % 4];
-          const dist = Math.max(Math.abs(dr), Math.abs(dc));
-          opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
+        if (needsChoice && hitsAll.length > 1) {
+          interactionState.pendingAttack = { r: row, c: col };
+          highlightTiles(hitsAll);
+          window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
+          window.__ui?.notifications?.show('Выберите цель', 'info');
+        } else {
+          let opts = {};
+          if (needsChoice && hitsAll.length === 1) {
+            const h = hitsAll[0];
+            const dr = h.r - row, dc = h.c - col;
+            const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
+            const ORDER = ['N', 'E', 'S', 'W'];
+            const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(unit.facing) + 4) % 4];
+            const dist = Math.max(Math.abs(dr), Math.abs(dc));
+            opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
+          }
+          window.performBattleSequence(row, col, false, opts);
         }
-        window.performBattleSequence(row, col, false, opts);
-      }
       }
       if (unlockTriggered) {
         const delay = hitsAll.length && hasEnemy ? 1200 : 0;

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack } from '../src/core/rules.js';
+import { computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack, magicTargets } from '../src/core/rules.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -109,6 +109,48 @@ describe('magicAttack', () => {
     expect(res).toBeTruthy();
     expect(res.n1.board[1][2].unit.currentHP).toBeLessThanOrEqual(2);
     expect(res.dmg).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('magic mechanics', () => {
+  let added = false;
+  beforeEach(() => {
+    if (!CARDS.TEST_MAGIC_SPLASH) {
+      CARDS.TEST_MAGIC_SPLASH = {
+        id: 'TEST_MAGIC_SPLASH', name: 'Test Mage', type: 'UNIT', cost: 0, element: 'FIRE', atk: 1, hp: 1,
+        attackType: 'MAGIC', friendlyFire: true, magicSplash: true,
+      };
+      added = true;
+    }
+  });
+  afterEach(() => { if (added) { delete CARDS.TEST_MAGIC_SPLASH; added = false; } });
+
+  it('magicTargets excludes friendly units by default', () => {
+    const state = { board: makeBoard() };
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'N' };
+    state.board[0][0].unit = { owner: 0, tplId: 'FIRE_FLAME_LIZARD', facing: 'N' };
+    const cells = magicTargets(state, 1, 1);
+    const hasFriendly = cells.some(c => c.r === 0 && c.c === 0);
+    expect(hasFriendly).toBe(false);
+    expect(cells.length).toBe(7);
+  });
+
+  it('magicAttack supports empty cells and splash damage', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].unit = { owner: 0, tplId: 'TEST_MAGIC_SPLASH', facing: 'N', hp: 1 };
+    state.board[1][2].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'W', hp: 2 };
+    state.board[0][2].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'S', hp: 2 };
+    const res = magicAttack(state, 1, 1, 1, 2);
+    expect(res.targets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ r: 1, c: 2 }),
+      expect.objectContaining({ r: 0, c: 2 })
+    ]));
+    const hp1 = res.n1.board[1][2].unit.currentHP;
+    const hp2 = res.n1.board[0][2].unit.currentHP;
+    expect(hp1).toBeLessThan(2);
+    expect(hp2).toBeLessThan(2);
+    const res2 = magicAttack(state, 1, 1, 0, 0);
+    expect(res2).toBeTruthy();
   });
 });
 

@@ -57,6 +57,7 @@ try {
   window.computeHits = Rules.computeHits;
   window.stagedAttack = Rules.stagedAttack;
   window.magicAttack = Rules.magicAttack;
+  window.magicTargets = Rules.magicTargets;
 
   window.shuffle = shuffle;
   window.drawOne = drawOne;

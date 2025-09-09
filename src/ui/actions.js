@@ -56,10 +56,10 @@ export function performUnitAttack(unitMesh) {
       try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
       if (iState) {
         iState.magicFrom = { r, c };
-        const hits = typeof window.computeHits === 'function' ? window.computeHits(gameState, r, c) : [];
-        highlightTiles(hits);
+        const cells = typeof window.magicTargets === 'function' ? window.magicTargets(gameState, r, c) : [];
+        highlightTiles(cells);
       }
-      window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
+      window.__ui?.log?.add?.(`${tpl.name}: выберите цель для магической атаки.`);
       return;
     }
     const computeHits = window.computeHits;
