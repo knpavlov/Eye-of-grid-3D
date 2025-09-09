@@ -64,13 +64,15 @@ export async function playUnlockAnimation() {
   // Вспышка
   const flash = document.createElement('div');
   flash.style.position = 'fixed';
-  const fSize = Math.max(window.innerWidth, window.innerHeight) / 3;
+  const fSize = Math.max(window.innerWidth, window.innerHeight) / 6; // на 50% меньше
   flash.style.left = `${cx - fSize / 2}px`;
   flash.style.top = `${cy - fSize / 2}px`;
   flash.style.width = `${fSize}px`;
   flash.style.height = `${fSize}px`;
-  flash.style.background = 'white';
-  flash.style.opacity = '0';
+  flash.style.borderRadius = '50%';
+  flash.style.background = 'radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0) 70%)';
+  flash.style.opacity = '1';
+  flash.style.transform = 'scale(0)';
   flash.style.pointerEvents = 'none';
   flash.style.zIndex = '1000';
   document.body.appendChild(flash);
@@ -79,9 +81,9 @@ export async function playUnlockAnimation() {
   slash.style.position = 'fixed';
   slash.style.left = `${cx}px`;
   slash.style.top = `${cy}px`;
-  slash.style.width = '3px';
+  slash.style.width = '4px';
   slash.style.height = `${rect.height * 2}px`;
-  slash.style.background = 'white';
+  slash.style.background = 'linear-gradient(#ffff66, #ff0000)';
   slash.style.transformOrigin = 'center center';
   slash.style.transform = 'translate(-50%, -50%) rotate(45deg)';
   slash.style.opacity = '0';
@@ -89,13 +91,12 @@ export async function playUnlockAnimation() {
   slash.style.zIndex = '1001';
   document.body.appendChild(slash);
   const tl = gsap.timeline({ onComplete: () => { flash.remove(); slash.remove(); } });
-  tl.to(flash, { opacity: 1, duration: 0.25 })
-    .to(flash, { opacity: 0, duration: 0.25 })
-    .to(slash, { opacity: 1, duration: 0.25 }, 0)
-    .to(slash, { opacity: 0, duration: 0.25 }, 0.25);
+  tl.to(flash, { scale: 1, opacity: 0, duration: 0.2, ease: 'power2.out' })
+    .fromTo(slash, { opacity: 0 }, { opacity: 1, duration: 0.1 }, 0)
+    .to(slash, { opacity: 0, duration: 0.1 }, 0.1);
   // Раскалывание замка
-  tl.to(_left, { rotation: -20, x: -20, y: -10, duration: 0.1 }, 0.5);
-  tl.to(_right, { rotation: 20, x: 20, y: 10, duration: 0.1 }, 0.5);
+  tl.to(_left, { rotation: -20, x: -20, y: -10, duration: 0.1 }, 0.3);
+  tl.to(_right, { rotation: 20, x: 20, y: 10, duration: 0.1 }, 0.3);
   // Задержка в раскрытом состоянии
   tl.to({}, { duration: 0.7 });
   // Исчезновение
