@@ -107,10 +107,17 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   ctx.textAlign = 'left';
   ctx.font = 'bold 14px Arial';
   ctx.fillText(String(cardData.cost || 0), 16 + iconSize + 4, height - 15);
+  let costWidth = ctx.measureText(String(cardData.cost || 0)).width;
+  if (cardData.locked) {
+    // рисуем иконку замка рядом со стоимостью
+    const lx = 16 + iconSize + 4 + costWidth + iconSize / 2;
+    drawLockIcon(ctx, lx, height - 20, iconSize);
+    costWidth += iconSize + 4;
+  }
   if (cardData.type === 'UNIT') {
     ctx.textAlign = 'left'; ctx.font = 'bold 13px Arial';
     const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
-    const shift = iconSize + 4 + ctx.measureText(String(cardData.cost || 0)).width + 10;
+    const shift = iconSize + 4 + costWidth + 10;
     drawPlayIcon(ctx, 16 + shift + iconSize / 2, height - 20, iconSize);
     ctx.fillText(String(act), 16 + shift + iconSize + 4, height - 15);
   }
@@ -167,6 +174,42 @@ function drawPlayIcon(ctx, x, y, size) {
   ctx.lineTo(x + r * 0.8, y);
   ctx.closePath();
   ctx.fill();
+}
+
+// Рисуем иконку замка для Summoning Lock
+function drawLockIcon(ctx, x, y, size) {
+  const r = size / 2;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.strokeStyle = '#f1f5f9';
+  ctx.lineWidth = size * 0.15;
+  // дужка
+  ctx.beginPath();
+  ctx.arc(0, -r * 0.2, r * 0.6, Math.PI, 0, true);
+  ctx.stroke();
+  // корпус (скруглённый прямоугольник)
+  const bw = r * 1.2, bh = r * 1.2;
+  const radius = size * 0.1;
+  ctx.fillStyle = '#f1f5f9';
+  ctx.beginPath();
+  ctx.moveTo(-bw / 2 + radius, 0);
+  ctx.lineTo(bw / 2 - radius, 0);
+  ctx.quadraticCurveTo(bw / 2, 0, bw / 2, radius);
+  ctx.lineTo(bw / 2, bh - radius);
+  ctx.quadraticCurveTo(bw / 2, bh, bw / 2 - radius, bh);
+  ctx.lineTo(-bw / 2 + radius, bh);
+  ctx.quadraticCurveTo(-bw / 2, bh, -bw / 2, bh - radius);
+  ctx.lineTo(-bw / 2, radius);
+  ctx.quadraticCurveTo(-bw / 2, 0, -bw / 2 + radius, 0);
+  ctx.closePath();
+  ctx.fill();
+  // отверстие под ключ
+  ctx.fillStyle = '#0f172a';
+  ctx.beginPath();
+  ctx.arc(0, bh * 0.55, size * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(-size * 0.05, bh * 0.55, size * 0.1, bh * 0.3);
+  ctx.restore();
 }
 
 function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {

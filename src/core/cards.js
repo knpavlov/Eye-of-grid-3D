@@ -68,7 +68,8 @@ export const CARDS = {
     ],
     blindspots: ['S'], penaltyByTargets: true,
     friendlyFire: true, // задевает и своих
-    desc: 'If attacks 2 creatures, -2 ATK; if 3 creatures, -4 ATK.'
+    desc: 'If attacks 2 creatures, -2 ATK; if 3 creatures, -4 ATK.',
+    locked: true,
   },
   FIRE_PURSUER: {
     id: 'FIRE_PURSUER', name: 'Pursuer of Saint Dhees', type: 'UNIT', cost: 6, activation: 3,
@@ -76,7 +77,8 @@ export const CARDS = {
     attackType: 'STANDARD',
     attacks: [ { dir: 'N', ranges: [1] } ],
     blindspots: ['S'], dynamicAtk: 'OTHERS_ON_BOARD',
-    desc: 'ATK = 5 + number of other creatures on board.'
+    desc: 'ATK = 5 + number of other creatures on board.',
+    locked: true,
   },
 
   // Spells (subset)
