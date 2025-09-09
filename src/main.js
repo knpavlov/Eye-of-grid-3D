@@ -2,7 +2,7 @@
 import * as Constants from './core/constants.js';
 import { CARDS, STARTER_FIRESET } from './core/cards.js';
 import * as Rules from './core/rules.js';
-import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled } from './core/state.js';
+import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled, countUnits } from './core/state.js';
 import { netState, NET_ON } from './core/netState.js';
 import { createStore, makeMiddleware } from './lib/store.js';
 // Scene modules (new)
@@ -33,6 +33,7 @@ import { attachUIEvents } from './ui/domEvents.js';
 import * as BattleSplash from './ui/battleSplash.js';
 import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
+import * as SummonLock from './ui/summonLock.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -61,6 +62,7 @@ try {
   window.drawOne = drawOne;
   window.drawOneNoAdd = drawOneNoAdd;
   window.countControlled = countControlled;
+  window.countUnits = countUnits;
   window.startGame = startGame;
 
   // Runtime net state globals
@@ -158,6 +160,7 @@ try {
   window.__ui.spellUtils = UISpellUtils;
   window.__ui.updateUI = updateUI;
   window.__ui.inputLock = InputLock;
+  window.__ui.summonLock = SummonLock;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;

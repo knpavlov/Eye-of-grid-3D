@@ -140,6 +140,10 @@ function onMouseDown(event) {
     const hitObj = handIntersects[0].object;
     const card = hitObj.userData?.isInHand ? hitObj : hitObj.parent;
     const cardData = card.userData.cardData;
+    if (cardData.locked && !gameState.summoningUnlocked) {
+      showNotification('Summoning Lock: This card cannot be played until there are at least 4 units on the board at the same time', 'error');
+      return;
+    }
     if (interactionState.pendingDiscardSelection && cardData && cardData.type === (interactionState.pendingDiscardSelection.requiredType || cardData.type)) {
       const owner = gameState.players[gameState.active];
       const handIdx = card.userData.handIndex;
@@ -460,6 +464,13 @@ export function placeUnitWithDirection(direction) {
   player.mana -= cardData.cost;
   player.discard.push(cardData);
   player.hand.splice(handIndex, 1);
+  // проверяем состояние Summoning Lock до начала действий
+  const totalUnits = (typeof window.countUnits === 'function') ? window.countUnits(gameState) : 0;
+  const unlockTriggered = !gameState.summoningUnlocked && totalUnits >= 4;
+  if (unlockTriggered) {
+    gameState.summoningUnlocked = true;
+    try { window.__ui?.summonLock?.prepareUnlock(); } catch {}
+  }
   const cellElement = gameState.board[row][col].element;
   const buff = window.computeCellBuff(cellElement, cardData.element);
   if (buff.hp !== 0) {
@@ -504,24 +515,28 @@ export function placeUnitWithDirection(direction) {
       const hitsAll = window.computeHits(gameState, row, col, { union: true });
       const hasEnemy = hitsAll.some(h => gameState.board?.[h.r]?.[h.c]?.unit?.owner !== unit.owner);
       if (hitsAll.length && hasEnemy) {
-        if (needsChoice && hitsAll.length > 1) {
-          interactionState.pendingAttack = { r: row, c: col };
-          highlightTiles(hitsAll);
-          window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
-          window.__ui?.notifications?.show('Выберите цель', 'info');
-        } else {
-          let opts = {};
-          if (needsChoice && hitsAll.length === 1) {
-            const h = hitsAll[0];
-            const dr = h.r - row, dc = h.c - col;
-            const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
-            const ORDER = ['N', 'E', 'S', 'W'];
-            const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(unit.facing) + 4) % 4];
-            const dist = Math.max(Math.abs(dr), Math.abs(dc));
-            opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
-          }
-          window.performBattleSequence(row, col, false, opts);
+      if (needsChoice && hitsAll.length > 1) {
+        interactionState.pendingAttack = { r: row, c: col };
+        highlightTiles(hitsAll);
+        window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
+        window.__ui?.notifications?.show('Выберите цель', 'info');
+      } else {
+        let opts = {};
+        if (needsChoice && hitsAll.length === 1) {
+          const h = hitsAll[0];
+          const dr = h.r - row, dc = h.c - col;
+          const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
+          const ORDER = ['N', 'E', 'S', 'W'];
+          const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(unit.facing) + 4) % 4];
+          const dist = Math.max(Math.abs(dr), Math.abs(dc));
+          opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
         }
+        window.performBattleSequence(row, col, false, opts);
+      }
+      }
+      if (unlockTriggered) {
+        const delay = hitsAll.length && hasEnemy ? 1200 : 0;
+        setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, delay);
       }
     },
   });
