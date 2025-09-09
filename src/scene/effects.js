@@ -66,6 +66,119 @@ export function spawnDamageText(targetMesh, text, color = '#ff5555') {
     .to(sprite.material, { opacity: 0, duration: 0.5 }, 'end');
 }
 
+// Мощный взрывной столб магической энергии
+export function magicBurst(pos, durationSec = 0.75) {
+  const THREE = window.THREE; const gsap = window.gsap;
+  const effectsGroup = window.effectsGroup || window.__scene?.getCtx()?.effectsGroup;
+  if (!THREE || !gsap || !effectsGroup || !pos) return;
+
+  // Общая группа эффекта
+  const group = new THREE.Group();
+  group.position.copy(pos);
+  group.scale.setScalar(3); // увеличиваем эффект втрое
+  effectsGroup.add(group);
+
+  // Светящийся столб
+  const beamGeom = new THREE.CylinderGeometry(0.3, 0.3, 2, 16, 1, true);
+  const beamMat = new THREE.MeshBasicMaterial({
+    color: 0x66ccff,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  const beam = new THREE.Mesh(beamGeom, beamMat);
+  beam.position.y = 1.0;
+  group.add(beam);
+  // короткое расширение столба
+  gsap.to(beam.scale, { x: 1.8, z: 1.8, duration: durationSec / 2, yoyo: true, repeat: 1, ease: 'power2.out' });
+  gsap.to(beam.material, { opacity: 0, duration: durationSec });
+
+  // Чисто магические частицы
+  const count = 240; // в несколько раз больше частиц
+  const geom = new THREE.BufferGeometry();
+  const positions = new Float32Array(count * 3);
+  const velocities = [];
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.random() * 0.25;
+    const px = Math.cos(angle) * radius;
+    const pz = Math.sin(angle) * radius;
+    positions[i * 3] = px;
+    positions[i * 3 + 1] = 0;
+    positions[i * 3 + 2] = pz;
+    velocities.push(new THREE.Vector3(px * 6, Math.random() * 6 + 3, pz * 6));
+  }
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const mat = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: 0.2,
+    transparent: true,
+    opacity: 1.0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const points = new THREE.Points(geom, mat);
+  group.add(points);
+
+  // Разлетающиеся камни и земля у основания
+  const debrisCount = 40;
+  const debrisGeom = new THREE.BufferGeometry();
+  const debrisPositions = new Float32Array(debrisCount * 3);
+  const debrisVel = [];
+  for (let i = 0; i < debrisCount; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const rad = Math.random() * 0.3;
+    const px = Math.cos(ang) * rad;
+    const pz = Math.sin(ang) * rad;
+    debrisPositions[i * 3] = px;
+    debrisPositions[i * 3 + 1] = 0;
+    debrisPositions[i * 3 + 2] = pz;
+    debrisVel.push(new THREE.Vector3(px * 8, Math.random() * 5 + 3, pz * 8));
+  }
+  debrisGeom.setAttribute('position', new THREE.BufferAttribute(debrisPositions, 3));
+  const debrisMat = new THREE.PointsMaterial({
+    color: 0x8b5a2b,
+    size: 0.25,
+    transparent: true,
+    opacity: 1.0,
+    depthWrite: false,
+  });
+  const debris = new THREE.Points(debrisGeom, debrisMat);
+  group.add(debris);
+
+  const start = performance.now();
+  (function tick() {
+    const elapsed = (performance.now() - start) / 1000;
+    for (let i = 0; i < count; i++) {
+      positions[i * 3] += velocities[i].x * 0.016;
+      positions[i * 3 + 1] += velocities[i].y * 0.016;
+      positions[i * 3 + 2] += velocities[i].z * 0.016;
+    }
+    for (let i = 0; i < debrisCount; i++) {
+      debrisVel[i].y -= 9.81 * 0.016; // простая гравитация
+      debrisPositions[i * 3] += debrisVel[i].x * 0.016;
+      debrisPositions[i * 3 + 1] += debrisVel[i].y * 0.016;
+      debrisPositions[i * 3 + 2] += debrisVel[i].z * 0.016;
+    }
+    geom.attributes.position.needsUpdate = true;
+    debrisGeom.attributes.position.needsUpdate = true;
+    if (elapsed < durationSec) requestAnimationFrame(tick);
+  })();
+
+  // Плавное исчезновение обеих систем
+  gsap.to([mat, debrisMat], {
+    opacity: 0,
+    duration: durationSec,
+    onComplete: () => {
+      try { effectsGroup.remove(group); } catch {}
+      geom.dispose(); mat.dispose(); beamGeom.dispose(); beamMat.dispose();
+      debrisGeom.dispose(); debrisMat.dispose();
+    },
+  });
+}
+
 export function shakeMesh(mesh, times = 3, duration = 0.1) {
   const gsap = window.gsap; if (!gsap || !mesh) return;
   const tl = gsap.timeline();
@@ -236,6 +349,6 @@ export function dissolveTileCrossfade(tileMesh, oldMaterial, newMaterial, durati
   }
 }
 
-const api = { spawnDamageText, shakeMesh, dissolveAndAsh, dissolveTileSwap, dissolveTileCrossfade, scheduleHpPopup, cancelPendingHpPopup };
+const api = { spawnDamageText, magicBurst, shakeMesh, dissolveAndAsh, dissolveTileSwap, dissolveTileCrossfade, scheduleHpPopup, cancelPendingHpPopup };
 try { if (typeof window !== 'undefined') window.__fx = api; } catch {}
 export default api;
