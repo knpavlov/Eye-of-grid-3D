@@ -107,10 +107,17 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   ctx.textAlign = 'left';
   ctx.font = 'bold 14px Arial';
   ctx.fillText(String(cardData.cost || 0), 16 + iconSize + 4, height - 15);
+  let costWidth = ctx.measureText(String(cardData.cost || 0)).width;
+  if (cardData.locked) {
+    // рисуем иконку замка рядом со стоимостью
+    const lx = 16 + iconSize + 4 + costWidth + iconSize / 2;
+    drawLockIcon(ctx, lx, height - 20, iconSize);
+    costWidth += iconSize + 4;
+  }
   if (cardData.type === 'UNIT') {
     ctx.textAlign = 'left'; ctx.font = 'bold 13px Arial';
     const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
-    const shift = iconSize + 4 + ctx.measureText(String(cardData.cost || 0)).width + 10;
+    const shift = iconSize + 4 + costWidth + 10;
     drawPlayIcon(ctx, 16 + shift + iconSize / 2, height - 20, iconSize);
     ctx.fillText(String(act), 16 + shift + iconSize + 4, height - 15);
   }
@@ -167,6 +174,26 @@ function drawPlayIcon(ctx, x, y, size) {
   ctx.lineTo(x + r * 0.8, y);
   ctx.closePath();
   ctx.fill();
+}
+
+// Рисуем иконку замка для Summoning Lock
+function drawLockIcon(ctx, x, y, size) {
+  const r = size / 2;
+  ctx.save();
+  ctx.translate(x - r, y - r);
+  ctx.fillStyle = '#f1f5f9';
+  // дужка
+  ctx.beginPath();
+  ctx.arc(r, r * 0.9, r * 0.6, Math.PI, 0);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#f1f5f9';
+  ctx.stroke();
+  // корпус
+  ctx.fillRect(r * 0.3, r, r * 1.4, r * 1.2);
+  // отверстие
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(r * 0.9, r * 1.3, r * 0.4, r * 0.5);
+  ctx.restore();
 }
 
 function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
