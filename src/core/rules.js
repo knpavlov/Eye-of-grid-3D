@@ -245,18 +245,51 @@ export function stagedAttack(state, r, c, opts = {}) {
 
 export function magicAttack(state, fr, fc, tr, tc) {
   const n1 = JSON.parse(JSON.stringify(state));
-  const attacker = n1.board?.[fr]?.[fc]?.unit; const target = n1.board?.[tr]?.[tc]?.unit;
-  if (!attacker || !target || target.owner === attacker.owner) return null;
+  if (!inBounds(tr, tc)) return null; // цель вне поля
+  const attacker = n1.board?.[fr]?.[fc]?.unit;
+  if (!attacker) return null;
   const tplA = CARDS[attacker.tplId];
+  const allowFriendly = !!tplA.friendlyFire; // разрешена ли атака по своим
+  const splash = typeof tplA.magicSplash === 'number' ? tplA.magicSplash : 0; // радиус сплэша
+
   const atkStats = effectiveStats(n1.board[fr][fc], attacker);
-  const dmg = Math.max(0, (atkStats.atk || 0) + (tplA.randomPlus2 && Math.random() < 0.5 ? 2 : 0));
-  const before = target.currentHP ?? target.hp;
-  target.currentHP = Math.max(0, before - dmg);
-  const afterHP = target.currentHP;
-  const logLines = [`${CARDS[attacker.tplId].name} (Magic) → ${CARDS[target.tplId].name}: ${dmg} dmg (HP ${before}→${afterHP})`];
+  const baseDmg = Math.max(0, (atkStats.atk || 0) + (tplA.randomPlus2 && Math.random() < 0.5 ? 2 : 0));
+
+  // собираем клетки, которые попадут под удар
+  const cells = [{ r: tr, c: tc }];
+  if (splash > 0) {
+    const dirs = [
+      { r: tr - 1, c: tc },
+      { r: tr + 1, c: tc },
+      { r: tr, c: tc - 1 },
+      { r: tr, c: tc + 1 },
+    ];
+    for (const p of dirs) if (inBounds(p.r, p.c) && !(p.r === fr && p.c === fc)) cells.push(p);
+  }
+
+  const hits = [];
+  for (const pos of cells) {
+    const tgt = n1.board?.[pos.r]?.[pos.c]?.unit;
+    if (!tgt) continue; // пустая клетка
+    if (tgt.owner === attacker.owner && !allowFriendly) return null; // нельзя бить своих
+    const before = tgt.currentHP ?? tgt.hp;
+    tgt.currentHP = Math.max(0, before - baseDmg);
+    hits.push({ r: pos.r, c: pos.c, dmg: baseDmg, before, after: tgt.currentHP, tplId: tgt.tplId });
+  }
+
+  const logLines = hits.map(h => {
+    const nameA = CARDS[attacker.tplId].name;
+    const nameB = CARDS[h.tplId].name;
+    return `${nameA} (Magic) → ${nameB}: ${h.dmg} dmg (HP ${h.before}→${h.after})`;
+  });
+
   const deaths = [];
   for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
-    const u = n1.board[rr][cc].unit; if (u && (u.currentHP ?? u.hp) <= 0) { deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId }); n1.board[rr][cc].unit = null; }
+    const u = n1.board[rr][cc].unit;
+    if (u && (u.currentHP ?? u.hp) <= 0) {
+      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId });
+      n1.board[rr][cc].unit = null;
+    }
   }
   try {
     for (const d of deaths) {
@@ -265,7 +298,9 @@ export function magicAttack(state, fr, fc, tr, tc) {
       }
     }
   } catch {}
+
   attacker.lastAttackTurn = n1.turn;
   attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA);
-  return { n1, logLines, dmg, deaths };
+
+  return { n1, logLines, dmg: hits[0]?.dmg || 0, deaths, targets: hits };
 }

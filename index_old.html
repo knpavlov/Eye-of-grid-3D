@@ -2250,7 +2250,7 @@
         if (!unit) return;
         // если в режиме магической атаки
         if (magicFrom) {
-          performMagicAttack(magicFrom, unit);
+          performMagicAttack(magicFrom, { r: unit.userData.row, c: unit.userData.col });
           magicFrom = null;
           return;
         }
@@ -3358,40 +3358,38 @@
       }
     }
 
-    function performMagicAttack(from, targetMesh) {
-      const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
-      const res = magicAttack(gameState, from.r, from.c, tr, tc);
+    function performMagicAttack(from, targetPos) {
+      const res = magicAttack(gameState, from.r, from.c, targetPos.r, targetPos.c);
       if (!res) { showNotification('Incorrect target', 'error'); return; }
-      // Не обновляем состояние немедленно, чтобы дать пройти анимации смерти
       for (const l of res.logLines.reverse()) addLog(l);
       const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
       if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
-      // вспышка по цели
-      const tMesh = unitMeshes.find(m => m.userData.row === tr && m.userData.col === tc);
-      if (tMesh) {
+      const tile = tileMeshes[targetPos.r][targetPos.c];
+      if (tile) {
         const flashGeom = new THREE.SphereGeometry(0.25, 12, 12);
         const flashMat = new THREE.MeshBasicMaterial({ color: 0xff6666, transparent: true, opacity: 0.8 });
         const flash = new THREE.Mesh(flashGeom, flashMat);
-        flash.position.copy(tMesh.position).add(new THREE.Vector3(0, 0.4, 0));
+        flash.position.copy(tile.position).add(new THREE.Vector3(0, 0.4, 0));
         effectsGroup.add(flash);
         gsap.to(flash.scale, { x: 2, y: 2, z: 2, duration: 0.3 });
         gsap.to(flash.material, { opacity: 0, duration: 0.3, onComplete: ()=> effectsGroup.remove(flash) });
-        // тряска цели и всплывающий урон для магии
-        shakeMesh(tMesh, 6, 0.12);
-        if (typeof res.dmg === 'number' && res.dmg > 0) {
-          spawnDamageText(tMesh, `-${res.dmg}`, '#ff5555');
+      }
+      for (const t of res.targets || []) {
+        const tMesh = unitMeshes.find(m => m.userData.row === t.r && m.userData.col === t.c);
+        if (tMesh) {
+          shakeMesh(tMesh, 6, 0.12);
+          if (typeof t.dmg === 'number' && t.dmg > 0) {
+            spawnDamageText(tMesh, `-${t.dmg}`, '#ff5555');
+          }
         }
       }
-      // Манасфера и кладбище для погибших от магии; откладываем перерисовку до конца дизолва
       if (res.deaths && res.deaths.length) {
         for (const d of res.deaths) {
           try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
           const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
           if (deadMesh) { dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9); }
-          // Орб маны появляется с задержкой 400мс после начала анимации смерти
           setTimeout(() => {
             const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-            // Только визуальный орб; фактическое начисление — в res.n1
             animateManaGainFromWorld(p, d.owner, true);
           }, 400);
         }
@@ -3401,7 +3399,6 @@
           try { schedulePush('magic-battle-finish'); } catch {}
         }, 1000);
       } else {
-        // Если смертей нет — применяем состояние сразу
         gameState = res.n1; updateUnits(); updateUI();
         const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
         try { schedulePush('magic-battle-finish'); } catch {}
