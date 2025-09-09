@@ -100,15 +100,36 @@ describe('guards and hits', () => {
 });
 
 describe('magicAttack', () => {
-  it('applies damage and does not trigger retaliation', () => {
+  it('applies damage and returns targets for magic attacks', () => {
     const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
-    // Use a magic attacker template: FIRE_FLAME_MAGUS
     state.board[1][1].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'E', hp: 1 };
     state.board[1][2].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'W', hp: 2 };
     const res = magicAttack(state, 1, 1, 1, 2);
     expect(res).toBeTruthy();
+    const tgt = res.targets.find(t => t.r === 1 && t.c === 2);
+    expect(tgt && tgt.dmg).toBeGreaterThanOrEqual(1);
     expect(res.n1.board[1][2].unit.currentHP).toBeLessThanOrEqual(2);
-    expect(res.dmg).toBeGreaterThanOrEqual(1);
+  });
+
+  it('supports splash damage', () => {
+    CARDS.TEST_MAGIC_SPLASH = { id: 'TEST_MAGIC_SPLASH', name: 'Splash Mage', type: 'UNIT', cost: 0, element: 'FIRE', atk: 1, hp: 1, attackType: 'MAGIC', magicSplash: 1 };
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].unit = { owner: 0, tplId: 'TEST_MAGIC_SPLASH', facing: 'N', hp: 1 };
+    state.board[1][2].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'W', hp: 2 };
+    state.board[0][2].unit = { owner: 1, tplId: 'FIRE_FLAME_LIZARD', facing: 'S', hp: 2 };
+    const res = magicAttack(state, 1, 1, 1, 2);
+    expect(res.targets.some(t => t.r === 1 && t.c === 2 && t.dmg > 0)).toBe(true);
+    expect(res.targets.some(t => t.r === 0 && t.c === 2 && t.dmg > 0)).toBe(true);
+    delete CARDS.TEST_MAGIC_SPLASH;
+  });
+
+  it('magic computeHits includes empty cells', () => {
+    const state = { board: makeBoard() };
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'N' };
+    state.board[0][0].unit = { owner: 0, tplId: 'FIRE_FLAME_LIZARD', facing: 'N' };
+    const hits = computeHits(state, 1, 1);
+    expect(hits.some(h => h.r === 0 && h.c === 1)).toBe(true); // пустая клетка
+    expect(hits.some(h => h.r === 0 && h.c === 0)).toBe(false); // союзник без friendlyFire
   });
 });
 
