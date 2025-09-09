@@ -33,9 +33,32 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 1;
   font-weight: 800; font-size: 13px; color: #f8fafc; text-shadow: 0 1px 0 rgba(0,0,0,0.4);
 }
-.end-turn-btn .sec-text { 
+.end-turn-btn .sec-text {
   position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; z-index: 1;
   font-weight: 700; font-size: 12px; color: #ffffff; opacity: 0.95; text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+
+/* Иконка блокировки призыва */
+#summoning-lock {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  font-size: 32px;
+  line-height: 1;
+}
+#summoning-lock .lock-half {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+#summoning-lock .lock-half.left { clip-path: inset(0 50% 0 0); }
+#summoning-lock .lock-half.right { clip-path: inset(0 0 0 50%); }
+#summoning-lock .lock-slash {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent 45%, rgba(255,255,255,0.9) 50%, transparent 55%);
+  opacity: 0;
+  pointer-events: none;
 }
 /* Пульсация рамки в последние 10 секунд */
 @keyframes urgentPulse {

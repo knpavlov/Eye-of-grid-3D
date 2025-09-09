@@ -2,7 +2,7 @@
 import * as Constants from './core/constants.js';
 import { CARDS, STARTER_FIRESET } from './core/cards.js';
 import * as Rules from './core/rules.js';
-import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled } from './core/state.js';
+import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled, countAllUnits } from './core/state.js';
 import { netState, NET_ON } from './core/netState.js';
 import { createStore, makeMiddleware } from './lib/store.js';
 // Scene modules (new)
@@ -26,6 +26,7 @@ import { updateUI } from './ui/update.js';
 import * as UIActions from './ui/actions.js';
 import * as SceneEffects from './scene/effects.js';
 import * as UISpellUtils from './ui/spellUtils.js';
+import * as SummoningLock from './ui/summoningLock.js';
 import * as Spells from './spells/handlers.js';
 import './ui/statusChip.js';
 import * as InputLock from './ui/inputLock.js';
@@ -61,6 +62,7 @@ try {
   window.drawOne = drawOne;
   window.drawOneNoAdd = drawOneNoAdd;
   window.countControlled = countControlled;
+  window.countAllUnits = countAllUnits;
   window.startGame = startGame;
 
   // Runtime net state globals
@@ -156,6 +158,7 @@ try {
   window.__ui.handCount = HandCount;
   window.__ui.actions = UIActions;
   window.__ui.spellUtils = UISpellUtils;
+   window.__ui.summoningLock = SummoningLock;
   window.__ui.updateUI = updateUI;
   window.__ui.inputLock = InputLock;
   window.updateUI = updateUI;

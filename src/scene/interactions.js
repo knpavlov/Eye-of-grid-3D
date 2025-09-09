@@ -148,6 +148,10 @@ function onMouseDown(event) {
       return;
     }
     if (cardData.type === 'UNIT' || cardData.type === 'SPELL') {
+      if (cardData.locked && !gameState.summoningUnlocked) {
+        showNotification('Summoning Lock: This card cannot be played until there are at least 4 units on the board at the same time', 'error');
+        return;
+      }
       startCardDrag(card);
     }
     return;
@@ -373,7 +377,7 @@ function performMagicAttack(from, targetMesh) {
 }
 
 // Обычная атака с предварительным выбором клетки
-function performChosenAttack(from, targetMesh) {
+async function performChosenAttack(from, targetMesh) {
   const gameState = window.gameState;
   const attacker = gameState.board?.[from.r]?.[from.c]?.unit; if (!attacker) return;
   const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
@@ -385,7 +389,11 @@ function performChosenAttack(from, targetMesh) {
   const opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
   const hits = window.computeHits(gameState, from.r, from.c, opts);
   if (!hits.length) { showNotification('Incorrect target', 'error'); return; }
-  window.performBattleSequence(from.r, from.c, true, opts);
+  await window.performBattleSequence(from.r, from.c, true, opts);
+  if (gameState._unlockAnimPending) {
+    window.__ui?.summoningLock?.playUnlockAnimation?.();
+    delete gameState._unlockAnimPending;
+  }
 }
 
 function castSpellOnUnit(cardMesh, unitMesh) {
@@ -395,6 +403,11 @@ function castSpellOnUnit(cardMesh, unitMesh) {
   if (idx == null || idx < 0 || idx >= pl.hand.length) { resetCardSelection(); return; }
   const tpl = pl.hand[idx];
   if (!tpl || tpl.type !== 'SPELL') { resetCardSelection(); return; }
+  if (tpl.locked && !gameState.summoningUnlocked) {
+    showNotification('Summoning Lock: This card cannot be played until there are at least 4 units on the board at the same time', 'error');
+    resetCardSelection();
+    return;
+  }
   if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); resetCardSelection(); return; }
   const r = unitMesh.userData.row;
   const c = unitMesh.userData.col;
@@ -410,6 +423,7 @@ function castSpellByDrag(cardMesh, unitMesh, tileMesh) {
   if (idx == null || idx < 0 || idx >= pl.hand.length) { return; }
   const tpl = pl.hand[idx];
   if (!tpl || tpl.type !== 'SPELL') { return; }
+  if (tpl.locked && !gameState.summoningUnlocked) { showNotification('Summoning Lock: This card cannot be played until there are at least 4 units on the board at the same time', 'error'); return; }
   if (tpl.cost > pl.mana) { showNotification('Insufficient mana', 'error'); return; }
   const id = tpl.id;
   const requiresUnitTarget = window.__spells.requiresUnitTarget(id);
@@ -436,7 +450,7 @@ function castSpellByDrag(cardMesh, unitMesh, tileMesh) {
   if (!handled) { showNotification('Incorrect target', 'error'); }
 }
 
-export function placeUnitWithDirection(direction) {
+export async function placeUnitWithDirection(direction) {
   const gameState = window.gameState;
   if (!interactionState.pendingPlacement) return;
   const { card, row, col, handIndex } = interactionState.pendingPlacement;
@@ -460,6 +474,16 @@ export function placeUnitWithDirection(direction) {
   player.mana -= cardData.cost;
   player.discard.push(cardData);
   player.hand.splice(handIndex, 1);
+
+  // Проверяем условие разблокировки призыва
+  let unlockTriggered = false;
+  try {
+    const totalUnits = (window.countAllUnits ? window.countAllUnits(gameState) : 0);
+    if (!gameState.summoningUnlocked && totalUnits >= 4) {
+      gameState.summoningUnlocked = true;
+      unlockTriggered = true;
+    }
+  } catch {}
   const cellElement = gameState.board[row][col].element;
   const buff = window.computeCellBuff(cellElement, cardData.element);
   if (buff.hp !== 0) {
@@ -494,7 +518,7 @@ export function placeUnitWithDirection(direction) {
     y: (window.facingDeg[direction]) * Math.PI / 180,
     z: 0,
     duration: 0.5,
-    onComplete: () => {
+    onComplete: async () => {
       window.updateHand();
       window.updateUnits();
       window.updateUI();
@@ -509,6 +533,7 @@ export function placeUnitWithDirection(direction) {
           highlightTiles(hitsAll);
           window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
           window.__ui?.notifications?.show('Выберите цель', 'info');
+          if (unlockTriggered) { gameState._unlockAnimPending = true; }
         } else {
           let opts = {};
           if (needsChoice && hitsAll.length === 1) {
@@ -520,8 +545,11 @@ export function placeUnitWithDirection(direction) {
             const dist = Math.max(Math.abs(dr), Math.abs(dc));
             opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
           }
-          window.performBattleSequence(row, col, false, opts);
+          await window.performBattleSequence(row, col, false, opts);
+          if (unlockTriggered) { window.__ui?.summoningLock?.playUnlockAnimation?.(); }
         }
+      } else {
+        if (unlockTriggered) { window.__ui?.summoningLock?.playUnlockAnimation?.(); }
       }
     },
   });

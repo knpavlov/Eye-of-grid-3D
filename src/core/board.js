@@ -33,6 +33,15 @@ export function countControlled(state, player) {
   return count;
 }
 
+// Подсчёт общего числа существ на поле независимо от владельца
+export function countAllUnits(state) {
+  let total = 0;
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+    if (state.board[r][c].unit) total++;
+  }
+  return total;
+}
+
 export function randomBoard() {
   // 3x3 board with element constraints:
   // - Center (1,1) is always MECH
@@ -64,6 +73,8 @@ export function startGame(deck0 = STARTER_FIRESET, deck1 = STARTER_FIRESET) {
     active: 0,
     turn: 1,
     winner: null,
+    // Пока на поле меньше четырёх существ — призыв заблокирован
+    summoningUnlocked: false,
     __ver: 0,
   };
   for (let i = 0; i < 5; i++) { drawOne(state, 0); drawOne(state, 1); }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shuffle, drawOne, drawOneNoAdd, countControlled, randomBoard, reducer, A } from '../src/core/state.js';
+import { shuffle, drawOne, drawOneNoAdd, countControlled, countAllUnits, randomBoard, reducer, A } from '../src/core/state.js';
 
 function makeEmptyBoard() {
   // 3x3 with MECH in center and FIRE elsewhere by default
@@ -46,6 +46,14 @@ describe('state helpers', () => {
     expect(countControlled(state, 1)).toBe(1);
   });
 
+  it('countAllUnits: counts total units on board', () => {
+    const board = makeEmptyBoard();
+    board[0][0].unit = { owner: 0 };
+    board[1][1].unit = { owner: 1 };
+    const state = { board };
+    expect(countAllUnits(state)).toBe(2);
+  });
+
   it('randomBoard: center is MECH and other elements appear exactly twice', () => {
     const b = randomBoard();
     expect(b).toHaveLength(3);
@@ -68,6 +76,7 @@ describe('reducer', () => {
     expect(s.__ver).toBe(1);
     expect(Array.isArray(s.board)).toBe(true);
     expect(s.players).toHaveLength(2);
+    expect(s.summoningUnlocked).toBe(false);
   });
 
   it('A.REPLACE_STATE: ignores older versions, accepts newer', () => {

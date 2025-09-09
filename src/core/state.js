@@ -1,8 +1,8 @@
 ﻿// Game state: reducer + helpers
 import { capMana } from './constants.js';
-import { shuffle, drawOne, drawOneNoAdd, countControlled, randomBoard, startGame } from './board.js';
+import { shuffle, drawOne, drawOneNoAdd, countControlled, countAllUnits, randomBoard, startGame } from './board.js';
 
-export { shuffle, drawOne, drawOneNoAdd, countControlled, randomBoard, startGame };
+export { shuffle, drawOne, drawOneNoAdd, countControlled, countAllUnits, randomBoard, startGame };
 
 // Actions
 export const A = {

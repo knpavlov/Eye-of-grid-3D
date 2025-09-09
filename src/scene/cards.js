@@ -106,11 +106,18 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   drawManaOrbIcon(ctx, 16 + iconSize / 2, height - 20, iconSize);
   ctx.textAlign = 'left';
   ctx.font = 'bold 14px Arial';
-  ctx.fillText(String(cardData.cost || 0), 16 + iconSize + 4, height - 15);
+  const costText = String(cardData.cost || 0);
+  ctx.fillText(costText, 16 + iconSize + 4, height - 15);
+  if (cardData.locked) {
+    // Рисуем иконку замка справа от стоимости маны
+    const costWidth = ctx.measureText(costText).width;
+    const lockX = 16 + iconSize + 4 + costWidth + 8 + iconSize / 2;
+    drawLockIcon(ctx, lockX, height - 20, iconSize);
+  }
   if (cardData.type === 'UNIT') {
     ctx.textAlign = 'left'; ctx.font = 'bold 13px Arial';
     const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
-    const shift = iconSize + 4 + ctx.measureText(String(cardData.cost || 0)).width + 10;
+    const shift = iconSize + 4 + ctx.measureText(String(cardData.cost || 0)).width + (cardData.locked ? iconSize + 8 : 10);
     drawPlayIcon(ctx, 16 + shift + iconSize / 2, height - 20, iconSize);
     ctx.fillText(String(act), 16 + shift + iconSize + 4, height - 15);
   }
@@ -167,6 +174,22 @@ function drawPlayIcon(ctx, x, y, size) {
   ctx.lineTo(x + r * 0.8, y);
   ctx.closePath();
   ctx.fill();
+}
+
+// Простейшая иконка замка — прямоугольник с дугой сверху
+function drawLockIcon(ctx, x, y, size) {
+  const r = size / 2;
+  ctx.save();
+  ctx.strokeStyle = '#f1f5f9';
+  ctx.lineWidth = 2;
+  // Дуга
+  ctx.beginPath();
+  ctx.arc(x, y - r * 0.2, r * 0.6, Math.PI, 0);
+  ctx.stroke();
+  // Корпус
+  ctx.fillStyle = '#f1f5f9';
+  ctx.fillRect(x - r * 0.6, y - r * 0.1, r * 1.2, r * 1.2);
+  ctx.restore();
 }
 
 function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
