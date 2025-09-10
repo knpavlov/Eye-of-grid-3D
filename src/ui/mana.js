@@ -157,7 +157,7 @@ export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true, tar
   } catch {}
 }
 
-export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationMs = 1500) {
+export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationMs = 900) {
   return new Promise(resolve => {
     try {
       // Проверяем, не идет ли уже анимация

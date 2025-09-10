@@ -49,6 +49,11 @@
       <div id="opponent-hand-count" title="Opponent has 0 cards"></div>
     </div>
 
+    <!-- Правая верхняя область для вспомогательных кнопок -->
+    <div id="top-right" class="ui-panel fixed top-3 right-3 z-50">
+      <button id="cancel-play-btn" class="overlay-panel px-4 py-2 bg-red-600 hover:bg-red-700 hidden">Отмена</button>
+    </div>
+
     <!-- Правый нижний угол: сервисные кнопки -->
     <div id="corner-right" class="ui-panel fixed right-4 bottom-4 z-20">
       <div class="flex gap-2 opacity-90">
@@ -98,9 +103,6 @@
           <div></div>
           <button data-dir="S" class="overlay-panel px-4 py-2 hover:bg-slate-700">↓</button>
           <div></div>
-        </div>
-        <div class="text-center mt-4">
-          <button id="cancel-orient-btn" class="overlay-panel px-4 py-2 bg-red-600 hover:bg-red-700">Отмена</button>
         </div>
       </div>
     </div>

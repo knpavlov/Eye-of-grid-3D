@@ -34,6 +34,7 @@ import * as BattleSplash from './ui/battleSplash.js';
 import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
+import * as CancelButton from './ui/cancelButton.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -161,6 +162,7 @@ try {
   window.__ui.updateUI = updateUI;
   window.__ui.inputLock = InputLock;
   window.__ui.summonLock = SummonLock;
+  window.__ui.cancelButton = CancelButton;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
@@ -172,6 +174,7 @@ try {
   window.requestTurnSplash = Banner.requestTurnSplash;
   window.showBattleSplash = BattleSplash.showBattleSplash;
   window.attachUIEvents = attachUIEvents;
+  window.__ui.cancelButton.setupCancelButton();
   window.playDeltaAnimations = playDeltaAnimations;
   window.createMetaObjects = createMetaObjects;
 } catch {}

@@ -35,7 +35,8 @@ export async function showBattleSplash() {
         .to([bg, streaks], { opacity: 0.12, duration: 0.266 }, 0.406)
         .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.196, ease: 'power2.in' }, 1.134)
         .to(bb, { opacity: 0, duration: 0.14, ease: 'power2.in' }, 1.19);
-      await sleep(1330);
+      tl.timeScale?.(0.75);
+      await sleep(1000);
     } catch { await sleep(1000); }
     bb.classList.add('hidden'); bb.classList.remove('flex'); bb.style.display = 'none';
     bb.style.opacity = ''; bb.innerHTML = '';

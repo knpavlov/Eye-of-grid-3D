@@ -112,6 +112,7 @@ export const handlers = {
         interactionState.pendingSpellOrientation = { spellCardMesh: cardMesh, unitMesh };
         addLog(`${tpl.name}: выберите направление для цели.`);
         window.__ui.panels.showOrientationPanel();
+        try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
       } catch {}
     },
   },
