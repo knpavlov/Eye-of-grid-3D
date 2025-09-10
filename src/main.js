@@ -117,8 +117,19 @@ try { window.__store = store; } catch {}
 // Initialize only if no existing gameState is present (non-destructive)
 if (typeof window !== 'undefined' && !window.gameState) {
   const s = startGame(STARTER_FIRESET, STARTER_FIRESET);
-  try { window.gameState = s; } catch {}
+  try { applyGameState(s); } catch {}
 }
+
+// Унифицированное применение нового состояния игры
+export function applyGameState(state) {
+  try {
+    // Обновляем глобальную переменную
+    window.gameState = state;
+    // Синхронизируем стораж, чтобы состояние не откатывалось в конце хода
+    window.__store?.dispatch({ type: A.REPLACE_STATE, payload: state });
+  } catch {}
+}
+try { if (typeof window !== 'undefined') window.applyGameState = applyGameState; } catch {}
 
 // Expose new scene/board API for gradual migration from inline script
 try {

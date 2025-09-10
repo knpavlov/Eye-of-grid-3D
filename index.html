@@ -358,7 +358,7 @@
     
     async function initGame() {
       gameState = startGame(STARTER_FIRESET, STARTER_FIRESET);
-      try { window.gameState = gameState; } catch {}
+      try { window.applyGameState(gameState); } catch {}
       
       // Сразу строим сцену и мета-объекты, без задержки появления
       createBoard();
@@ -464,7 +464,7 @@
         // Применяем урон (этап 1) и перерисовываем юниты
         staged.step1();
         gameState = staged.n1;
-        try { window.gameState = gameState; } catch {}
+        try { window.applyGameState(gameState); } catch {}
         updateUnits();
         // Тряска и всплывающий урон — уже по актуальным мешам после обновления
         for (const h of hitsPrev) {
@@ -535,7 +535,7 @@
           // Финализация: анимация смерти и орбы перед применением состояния
           const res = staged.finish();
           gameState = res.n1;
-          try { window.gameState = gameState; } catch {}
+          try { window.applyGameState(gameState); } catch {}
           if (res.deaths && res.deaths.length) {
             for (const d of res.deaths) {
               try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
@@ -654,7 +654,7 @@
           }, 400);
         }
         gameState = res.n1;
-        try { window.gameState = gameState; } catch {}
+        try { window.applyGameState(gameState); } catch {}
         const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
         setTimeout(() => {
           updateUnits(); updateUI();
@@ -666,7 +666,7 @@
         }, 1000);
       } else {
         // Если смертей нет — применяем состояние сразу
-        gameState = res.n1; try { window.gameState = gameState; } catch {}
+        gameState = res.n1; try { window.applyGameState(gameState); } catch {}
         updateUnits(); updateUI();
         const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
         try { schedulePush('magic-battle-finish'); } catch {}
