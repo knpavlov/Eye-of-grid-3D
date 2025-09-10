@@ -301,5 +301,6 @@ export function magicAttack(state, fr, fc, tr, tc) {
   } catch {}
   attacker.lastAttackTurn = n1.turn;
   attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA);
-  return { n1, logLines, targets, deaths };
+  // возвращаем нанесённый урон для удобства отображения
+  return { n1, logLines, targets, deaths, dmg };
 }

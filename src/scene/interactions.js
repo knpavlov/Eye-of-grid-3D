@@ -580,18 +580,19 @@ export function placeUnitWithDirection(direction) {
         const attacks = tpl?.attacks || [];
         const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
         const hitsAll = window.computeHits(gameState, row, col, { union: true });
-        const hasEnemy = hitsAll.some(h => gameState.board?.[h.r]?.[h.c]?.unit?.owner !== unit.owner);
-        if (hitsAll.length && hasEnemy) {
-          if (needsChoice && hitsAll.length > 1) {
+        // учитываем только вражеские цели, чтобы не атаковать автоматически при наличии союзников
+        const enemyHits = hitsAll.filter(h => gameState.board?.[h.r]?.[h.c]?.unit?.owner !== unit.owner);
+        if (enemyHits.length) {
+          if (needsChoice && enemyHits.length > 1) {
             interactionState.pendingAttack = { r: row, c: col };
             interactionState.autoEndTurnAfterAttack = true;
-            highlightTiles(hitsAll);
+            highlightTiles(enemyHits);
             window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
             window.__ui?.notifications?.show('Выберите цель', 'info');
           } else {
             let opts = {};
-            if (needsChoice && hitsAll.length === 1) {
-              const h = hitsAll[0];
+            if (needsChoice && enemyHits.length === 1) {
+              const h = enemyHits[0];
               const dr = h.r - row, dc = h.c - col;
               const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
               const ORDER = ['N', 'E', 'S', 'W'];

@@ -172,6 +172,8 @@ try {
   window.queueTurnSplash = Banner.queueTurnSplash;
   window.forceTurnSplashWithRetry = Banner.forceTurnSplashWithRetry;
   window.requestTurnSplash = Banner.requestTurnSplash;
+  // сбрасываем состояние заставок на старте
+  try { Banner.resetTurnSplashState?.(); } catch {}
   window.showBattleSplash = BattleSplash.showBattleSplash;
   window.attachUIEvents = attachUIEvents;
   window.__ui.cancelButton.setupCancelButton();

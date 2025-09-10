@@ -69,6 +69,20 @@ export async function showTurnSplash(title) {
   _splashInProgress = false;
 }
 
+// Сброс внутреннего состояния, чтобы заставки не "залипали" между партиями
+export function resetTurnSplashState() {
+  _lastTurnSplashPromise = Promise.resolve();
+  _splashActive = false;
+  _lastRequestedTurn = 0;
+  _lastShownTurn = 0;
+  _splashInProgress = false;
+  _lastActivePlayer = null;
+  _forceNext = false;
+  try {
+    if (typeof window !== 'undefined') window.splashActive = false;
+  } catch {}
+}
+
 export function queueTurnSplash(title){
   try {
     _lastTurnSplashPromise = _lastTurnSplashPromise.then(()=> showTurnSplash(title));
@@ -190,6 +204,6 @@ export function getState(){
   return { _splashActive, _lastRequestedTurn, _lastShownTurn };
 }
 
-const api = { showTurnSplash, queueTurnSplash, requestTurnSplash, forceTurnSplashWithRetry, ensureTurnSplashVisible, getState };
+const api = { showTurnSplash, queueTurnSplash, requestTurnSplash, forceTurnSplashWithRetry, ensureTurnSplashVisible, resetTurnSplashState, getState };
 try { if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.banner = api; } } catch {}
 export default api;
