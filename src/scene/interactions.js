@@ -251,7 +251,7 @@ function onMouseUp(event) {
     endCardDrag();
     return;
   }
-  endCardDrag();
+  // Не сбрасываем подсветку после простого клика, чтобы выбор целей не пропадал
 }
 
 function startCardDrag(card) {
@@ -301,8 +301,13 @@ function endCardDrag() {
     interactionState.hoveredTile.material.emissiveIntensity = 0.1;
     interactionState.hoveredTile = null;
   }
-  interactionState.draggedCard = null;
-  clearHighlights();
+  // Сбрасываем подсветку только если действительно что-то перетаскивали
+  if (interactionState.draggedCard) {
+    interactionState.draggedCard = null;
+    clearHighlights();
+  } else {
+    interactionState.draggedCard = null;
+  }
 }
 
 function returnCardToHand(card) {
@@ -523,7 +528,11 @@ export function placeUnitWithDirection(direction) {
   }
   const ctx = getCtx();
   const targetPos = ctx.tileMeshes[row][col].position.clone();
-  targetPos.y = ctx.tileMeshes[row][col].position.y + 0.28;
+  // Используем ту же базовую высоту, что и при отрисовке юнитов,
+  // чтобы карта не подпрыгивала после установки
+  const frame = ctx.tileFrames?.[row]?.[col];
+  const yBase = (frame?.children?.[0]?.position?.y) || (0.5 + 0.5);
+  targetPos.y = yBase + 0.28;
   gsap.to(card.position, {
     x: targetPos.x,
     y: targetPos.y,

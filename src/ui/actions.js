@@ -303,7 +303,7 @@ export async function endTurn() {
       }
       player.mana = manaAfter;
     } catch {}
-    await w.sleep?.(20);
+    // Сразу обновляем интерфейс без лишней задержки
     w.updateUI?.();
     try {
       if (shouldAnimateDraw && drawnTpl) {

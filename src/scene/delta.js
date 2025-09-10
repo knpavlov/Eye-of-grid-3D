@@ -27,6 +27,13 @@ export function playDeltaAnimations(prevState, nextState) {
         const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
         const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
         if (pu && !nu) {
+          const manaBefore = prevState?.players?.[pu.owner]?.mana ?? 0;
+          const manaAfter = nextState?.players?.[pu.owner]?.mana ?? 0;
+          const sameTurn = (typeof prevState.turn === 'number' && typeof nextState.turn === 'number' && prevState.turn === nextState.turn);
+          // Если мана вернулась в тот же ход, считаем что призыв был отменён и не показываем анимацию смерти
+          if (sameTurn && manaAfter > manaBefore) {
+            continue;
+          }
           try {
             const tile = tileMeshes?.[r]?.[c]; if (!tile) continue;
             const ghost = createCard3D ? createCard3D(CARDS[pu.tplId], false) : null;

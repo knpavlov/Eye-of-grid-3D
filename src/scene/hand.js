@@ -144,9 +144,6 @@ export async function animateDrawnCardToHand(cardTpl) {
     big.rotation.set(0, 0, 0);
   }
 
-  big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
-  big.renderOrder = 9000;
-
   const allMaterials = [];
   const collectMaterials = (obj) => {
     if (!obj) return;
@@ -164,6 +161,12 @@ export async function animateDrawnCardToHand(cardTpl) {
   const totalAfter = totalVisible + 1;
   const indexAfter = totalAfter - 1;
   const target = computeHandTransform(indexAfter, totalAfter);
+
+  // Масштабируем большую карту пропорционально конечной, чтобы избежать резкого изменения пропорций
+  const baseScale = (T.scale ?? 1.7);
+  const factor = baseScale / target.scale.x;
+  big.scale.set(target.scale.x * factor, target.scale.y * factor, target.scale.z * factor);
+  big.renderOrder = 9000;
 
   try {
     const preLayoutDuration = 0.6;
