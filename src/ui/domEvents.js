@@ -42,13 +42,6 @@ export function attachUIEvents() {
     w.__ui?.panels?.hidePrompt?.();
   });
 
-  document.getElementById('cancel-orient-btn')?.addEventListener('click', () => {
-    const pp = w.__interactions?.getPendingPlacement?.();
-    if (pp) { w.__interactions.returnCardToHand(pp.card); }
-    w.__ui?.panels?.hideOrientationPanel?.();
-    w.__interactions?.clearPendingPlacement?.();
-  });
-
   document.getElementById('cancel-action-btn')?.addEventListener('click', () => {
     w.__interactions?.clearSelectedUnit?.();
     w.__ui?.panels?.hideUnitActionPanel?.();
@@ -86,6 +79,7 @@ export function attachUIEvents() {
         }
         w.__interactions.clearPendingSpellOrientation();
         w.__ui.panels.hideOrientationPanel();
+        try { w.__ui.cancelButton.refreshCancelButton(); } catch {}
         return;
       }
       w.__interactions.placeUnitWithDirection(direction);

@@ -165,15 +165,21 @@ function onMouseDown(event) {
     while (unit && (!unit.userData || unit.userData.type !== 'unit')) unit = unit.parent;
     if (!unit) return;
     if (interactionState.magicFrom) {
-      performMagicAttack(interactionState.magicFrom, unit);
-      interactionState.magicFrom = null;
-      clearHighlights();
+      const ok = performMagicAttack(interactionState.magicFrom, unit);
+      if (ok) {
+        interactionState.magicFrom = null;
+        clearHighlights();
+      }
+      try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
       return;
     }
     if (interactionState.pendingAttack) {
-      performChosenAttack(interactionState.pendingAttack, unit);
-      interactionState.pendingAttack = null;
-      clearHighlights();
+      const ok = performChosenAttack(interactionState.pendingAttack, unit);
+      if (ok) {
+        interactionState.pendingAttack = null;
+        clearHighlights();
+      }
+      try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
       return;
     }
     if (interactionState.selectedCard && interactionState.selectedCard.userData.cardData.type === 'SPELL') {
@@ -236,6 +242,7 @@ function onMouseUp(event) {
             handIndex: interactionState.draggedCard.userData.handIndex,
           };
           try { window.__ui.panels.showOrientationPanel(); } catch {}
+          try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
         }
       } else {
         returnCardToHand(interactionState.draggedCard);
@@ -333,6 +340,7 @@ export function resetCardSelection() {
     interactionState.selectedCard = null;
   }
   clearHighlights();
+  try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
 }
 
 function performMagicAttack(from, targetMesh) {
@@ -343,10 +351,10 @@ function performMagicAttack(from, targetMesh) {
   const attacker = gameState.board?.[from.r]?.[from.c]?.unit;
   if (!attacker || attacker.lastAttackTurn === gameState.turn) {
     showNotification('Некорректная атака', 'error');
-    return;
+    return false;
   }
   const res = window.magicAttack(gameState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
-  if (!res) { showNotification('Incorrect target', 'error'); return; }
+  if (!res) { showNotification('Incorrect target', 'error'); return false; }
   for (const l of res.logLines.reverse()) window.addLog(l);
   const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
   if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
@@ -379,8 +387,8 @@ function performMagicAttack(from, targetMesh) {
       try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
       if (interactionState.autoEndTurnAfterAttack) {
         interactionState.autoEndTurnAfterAttack = false;
-        try { window.endTurn && window.endTurn(); } catch {}
-      }
+      try { window.endTurn && window.endTurn(); } catch {}
+    }
     }, 1000);
   } else {
     window.gameState = res.n1; window.updateUnits(); window.updateUI();
@@ -391,6 +399,7 @@ function performMagicAttack(from, targetMesh) {
       try { window.endTurn && window.endTurn(); } catch {}
     }
   }
+  return true;
 }
 
 // Обычная атака с предварительным выбором клетки
@@ -409,8 +418,9 @@ function performChosenAttack(from, targetMesh) {
   const dist = Math.max(Math.abs(dr), Math.abs(dc));
   const opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
   const hits = window.computeHits(gameState, from.r, from.c, opts);
-  if (!hits.length) { showNotification('Incorrect target', 'error'); return; }
+  if (!hits.length) { showNotification('Incorrect target', 'error'); return false; }
   window.performBattleSequence(from.r, from.c, true, opts);
+  return true;
 }
 
 function castSpellOnUnit(cardMesh, unitMesh) {
@@ -593,11 +603,14 @@ export function placeUnitWithDirection(direction) {
           try { window.endTurn && window.endTurn(); } catch {}
         }
       }
+      try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
     },
   });
+  gsap.to(card.scale, { x: 1, y: 1, z: 1, duration: 0.5, ease: 'power2.inOut' });
   window.addLog(`${player.name} призывает ${cardData.name} на (${row + 1},${col + 1})`);
   try { window.__ui.panels.hideOrientationPanel(); } catch {}
   interactionState.pendingPlacement = null;
+  try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
 }
 
 export function setupInteractions() {
