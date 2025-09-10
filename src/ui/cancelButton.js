@@ -43,9 +43,11 @@ export function setupCancelButton() {
         interactionState.magicFrom = null;
         interactionState.pendingAttack = null;
         interactionState.autoEndTurnAfterAttack = false;
+        try { window.gameState && (window.gameState._skipDeltaAnim = true); } catch {}
         window.updateUnits?.();
         window.updateHand?.();
         window.updateUI?.();
+        try { window.schedulePush && window.schedulePush('cancel-summon'); } catch {}
       } else if (interactionState.pendingSpellOrientation) {
         interactionState.pendingSpellOrientation = null;
         window.__ui?.panels?.hideOrientationPanel?.();

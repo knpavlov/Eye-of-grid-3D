@@ -333,7 +333,10 @@
       } catch { updateUnits(); }
       // Обрабатываем отложенные WebSocket анимации
       try { flushPendingBattleQueues && flushPendingBattleQueues(); } catch {}
-      try { if (prev) playDeltaAnimations(prev, state); } catch {}
+      try {
+        if (prev && !state._skipDeltaAnim) playDeltaAnimations(prev, state);
+      } catch {}
+      try { if (state._skipDeltaAnim) delete state._skipDeltaAnim; } catch {}
       // Периодически пробуем воспроизвести отложенные анимации
       try {
         if (typeof window !== 'undefined') {

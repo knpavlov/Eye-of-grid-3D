@@ -192,7 +192,15 @@ function onMouseDown(event) {
   }
 
   if (interactionState.selectedCard) {
-    resetCardSelection();
+    try {
+      const data = interactionState.selectedCard.userData?.cardData;
+      const needsUnit = data && data.type === 'SPELL' && window.__spells?.requiresUnitTarget?.(data.id);
+      if (!needsUnit) {
+        resetCardSelection();
+      }
+    } catch {
+      resetCardSelection();
+    }
   }
   if (interactionState.pendingDiscardSelection) {
     try { window.__ui.panels.hidePrompt(); } catch {}
@@ -302,7 +310,9 @@ function endCardDrag() {
     interactionState.hoveredTile = null;
   }
   interactionState.draggedCard = null;
-  clearHighlights();
+  if (!interactionState.magicFrom && !interactionState.pendingAttack && !interactionState.selectedCard) {
+    clearHighlights();
+  }
 }
 
 function returnCardToHand(card) {
@@ -523,7 +533,9 @@ export function placeUnitWithDirection(direction) {
   }
   const ctx = getCtx();
   const targetPos = ctx.tileMeshes[row][col].position.clone();
-  targetPos.y = ctx.tileMeshes[row][col].position.y + 0.28;
+  const frameY = ctx.tileFrames?.[row]?.[col]?.children?.[0]?.position?.y;
+  const baseY = typeof frameY === 'number' ? frameY : 1.0; // 0.5+0.5 как в updateUnits
+  targetPos.y = baseY + 0.28;
   gsap.to(card.position, {
     x: targetPos.x,
     y: targetPos.y,
