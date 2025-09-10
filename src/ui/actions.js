@@ -297,13 +297,14 @@ export async function endTurn() {
     } catch {}
     try {
       if (w.__ui && w.__ui.mana && typeof w.__ui.mana.animateTurnManaGain === 'function') {
-        await w.__ui.mana.animateTurnManaGain(gameState.active, before, manaAfter, 900);
+        // Запускаем анимацию прироста маны без ожидания
+        w.__ui.mana.animateTurnManaGain(gameState.active, before, manaAfter, 900);
       } else {
         console.warn('Module mana animation not available, skipping');
       }
       player.mana = manaAfter;
     } catch {}
-    // После получения маны сразу запускаем добор карты без лишней паузы
+    // Сразу после старта анимации маны переходим к добору карты
     w.updateUI?.();
     try {
       if (shouldAnimateDraw && drawnTpl) {

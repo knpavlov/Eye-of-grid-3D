@@ -56,11 +56,12 @@ export async function showTurnSplash(title) {
         .to([bg, streaks], { opacity: 0.12, duration: 0.266 }, 0.406)
         .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.196, ease: 'power2.in' }, 1.134)
         .to(tb, { opacity: 0, duration: 0.14, ease: 'power2.in' }, 1.19);
-      tl.timeScale?.(0.75);
-      await sleep(1000);
+      // Заставка хода длится дольше
+      tl.timeScale?.(1);
+      await sleep(1300);
     } else {
-      // Fallback: simple 1s show
-      await sleep(1000);
+      // Fallback: show for 1.3s if анимация недоступна
+      await sleep(1300);
     }
   } catch {}
   tb.classList.add('hidden'); tb.classList.remove('flex'); tb.style.display = 'none'; tb.style.opacity = '';

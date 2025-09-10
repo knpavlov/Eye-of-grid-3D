@@ -284,15 +284,18 @@
     }
 
     // Build or rebuild the 3D board tiles.
-    function createBoard() {
+    function createBoard(state) {
+      // Берём актуальное состояние игры из window
+      const gs = state || window.gameState || gameState;
       try { window.__cards.preloadCardTextures(); } catch {}
       if (window.__board && window.__scene) {
-        window.__board.createBoard(gameState);
+        window.__board.createBoard(gs);
         const ctx = window.__scene.getCtx();
         tileMeshes = ctx.tileMeshes || [];
         tileFrames = ctx.tileFrames || [];
         try { window.tileMeshes = tileMeshes; window.tileFrames = tileFrames; } catch {}
       }
+      gameState = gs;
     }
     
     // Delegator: module cards implementation
@@ -314,8 +317,10 @@
     
     // ====== HAND RENDERING AND LAYOUT ======
     function updateHand() {
+      // Всегда работаем с самым свежим состоянием
+      const gs = window.gameState || gameState;
       if (window.__hand && typeof window.__hand.updateHand === 'function') {
-        window.__hand.updateHand(gameState);
+        window.__hand.updateHand(gs);
         const ctx = window.__scene && typeof window.__scene.getCtx === 'function'
           ? window.__scene.getCtx() : null;
         if (ctx && ctx.handCardMeshes) {
@@ -323,6 +328,7 @@
         }
       }
       hoveredHandCard = null;
+      gameState = gs;
     }
 
     function setHandCardHoverVisual(mesh, hovered) {
@@ -339,8 +345,10 @@
 
     // Синхронизирует 3D-модели юнитов с текущим состоянием gameState
     function updateUnits() {
+      // Синхронизируемся с актуальным состоянием из window
+      const gs = window.gameState || gameState;
       if (window.__units && typeof window.__units.updateUnits === 'function') {
-        window.__units.updateUnits(gameState);
+        window.__units.updateUnits(gs);
         const ctx = window.__scene && typeof window.__scene.getCtx === 'function'
           ? window.__scene.getCtx() : null;
         if (ctx && ctx.unitMeshes) {
@@ -348,6 +356,7 @@
           try { window.unitMeshes = unitMeshes; } catch {}
         }
       }
+      gameState = gs;
     }
 
     // Визуализировать изменения между предыдущим и новым состоянием (для наблюдателя/оппонента)
