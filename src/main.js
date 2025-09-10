@@ -154,6 +154,12 @@ try {
   window.__units = {
     updateUnits: Units.updateUnits,
   };
+  // Глобальная обёртка для обновления юнитов по текущему состоянию
+  window.updateUnits = () => {
+    try {
+      Units.updateUnits(window.gameState);
+    } catch {}
+  };
   window.__hand = {
     setHandCardHoverVisual: Hand.setHandCardHoverVisual,
     updateHand: Hand.updateHand,

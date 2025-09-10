@@ -426,7 +426,7 @@
             console.log(`[NETWORK] Animating mana for player ${owner}: ${beforeM} -> ${afterM}`);
             try {
               if (window.__ui && window.__ui.mana && typeof window.__ui.mana.animateTurnManaGain === 'function') {
-                await window.__ui.mana.animateTurnManaGain(owner, beforeM, afterM, 1500);
+                await window.__ui.mana.animateTurnManaGain(owner, beforeM, afterM);
               }
             } catch (e) {
               console.error('[NETWORK] Mana animation failed:', e);

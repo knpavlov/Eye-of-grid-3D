@@ -219,8 +219,7 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
         const tl = (typeof window !== 'undefined') ? window.gsap?.timeline?.({ onComplete: cleanup }) : null;
         if (tl) {
           tl.to(bar, { filter: 'brightness(2.1) drop-shadow(0 0 16px rgba(96,165,250,0.95))', duration: 0.154, ease: 'power2.out' })
-            .to(bar, { filter: 'none', duration: 0.42, ease: 'power2.inOut' })
-            .to({}, { duration: Math.max(0, (durationMs/1000) - 0.574) });
+            .to(bar, { filter: 'none', duration: 0.42, ease: 'power2.inOut' });
         } else {
           setTimeout(cleanup, durationMs);
         }
@@ -309,8 +308,7 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
         }
       }
       
-      // Добавляем паузу если анимация короче требуемой длительности
-      tl.to({}, { duration: Math.max(0, (durationMs/1000) - tl.duration()) });
+      // Завершаем без дополнительной паузы, чтобы сразу продолжать ход
       
     } catch (e) {
       console.error('Error in animateTurnManaGain:', e);
