@@ -293,13 +293,13 @@ export async function endTurn() {
     } catch {}
     try {
       if (w.__ui && w.__ui.mana && typeof w.__ui.mana.animateTurnManaGain === 'function') {
-        await w.__ui.mana.animateTurnManaGain(gameState.active, before, manaAfter, 1500);
+        await w.__ui.mana.animateTurnManaGain(gameState.active, before, manaAfter, 1000);
       } else {
         console.warn('Module mana animation not available, skipping');
       }
       player.mana = manaAfter;
     } catch {}
-    await w.sleep?.(80);
+    await w.sleep?.(20);
     w.updateUI?.();
     try {
       if (shouldAnimateDraw && drawnTpl) {

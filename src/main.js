@@ -31,6 +31,7 @@ import './ui/statusChip.js';
 import * as InputLock from './ui/inputLock.js';
 import { attachUIEvents } from './ui/domEvents.js';
 import * as BattleSplash from './ui/battleSplash.js';
+import * as CancelPlacement from './ui/cancelPlacement.js';
 import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
@@ -161,6 +162,7 @@ try {
   window.__ui.updateUI = updateUI;
   window.__ui.inputLock = InputLock;
   window.__ui.summonLock = SummonLock;
+  window.__ui.cancelPlacement = CancelPlacement;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;

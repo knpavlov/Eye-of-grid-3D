@@ -22,6 +22,8 @@ export const interactionState = {
   spellDragHandled: false,
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
+  // данные о последней постановке карты, которую можно отменить
+  cancelablePlacement: null,
 };
 
 function isInputLocked() {
@@ -165,15 +167,27 @@ function onMouseDown(event) {
     while (unit && (!unit.userData || unit.userData.type !== 'unit')) unit = unit.parent;
     if (!unit) return;
     if (interactionState.magicFrom) {
-      performMagicAttack(interactionState.magicFrom, unit);
-      interactionState.magicFrom = null;
-      clearHighlights();
+      const ok = performMagicAttack(interactionState.magicFrom, unit);
+      if (ok) {
+        interactionState.magicFrom = null;
+        const cp = interactionState.cancelablePlacement;
+        if (cp && cp.card) try { cp.card.parent?.remove(cp.card); } catch {}
+        interactionState.cancelablePlacement = null;
+        window.__ui?.cancelPlacement?.hide?.();
+        clearHighlights();
+      }
       return;
     }
     if (interactionState.pendingAttack) {
-      performChosenAttack(interactionState.pendingAttack, unit);
-      interactionState.pendingAttack = null;
-      clearHighlights();
+      const ok = performChosenAttack(interactionState.pendingAttack, unit);
+      if (ok) {
+        interactionState.pendingAttack = null;
+        const cp = interactionState.cancelablePlacement;
+        if (cp && cp.card) try { cp.card.parent?.remove(cp.card); } catch {}
+        interactionState.cancelablePlacement = null;
+        window.__ui?.cancelPlacement?.hide?.();
+        clearHighlights();
+      }
       return;
     }
     if (interactionState.selectedCard && interactionState.selectedCard.userData.cardData.type === 'SPELL') {
@@ -335,6 +349,7 @@ export function resetCardSelection() {
   clearHighlights();
 }
 
+// Выполняет магическую атаку. Возвращает true при успешном применении
 function performMagicAttack(from, targetMesh) {
   const ctx = getCtx();
   const { unitMeshes, tileMeshes } = ctx;
@@ -343,10 +358,10 @@ function performMagicAttack(from, targetMesh) {
   const attacker = gameState.board?.[from.r]?.[from.c]?.unit;
   if (!attacker || attacker.lastAttackTurn === gameState.turn) {
     showNotification('Некорректная атака', 'error');
-    return;
+    return false;
   }
   const res = window.magicAttack(gameState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
-  if (!res) { showNotification('Incorrect target', 'error'); return; }
+  if (!res) { showNotification('Incorrect target', 'error'); return false; }
   for (const l of res.logLines.reverse()) window.addLog(l);
   const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
   if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
@@ -391,15 +406,17 @@ function performMagicAttack(from, targetMesh) {
       try { window.endTurn && window.endTurn(); } catch {}
     }
   }
+  return true;
 }
 
 // Обычная атака с предварительным выбором клетки
+// Выполняет обычную атаку по выбранной цели. Возвращает true при успехе
 function performChosenAttack(from, targetMesh) {
   const gameState = window.gameState;
   const attacker = gameState.board?.[from.r]?.[from.c]?.unit; if (!attacker) return;
   if (attacker.lastAttackTurn === gameState.turn) {
     showNotification('Некорректная атака', 'error');
-    return;
+    return false;
   }
   const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
   const dr = tr - from.r; const dc = tc - from.c;
@@ -409,8 +426,9 @@ function performChosenAttack(from, targetMesh) {
   const dist = Math.max(Math.abs(dr), Math.abs(dc));
   const opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
   const hits = window.computeHits(gameState, from.r, from.c, opts);
-  if (!hits.length) { showNotification('Incorrect target', 'error'); return; }
+  if (!hits.length) { showNotification('Incorrect target', 'error'); return false; }
   window.performBattleSequence(from.r, from.c, true, opts);
+  return true;
 }
 
 function castSpellOnUnit(cardMesh, unitMesh) {
@@ -521,15 +539,22 @@ export function placeUnitWithDirection(direction) {
     duration: 0.5,
     ease: 'power2.inOut',
   });
+  gsap.to(card.scale, { x: 1, y: 1, z: 1, duration: 0.5, ease: 'power2.inOut' });
   gsap.to(card.rotation, {
     x: 0,
     y: (window.facingDeg[direction]) * Math.PI / 180,
     z: 0,
     duration: 0.5,
     onComplete: () => {
+      // удаляем mesh из списка руки, чтобы updateHand его не уничтожил
+      try {
+        ctx.handCardMeshes = (ctx.handCardMeshes || []).filter(m => m !== card);
+      } catch {}
       window.updateHand();
       window.updateUnits();
       window.updateUI();
+      // прячем карточный меш, чтобы на поле остался только юнит
+      card.visible = false;
       const tpl = window.CARDS?.[cardData.id];
       if (tpl?.attackType === 'MAGIC') {
         const allowFriendly = !!tpl.friendlyFire;
@@ -549,7 +574,9 @@ export function placeUnitWithDirection(direction) {
           interactionState.magicFrom = { r: row, c: col };
           interactionState.autoEndTurnAfterAttack = true;
           highlightTiles(cells);
+          interactionState.cancelablePlacement = { card, row, col, handIndex, tpl: cardData };
           window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
+          window.__ui?.cancelPlacement?.show?.();
           if (unlockTriggered) {
             const delay = 1200;
             setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, delay);
@@ -568,8 +595,10 @@ export function placeUnitWithDirection(direction) {
             interactionState.pendingAttack = { r: row, c: col };
             interactionState.autoEndTurnAfterAttack = true;
             highlightTiles(hitsAll);
+            interactionState.cancelablePlacement = { card, row, col, handIndex, tpl: cardData };
             window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
             window.__ui?.notifications?.show('Выберите цель', 'info');
+            window.__ui?.cancelPlacement?.show?.();
           } else {
             let opts = {};
             if (needsChoice && hitsAll.length === 1) {
@@ -627,3 +656,29 @@ export function getPendingPlacement() { return interactionState.pendingPlacement
 export function clearPendingPlacement() { interactionState.pendingPlacement = null; }
 export function getPendingSpellOrientation() { return interactionState.pendingSpellOrientation; }
 export function clearPendingSpellOrientation() { interactionState.pendingSpellOrientation = null; }
+
+// Отмена постановки существа после выбора цели
+export function cancelPendingAction() {
+  const data = interactionState.cancelablePlacement;
+  if (!data) return;
+  const { card, row, col, handIndex, tpl } = data;
+  const gameState = window.gameState;
+  const player = gameState.players[gameState.active];
+  // убираем юнита с поля
+  if (gameState.board?.[row]?.[col]) gameState.board[row][col].unit = null;
+  // возвращаем карту в руку и ману
+  const di = player.discard.findIndex(c => c === tpl);
+  if (di >= 0) player.discard.splice(di, 1);
+  player.hand.splice(handIndex, 0, tpl);
+  player.mana += tpl.cost || 0;
+  // очищаем состояние
+  interactionState.magicFrom = null;
+  interactionState.pendingAttack = null;
+  interactionState.autoEndTurnAfterAttack = false;
+  interactionState.cancelablePlacement = null;
+  clearHighlights();
+  // обновляем отображение
+  try { card.parent?.remove(card); } catch {}
+  window.updateHand(); window.updateUnits(); window.updateUI();
+  window.__ui?.cancelPlacement?.hide?.();
+}
