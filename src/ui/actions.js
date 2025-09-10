@@ -303,7 +303,7 @@ export async function endTurn() {
       }
       player.mana = manaAfter;
     } catch {}
-    await w.sleep?.(20);
+    // сразу после анимации маны начинаем проявление карты
     w.updateUI?.();
     try {
       if (shouldAnimateDraw && drawnTpl) {

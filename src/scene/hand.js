@@ -144,7 +144,14 @@ export async function animateDrawnCardToHand(cardTpl) {
     big.rotation.set(0, 0, 0);
   }
 
-  big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
+  const totalVisible = Math.max(0, (ctx.handCardMeshes || []).filter(m => m?.userData?.isInHand).length);
+  const totalAfter = totalVisible + 1;
+  const indexAfter = totalAfter - 1;
+  const target = computeHandTransform(indexAfter, totalAfter);
+
+  // сохраняем пропорции карты, увеличивая её относительно масштаба в руке
+  const k = (T.scale ?? 1.7) / target.scale.x;
+  big.scale.set(target.scale.x * k, target.scale.y * k, target.scale.z * k);
   big.renderOrder = 9000;
 
   const allMaterials = [];
@@ -159,11 +166,6 @@ export async function animateDrawnCardToHand(cardTpl) {
   collectMaterials(big);
   allMaterials.forEach(m => { if (m) { m.transparent = true; m.opacity = 0; } });
   cardGroup.add(big);
-
-  const totalVisible = Math.max(0, (ctx.handCardMeshes || []).filter(m => m?.userData?.isInHand).length);
-  const totalAfter = totalVisible + 1;
-  const indexAfter = totalAfter - 1;
-  const target = computeHandTransform(indexAfter, totalAfter);
 
   try {
     const preLayoutDuration = 0.6;
@@ -193,10 +195,10 @@ export async function animateDrawnCardToHand(cardTpl) {
 
   await new Promise(resolve => {
     const tl = gsap.timeline({ onComplete: resolve });
-    tl.to(allMaterials, { opacity: 1, duration: 0.8, ease: 'power2.out' })
-      .to(big.position, { x: target.position.x, y: target.position.y, z: target.position.z, duration: 0.7, ease: 'power2.inOut', immediateRender: false }, 'fly')
-      .to(big.rotation, { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z, duration: 0.7, ease: 'power2.inOut', immediateRender: false }, 'fly')
-      .to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: 0.7, ease: 'power2.inOut', immediateRender: false }, 'fly');
+    tl.to(allMaterials, { opacity: 1, duration: 0.8, ease: 'power2.out' });
+    tl.to(big.position, { x: target.position.x, y: target.position.y, z: target.position.z, duration: 0.7, ease: 'power2.inOut', immediateRender: false }, 0.8)
+      .to(big.rotation, { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z, duration: 0.7, ease: 'power2.inOut', immediateRender: false }, 0.8)
+      .to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: 0.7, ease: 'power2.inOut', immediateRender: false }, 0.8);
     try {
       big.rotateX(THREE.MathUtils.degToRad(T.pitchDeg || 0));
       big.rotateY(THREE.MathUtils.degToRad(T.yawDeg || 0));

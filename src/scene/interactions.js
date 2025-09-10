@@ -54,7 +54,8 @@ function onMouseMove(event) {
       interactionState.hoveredTile.material.emissiveIntensity = 0.3;
 
       const targetPos = interactionState.hoveredTile.position.clone();
-      targetPos.y = 2;
+      // держим карту чуть выше клетки, чтобы не было резкого скачка по высоте
+      targetPos.y = interactionState.hoveredTile.position.y + 0.28;
       gsap.to(interactionState.draggedCard.position, {
         x: targetPos.x,
         y: targetPos.y,
@@ -192,7 +193,12 @@ function onMouseDown(event) {
   }
 
   if (interactionState.selectedCard) {
-    resetCardSelection();
+    const data = interactionState.selectedCard.userData?.cardData;
+    const needUnit = data && data.type === 'SPELL' && window.__spells?.requiresUnitTarget?.(data.id);
+    // если требуется выбор цели, оставляем подсветку
+    if (!needUnit) {
+      resetCardSelection();
+    }
   }
   if (interactionState.pendingDiscardSelection) {
     try { window.__ui.panels.hidePrompt(); } catch {}
@@ -302,7 +308,10 @@ function endCardDrag() {
     interactionState.hoveredTile = null;
   }
   interactionState.draggedCard = null;
-  clearHighlights();
+  // не очищаем подсветку, если ждём выбор цели
+  if (!interactionState.magicFrom && !interactionState.pendingAttack && !interactionState.selectedCard) {
+    clearHighlights();
+  }
 }
 
 function returnCardToHand(card) {

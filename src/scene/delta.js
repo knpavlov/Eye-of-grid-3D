@@ -27,24 +27,29 @@ export function playDeltaAnimations(prevState, nextState) {
         const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
         const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
         if (pu && !nu) {
-          try {
-            const tile = tileMeshes?.[r]?.[c]; if (!tile) continue;
-            const ghost = createCard3D ? createCard3D(CARDS[pu.tplId], false) : null;
-            if (ghost && window.THREE) {
-              ghost.position.copy(tile.position).add(new window.THREE.Vector3(0, 0.28, 0));
-              try { effectsGroup.add(ghost); } catch { cardGroup.add(ghost); }
-              window.__fx?.dissolveAndAsh(ghost, new window.THREE.Vector3(0,0,0.6), 0.9);
-            }
-            const p = tile.position.clone().add(new window.THREE.Vector3(0, 1.2, 0));
-            const slot = (prevState?.players?.[pu.owner]?.mana ?? 0);
-            animateManaGainFromWorld?.(p, pu.owner, true, slot);
+          const wasFullHP = (pu.currentHP == null || pu.currentHP === pu.hp);
+          const removedByActive = (typeof prevState?.active === 'number') && (pu.owner === prevState.active);
+          const skipAnim = (!isActivePlayer && removedByActive && wasFullHP);
+          if (!skipAnim) {
             try {
-              if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') {
-                gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1);
-                updateUI?.(gameState);
+              const tile = tileMeshes?.[r]?.[c]; if (!tile) continue;
+              const ghost = createCard3D ? createCard3D(CARDS[pu.tplId], false) : null;
+              if (ghost && window.THREE) {
+                ghost.position.copy(tile.position).add(new window.THREE.Vector3(0, 0.28, 0));
+                try { effectsGroup.add(ghost); } catch { cardGroup.add(ghost); }
+                window.__fx?.dissolveAndAsh(ghost, new window.THREE.Vector3(0,0,0.6), 0.9);
               }
+              const p = tile.position.clone().add(new window.THREE.Vector3(0, 1.2, 0));
+              const slot = (prevState?.players?.[pu.owner]?.mana ?? 0);
+              animateManaGainFromWorld?.(p, pu.owner, true, slot);
+              try {
+                if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') {
+                  gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1);
+                  updateUI?.(gameState);
+                }
+              } catch {}
             } catch {}
-          } catch {}
+          }
         } else if (!pu && nu) {
           try {
             const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
