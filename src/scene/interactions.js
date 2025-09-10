@@ -207,7 +207,7 @@ function onMouseUp(event) {
   if (isInputLocked()) { endCardDrag(); return; }
   const gameState = (typeof window !== 'undefined' ? window.gameState : null);
   const ctx = getCtx();
-  const { renderer, mouse, raycaster, unitMeshes } = ctx;
+  const { renderer, mouse, raycaster, unitMeshes, tileMeshes, tileFrames } = ctx;
   if (interactionState.draggedCard) {
     const cardData = interactionState.draggedCard.userData.cardData;
     const rect = renderer.domElement.getBoundingClientRect();
@@ -241,6 +241,13 @@ function onMouseUp(event) {
             col,
             handIndex: interactionState.draggedCard.userData.handIndex,
           };
+          // Сразу опускаем карту на высоту клетки, чтобы убрать резкий подъём
+          try {
+            const baseY = (tileFrames?.[row]?.[col]?.children?.[0]?.position?.y ?? 1.0) + 0.28;
+            const pos = tileMeshes[row][col].position.clone();
+            pos.y = baseY;
+            gsap.to(interactionState.draggedCard.position, { x: pos.x, y: pos.y, z: pos.z, duration: 0.15 });
+          } catch {}
           try { window.__ui.panels.showOrientationPanel(); } catch {}
           try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
         }
@@ -251,7 +258,6 @@ function onMouseUp(event) {
     endCardDrag();
     return;
   }
-  endCardDrag();
 }
 
 function startCardDrag(card) {
@@ -523,7 +529,9 @@ export function placeUnitWithDirection(direction) {
   }
   const ctx = getCtx();
   const targetPos = ctx.tileMeshes[row][col].position.clone();
-  targetPos.y = ctx.tileMeshes[row][col].position.y + 0.28;
+  // Используем ту же высоту, что и при окончательной отрисовке юнита
+  const baseY = (ctx.tileFrames?.[row]?.[col]?.children?.[0]?.position?.y ?? 1.0) + 0.28;
+  targetPos.y = baseY;
   gsap.to(card.position, {
     x: targetPos.x,
     y: targetPos.y,

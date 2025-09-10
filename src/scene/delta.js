@@ -28,22 +28,31 @@ export function playDeltaAnimations(prevState, nextState) {
         const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
         if (pu && !nu) {
           try {
-            const tile = tileMeshes?.[r]?.[c]; if (!tile) continue;
-            const ghost = createCard3D ? createCard3D(CARDS[pu.tplId], false) : null;
-            if (ghost && window.THREE) {
-              ghost.position.copy(tile.position).add(new window.THREE.Vector3(0, 0.28, 0));
-              try { effectsGroup.add(ghost); } catch { cardGroup.add(ghost); }
-              window.__fx?.dissolveAndAsh(ghost, new window.THREE.Vector3(0,0,0.6), 0.9);
-            }
-            const p = tile.position.clone().add(new window.THREE.Vector3(0, 1.2, 0));
-            const slot = (prevState?.players?.[pu.owner]?.mana ?? 0);
-            animateManaGainFromWorld?.(p, pu.owner, true, slot);
-            try {
-              if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') {
-                gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1);
-                updateUI?.(gameState);
+            const prevPl = prevState?.players?.[pu.owner];
+            const nextPl = nextState?.players?.[pu.owner];
+            const canceled = prevPl && nextPl &&
+              Array.isArray(prevPl.discard) && Array.isArray(nextPl.discard) &&
+              Array.isArray(prevPl.hand) && Array.isArray(nextPl.hand) &&
+              prevPl.discard.length > nextPl.discard.length &&
+              nextPl.hand.length > prevPl.hand.length;
+            if (!canceled) {
+              const tile = tileMeshes?.[r]?.[c]; if (!tile) continue;
+              const ghost = createCard3D ? createCard3D(CARDS[pu.tplId], false) : null;
+              if (ghost && window.THREE) {
+                ghost.position.copy(tile.position).add(new window.THREE.Vector3(0, 0.28, 0));
+                try { effectsGroup.add(ghost); } catch { cardGroup.add(ghost); }
+                window.__fx?.dissolveAndAsh(ghost, new window.THREE.Vector3(0,0,0.6), 0.9);
               }
-            } catch {}
+              const p = tile.position.clone().add(new window.THREE.Vector3(0, 1.2, 0));
+              const slot = (prevState?.players?.[pu.owner]?.mana ?? 0);
+              animateManaGainFromWorld?.(p, pu.owner, true, slot);
+              try {
+                if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') {
+                  gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1);
+                  updateUI?.(gameState);
+                }
+              } catch {}
+            }
           } catch {}
         } else if (!pu && nu) {
           try {

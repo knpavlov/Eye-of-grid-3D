@@ -303,7 +303,7 @@ export async function endTurn() {
       }
       player.mana = manaAfter;
     } catch {}
-    await w.sleep?.(20);
+    // После получения маны сразу запускаем добор карты без лишней паузы
     w.updateUI?.();
     try {
       if (shouldAnimateDraw && drawnTpl) {
