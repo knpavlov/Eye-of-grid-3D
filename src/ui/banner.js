@@ -56,9 +56,9 @@ export async function showTurnSplash(title) {
         .to([bg, streaks], { opacity: 0.12, duration: 0.266 }, 0.406)
         .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.196, ease: 'power2.in' }, 1.134)
         .to(tb, { opacity: 0, duration: 0.14, ease: 'power2.in' }, 1.19);
-      await sleep(1330);
+      tl.timeScale(1.33);
+      await sleep(1000);
     } else {
-      // Fallback: simple 1s show
       await sleep(1000);
     }
   } catch {}

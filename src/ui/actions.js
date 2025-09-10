@@ -77,8 +77,9 @@ export function performUnitAttack(unitMesh) {
       window.__ui?.updateUI?.(gameState);
       try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
       if (iState) {
-        iState.magicFrom = { r, c };
+        iState.magicFrom = { r, c, cardData: tpl, handIndex: null };
         highlightTiles(cells);
+        try { window.__ui?.cancelPlacement?.show(); } catch {}
       }
       window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
       return;
@@ -100,8 +101,11 @@ export function performUnitAttack(unitMesh) {
     window.__ui?.updateUI?.(gameState);
     try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
     if (needsChoice && hitsAll.length > 1) {
-      if (iState) iState.pendingAttack = { r, c };
-      highlightTiles(hitsAll);
+      if (iState) {
+        iState.pendingAttack = { r, c, cardData: tpl, handIndex: null };
+        highlightTiles(hitsAll);
+        try { window.__ui?.cancelPlacement?.show(); } catch {}
+      }
       window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
       window.__ui?.notifications?.show('Выберите цель', 'info');
       return;
@@ -293,13 +297,13 @@ export async function endTurn() {
     } catch {}
     try {
       if (w.__ui && w.__ui.mana && typeof w.__ui.mana.animateTurnManaGain === 'function') {
-        await w.__ui.mana.animateTurnManaGain(gameState.active, before, manaAfter, 1500);
+        await w.__ui.mana.animateTurnManaGain(gameState.active, before, manaAfter, 600);
       } else {
         console.warn('Module mana animation not available, skipping');
       }
       player.mana = manaAfter;
     } catch {}
-    await w.sleep?.(80);
+    await w.sleep?.(20);
     w.updateUI?.();
     try {
       if (shouldAnimateDraw && drawnTpl) {

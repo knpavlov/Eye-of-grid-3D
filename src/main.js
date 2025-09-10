@@ -34,6 +34,7 @@ import * as BattleSplash from './ui/battleSplash.js';
 import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
+import './ui/cancelPlacement.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {

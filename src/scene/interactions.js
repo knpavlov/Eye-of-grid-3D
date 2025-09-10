@@ -165,15 +165,21 @@ function onMouseDown(event) {
     while (unit && (!unit.userData || unit.userData.type !== 'unit')) unit = unit.parent;
     if (!unit) return;
     if (interactionState.magicFrom) {
-      performMagicAttack(interactionState.magicFrom, unit);
-      interactionState.magicFrom = null;
-      clearHighlights();
+      const ok = performMagicAttack(interactionState.magicFrom, unit);
+      if (ok) {
+        interactionState.magicFrom = null;
+        clearHighlights();
+        try { window.__ui?.cancelPlacement?.hide(); } catch {}
+      }
       return;
     }
     if (interactionState.pendingAttack) {
-      performChosenAttack(interactionState.pendingAttack, unit);
-      interactionState.pendingAttack = null;
-      clearHighlights();
+      const ok = performChosenAttack(interactionState.pendingAttack, unit);
+      if (ok) {
+        interactionState.pendingAttack = null;
+        clearHighlights();
+        try { window.__ui?.cancelPlacement?.hide(); } catch {}
+      }
       return;
     }
     if (interactionState.selectedCard && interactionState.selectedCard.userData.cardData.type === 'SPELL') {
@@ -343,10 +349,10 @@ function performMagicAttack(from, targetMesh) {
   const attacker = gameState.board?.[from.r]?.[from.c]?.unit;
   if (!attacker || attacker.lastAttackTurn === gameState.turn) {
     showNotification('Некорректная атака', 'error');
-    return;
+    return false;
   }
   const res = window.magicAttack(gameState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
-  if (!res) { showNotification('Incorrect target', 'error'); return; }
+  if (!res) { showNotification('Incorrect target', 'error'); return false; }
   for (const l of res.logLines.reverse()) window.addLog(l);
   const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
   if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
@@ -391,15 +397,16 @@ function performMagicAttack(from, targetMesh) {
       try { window.endTurn && window.endTurn(); } catch {}
     }
   }
+  return true;
 }
 
 // Обычная атака с предварительным выбором клетки
 function performChosenAttack(from, targetMesh) {
   const gameState = window.gameState;
-  const attacker = gameState.board?.[from.r]?.[from.c]?.unit; if (!attacker) return;
+  const attacker = gameState.board?.[from.r]?.[from.c]?.unit; if (!attacker) return false;
   if (attacker.lastAttackTurn === gameState.turn) {
     showNotification('Некорректная атака', 'error');
-    return;
+    return false;
   }
   const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
   const dr = tr - from.r; const dc = tc - from.c;
@@ -409,8 +416,9 @@ function performChosenAttack(from, targetMesh) {
   const dist = Math.max(Math.abs(dr), Math.abs(dc));
   const opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
   const hits = window.computeHits(gameState, from.r, from.c, opts);
-  if (!hits.length) { showNotification('Incorrect target', 'error'); return; }
+  if (!hits.length) { showNotification('Incorrect target', 'error'); return false; }
   window.performBattleSequence(from.r, from.c, true, opts);
+  return true;
 }
 
 function castSpellOnUnit(cardMesh, unitMesh) {
@@ -521,6 +529,13 @@ export function placeUnitWithDirection(direction) {
     duration: 0.5,
     ease: 'power2.inOut',
   });
+  gsap.to(card.scale, {
+    x: 1,
+    y: 1,
+    z: 1,
+    duration: 0.5,
+    ease: 'power2.inOut',
+  });
   gsap.to(card.rotation, {
     x: 0,
     y: (window.facingDeg[direction]) * Math.PI / 180,
@@ -546,9 +561,10 @@ export function placeUnitWithDirection(direction) {
           }
         }
         if (cells.length && (allowFriendly || hasEnemy)) {
-          interactionState.magicFrom = { r: row, c: col };
+          interactionState.magicFrom = { r: row, c: col, cardData, handIndex };
           interactionState.autoEndTurnAfterAttack = true;
           highlightTiles(cells);
+          try { window.__ui?.cancelPlacement?.show(); } catch {}
           window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
           if (unlockTriggered) {
             const delay = 1200;
@@ -565,9 +581,10 @@ export function placeUnitWithDirection(direction) {
         const hasEnemy = hitsAll.some(h => gameState.board?.[h.r]?.[h.c]?.unit?.owner !== unit.owner);
         if (hitsAll.length && hasEnemy) {
           if (needsChoice && hitsAll.length > 1) {
-            interactionState.pendingAttack = { r: row, c: col };
+            interactionState.pendingAttack = { r: row, c: col, cardData, handIndex };
             interactionState.autoEndTurnAfterAttack = true;
             highlightTiles(hitsAll);
+            try { window.__ui?.cancelPlacement?.show(); } catch {}
             window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
             window.__ui?.notifications?.show('Выберите цель', 'info');
           } else {
@@ -622,8 +639,47 @@ export function clearSelectedUnit() {
   interactionState.pendingAttack = null;
   interactionState.magicFrom = null;
   clearHighlights();
+  try { window.__ui?.cancelPlacement?.hide(); } catch {}
 }
 export function getPendingPlacement() { return interactionState.pendingPlacement; }
 export function clearPendingPlacement() { interactionState.pendingPlacement = null; }
 export function getPendingSpellOrientation() { return interactionState.pendingSpellOrientation; }
 export function clearPendingSpellOrientation() { interactionState.pendingSpellOrientation = null; }
+
+// Отмена выбора цели после постановки карты
+export function cancelTargetSelection() {
+  const gs = window.gameState;
+  if (!gs) return;
+  if (interactionState.magicFrom || interactionState.pendingAttack) {
+    const info = interactionState.magicFrom || interactionState.pendingAttack;
+    const { r, c, cardData, handIndex } = info;
+    const cell = gs.board?.[r]?.[c];
+    const unit = cell?.unit;
+    if (unit) {
+      const pl = gs.players[unit.owner];
+      if (pl) {
+        pl.mana += cardData.cost;
+        if (typeof handIndex === 'number') {
+          // Отмена свежего призыва
+          const di = pl.discard.lastIndexOf(cardData);
+          if (di >= 0) pl.discard.splice(di, 1);
+          pl.hand.splice(handIndex, 0, cardData);
+          cell.unit = null;
+        }
+      }
+    }
+    interactionState.magicFrom = null;
+    interactionState.pendingAttack = null;
+    interactionState.autoEndTurnAfterAttack = false;
+    clearHighlights();
+    window.updateHand?.();
+    window.updateUnits?.();
+    window.updateUI?.();
+    try { window.__ui?.cancelPlacement?.hide(); } catch {}
+    return;
+  }
+  if (interactionState.selectedCard) {
+    resetCardSelection();
+    try { window.__ui?.cancelPlacement?.hide(); } catch {}
+  }
+}
