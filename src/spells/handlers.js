@@ -254,8 +254,9 @@ export const handlers = {
     requiresUnitTarget: true,
     onUnit({ tpl, pl, idx, r, c, u }) {
       if (u) {
-        const before = u.currentHP;
-        u.currentHP = Math.max(0, u.currentHP - 1);
+        const before = u.currentHP ?? u.hp;
+        u.currentHP = Math.max(0, before - 1);
+        u.hp = u.currentHP;
         addLog(
           `${tpl.name}: ${CARDS[u.tplId].name} получает 1 урона (HP ${before}→${u.currentHP})`
         );
@@ -302,8 +303,9 @@ export const handlers = {
         showNotification('Only friendly unit', 'error');
         return;
       }
-      const before = u.currentHP;
-      u.currentHP += 2;
+      const before = u.currentHP ?? u.hp;
+      u.currentHP = (before || 0) + 2;
+      u.hp = u.currentHP;
       addLog(
         `${tpl.name}: ${CARDS[u.tplId].name} получает +2 HP (HP ${before}→${u.currentHP})`
       );
@@ -363,8 +365,9 @@ export const handlers = {
         const nextBuff = computeCellBuff(nextEl, tplUnit.element);
         const deltaHp = (nextBuff.hp || 0) - (prevBuff.hp || 0);
         if (deltaHp !== 0) {
-          const before = u.currentHP;
+          const before = u.currentHP ?? u.hp;
           u.currentHP = Math.max(0, before + deltaHp);
+          u.hp = u.currentHP;
           const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
           if (tMesh)
             window.__fx.spawnDamageText(

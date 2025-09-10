@@ -164,6 +164,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       const B = cell?.unit; if (!B) continue;
       const before = B.currentHP ?? B.hp;
       B.currentHP = Math.max(0, before - (h.dealt || 0));
+      B.hp = B.currentHP; // синхронизируем поле hp для сетевых состояний
       const afterHP = B.currentHP;
       const nameA = CARDS[attacker.tplId]?.name || 'Attacker';
       const nameB = CARDS[B.tplId]?.name || 'Target';
@@ -207,6 +208,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     if (A && (ret.total || 0) > 0) {
       const before = A.currentHP ?? A.hp;
       A.currentHP = Math.max(0, before - (ret.total || 0));
+      A.hp = A.currentHP;
       logLines.push(`Retaliation to ${CARDS[A.tplId]?.name || 'Attacker'}: ${ret.total || 0} (HP ${before}→${A.currentHP})`);
     }
 
@@ -280,6 +282,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     if (!allowFriendly && u.owner === attacker.owner) continue;
     const before = u.currentHP ?? u.hp;
     u.currentHP = Math.max(0, before - dmg);
+    u.hp = u.currentHP;
     targets.push({ r: cell.r, c: cell.c, dmg });
     logLines.push(`${CARDS[attacker.tplId].name} (Magic) → ${CARDS[u.tplId].name}: ${dmg} dmg (HP ${before}→${u.currentHP})`);
   }
