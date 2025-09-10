@@ -361,17 +361,23 @@ function performMagicAttack(from, targetMesh) {
   }
   const res = window.magicAttack(gameState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
   if (!res) { showNotification('Incorrect target', 'error'); return false; }
-  for (const l of res.logLines.reverse()) window.addLog(l);
+
+  // Применяем новое состояние сразу, чтобы здоровье обновилось немедленно
+  try { window.applyGameState(res.n1); } catch {}
   const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
-  if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
+  if (aMesh) {
+    gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 });
+  }
+  for (const l of res.logLines.reverse()) window.addLog(l);
+
+  // Эффекты по всем целям
   for (const t of res.targets || []) {
     const tMesh = unitMeshes.find(m => m.userData.row === t.r && m.userData.col === t.c);
-    if (tMesh) {
-      window.__fx.magicBurst(tMesh.position.clone().add(new THREE.Vector3(0, 0.4, 0)));
-      window.__fx.shakeMesh(tMesh, 6, 0.12);
-      if (typeof t.dmg === 'number' && t.dmg > 0) {
-        window.__fx.spawnDamageText(tMesh, `-${t.dmg}`, '#ff5555');
-      }
+    if (!tMesh) continue;
+    window.__fx.magicBurst(tMesh.position.clone().add(new THREE.Vector3(0, 0.4, 0)));
+    window.__fx.shakeMesh(tMesh, 6, 0.12);
+    if (typeof t.dmg === 'number' && t.dmg > 0) {
+      window.__fx.spawnDamageText(tMesh, `-${t.dmg}`, '#ff5555');
     }
   }
   if (res.deaths && res.deaths.length) {
@@ -385,9 +391,11 @@ function performMagicAttack(from, targetMesh) {
         window.animateManaGainFromWorld(p, d.owner, true, slot);
       }, 400);
     }
-    // Обновляем состояние сразу, чтобы клетка считалась свободной
-    window.gameState = res.n1;
-    const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
+    const attacker2 = window.gameState.board[from.r][from.c]?.unit;
+    if (attacker2) {
+      attacker2.lastAttackTurn = window.gameState.turn;
+      try { window.applyGameState(window.gameState); } catch {}
+    }
     setTimeout(() => {
       window.updateUnits(); window.updateUI();
       try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
@@ -397,8 +405,12 @@ function performMagicAttack(from, targetMesh) {
     }
     }, 1000);
   } else {
-    window.gameState = res.n1; window.updateUnits(); window.updateUI();
-    const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
+    window.updateUnits(); window.updateUI();
+    const attacker2 = window.gameState.board[from.r][from.c]?.unit;
+    if (attacker2) {
+      attacker2.lastAttackTurn = window.gameState.turn;
+      try { window.applyGameState(window.gameState); } catch {}
+    }
     try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
     if (interactionState.autoEndTurnAfterAttack) {
       interactionState.autoEndTurnAfterAttack = false;
@@ -527,6 +539,8 @@ export function placeUnitWithDirection(direction) {
     window.animateManaGainFromWorld(pos, owner, true, slot);
     gameState.board[row][col].unit = null;
   }
+  // Синхронизируем состояние после призыва
+  try { window.applyGameState(gameState); } catch {}
   const ctx = getCtx();
   const targetPos = ctx.tileMeshes[row][col].position.clone();
   // Используем ту же высоту, что и при окончательной отрисовке юнита

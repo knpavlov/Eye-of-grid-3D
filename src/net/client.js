@@ -292,7 +292,7 @@
     APPLYING = true;
     try {
       gameState = state;
-      try { window.gameState = state; } catch {}
+      try { window.applyGameState(state); } catch {}
       lastDigest = digest(state);
       // Сразу обновим руку, чтобы скрыть добранные карты до анимации
       try { updateHand(); } catch {}
