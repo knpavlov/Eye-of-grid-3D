@@ -386,7 +386,7 @@ function performMagicAttack(from, targetMesh) {
       }, 400);
     }
     // Обновляем состояние сразу, чтобы клетка считалась свободной
-    window.gameState = res.n1;
+    try { window.applyGameState(res.n1); } catch {}
     const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
     setTimeout(() => {
       window.updateUnits(); window.updateUI();
@@ -397,7 +397,8 @@ function performMagicAttack(from, targetMesh) {
     }
     }, 1000);
   } else {
-    window.gameState = res.n1; window.updateUnits(); window.updateUI();
+    try { window.applyGameState(res.n1); } catch {}
+    window.updateUnits(); window.updateUI();
     const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
     try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
     if (interactionState.autoEndTurnAfterAttack) {
@@ -527,6 +528,8 @@ export function placeUnitWithDirection(direction) {
     window.animateManaGainFromWorld(pos, owner, true, slot);
     gameState.board[row][col].unit = null;
   }
+  // Синхронизируем состояние после призыва
+  try { window.applyGameState(gameState); } catch {}
   const ctx = getCtx();
   const targetPos = ctx.tileMeshes[row][col].position.clone();
   // Используем ту же высоту, что и при окончательной отрисовке юнита
