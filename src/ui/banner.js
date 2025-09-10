@@ -76,24 +76,10 @@ export function queueTurnSplash(title){
   return _lastTurnSplashPromise;
 }
 
+// Упрощённая и надёжная версия запроса заставки хода
 export async function requestTurnSplash(currentTurn){
   if (typeof currentTurn !== 'number') return _lastTurnSplashPromise;
-  
-  // Более умная проверка: показываем заставку если это новый ход или если активный игрок изменился
-  const shouldShow = _lastShownTurn < currentTurn || 
-    (_lastRequestedTurn === currentTurn && !_splashInProgress && _lastShownTurn < currentTurn);
-  
-  if (!shouldShow) {
-    console.log(`[BANNER] Skipping turn splash: current=${currentTurn}, lastShown=${_lastShownTurn}, inProgress=${_splashInProgress}`);
-    return _lastTurnSplashPromise;
-  }
-  
-  // De-duplicate only while a splash for this turn is still in progress
-  if (_lastRequestedTurn === currentTurn && _splashInProgress) {
-    console.log(`[BANNER] Turn ${currentTurn} splash already in progress`);
-    return _lastTurnSplashPromise;
-  }
-  
+
   _lastRequestedTurn = currentTurn;
   let title = `Turn ${currentTurn}`;
   try {
@@ -101,11 +87,9 @@ export async function requestTurnSplash(currentTurn){
       ? window.gameState.active : null;
     if (seat !== null) title = `Turn ${currentTurn} - Player ${seat + 1}`;
   } catch {}
-  
-  console.log(`[BANNER] Requesting turn splash: ${title}`);
-  _lastTurnSplashPromise = queueTurnSplash(title).then(()=>{ 
+
+  _lastTurnSplashPromise = queueTurnSplash(title).then(() => {
     _lastShownTurn = currentTurn;
-    console.log(`[BANNER] Turn splash completed for turn ${currentTurn}`);
   });
   return _lastTurnSplashPromise;
 }

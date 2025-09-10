@@ -42,7 +42,10 @@ export function updateUnits(gameState) {
 
       const cardData = CARDS[unit.tplId];
       const stats = effectiveStats(gameState.board[r][c], unit);
-      const unitMesh = createCard3D(cardData, false, unit.currentHP, stats.atk);
+      // currentHP может приходить как currentHP или hp (например, с сервера)
+      const curHp = (typeof unit.currentHP === 'number') ? unit.currentHP
+        : (typeof unit.hp === 'number' ? unit.hp : cardData?.hp);
+      const unitMesh = createCard3D(cardData, false, curHp, stats.atk);
 
       const x = (c - 1) * (tileSize + spacing);
       const z = (r - 1) * (tileSize + spacing) + boardZShift + 0.0;
