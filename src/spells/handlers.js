@@ -256,6 +256,7 @@ export const handlers = {
       if (u) {
         const before = u.currentHP;
         u.currentHP = Math.max(0, u.currentHP - 1);
+        u.hp = u.currentHP;
         addLog(
           `${tpl.name}: ${CARDS[u.tplId].name} получает 1 урона (HP ${before}→${u.currentHP})`
         );
@@ -304,6 +305,7 @@ export const handlers = {
       }
       const before = u.currentHP;
       u.currentHP += 2;
+      u.hp = u.currentHP;
       addLog(
         `${tpl.name}: ${CARDS[u.tplId].name} получает +2 HP (HP ${before}→${u.currentHP})`
       );
@@ -365,6 +367,7 @@ export const handlers = {
         if (deltaHp !== 0) {
           const before = u.currentHP;
           u.currentHP = Math.max(0, before + deltaHp);
+          u.hp = u.currentHP;
           const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
           if (tMesh)
             window.__fx.spawnDamageText(

@@ -31,7 +31,7 @@ export function attachSocketUIRefresh() {
           const turn = (typeof window !== 'undefined' && window.gameState && typeof window.gameState.turn === 'number') ? window.gameState.turn : null;
           if (turn && window.__ui && window.__ui.banner) {
             const b = window.__ui.banner;
-            const fn = (typeof b.ensureTurnSplashVisible === 'function') ? b.ensureTurnSplashVisible : b.forceTurnSplashWithRetry;
+            const fn = (typeof b.forceTurnSplashWithRetry === 'function') ? b.forceTurnSplashWithRetry : b.ensureTurnSplashVisible;
             fn.call(b, 2, turn).catch(e => {
               console.warn('[SYNC] Failed to show turn splash:', e);
             });
