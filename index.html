@@ -556,7 +556,7 @@
             setTimeout(() => {
               updateUnits(); updateUI();
               for (const l of res.logLines.reverse()) addLog(l);
-              try { schedulePush('battle-finish'); } catch {}
+              try { schedulePush('battle-finish', { force: true }); } catch {}
               if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
                 window.__interactions.interactionState.autoEndTurnAfterAttack = false;
                 try { endTurn(); } catch {}
@@ -565,7 +565,7 @@
           } else {
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем обновим визуально
             setTimeout(() => {
-              updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {}
+              updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish', { force: true }); } catch {}
               if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
                 window.__interactions.interactionState.autoEndTurnAfterAttack = false;
                 try { endTurn(); } catch {}
@@ -658,7 +658,7 @@
         const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
         setTimeout(() => {
           updateUnits(); updateUI();
-          try { schedulePush('magic-battle-finish'); } catch {}
+          try { schedulePush('magic-battle-finish', { force: true }); } catch {}
           if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
             window.__interactions.interactionState.autoEndTurnAfterAttack = false;
             try { endTurn(); } catch {}
@@ -669,7 +669,7 @@
         gameState = res.n1; try { window.applyGameState(gameState); } catch {}
         updateUnits(); updateUI();
         const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
-        try { schedulePush('magic-battle-finish'); } catch {}
+        try { schedulePush('magic-battle-finish', { force: true }); } catch {}
         if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
           window.__interactions.interactionState.autoEndTurnAfterAttack = false;
           try { endTurn(); } catch {}
