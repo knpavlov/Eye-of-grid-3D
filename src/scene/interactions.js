@@ -130,7 +130,7 @@ function onMouseDown(event) {
   if (!gameState || gameState.winner !== null) return;
   if (isInputLocked()) return;
   const ctx = getCtx();
-  const { renderer, mouse, raycaster, unitMeshes, handCardMeshes } = ctx;
+  const { renderer, mouse, raycaster, unitMeshes, handCardMeshes, tileMeshes } = ctx;
   const rect = renderer.domElement.getBoundingClientRect();
   mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -165,15 +165,21 @@ function onMouseDown(event) {
     while (unit && (!unit.userData || unit.userData.type !== 'unit')) unit = unit.parent;
     if (!unit) return;
     if (interactionState.magicFrom) {
-      performMagicAttack(interactionState.magicFrom, unit);
-      interactionState.magicFrom = null;
-      clearHighlights();
+      const ok = performMagicAttack(interactionState.magicFrom, unit);
+      if (ok) {
+        interactionState.magicFrom = null;
+        clearHighlights();
+        window.__ui?.cancel?.hideCancelButton?.();
+      }
       return;
     }
     if (interactionState.pendingAttack) {
-      performChosenAttack(interactionState.pendingAttack, unit);
-      interactionState.pendingAttack = null;
-      clearHighlights();
+      const ok = performChosenAttack(interactionState.pendingAttack, unit);
+      if (ok) {
+        interactionState.pendingAttack = null;
+        clearHighlights();
+        window.__ui?.cancel?.hideCancelButton?.();
+      }
       return;
     }
     if (interactionState.selectedCard && interactionState.selectedCard.userData.cardData.type === 'SPELL') {
@@ -185,8 +191,35 @@ function onMouseDown(event) {
     return;
   }
 
+  const tileIntersects = raycaster.intersectObjects((tileMeshes || []).flat(), true);
+  if (tileIntersects.length > 0) {
+    let tile = tileIntersects[0].object;
+    while (tile && (!tile.userData || tile.userData.type !== 'tile')) tile = tile.parent;
+    if (tile) {
+      if (interactionState.magicFrom) {
+        const ok = performMagicAttack(interactionState.magicFrom, tile);
+        if (ok) {
+          interactionState.magicFrom = null;
+          clearHighlights();
+          window.__ui?.cancel?.hideCancelButton?.();
+        }
+        return;
+      }
+      if (interactionState.pendingAttack) {
+        const ok = performChosenAttack(interactionState.pendingAttack, tile);
+        if (ok) {
+          interactionState.pendingAttack = null;
+          clearHighlights();
+          window.__ui?.cancel?.hideCancelButton?.();
+        }
+        return;
+      }
+    }
+  }
+
   if (interactionState.selectedCard) {
     resetCardSelection();
+    window.__ui?.cancel?.hideCancelButton?.();
   }
   if (interactionState.pendingDiscardSelection) {
     try { window.__ui.panels.hidePrompt(); } catch {}
@@ -284,6 +317,7 @@ function startCardDrag(card) {
           }
         }
         highlightTiles(cells);
+        window.__ui?.cancel?.showCancelButton?.();
       }
     }
   } catch {}
@@ -296,6 +330,7 @@ function endCardDrag() {
   }
   interactionState.draggedCard = null;
   clearHighlights();
+  window.__ui?.cancel?.hideCancelButton?.();
 }
 
 function returnCardToHand(card) {
@@ -333,6 +368,52 @@ export function resetCardSelection() {
     interactionState.selectedCard = null;
   }
   clearHighlights();
+  window.__ui?.cancel?.hideCancelButton?.();
+}
+
+export function cancelPendingAction() {
+  const gameState = window.gameState;
+  if (!gameState) { clearHighlights(); window.__ui?.cancel?.hideCancelButton?.(); return; }
+
+  if (interactionState.pendingPlacement) {
+    returnCardToHand(interactionState.pendingPlacement.card);
+    try { window.__ui?.panels?.hideOrientationPanel?.(); } catch {}
+    interactionState.pendingPlacement = null;
+    clearHighlights();
+    window.__ui?.cancel?.hideCancelButton?.();
+    return;
+  }
+
+  if (interactionState.magicFrom || interactionState.pendingAttack) {
+    const from = interactionState.magicFrom || interactionState.pendingAttack;
+    const { r, c } = from;
+    const unit = gameState.board?.[r]?.[c]?.unit;
+    if (unit) {
+      try {
+        const tpl = window.CARDS?.[unit.tplId];
+        const owner = unit.owner;
+        if (tpl) {
+          gameState.players[owner].mana += tpl.cost || 0;
+          gameState.players[owner].hand.push(tpl);
+        }
+        gameState.board[r][c].unit = null;
+      } catch {}
+      window.updateUnits?.();
+      window.updateHand?.();
+      window.updateUI?.();
+    }
+    interactionState.magicFrom = null;
+    interactionState.pendingAttack = null;
+    interactionState.autoEndTurnAfterAttack = false;
+    clearHighlights();
+    window.__ui?.cancel?.hideCancelButton?.();
+    return;
+  }
+
+  if (interactionState.selectedCard) {
+    resetCardSelection();
+    window.__ui?.cancel?.hideCancelButton?.();
+  }
 }
 
 function performMagicAttack(from, targetMesh) {
@@ -343,10 +424,10 @@ function performMagicAttack(from, targetMesh) {
   const attacker = gameState.board?.[from.r]?.[from.c]?.unit;
   if (!attacker || attacker.lastAttackTurn === gameState.turn) {
     showNotification('Некорректная атака', 'error');
-    return;
+    return false;
   }
   const res = window.magicAttack(gameState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
-  if (!res) { showNotification('Incorrect target', 'error'); return; }
+  if (!res) { showNotification('Incorrect target', 'error'); return false; }
   for (const l of res.logLines.reverse()) window.addLog(l);
   const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
   if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
@@ -373,7 +454,7 @@ function performMagicAttack(from, targetMesh) {
     }
     // Обновляем состояние сразу, чтобы клетка считалась свободной
     window.gameState = res.n1;
-    const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
+    const attacker2 = window.gameState.board[from.r][from.c]?.unit; if (attacker2) attacker2.lastAttackTurn = window.gameState.turn;
     setTimeout(() => {
       window.updateUnits(); window.updateUI();
       try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
@@ -384,13 +465,14 @@ function performMagicAttack(from, targetMesh) {
     }, 1000);
   } else {
     window.gameState = res.n1; window.updateUnits(); window.updateUI();
-    const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
+    const attacker2 = window.gameState.board[from.r][from.c]?.unit; if (attacker2) attacker2.lastAttackTurn = window.gameState.turn;
     try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
     if (interactionState.autoEndTurnAfterAttack) {
       interactionState.autoEndTurnAfterAttack = false;
       try { window.endTurn && window.endTurn(); } catch {}
     }
   }
+  return true;
 }
 
 // Обычная атака с предварительным выбором клетки
@@ -399,7 +481,7 @@ function performChosenAttack(from, targetMesh) {
   const attacker = gameState.board?.[from.r]?.[from.c]?.unit; if (!attacker) return;
   if (attacker.lastAttackTurn === gameState.turn) {
     showNotification('Некорректная атака', 'error');
-    return;
+    return false;
   }
   const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
   const dr = tr - from.r; const dc = tc - from.c;
@@ -409,8 +491,9 @@ function performChosenAttack(from, targetMesh) {
   const dist = Math.max(Math.abs(dr), Math.abs(dc));
   const opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
   const hits = window.computeHits(gameState, from.r, from.c, opts);
-  if (!hits.length) { showNotification('Incorrect target', 'error'); return; }
+  if (!hits.length) { showNotification('Incorrect target', 'error'); return false; }
   window.performBattleSequence(from.r, from.c, true, opts);
+  return true;
 }
 
 function castSpellOnUnit(cardMesh, unitMesh) {
@@ -521,6 +604,13 @@ export function placeUnitWithDirection(direction) {
     duration: 0.5,
     ease: 'power2.inOut',
   });
+  gsap.to(card.scale, {
+    x: 1,
+    y: 1,
+    z: 1,
+    duration: 0.5,
+    ease: 'power2.inOut',
+  });
   gsap.to(card.rotation, {
     x: 0,
     y: (window.facingDeg[direction]) * Math.PI / 180,
@@ -549,6 +639,7 @@ export function placeUnitWithDirection(direction) {
           interactionState.magicFrom = { r: row, c: col };
           interactionState.autoEndTurnAfterAttack = true;
           highlightTiles(cells);
+          window.__ui?.cancel?.showCancelButton?.();
           window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
           if (unlockTriggered) {
             const delay = 1200;
@@ -568,6 +659,7 @@ export function placeUnitWithDirection(direction) {
             interactionState.pendingAttack = { r: row, c: col };
             interactionState.autoEndTurnAfterAttack = true;
             highlightTiles(hitsAll);
+            window.__ui?.cancel?.showCancelButton?.();
             window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
             window.__ui?.notifications?.show('Выберите цель', 'info');
           } else {
@@ -622,6 +714,7 @@ export function clearSelectedUnit() {
   interactionState.pendingAttack = null;
   interactionState.magicFrom = null;
   clearHighlights();
+  window.__ui?.cancel?.hideCancelButton?.();
 }
 export function getPendingPlacement() { return interactionState.pendingPlacement; }
 export function clearPendingPlacement() { interactionState.pendingPlacement = null; }

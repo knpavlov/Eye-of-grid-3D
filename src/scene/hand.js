@@ -192,16 +192,16 @@ export async function animateDrawnCardToHand(cardTpl) {
   } catch {}
 
   await new Promise(resolve => {
-    const tl = gsap.timeline({ onComplete: resolve });
-    tl.to(allMaterials, { opacity: 1, duration: 0.8, ease: 'power2.out' })
-      .to(big.position, { x: target.position.x, y: target.position.y, z: target.position.z, duration: 0.7, ease: 'power2.inOut' }, 'fly')
-      .to(big.rotation, { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z, duration: 0.7, ease: 'power2.inOut' }, 'fly')
-      .to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: 0.7, ease: 'power2.inOut' }, 'fly');
     try {
       big.rotateX(THREE.MathUtils.degToRad(T.pitchDeg || 0));
       big.rotateY(THREE.MathUtils.degToRad(T.yawDeg || 0));
       big.rotateZ(THREE.MathUtils.degToRad(T.rollDeg || 0));
     } catch {}
+    const tl = gsap.timeline({ onComplete: resolve });
+    tl.to(allMaterials, { opacity: 1, duration: 0.8, ease: 'power2.out' })
+      .to(big.position, { x: target.position.x, y: target.position.y, z: target.position.z, duration: 0.7, ease: 'power2.inOut' }, 'fly')
+      .to(big.rotation, { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z, duration: 0.7, ease: 'power2.inOut' }, 'fly')
+      .to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: 0.7, ease: 'power2.inOut' }, 'fly');
   });
 
   try { cardGroup.remove(big); } catch {}

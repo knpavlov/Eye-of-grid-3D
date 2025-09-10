@@ -26,6 +26,7 @@ import { updateUI } from './ui/update.js';
 import * as UIActions from './ui/actions.js';
 import * as SceneEffects from './scene/effects.js';
 import * as UISpellUtils from './ui/spellUtils.js';
+import * as UICancel from './ui/cancel.js';
 import * as Spells from './spells/handlers.js';
 import './ui/statusChip.js';
 import * as InputLock from './ui/inputLock.js';

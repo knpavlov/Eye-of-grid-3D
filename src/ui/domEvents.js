@@ -54,6 +54,10 @@ export function attachUIEvents() {
     w.__ui?.panels?.hideUnitActionPanel?.();
   });
 
+  document.getElementById('cancel-target-btn')?.addEventListener('click', () => {
+    w.__interactions?.cancelPendingAction?.();
+  });
+
   document.getElementById('rotate-cw-btn')?.addEventListener('click', () => {
     const u = w.__interactions?.getSelectedUnit?.();
     if (u) w.__ui?.actions?.rotateUnit?.(u, 'cw');
