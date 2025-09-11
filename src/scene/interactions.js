@@ -33,7 +33,7 @@ function isInputLocked() {
 
 // === POINTER INTERACTION HANDLERS ===
 function onMouseMove(event) {
-  if (isInputLocked()) return;
+  if (isInputLocked() && !interactionState.pendingDiscardSelection) return;
   const ctx = getCtx();
   const { renderer, mouse, raycaster, tileMeshes, unitMeshes, handCardMeshes } = ctx;
   if (!renderer) return;
@@ -128,7 +128,7 @@ function onMouseMove(event) {
 function onMouseDown(event) {
   const gameState = (typeof window !== 'undefined' ? window.gameState : null);
   if (!gameState || gameState.winner !== null) return;
-  if (isInputLocked()) return;
+  if (isInputLocked() && !interactionState.pendingDiscardSelection) return;
   const ctx = getCtx();
   const { renderer, mouse, raycaster, unitMeshes, handCardMeshes } = ctx;
   const rect = renderer.domElement.getBoundingClientRect();
@@ -204,7 +204,7 @@ function onMouseDown(event) {
 }
 
 function onMouseUp(event) {
-  if (isInputLocked()) { endCardDrag(); return; }
+  if (isInputLocked() && !interactionState.pendingDiscardSelection) { endCardDrag(); return; }
   const gameState = (typeof window !== 'undefined' ? window.gameState : null);
   const ctx = getCtx();
   const { renderer, mouse, raycaster, unitMeshes, tileMeshes, tileFrames } = ctx;
