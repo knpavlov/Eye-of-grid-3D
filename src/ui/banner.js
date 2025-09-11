@@ -79,6 +79,11 @@ export function queueTurnSplash(title){
 // Упрощённая и надёжная версия запроса заставки хода
 export async function requestTurnSplash(currentTurn){
   if (typeof currentTurn !== 'number') return _lastTurnSplashPromise;
+  // Если уже запрашивали заставку для этого хода и она была показана,
+  // повторный вызов ничего не делает — предотвращаем множественный показ.
+  if (_lastRequestedTurn === currentTurn && _lastShownTurn >= currentTurn) {
+    return _lastTurnSplashPromise;
+  }
 
   _lastRequestedTurn = currentTurn;
   let title = `Turn ${currentTurn}`;
