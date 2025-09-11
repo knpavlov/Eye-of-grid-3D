@@ -195,11 +195,8 @@ function onMouseDown(event) {
     resetCardSelection();
   }
   if (interactionState.pendingDiscardSelection) {
-    try { window.__ui.panels.hidePrompt(); } catch {}
-    interactionState.pendingDiscardSelection = null;
-    if (interactionState.draggedCard && interactionState.draggedCard.userData && interactionState.draggedCard.userData.cardData && interactionState.draggedCard.userData.cardData.type === 'SPELL') {
-      returnCardToHand(interactionState.draggedCard);
-    }
+    // Если требуется сброс карт, клики вне руки не должны закрывать окно сброса
+    return;
   }
 }
 

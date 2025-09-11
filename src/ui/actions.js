@@ -153,6 +153,9 @@ export async function endTurn() {
       return;
     }
 
+    // Сбрасываем возможный авто-завершитель хода, чтобы избежать повторного добора карт
+    try { w.__interactions?.interactionState && (w.__interactions.interactionState.autoEndTurnAfterAttack = false); } catch {}
+
     w.__endTurnInProgress = true;
     w.refreshInputLockUI?.();
     await enforceHandLimit(gameState.players[gameState.active], 7);
