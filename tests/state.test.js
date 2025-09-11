@@ -90,6 +90,7 @@ describe('reducer', () => {
       turn: 1,
       winner: null,
       __ver: 0,
+      lastDrawTurn: 1,
     };
     const next = reducer(state, { type: A.END_TURN });
     expect(next.active).toBe(1);
@@ -99,6 +100,29 @@ describe('reducer', () => {
     expect(next.players[1].hand).toEqual(['X']);
     expect(next.players[1].deck).toEqual([]);
     expect(next.__ver).toBeGreaterThan(state.__ver);
+    expect(next.lastDrawTurn).toBe(2);
+  });
+
+  it('A.END_TURN: skips draw if already drawn this turn', () => {
+    const board = makeEmptyBoard();
+    const state = {
+      board,
+      players: [
+        { deck: ['A'], hand: [], mana: 0 },
+        { deck: ['B'], hand: [], mana: 0 }
+      ],
+      active: 0,
+      turn: 1,
+      winner: null,
+      __ver: 0,
+      lastDrawTurn: 2, // считаем, что добор для следующего хода уже произошёл
+    };
+    const next = reducer(state, { type: A.END_TURN });
+    expect(next.active).toBe(1);
+    expect(next.turn).toBe(2);
+    expect(next.players[1].hand).toEqual([]); // карты не добираются повторно
+    expect(next.players[1].deck).toEqual(['B']);
+    expect(next.lastDrawTurn).toBe(2);
   });
 
   it('A.END_TURN: declares winner if 5+ controlled by active', () => {

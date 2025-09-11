@@ -74,6 +74,7 @@ export function startGame(deck0 = STARTER_FIRESET, deck1 = STARTER_FIRESET) {
     ],
     active: 0,
     turn: 1,
+    lastDrawTurn: 1, // номер хода, для которого добор уже выполнен
     winner: null,
     __ver: 0,
     summoningUnlocked: false, // поле по умолчанию заблокировано

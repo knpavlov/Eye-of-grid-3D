@@ -34,14 +34,17 @@ export function reducer(state, action) {
       s.turn += 1;
       const pl = s.players[s.active];
       const before = pl.mana || 0;
-      
+
       // ВАЖНО: Сохраняем предыдущее значение маны для правильной анимации
       pl._beforeMana = before;
       pl.mana = capMana(before + 2);
-      
-      // Optional draw: only enqueue for animation elsewhere; here push straight for logic
-      const drawn = drawOneNoAdd(s, s.active);
-      if (drawn) pl.hand.push(drawn);
+
+      // Добор карты выполняем только один раз за ход
+      if (s.lastDrawTurn !== s.turn) {
+        const drawn = drawOneNoAdd(s, s.active);
+        if (drawn) pl.hand.push(drawn);
+        s.lastDrawTurn = s.turn;
+      }
       s.__ver = (s.__ver || 0) + 1;
       return s;
     }

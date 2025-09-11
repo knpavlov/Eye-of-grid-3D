@@ -237,9 +237,13 @@ export async function endTurn() {
     const player = gameState.players[gameState.active];
     const before = player.mana;
     const manaAfter = (typeof w.capMana === 'function') ? w.capMana(before + 2) : before + 2;
-    const drawnTpl = (typeof w.drawOneNoAdd === 'function')
-      ? w.drawOneNoAdd(gameState, gameState.active)
-      : null;
+    let drawnTpl = null;
+    if (gameState.lastDrawTurn !== gameState.turn) {
+      drawnTpl = (typeof w.drawOneNoAdd === 'function')
+        ? w.drawOneNoAdd(gameState, gameState.active)
+        : null;
+      gameState.lastDrawTurn = gameState.turn;
+    }
 
     try {
       if (!w.PENDING_MANA_ANIM && !manaGainActive) {
