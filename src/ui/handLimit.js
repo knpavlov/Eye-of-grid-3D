@@ -12,7 +12,8 @@ export async function enforceHandLimit(player, limit = 7) {
   const w = window;
   while ((player.hand?.length || 0) > limit) {
     const need = player.hand.length - limit;
-    w.__ui?.panels?.showPrompt?.(`Сбросьте ${need} карт(ы)`, () => {});
+    // Вызываем промпт без возможности отмены
+    w.__ui?.panels?.showPrompt?.(`Сбросьте ${need} карт(ы)`, null, false);
     await new Promise(resolve => {
       interactionState.pendingDiscardSelection = {
         onPicked: handIdx => {
