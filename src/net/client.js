@@ -1,6 +1,8 @@
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
      countdowns, and input locking. */
+import { showDeckSelect } from '../ui/deckSelect.js';
+
 (() => {
   // ===== 0) Config =====
   const SERVER_URL = (location.hostname === "localhost")
@@ -29,28 +31,58 @@
   `;
   const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
-  // ===== 2) Кнопка «Онлайн-игра» — как стандартные overlay-кнопки рядом с остальными =====
+  // ===== 2) Кнопки «Онлайн-игра» и «Офлайн-игра» =====
   function mountOnlineButton() {
     if (document.getElementById('find-match-btn')) return;
     const btn = document.createElement('button');
     btn.id = 'find-match-btn';
     btn.className = 'overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors';
     btn.textContent = 'Play Online';
-    // Place inside the right-side control panel, next to other buttons
     const host = document.querySelector('#corner-right .flex') || document.getElementById('corner-right');
     if (host) {
       host.appendChild(btn);
     } else {
-      // Fallback: if panel not yet mounted, use floater
       const wrap = document.getElementById('mp-floater') || (() => {
         const d = document.createElement('div'); d.id='mp-floater'; d.className='mp-floater'; document.body.appendChild(d); return d;
       })();
       wrap.appendChild(btn);
     }
-    btn.addEventListener('click', onFindMatchClick);
+    // Перед входом в очередь показываем выбор колоды
+    btn.addEventListener('click', () => {
+      showDeckSelect(deck => {
+        try { window.STARTER_FIRESET = deck.cards; localStorage.setItem('selectedDeck', deck.id); } catch {}
+        onFindMatchClick();
+      });
+    });
   }
+
+  function mountOfflineButton() {
+    if (document.getElementById('play-offline-btn')) return;
+    const btn = document.createElement('button');
+    btn.id = 'play-offline-btn';
+    btn.className = 'overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors';
+    btn.textContent = 'Play Offline';
+    const host = document.querySelector('#corner-right .flex') || document.getElementById('corner-right');
+    if (host) {
+      host.appendChild(btn);
+    } else {
+      const wrap = document.getElementById('mp-floater') || (() => {
+        const d = document.createElement('div'); d.id='mp-floater'; d.className='mp-floater'; document.body.appendChild(d); return d;
+      })();
+      wrap.appendChild(btn);
+    }
+    // Выбор колоды перед офлайн-матчем
+    btn.addEventListener('click', () => {
+      showDeckSelect(deck => {
+        try { localStorage.setItem('selectedDeck', deck.id); } catch {}
+        location.reload();
+      });
+    });
+  }
+
   mountOnlineButton();
-  const mo = new MutationObserver(() => mountOnlineButton());
+  mountOfflineButton();
+  const mo = new MutationObserver(() => { mountOnlineButton(); mountOfflineButton(); });
   mo.observe(document.body, { childList:true, subtree:true });
 
   // ===== 3) Queue modal + countdown =====
@@ -918,11 +950,19 @@
       </div>
     </div>`;
     document.body.appendChild(m);
-    m.querySelector('#mp-offline').addEventListener('click', ()=>{ try{ location.reload(); }catch{} });
+    m.querySelector('#mp-offline').addEventListener('click', ()=>{
+      showDeckSelect(deck => {
+        try { localStorage.setItem('selectedDeck', deck.id); } catch {}
+        location.reload();
+      });
+    });
     m.querySelector('#mp-online').addEventListener('click', ()=>{
-      try{ m.remove(); }catch{}
-      NET_ACTIVE=false; updateIndicator(); updateInputLock();
-      onFindMatchClick();
+      showDeckSelect(deck => {
+        try { m.remove(); } catch {}
+        try { window.STARTER_FIRESET = deck.cards; localStorage.setItem('selectedDeck', deck.id); } catch {}
+        NET_ACTIVE=false; updateIndicator(); updateInputLock();
+        onFindMatchClick();
+      });
     });
   }
 

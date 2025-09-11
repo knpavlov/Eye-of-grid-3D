@@ -1,6 +1,7 @@
 ﻿// Bridge file to expose core modules to existing global code progressively
 import * as Constants from './core/constants.js';
-import { CARDS, STARTER_FIRESET } from './core/cards.js';
+import { CARDS } from './core/cards.js';
+import { DECKS } from './core/decks.js';
 import * as Rules from './core/rules.js';
 import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled, countUnits } from './core/state.js';
 import { netState, NET_ON } from './core/netState.js';
@@ -37,6 +38,9 @@ import * as SummonLock from './ui/summonLock.js';
 import * as CancelButton from './ui/cancelButton.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
+let selectedId;
+try { selectedId = localStorage.getItem('selectedDeck'); } catch {}
+export const CURRENT_DECK = DECKS.find(d => d.id === selectedId) || DECKS[0];
 try {
   window.DIR_VECTORS = Constants.DIR_VECTORS;
   window.turnCW = Constants.turnCW;
@@ -50,7 +54,9 @@ try {
   window.attackCost = Constants.attackCost;
 
   window.CARDS = CARDS;
-  window.STARTER_FIRESET = STARTER_FIRESET;
+  window.STARTER_FIRESET = CURRENT_DECK.cards;
+  window.CURRENT_DECK = CURRENT_DECK;
+  window.DECKS = DECKS;
 
   window.hasAdjacentGuard = Rules.hasAdjacentGuard;
   window.computeCellBuff = Rules.computeCellBuff;
@@ -116,7 +122,7 @@ try { window.__store = store; } catch {}
 
 // Initialize only if no existing gameState is present (non-destructive)
 if (typeof window !== 'undefined' && !window.gameState) {
-  const s = startGame(STARTER_FIRESET, STARTER_FIRESET);
+    const s = startGame(CURRENT_DECK.cards, CURRENT_DECK.cards);
   try { applyGameState(s); } catch {}
 }
 
