@@ -3,6 +3,23 @@ import { getCtx } from './context.js';
 import { updateHand } from './hand.js';
 
 /**
+ * Универсальная анимация "растворения" меша.
+ * Позволяет переиспользовать эффект для любых объектов.
+ * @param {object} mesh - трёхмерный объект, который нужно растворить.
+ * @param {object} [awayVec] - направление смещения пепла.
+ * @param {number} [duration] - длительность эффекта в секундах.
+ */
+export function discardMesh(mesh, awayVec, duration = 0.9) {
+  try {
+    const ctx = getCtx();
+    const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+    if (!mesh || !THREE) return;
+    window.__fx?.dissolveAndAsh(mesh, awayVec || new THREE.Vector3(0, 0.6, 0), duration);
+    setTimeout(() => { try { mesh.parent?.remove(mesh); } catch {} }, duration * 1000 + 50);
+  } catch {}
+}
+
+/**
  * Сбрасывает карту из руки игрока в кладбище.
  * @param {object} player - объект игрока из gameState.
  * @param {number} handIdx - индекс карты в руке.
@@ -28,10 +45,7 @@ export function discardHandCard(player, handIdx) {
     const mesh = ctx.handCardMeshes?.find(m => m.userData?.handIndex === handIdx);
     if (mesh) {
       try { mesh.userData.isInHand = false; } catch {}
-      const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
-      if (THREE) {
-        window.__fx?.dissolveAndAsh(mesh, new THREE.Vector3(0, 0.6, 0), 0.9);
-      }
+      discardMesh(mesh);
     }
   } catch {}
 
@@ -41,7 +55,7 @@ export function discardHandCard(player, handIdx) {
   return cardTpl;
 }
 
-const api = { discardHandCard };
+const api = { discardHandCard, discardMesh };
 try { if (typeof window !== 'undefined') window.__discard = api; } catch {}
 
 export default api;
