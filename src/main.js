@@ -1,6 +1,7 @@
 ﻿// Bridge file to expose core modules to existing global code progressively
 import * as Constants from './core/constants.js';
-import { CARDS, STARTER_FIRESET } from './core/cards.js';
+import { CARDS, STARTER_FIRESET as BASE_STARTER_FIRESET } from './core/cards.js';
+import { DECKS } from './core/decks.js';
 import * as Rules from './core/rules.js';
 import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled, countUnits } from './core/state.js';
 import { netState, NET_ON } from './core/netState.js';
@@ -36,6 +37,14 @@ import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
 import * as CancelButton from './ui/cancelButton.js';
 
+// Определяем активную колоду ещё до экспонирования
+let deckIndex = 0;
+try {
+  const stored = localStorage.getItem('selectedDeck');
+  if (stored) deckIndex = parseInt(stored, 10) || 0;
+} catch {}
+const SELECTED_DECK = DECKS[deckIndex]?.cards || BASE_STARTER_FIRESET;
+
 // Expose to window to keep compatibility while refactoring incrementally
 try {
   window.DIR_VECTORS = Constants.DIR_VECTORS;
@@ -50,7 +59,8 @@ try {
   window.attackCost = Constants.attackCost;
 
   window.CARDS = CARDS;
-  window.STARTER_FIRESET = STARTER_FIRESET;
+  window.DECKS = DECKS;
+  window.STARTER_FIRESET = SELECTED_DECK;
 
   window.hasAdjacentGuard = Rules.hasAdjacentGuard;
   window.computeCellBuff = Rules.computeCellBuff;
@@ -116,7 +126,7 @@ try { window.__store = store; } catch {}
 
 // Initialize only if no existing gameState is present (non-destructive)
 if (typeof window !== 'undefined' && !window.gameState) {
-  const s = startGame(STARTER_FIRESET, STARTER_FIRESET);
+  const s = startGame(SELECTED_DECK, SELECTED_DECK);
   try { applyGameState(s); } catch {}
 }
 

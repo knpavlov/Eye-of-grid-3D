@@ -1,6 +1,7 @@
 // Навешивание обработчиков UI элементов
 
 import { refreshInputLockUI } from './inputLock.js';
+import { selectDeck } from './deckMenu.js';
 
 export function attachUIEvents() {
   if (typeof document === 'undefined') return;
@@ -11,7 +12,12 @@ export function attachUIEvents() {
   });
   refreshInputLockUI();
 
-  document.getElementById('new-game-btn')?.addEventListener('click', () => location.reload());
+  document.getElementById('new-game-btn')?.addEventListener('click', async () => {
+    const res = await selectDeck();
+    if (!res) return;
+    try { localStorage.setItem('selectedDeck', String(res.index)); } catch {}
+    location.reload();
+  });
 
   document.getElementById('log-btn')?.addEventListener('click', () => {
     const lp = document.getElementById('log-panel');
