@@ -1,6 +1,7 @@
 // UI action helpers for rotating units and triggering attacks
 // These functions rely on existing globals to minimize coupling.
 import { highlightTiles, clearHighlights } from '../scene/highlight.js';
+import { enforceHandLimit } from './handLimit.js';
 
 export function rotateUnit(unitMesh, dir) {
   try {
@@ -206,6 +207,8 @@ export async function endTurn() {
       w.showNotification?.(`${gameState.players[gameState.active].name} побеждает!`, 'success');
       return;
     }
+
+    await enforceHandLimit(gameState.players[gameState.active], 7);
 
     try {
       for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {

@@ -194,7 +194,7 @@ function onMouseDown(event) {
   if (interactionState.selectedCard) {
     resetCardSelection();
   }
-  if (interactionState.pendingDiscardSelection) {
+  if (interactionState.pendingDiscardSelection && !interactionState.pendingDiscardSelection.force) {
     try { window.__ui.panels.hidePrompt(); } catch {}
     interactionState.pendingDiscardSelection = null;
     if (interactionState.draggedCard && interactionState.draggedCard.userData && interactionState.draggedCard.userData.cardData && interactionState.draggedCard.userData.cardData.type === 'SPELL') {
