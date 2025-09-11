@@ -155,6 +155,11 @@ export async function endTurn() {
 
     w.__endTurnInProgress = true;
     w.refreshInputLockUI?.();
+    try {
+      if (gameState.players && gameState.players[gameState.active]) {
+        gameState.players[gameState.active]._drewThisTurn = false;
+      }
+    } catch {}
     await enforceHandLimit(gameState.players[gameState.active], 7);
     try { if (w.__turnTimerId) clearInterval(w.__turnTimerId); } catch {}
     w.__turnTimerSeconds = 100;
@@ -237,9 +242,13 @@ export async function endTurn() {
     const player = gameState.players[gameState.active];
     const before = player.mana;
     const manaAfter = (typeof w.capMana === 'function') ? w.capMana(before + 2) : before + 2;
-    const drawnTpl = (typeof w.drawOneNoAdd === 'function')
-      ? w.drawOneNoAdd(gameState, gameState.active)
-      : null;
+    let drawnTpl = null;
+    try {
+      if (typeof w.drawOneNoAdd === 'function' && !player._drewThisTurn) {
+        drawnTpl = w.drawOneNoAdd(gameState, gameState.active);
+        player._drewThisTurn = true;
+      }
+    } catch {}
 
     try {
       if (!w.PENDING_MANA_ANIM && !manaGainActive) {
