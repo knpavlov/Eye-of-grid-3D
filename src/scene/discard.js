@@ -52,6 +52,9 @@ export function discardHandCard(player, handIdx) {
   // Обновляем визуализацию руки
   try { updateHand(window.gameState); } catch {}
 
+  // Сообщаем серверу о сбросе при сетевой игре
+  try { window.schedulePush?.('discard', { force: true }); } catch {}
+
   return cardTpl;
 }
 
