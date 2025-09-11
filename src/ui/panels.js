@@ -46,17 +46,26 @@ export function showUnitActionPanel(unitMesh){
 export function hideUnitActionPanel(){ try { document.getElementById('unit-action-panel')?.classList.add('hidden'); if (typeof window !== 'undefined') window.selectedUnit = null; } catch {} }
 
 // Minimal prompt helpers (used by spells)
-export function showPrompt(text, onCancel){
+// Показывает всплывающее окно. По умолчанию доступна кнопка "Отмена",
+// но при необходимости её можно скрыть через параметр cancellable.
+export function showPrompt(text, onCancel, cancellable = true){
   try {
     const panel = document.getElementById('prompt-panel'); if (!panel) return;
     const t = document.getElementById('prompt-text'); if (t) t.textContent = text || '';
+    const cancelBtn = document.getElementById('cancel-prompt-btn');
+    const cancelWrap = cancelBtn?.parentElement;
+    if (cancelWrap) cancelWrap.classList.toggle('hidden', !cancellable);
     panel.classList.remove('hidden');
     if (typeof window !== 'undefined') window.activePrompt = { text, onCancel };
   } catch {}
 }
+
+// Скрывает всплывающее окно и возвращает кнопку "Отмена" в исходное состояние.
 export function hidePrompt(){
   try {
     const panel = document.getElementById('prompt-panel'); if (panel) panel.classList.add('hidden');
+    const cancelWrap = document.getElementById('cancel-prompt-btn')?.parentElement;
+    if (cancelWrap) cancelWrap.classList.remove('hidden');
     if (typeof window !== 'undefined') window.activePrompt = null;
   } catch {}
 }
