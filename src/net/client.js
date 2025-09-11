@@ -176,21 +176,22 @@
   let pending = false;
   function schedulePush(reason='auto', {force=false}={}){
     const online = (typeof NET_ON === 'function') ? NET_ON() : false;
-    if (!online || !gameState) return;
+    const state = (typeof window !== 'undefined' && window.gameState) ? window.gameState : gameState;
+    if (!online || !state) return;
     if (APPLYING && !force) return;              // не эхоим полученный снапшот
     // Не пушим во время анимаций, если не forced
     if (!force && (manaGainActive || drawAnimationActive || splashActive)) return;
-    const myTurn = (typeof gameState.active === 'number') && (gameState.active === MY_SEAT);
+    const myTurn = (typeof state.active === 'number') && (state.active === MY_SEAT);
     if (!force && !myTurn) return;               // только активный игрок пушит
     if (force) {
       // немедленная отправка, игнорируя pending
       try {
         // Версионируем состояние: защитимся от устаревших снапшотов, приходящих чуть позже
-        gameState.__ver = (Number(gameState.__ver) || 0) + 1;
-        try { window.__LAST_SENT_VER = gameState.__ver; } catch {}
-        socket.emit('pushState', { state: gameState, reason });
+        state.__ver = (Number(state.__ver) || 0) + 1;
+        try { window.__LAST_SENT_VER = state.__ver; } catch {}
+        socket.emit('pushState', { state, reason });
       } catch{}
-      lastDigest = digest(gameState);
+      lastDigest = digest(state);
       pending = false;
       return;
     }
@@ -199,11 +200,11 @@
     requestAnimationFrame(()=>{
       pending = false;
       try {
-        gameState.__ver = (Number(gameState.__ver) || 0) + 1;
-        try { window.__LAST_SENT_VER = gameState.__ver; } catch {}
-        socket.emit('pushState', { state: gameState, reason });
+        state.__ver = (Number(state.__ver) || 0) + 1;
+        try { window.__LAST_SENT_VER = state.__ver; } catch {}
+        socket.emit('pushState', { state, reason });
       } catch{}
-      lastDigest = digest(gameState);
+      lastDigest = digest(state);
     });
   }
   // Экспортируем наружу, чтобы ранние функции (например, endTurn) могли вызвать schedulePush
@@ -212,11 +213,12 @@
   // Периодическая отправка при любом изменении (подстраховка, если обёртка не сработала)
   setInterval(()=>{
     const online = (typeof NET_ON === 'function') ? NET_ON() : false;
-    if (!online || !gameState) return;
+    const state = (typeof window !== 'undefined' && window.gameState) ? window.gameState : gameState;
+    if (!online || !state) return;
     // пушит только тот, у кого сейчас ХОД (чтобы оба могли делать свои ходы)
-    const myTurn = (typeof gameState.active === 'number') && (gameState.active === MY_SEAT);
+    const myTurn = (typeof state.active === 'number') && (state.active === MY_SEAT);
     if (!myTurn) return;
-    const d = digest(gameState);
+    const d = digest(state);
     if (d && d !== lastDigest) schedulePush('digest');
   }, 250);
 

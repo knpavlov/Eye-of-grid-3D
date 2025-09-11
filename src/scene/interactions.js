@@ -389,15 +389,19 @@ function performMagicAttack(from, targetMesh) {
     window.gameState = res.n1;
     const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
     setTimeout(() => {
-      window.updateUnits(); window.updateUI();
+      // Используем актуальное состояние напрямую из window
+      window.__units?.updateUnits?.(window.gameState);
+      window.updateUI();
       try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
       if (interactionState.autoEndTurnAfterAttack) {
         interactionState.autoEndTurnAfterAttack = false;
-      try { window.endTurn && window.endTurn(); } catch {}
-    }
+        try { window.endTurn && window.endTurn(); } catch {}
+      }
     }, 1000);
   } else {
-    window.gameState = res.n1; window.updateUnits(); window.updateUI();
+    window.gameState = res.n1;
+    window.__units?.updateUnits?.(window.gameState);
+    window.updateUI();
     const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
     try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
     if (interactionState.autoEndTurnAfterAttack) {
