@@ -1,6 +1,8 @@
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
      countdowns, and input locking. */
+import { showDeckSelect } from '../ui/deckMenu.js';
+
 (() => {
   // ===== 0) Config =====
   const SERVER_URL = (location.hostname === "localhost")
@@ -47,7 +49,16 @@
       })();
       wrap.appendChild(btn);
     }
-    btn.addEventListener('click', onFindMatchClick);
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      showDeckSelect(deck => {
+        try {
+          localStorage.setItem('deckId', deck.id);
+          window.STARTER_FIRESET = deck.cards;
+        } catch {}
+        onFindMatchClick();
+      });
+    });
   }
   mountOnlineButton();
   const mo = new MutationObserver(() => mountOnlineButton());

@@ -1,6 +1,7 @@
 // Навешивание обработчиков UI элементов
 
 import { refreshInputLockUI } from './inputLock.js';
+import { showDeckSelect } from './deckMenu.js';
 
 export function attachUIEvents() {
   if (typeof document === 'undefined') return;
@@ -11,7 +12,16 @@ export function attachUIEvents() {
   });
   refreshInputLockUI();
 
-  document.getElementById('new-game-btn')?.addEventListener('click', () => location.reload());
+  document.getElementById('new-game-btn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    showDeckSelect(deck => {
+      try {
+        localStorage.setItem('deckId', deck.id);
+        window.STARTER_FIRESET = deck.cards;
+      } catch {}
+      location.reload();
+    });
+  });
 
   document.getElementById('log-btn')?.addEventListener('click', () => {
     const lp = document.getElementById('log-panel');

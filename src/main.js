@@ -1,6 +1,7 @@
 ﻿// Bridge file to expose core modules to existing global code progressively
 import * as Constants from './core/constants.js';
-import { CARDS, STARTER_FIRESET } from './core/cards.js';
+import { CARDS } from './core/cards.js';
+import { DECKS, DEFAULT_DECK_ID, getDeckById } from './core/decks.js';
 import * as Rules from './core/rules.js';
 import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled, countUnits } from './core/state.js';
 import { netState, NET_ON } from './core/netState.js';
@@ -37,6 +38,10 @@ import * as SummonLock from './ui/summonLock.js';
 import * as CancelButton from './ui/cancelButton.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
+const savedId = (typeof localStorage !== 'undefined') ? localStorage.getItem('deckId') : null;
+const selDeck = getDeckById(savedId || DEFAULT_DECK_ID);
+const STARTER_FIRESET = selDeck.cards;
+
 try {
   window.DIR_VECTORS = Constants.DIR_VECTORS;
   window.turnCW = Constants.turnCW;
@@ -51,6 +56,8 @@ try {
 
   window.CARDS = CARDS;
   window.STARTER_FIRESET = STARTER_FIRESET;
+  window.DECKS = DECKS;
+  window.getDeckById = getDeckById;
 
   window.hasAdjacentGuard = Rules.hasAdjacentGuard;
   window.computeCellBuff = Rules.computeCellBuff;
