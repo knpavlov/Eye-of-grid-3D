@@ -558,7 +558,10 @@
             setTimeout(() => {
               updateUnits(); updateUI();
               for (const l of res.logLines.reverse()) addLog(l);
-              try { schedulePush('battle-finish'); } catch {}
+              try {
+                // форсируем отправку состояния после боя
+                schedulePush('battle-finish', { force: true });
+              } catch {}
               if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
                 window.__interactions.interactionState.autoEndTurnAfterAttack = false;
                 try { endTurn(); } catch {}
@@ -567,7 +570,7 @@
           } else {
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем обновим визуально
             setTimeout(() => {
-              updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish'); } catch {}
+              updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish', { force: true }); } catch {}
               if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
                 window.__interactions.interactionState.autoEndTurnAfterAttack = false;
                 try { endTurn(); } catch {}
