@@ -1,6 +1,7 @@
 // UI action helpers for rotating units and triggering attacks
 // These functions rely on existing globals to minimize coupling.
 import { highlightTiles, clearHighlights } from '../scene/highlight.js';
+import { enforceHandLimit } from './handLimit.js';
 
 export function rotateUnit(unitMesh, dir) {
   try {
@@ -150,6 +151,13 @@ export async function endTurn() {
     if (isInputLocked() || manaGainActive || drawAnimationActive || splashActive) {
       w.showNotification?.('Wait for animations to complete', 'warning');
       return;
+    }
+
+    // Принудительный сброс карт сверх лимита перед завершением хода
+    const player = gameState.players[gameState.active];
+    if (player.hand.length > 7) {
+      const ok = await enforceHandLimit(gameState, 7);
+      if (!ok || player.hand.length > 7) return;
     }
 
     w.__endTurnInProgress = true;

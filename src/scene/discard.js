@@ -13,7 +13,7 @@ export function discardHandCard(player, handIdx) {
   const cardTpl = player.hand?.[handIdx];
   if (!cardTpl) return null;
 
-  // Перемещение карты в кладбище
+  // Перемещаем карту в кладбище
   try {
     player.graveyard = Array.isArray(player.graveyard) ? player.graveyard : [];
     player.graveyard.push(cardTpl);
@@ -28,10 +28,7 @@ export function discardHandCard(player, handIdx) {
     const mesh = ctx.handCardMeshes?.find(m => m.userData?.handIndex === handIdx);
     if (mesh) {
       try { mesh.userData.isInHand = false; } catch {}
-      const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
-      if (THREE) {
-        window.__fx?.dissolveAndAsh(mesh, new THREE.Vector3(0, 0.6, 0), 0.9);
-      }
+      dissolveMesh(mesh);
     }
   } catch {}
 
@@ -41,7 +38,23 @@ export function discardHandCard(player, handIdx) {
   return cardTpl;
 }
 
-const api = { discardHandCard };
+/**
+ * Универсальный шейдерный эффект растворения, пригодный для любых объектов.
+ * @param {THREE.Object3D} mesh - цель для эффекта.
+ * @param {THREE.Vector3} [offset] - смещение точки происхождения эффекта.
+ * @param {number} [duration] - длительность анимации.
+ */
+export function dissolveMesh(mesh, offset, duration = 0.9) {
+  try {
+    const ctx = getCtx();
+    const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+    if (!mesh || !THREE) return;
+    const off = offset || new THREE.Vector3(0, 0.6, 0);
+    window.__fx?.dissolveAndAsh(mesh, off, duration);
+  } catch {}
+}
+
+const api = { discardHandCard, dissolveMesh };
 try { if (typeof window !== 'undefined') window.__discard = api; } catch {}
 
 export default api;
