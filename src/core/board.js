@@ -69,8 +69,9 @@ export function startGame(deck0 = STARTER_FIRESET, deck1 = STARTER_FIRESET) {
   const state = {
     board: randomBoard(),
     players: [
-      { name: 'Player 1', deck: shuffle(deck0.filter(Boolean)), hand: [], discard: [], graveyard: [], mana: 2, maxMana: 10 },
-      { name: 'Player 2', deck: shuffle(deck1.filter(Boolean)), hand: [], discard: [], graveyard: [], mana: 0, maxMana: 10 },
+      // lastDrawTurn — номер хода, в который игрок последний раз получал карту в начале хода
+      { name: 'Player 1', deck: shuffle(deck0.filter(Boolean)), hand: [], discard: [], graveyard: [], mana: 2, maxMana: 10, lastDrawTurn: 0 },
+      { name: 'Player 2', deck: shuffle(deck1.filter(Boolean)), hand: [], discard: [], graveyard: [], mana: 0, maxMana: 10, lastDrawTurn: 0 },
     ],
     active: 0,
     turn: 1,
