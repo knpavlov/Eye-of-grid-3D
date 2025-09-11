@@ -45,11 +45,20 @@ export function showUnitActionPanel(unitMesh){
 }
 export function hideUnitActionPanel(){ try { document.getElementById('unit-action-panel')?.classList.add('hidden'); if (typeof window !== 'undefined') window.selectedUnit = null; } catch {} }
 
-// Minimal prompt helpers (used by spells)
+// Минимальный помощник для вывода всплывающего окна.
+// Если обработчик отмены не передан, кнопка "отмена" скрывается.
 export function showPrompt(text, onCancel){
   try {
     const panel = document.getElementById('prompt-panel'); if (!panel) return;
     const t = document.getElementById('prompt-text'); if (t) t.textContent = text || '';
+    const cancelBtn = document.getElementById('cancel-prompt-btn');
+    if (cancelBtn) {
+      if (typeof onCancel === 'function') {
+        cancelBtn.classList.remove('hidden');
+      } else {
+        cancelBtn.classList.add('hidden');
+      }
+    }
     panel.classList.remove('hidden');
     if (typeof window !== 'undefined') window.activePrompt = { text, onCancel };
   } catch {}
