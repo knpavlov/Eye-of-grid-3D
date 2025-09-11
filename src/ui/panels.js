@@ -45,11 +45,17 @@ export function showUnitActionPanel(unitMesh){
 }
 export function hideUnitActionPanel(){ try { document.getElementById('unit-action-panel')?.classList.add('hidden'); if (typeof window !== 'undefined') window.selectedUnit = null; } catch {} }
 
-// Minimal prompt helpers (used by spells)
-export function showPrompt(text, onCancel){
+// Минималистичные промпты (используются в разных местах UI)
+// showCancel отвечает за показ кнопки "отмена"; по умолчанию она видима
+export function showPrompt(text, onCancel, showCancel = true){
   try {
     const panel = document.getElementById('prompt-panel'); if (!panel) return;
     const t = document.getElementById('prompt-text'); if (t) t.textContent = text || '';
+    const cancelBtn = document.getElementById('cancel-prompt-btn');
+    if (cancelBtn) {
+      if (showCancel) cancelBtn.classList.remove('hidden');
+      else cancelBtn.classList.add('hidden');
+    }
     panel.classList.remove('hidden');
     if (typeof window !== 'undefined') window.activePrompt = { text, onCancel };
   } catch {}
