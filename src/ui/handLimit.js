@@ -24,6 +24,8 @@ export async function enforceHandLimit(player, limit = 7) {
       };
     });
   }
+  // На всякий случай очищаем состояние выбора и скрываем окно
+  interactionState.pendingDiscardSelection = null;
   w.__ui?.panels?.hidePrompt?.();
 }
 

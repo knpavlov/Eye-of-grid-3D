@@ -156,6 +156,9 @@ export async function endTurn() {
     w.__endTurnInProgress = true;
     w.refreshInputLockUI?.();
     await enforceHandLimit(gameState.players[gameState.active], 7);
+    // После возможного сброса сразу синхронизируем состояние,
+    // чтобы избежать расхождений и лишних доборов
+    w.applyGameState?.(gameState);
     try { if (w.__turnTimerId) clearInterval(w.__turnTimerId); } catch {}
     w.__turnTimerSeconds = 100;
     (function syncBtn(){ try {
@@ -319,6 +322,9 @@ export async function endTurn() {
     } catch { w.pendingDrawCount = 0; }
 
     w.addLog?.(`Ход ${gameState.turn}. ${player.name} получает +2 маны и добирает карту.`);
+
+    // Фиксируем окончательное состояние после всех изменений хода
+    w.applyGameState?.(gameState);
 
     w.__endTurnInProgress = false;
     w.manaGainActive = false;

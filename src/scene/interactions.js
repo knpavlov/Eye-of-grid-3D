@@ -194,12 +194,10 @@ function onMouseDown(event) {
   if (interactionState.selectedCard) {
     resetCardSelection();
   }
+  // Если ожидается выбор карты для принудительного сброса,
+  // игнорируем клик по пустому месту и не скрываем окно
   if (interactionState.pendingDiscardSelection) {
-    try { window.__ui.panels.hidePrompt(); } catch {}
-    interactionState.pendingDiscardSelection = null;
-    if (interactionState.draggedCard && interactionState.draggedCard.userData && interactionState.draggedCard.userData.cardData && interactionState.draggedCard.userData.cardData.type === 'SPELL') {
-      returnCardToHand(interactionState.draggedCard);
-    }
+    return;
   }
 }
 
