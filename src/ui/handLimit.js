@@ -16,8 +16,12 @@ export async function enforceHandLimit(player, limit = 7) {
     w.__ui?.panels?.showPrompt?.(`Сбросьте ${need} карт(ы)`, null, false);
     await new Promise(resolve => {
       interactionState.pendingDiscardSelection = {
+        forced: true,
         onPicked: handIdx => {
+          // локально сбрасываем карту
           discardHandCard(player, handIdx);
+          // сообщаем серверу об изменении руки сразу, чтобы избежать рассинхронизации
+          try { w.schedulePush?.('hand-limit-discard', { force: true }); } catch {}
           interactionState.pendingDiscardSelection = null;
           resolve();
         }
