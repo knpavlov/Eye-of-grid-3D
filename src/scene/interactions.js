@@ -390,7 +390,10 @@ function performMagicAttack(from, targetMesh) {
     const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
     setTimeout(() => {
       window.updateUnits(); window.updateUI();
-      try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
+      try {
+        // Принудительно отправляем состояние, иначе сервер может не узнать об уроне
+        window.schedulePush && window.schedulePush('magic-battle-finish', { force: true });
+      } catch {}
       if (interactionState.autoEndTurnAfterAttack) {
         interactionState.autoEndTurnAfterAttack = false;
       try { window.endTurn && window.endTurn(); } catch {}
@@ -399,7 +402,10 @@ function performMagicAttack(from, targetMesh) {
   } else {
     window.gameState = res.n1; window.updateUnits(); window.updateUI();
     const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
-    try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
+    try {
+      // Без принудительной отправки урон может "откатиться" при сетевой синхронизации
+      window.schedulePush && window.schedulePush('magic-battle-finish', { force: true });
+    } catch {}
     if (interactionState.autoEndTurnAfterAttack) {
       interactionState.autoEndTurnAfterAttack = false;
       try { window.endTurn && window.endTurn(); } catch {}

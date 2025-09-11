@@ -506,9 +506,12 @@
     } catch {}
     updateIndicator();
     updateInputLock();
-    // Show splash reliably; state event will drive full UI/mana sync
+    // Надёжно показываем заставку начала хода один раз
     try {
-      if (typeof forceTurnSplashWithRetry === 'function') forceTurnSplashWithRetry(2);
+      if (typeof forceTurnSplashWithRetry === 'function') {
+        const nextTurn = (gameState && typeof gameState.turn === 'number') ? gameState.turn + 1 : 1;
+        forceTurnSplashWithRetry(2, nextTurn);
+      }
     } catch {}
   });
 

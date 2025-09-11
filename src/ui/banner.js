@@ -80,6 +80,12 @@ export function queueTurnSplash(title){
 export async function requestTurnSplash(currentTurn){
   if (typeof currentTurn !== 'number') return _lastTurnSplashPromise;
 
+  // Если уже запрошена или проигрывается заставка для этого хода,
+  // не ставим ещё одну в очередь
+  if (_lastRequestedTurn === currentTurn && (_splashActive || _splashInProgress)) {
+    return _lastTurnSplashPromise;
+  }
+
   _lastRequestedTurn = currentTurn;
   let title = `Turn ${currentTurn}`;
   try {
