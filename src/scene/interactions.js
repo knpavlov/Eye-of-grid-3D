@@ -390,7 +390,7 @@ function performMagicAttack(from, targetMesh) {
     const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
     setTimeout(() => {
       window.updateUnits(); window.updateUI();
-      try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
+      try { window.schedulePush && window.schedulePush('magic-battle-finish', { force: true }); } catch {}
       if (interactionState.autoEndTurnAfterAttack) {
         interactionState.autoEndTurnAfterAttack = false;
       try { window.endTurn && window.endTurn(); } catch {}
@@ -400,7 +400,7 @@ function performMagicAttack(from, targetMesh) {
     try { window.applyGameState(res.n1); } catch {}
     window.updateUnits(); window.updateUI();
     const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
-    try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
+    try { window.schedulePush && window.schedulePush('magic-battle-finish', { force: true }); } catch {}
     if (interactionState.autoEndTurnAfterAttack) {
       interactionState.autoEndTurnAfterAttack = false;
       try { window.endTurn && window.endTurn(); } catch {}
