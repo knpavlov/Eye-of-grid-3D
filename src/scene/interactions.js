@@ -376,12 +376,12 @@ function performMagicAttack(from, targetMesh) {
   }
   if (res.deaths && res.deaths.length) {
     for (const d of res.deaths) {
-      try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
+      try { res.n1.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
       const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
       if (deadMesh) { window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9); }
       setTimeout(() => {
         const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-        const slot = gameState.players?.[d.owner]?.mana || 0;
+        const slot = res.n1.players?.[d.owner]?.mana || 0;
         window.animateManaGainFromWorld(p, d.owner, true, slot);
       }, 400);
     }
@@ -390,7 +390,8 @@ function performMagicAttack(from, targetMesh) {
     const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
     setTimeout(() => {
       window.updateUnits(); window.updateUI();
-      try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
+      // force:true — отправляем состояние даже во время анимаций
+      try { window.schedulePush && window.schedulePush('magic-battle-finish', { force: true }); } catch {}
       if (interactionState.autoEndTurnAfterAttack) {
         interactionState.autoEndTurnAfterAttack = false;
       try { window.endTurn && window.endTurn(); } catch {}
@@ -400,7 +401,8 @@ function performMagicAttack(from, targetMesh) {
     try { window.applyGameState(res.n1); } catch {}
     window.updateUnits(); window.updateUI();
     const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
-    try { window.schedulePush && window.schedulePush('magic-battle-finish'); } catch {}
+    // Немедленно синхронизируем результат магической атаки
+    try { window.schedulePush && window.schedulePush('magic-battle-finish', { force: true }); } catch {}
     if (interactionState.autoEndTurnAfterAttack) {
       interactionState.autoEndTurnAfterAttack = false;
       try { window.endTurn && window.endTurn(); } catch {}
