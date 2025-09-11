@@ -165,7 +165,9 @@
         })),
         board: (state.board||[]).map(row => row.map(cell => {
           const u = cell?.unit;
-          return u ? {o:u.owner,h:u.hp,a:u.atk,f:u.facing,t:u.tplId} : null;
+          // фиксируем фактическое здоровье, а не базовое
+          const hp = (typeof u?.currentHP === 'number') ? u.currentHP : u?.hp;
+          return u ? { o: u.owner, h: hp, a: u.atk, f: u.facing, t: u.tplId } : null;
         }))
       };
       return JSON.stringify(compact);
