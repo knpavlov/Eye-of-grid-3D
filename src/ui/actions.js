@@ -237,9 +237,15 @@ export async function endTurn() {
     const player = gameState.players[gameState.active];
     const before = player.mana;
     const manaAfter = (typeof w.capMana === 'function') ? w.capMana(before + 2) : before + 2;
-    const drawnTpl = (typeof w.drawOneNoAdd === 'function')
-      ? w.drawOneNoAdd(gameState, gameState.active)
-      : null;
+
+    // Добор карты выполняем один раз за ход
+    let drawnTpl = null;
+    if (player.lastDrawTurn !== gameState.turn) {
+      drawnTpl = (typeof w.drawOneNoAdd === 'function')
+        ? w.drawOneNoAdd(gameState, gameState.active)
+        : null;
+      try { player.lastDrawTurn = gameState.turn; } catch {}
+    }
 
     try {
       if (!w.PENDING_MANA_ANIM && !manaGainActive) {
