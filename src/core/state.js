@@ -28,6 +28,14 @@ export function reducer(state, action) {
     case A.END_TURN: {
       if (!state || state.winner != null) return state;
       const s = JSON.parse(JSON.stringify(state));
+      const plOld = s.players[s.active];
+      // Принудительный дискард до 7 карт перед передачей хода
+      try {
+        plOld.graveyard = Array.isArray(plOld.graveyard) ? plOld.graveyard : [];
+        while (Array.isArray(plOld.hand) && plOld.hand.length > 7) {
+          plOld.graveyard.push(plOld.hand.pop());
+        }
+      } catch {}
       const controlled = countControlled(s, s.active);
       if (controlled >= 5) { s.winner = s.active; s.__ver = (s.__ver || 0) + 1; return s; }
       s.active = s.active === 0 ? 1 : 0;

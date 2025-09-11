@@ -1,6 +1,8 @@
 // UI action helpers for rotating units and triggering attacks
 // These functions rely on existing globals to minimize coupling.
 import { highlightTiles, clearHighlights } from '../scene/highlight.js';
+import { interactionState } from '../scene/interactions.js';
+import { discardHandCard } from '../scene/discard.js';
 
 export function rotateUnit(unitMesh, dir) {
   try {
@@ -149,6 +151,31 @@ export async function endTurn() {
       : !!w.splashActive;
     if (isInputLocked() || manaGainActive || drawAnimationActive || splashActive) {
       w.showNotification?.('Wait for animations to complete', 'warning');
+      return;
+    }
+
+    // Проверка лимита карт в руке перед завершением хода
+    const player = gameState.players[gameState.active];
+    if (player?.hand?.length > 7) {
+      const doDiscard = (handIdx) => {
+        const tpl = discardHandCard(player, handIdx);
+        if (!tpl) return;
+        w.updateUI?.(gameState);
+        w.schedulePush?.('hand-limit-discard', { force: true });
+        if (player.hand.length > 7) {
+          showLimitPrompt();
+        } else {
+          w.__ui?.panels?.hidePrompt();
+          setTimeout(() => { endTurn(); }, 0);
+        }
+      };
+      const showLimitPrompt = () => {
+        const left = player.hand.length - 7;
+        const msg = `Сбросьте ${left} карт${left > 1 ? 'ы' : 'у'}, чтобы осталось 7`;
+        w.__ui?.panels?.showPrompt(msg, showLimitPrompt);
+        interactionState.pendingDiscardSelection = { unskippable: true, onPicked: doDiscard };
+      };
+      showLimitPrompt();
       return;
     }
 

@@ -183,6 +183,17 @@ io.on("connection", (socket) => {
       if (socket.data.seat !== expectedSeat) return; // not your turn
     } catch { return; }
 
+    // Контроль лимита карт перед сменой хода
+    try {
+      const pl = st.players?.[st.active];
+      if (pl && Array.isArray(pl.hand) && pl.hand.length > 7) {
+        pl.graveyard = Array.isArray(pl.graveyard) ? pl.graveyard : [];
+        while (pl.hand.length > 7) {
+          pl.graveyard.push(pl.hand.pop());
+        }
+      }
+    } catch {}
+
     try {
       // Clear temp buffs owned by current active before switching
       for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {

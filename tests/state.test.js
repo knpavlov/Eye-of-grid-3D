@@ -101,6 +101,25 @@ describe('reducer', () => {
     expect(next.__ver).toBeGreaterThan(state.__ver);
   });
 
+  it('A.END_TURN: discards down to seven cards for ending player', () => {
+    const board = makeEmptyBoard();
+    const hand = Array.from({ length: 9 }, (_, i) => `C${i}`);
+    const state = {
+      board,
+      players: [
+        { deck: [], hand: hand.slice(), graveyard: [], mana: 0 },
+        { deck: [], hand: [], mana: 0 }
+      ],
+      active: 0,
+      turn: 1,
+      winner: null,
+      __ver: 0,
+    };
+    const next = reducer(state, { type: A.END_TURN });
+    expect(next.players[0].hand).toHaveLength(7);
+    expect(next.players[0].graveyard).toHaveLength(2);
+  });
+
   it('A.END_TURN: declares winner if 5+ controlled by active', () => {
     const board = makeEmptyBoard();
     // Active player 0 controls 5 cells

@@ -138,6 +138,10 @@ function onMouseDown(event) {
   raycaster.setFromCamera(mouse, ctx.camera);
 
   const handIntersects = raycaster.intersectObjects(handCardMeshes, true);
+  if (interactionState.pendingDiscardSelection && interactionState.pendingDiscardSelection.unskippable && handIntersects.length === 0) {
+    showNotification('Сбросьте карты до 7 в руке', 'warning');
+    return;
+  }
   if (handIntersects.length > 0) {
     const hitObj = handIntersects[0].object;
     const card = hitObj.userData?.isInHand ? hitObj : hitObj.parent;
@@ -194,7 +198,7 @@ function onMouseDown(event) {
   if (interactionState.selectedCard) {
     resetCardSelection();
   }
-  if (interactionState.pendingDiscardSelection) {
+  if (interactionState.pendingDiscardSelection && !interactionState.pendingDiscardSelection.unskippable) {
     try { window.__ui.panels.hidePrompt(); } catch {}
     interactionState.pendingDiscardSelection = null;
     if (interactionState.draggedCard && interactionState.draggedCard.userData && interactionState.draggedCard.userData.cardData && interactionState.draggedCard.userData.cardData.type === 'SPELL') {
