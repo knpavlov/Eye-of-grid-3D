@@ -441,7 +441,16 @@
         // Привязка обработчиков взаимодействия теперь в модуле interactions
         window.__interactions.setupInteractions();
         try { window.attachUIEvents && window.attachUIEvents(); } catch {}
-        try { window.__ui?.mainMenu?.open?.(true); } catch {}
+        try {
+          // Если флаг пропуска стартового меню не установлен, показываем его
+          const skip = localStorage.getItem('skipMainMenu');
+          if (!skip) {
+            window.__ui?.mainMenu?.open?.(true);
+          } else {
+            // Флаг одноразовый: удаляем его после чтения
+            localStorage.removeItem('skipMainMenu');
+          }
+        } catch {}
       }
     try { window.init = init; window.initThreeJS = initThreeJS; window.initGame = initGame; window.animate = animate; } catch {}
 
