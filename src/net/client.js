@@ -47,7 +47,18 @@
       })();
       wrap.appendChild(btn);
     }
-    btn.addEventListener('click', onFindMatchClick);
+    btn.addEventListener('click', () => {
+      const ds = window.__ui?.deckSelect;
+      if (ds && typeof ds.open === 'function') {
+        ds.open(deck => {
+          try { localStorage.setItem('selectedDeckId', deck.id); } catch {}
+          window.__selectedDeckObj = deck;
+          onFindMatchClick();
+        });
+      } else {
+        onFindMatchClick();
+      }
+    });
   }
   mountOnlineButton();
   const mo = new MutationObserver(() => mountOnlineButton());
