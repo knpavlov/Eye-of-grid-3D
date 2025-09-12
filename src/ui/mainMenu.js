@@ -4,6 +4,10 @@ let firstOpen = true;
 export function open(initial = false) {
   if (typeof document === 'undefined') return;
   if (initial) firstOpen = true;
+  // При первом открытии останавливаем таймер ходов
+  if (firstOpen) {
+    try { window.__ui?.turnTimer?.stop?.(); } catch {}
+  }
   const overlay = document.createElement('div');
   overlay.id = 'main-menu-overlay';
   const bgClass = firstOpen ? 'bg-black bg-opacity-90' : 'bg-black bg-opacity-50';
@@ -41,60 +45,67 @@ export function open(initial = false) {
   addBtn('mm-online', 'Play Online', () => {
     close();
     const ds = window.__ui?.deckSelect;
-    if (ds && typeof ds.open === 'function') {
-      ds.open(deck => {
-        try { localStorage.setItem('selectedDeckId', deck.id); } catch {}
-        window.__selectedDeckObj = deck;
-        window.__net?.findMatch?.();
-      });
-    } else {
+    const confirm = deck => {
+      try { if (deck?.id) localStorage.setItem('selectedDeckId', deck.id); } catch {}
+      window.__selectedDeckObj = deck;
       window.__net?.findMatch?.();
+      firstOpen = false;
+    };
+    const cancel = () => open(true);
+    if (ds && typeof ds.open === 'function') {
+      ds.open(confirm, cancel);
+    } else {
+      confirm();
     }
-    firstOpen = false;
   });
 
   addBtn('mm-offline', 'Play Offline', () => {
     close();
     const ds = window.__ui?.deckSelect;
+    const confirm = deck => {
+      try { if (deck?.id) localStorage.setItem('selectedDeckId', deck.id); } catch {}
+      window.__selectedDeckObj = deck;
+      try { window.initGame?.(); } catch {}
+      firstOpen = false;
+    };
+    const cancel = () => open(true);
     if (ds && typeof ds.open === 'function') {
-      ds.open(deck => {
-        try { localStorage.setItem('selectedDeckId', deck.id); } catch {}
-        window.__selectedDeckObj = deck;
-        location.reload();
-      });
+      ds.open(confirm, cancel);
     } else {
-      location.reload();
+      confirm();
     }
-    firstOpen = false;
   });
 
   addBtn('mm-deck', 'Deck Builder', () => {}, true);
   addBtn('mm-settings', 'Settings', () => {}, true);
 
-  addBtn('mm-surrender', 'Surrender', () => {
-    close();
-    const confirmModal = document.createElement('div');
-    confirmModal.className = 'fixed inset-0 flex items-center justify-center bg-black bg-opacity-60 z-50';
-    confirmModal.innerHTML = `<div class="overlay-panel p-6 space-y-4 text-center">
+  if (!firstOpen) {
+    addBtn('mm-surrender', 'Surrender', () => {
+      close();
+      const confirmModal = document.createElement('div');
+      confirmModal.className = 'fixed inset-0 flex items-center justify-center bg-black bg-opacity-60 z-50';
+      confirmModal.innerHTML = `<div class="overlay-panel p-6 space-y-4 text-center">
       <div>Вы уверены, что хотите сдаться?</div>
       <div class="flex gap-2 justify-center">
         <button id="mm-r-yes" class="overlay-panel px-4 py-2 bg-red-600 hover:bg-red-700">Да</button>
         <button id="mm-r-no" class="overlay-panel px-4 py-2">Нет</button>
       </div>
     </div>`;
-    document.body.appendChild(confirmModal);
-    confirmModal.querySelector('#mm-r-no').addEventListener('click', () => confirmModal.remove());
-    confirmModal.querySelector('#mm-r-yes').addEventListener('click', () => {
-      try { window.socket?.emit('resign'); } catch {}
-      try { window.setWinner?.(1 - window.gameState.active, 'resign'); } catch {}
-      confirmModal.remove();
+      document.body.appendChild(confirmModal);
+      confirmModal.querySelector('#mm-r-no').addEventListener('click', () => confirmModal.remove());
+      confirmModal.querySelector('#mm-r-yes').addEventListener('click', () => {
+        try { window.socket?.emit('resign'); } catch {}
+        try { window.setWinner?.(1 - window.gameState.active, 'resign'); } catch {}
+        confirmModal.remove();
+        open(true);
+      });
     });
-  });
 
-  addBtn('mm-cancel', 'Cancel', () => {
-    close();
-    firstOpen = false;
-  });
+    addBtn('mm-cancel', 'Cancel', () => {
+      close();
+      firstOpen = false;
+    });
+  }
 
   document.body.appendChild(overlay);
 }
