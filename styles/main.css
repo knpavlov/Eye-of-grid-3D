@@ -87,6 +87,20 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
 /* Tooltip для 3D-колод/кладбищ */
 #hover-tooltip { position: fixed; pointer-events: none; z-index: 50; }
 
+/* Глянцевый эффект для кнопок выбора колоды */
+.glossy-btn { position: relative; overflow: hidden; transition: transform .2s ease, background-color .2s ease; }
+.glossy-btn:hover { transform: scale(1.05); }
+.glossy-btn::after {
+  content: '';
+  position: absolute;
+  top: -150%; left: -50%;
+  width: 200%; height: 200%;
+  background: linear-gradient(60deg, transparent 45%, rgba(255,255,255,0.35) 50%, transparent 55%);
+  transform: translateX(-100%) rotate(25deg);
+  transition: transform .5s ease;
+}
+.glossy-btn:hover::after { transform: translateX(100%) rotate(25deg); }
+
 /* Opponent hand count indicator */
 #opponent-hand-count {
   position: relative;

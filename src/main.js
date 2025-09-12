@@ -1,6 +1,7 @@
 ﻿// Bridge file to expose core modules to existing global code progressively
 import * as Constants from './core/constants.js';
 import { CARDS, STARTER_FIRESET } from './core/cards.js';
+import { DECKS } from './core/decks.js';
 import * as Rules from './core/rules.js';
 import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled, countUnits } from './core/state.js';
 import { netState, NET_ON } from './core/netState.js';
@@ -31,6 +32,7 @@ import './ui/statusChip.js';
 import * as InputLock from './ui/inputLock.js';
 import { attachUIEvents } from './ui/domEvents.js';
 import * as BattleSplash from './ui/battleSplash.js';
+import * as DeckSelect from './ui/deckSelect.js';
 import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
@@ -51,6 +53,7 @@ try {
 
   window.CARDS = CARDS;
   window.STARTER_FIRESET = STARTER_FIRESET;
+  window.DECKS = DECKS;
 
   window.hasAdjacentGuard = Rules.hasAdjacentGuard;
   window.computeCellBuff = Rules.computeCellBuff;
@@ -177,6 +180,7 @@ try {
   window.__ui.inputLock = InputLock;
   window.__ui.summonLock = SummonLock;
   window.__ui.cancelButton = CancelButton;
+  window.__ui.deckSelect = DeckSelect;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
