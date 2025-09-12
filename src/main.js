@@ -33,6 +33,7 @@ import * as InputLock from './ui/inputLock.js';
 import { attachUIEvents } from './ui/domEvents.js';
 import * as BattleSplash from './ui/battleSplash.js';
 import * as DeckSelect from './ui/deckSelect.js';
+import * as MainMenu from './ui/mainMenu.js';
 import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
@@ -181,6 +182,7 @@ try {
   window.__ui.summonLock = SummonLock;
   window.__ui.cancelButton = CancelButton;
   window.__ui.deckSelect = DeckSelect;
+  window.__ui.mainMenu = MainMenu;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
