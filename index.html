@@ -431,19 +431,30 @@
       } catch {}
     }
 
-      function init() {
-        wireModules();
+      // Запуск полной игровой инициализации после стартового меню
+      function startAfterMenu() {
         initThreeJS();
-        // Start render loop early so scene is visible even if game init fails
+        // Рендеринг начинается только после старта игры
         animate();
         initGame();
-
-        // Привязка обработчиков взаимодействия теперь в модуле interactions
+        // Привязываем взаимодействия уже к готовой сцене
         window.__interactions.setupInteractions();
         try { window.attachUIEvents && window.attachUIEvents(); } catch {}
+      }
+
+      // Начальная точка входа: только подключаем модули и показываем меню
+      function init() {
+        wireModules();
         try { window.__ui?.mainMenu?.open?.(true); } catch {}
       }
-    try { window.init = init; window.initThreeJS = initThreeJS; window.initGame = initGame; window.animate = animate; } catch {}
+    try {
+      window.init = init;
+      window.initThreeJS = initThreeJS;
+      window.initGame = initGame;
+      window.animate = animate;
+      // Делаем функцию старта доступной модулю меню
+      window.startAfterMenu = startAfterMenu;
+    } catch {}
 
     // UI wrappers: use modules only
     try { showNotification = (message, type) => window.__ui.notifications.show(message, type); } catch {}
