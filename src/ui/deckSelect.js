@@ -29,7 +29,8 @@ export function open(onConfirm, onCancel) {
 
   const list = document.createElement('div');
   // ограничиваем высоту списка, чтобы появился скролл при избытке колод
-  list.className = 'flex-1 overflow-y-auto space-y-3 pr-2 max-h-64';
+  // добавляем кастомный скролл, чтобы он вписывался в общий стиль
+  list.className = 'flex-1 overflow-y-auto space-y-3 pr-2 max-h-64 custom-scroll';
   panel.appendChild(list);
 
   DECKS.forEach((d, idx) => {

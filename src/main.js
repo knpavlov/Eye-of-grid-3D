@@ -37,6 +37,7 @@ import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
 import * as CancelButton from './ui/cancelButton.js';
+import * as MainMenu from './ui/mainMenu.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -180,6 +181,7 @@ try {
   window.__ui.inputLock = InputLock;
   window.__ui.summonLock = SummonLock;
   window.__ui.cancelButton = CancelButton;
+  window.__ui.mainMenu = MainMenu;
   window.__ui.deckSelect = DeckSelect;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
@@ -198,5 +200,12 @@ try {
 } catch {}
 
 import * as UISync from './ui/sync.js';
+
+// автоматически открываем стартовое меню при загрузке страницы
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    try { MainMenu.open(true); } catch {}
+  });
+}
 try { UISync.attachSocketUIRefresh(); if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.sync = UISync; } } catch {}
 

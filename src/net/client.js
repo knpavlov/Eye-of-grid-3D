@@ -29,40 +29,24 @@
   `;
   const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
-  // ===== 2) Кнопка «Онлайн-игра» — как стандартные overlay-кнопки рядом с остальными =====
-  function mountOnlineButton() {
-    if (document.getElementById('find-match-btn')) return;
-    const btn = document.createElement('button');
-    btn.id = 'find-match-btn';
-    btn.className = 'overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors';
-    btn.textContent = 'Play Online';
-    // Place inside the right-side control panel, next to other buttons
-    const host = document.querySelector('#corner-right .flex') || document.getElementById('corner-right');
-    if (host) {
-      host.appendChild(btn);
-    } else {
-      // Fallback: if panel not yet mounted, use floater
-      const wrap = document.getElementById('mp-floater') || (() => {
-        const d = document.createElement('div'); d.id='mp-floater'; d.className='mp-floater'; document.body.appendChild(d); return d;
-      })();
-      wrap.appendChild(btn);
-    }
-    btn.addEventListener('click', () => {
-      const ds = window.__ui?.deckSelect;
-      if (ds && typeof ds.open === 'function') {
-        ds.open(deck => {
-          try { localStorage.setItem('selectedDeckId', deck.id); } catch {}
-          window.__selectedDeckObj = deck;
-          onFindMatchClick();
-        });
-      } else {
+  // ===== 2) API для кнопки "Play Online" в главном меню =====
+  function startOnlineMatch(){
+    const ds = window.__ui?.deckSelect;
+    if (ds && typeof ds.open === 'function') {
+      ds.open(deck => {
+        try { localStorage.setItem('selectedDeckId', deck.id); } catch {}
+        window.__selectedDeckObj = deck;
         onFindMatchClick();
-      }
-    });
+      });
+    } else {
+      onFindMatchClick();
+    }
   }
-  mountOnlineButton();
-  const mo = new MutationObserver(() => mountOnlineButton());
-  mo.observe(document.body, { childList:true, subtree:true });
+  try {
+    window.__ui = window.__ui || {};
+    window.__ui.mainMenuActions = window.__ui.mainMenuActions || {};
+    window.__ui.mainMenuActions.playOnline = startOnlineMatch;
+  } catch {}
 
   // ===== 3) Queue modal + countdown =====
   let queueModal=null, startModal=null;
@@ -937,36 +921,29 @@
     });
   }
 
-  // Кнопка «Сдаться» рядом с остальными
-  function mountResignButton(){
-    if (document.getElementById('resign-btn')) return;
-    const host = document.querySelector('#corner-right .flex') || document.getElementById('corner-right');
-    if (!host) return;
-    const btn = document.createElement('button');
-    btn.id = 'resign-btn';
-    btn.className = 'overlay-panel px-3 py-1.5 text-xs bg-red-600 hover:bg-red-700 transition-colors';
-    btn.textContent = 'Surrender';
-    host.appendChild(btn);
-    btn.addEventListener('click', ()=>{
-      const confirmModal = document.createElement('div');
-      confirmModal.className = 'mp-modal';
-      confirmModal.innerHTML = `<div class="mp-card">
-        <div>Вы уверены, что хотите сдаться?</div>
-        <div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
-          <button id="r-yes" class="mp-btn">Да</button>
-          <button id="r-no" class="mp-btn">Нет</button>
-        </div>
-      </div>`;
-      document.body.appendChild(confirmModal);
-      confirmModal.querySelector('#r-no').addEventListener('click', ()=> confirmModal.remove());
-      confirmModal.querySelector('#r-yes').addEventListener('click', ()=>{
-        try { (window.socket || socket).emit('resign'); } catch {}
-        try { confirmModal.remove(); } catch {}
-      });
+  // ===== API для кнопки "Surrender" в главном меню =====
+  function promptResign(){
+    const confirmModal = document.createElement('div');
+    confirmModal.className = 'mp-modal';
+    confirmModal.innerHTML = `<div class="mp-card">
+      <div>Вы уверены, что хотите сдаться?</div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
+        <button id="r-yes" class="mp-btn">Да</button>
+        <button id="r-no" class="mp-btn">Нет</button>
+      </div>
+    </div>`;
+    document.body.appendChild(confirmModal);
+    confirmModal.querySelector('#r-no').addEventListener('click', ()=> confirmModal.remove());
+    confirmModal.querySelector('#r-yes').addEventListener('click', ()=>{
+      try { (window.socket || socket).emit('resign'); } catch {}
+      try { confirmModal.remove(); } catch {}
     });
   }
-  mountResignButton();
-  setInterval(mountResignButton, 1000);
+  try {
+    window.__ui = window.__ui || {};
+    window.__ui.mainMenuActions = window.__ui.mainMenuActions || {};
+    window.__ui.mainMenuActions.surrender = promptResign;
+  } catch {}
 
   socket.on('matchEnded', ({ winnerSeat, reason })=>{
     // Полный сброс клиентского онлайнового состояния и комнаты перед показом модалки

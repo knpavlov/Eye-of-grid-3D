@@ -74,6 +74,25 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
   transition: left .5s;
 }
 .glossy-btn:hover::after { left: 150%; }
+/* Кастомный скролл для списков */
+.custom-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148,163,184,0.6) rgba(30,41,59,0.9);
+}
+.custom-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.custom-scroll::-webkit-scrollbar-track {
+  background: rgba(30,41,59,0.9);
+  border-radius: 8px;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148,163,184,0.6);
+  border-radius: 8px;
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(203,213,225,0.8);
+}
 /* Prompt: кликабельна только панель, остальное кликается сквозь */
 #prompt-panel { pointer-events: none; }
 #prompt-panel .overlay-panel { pointer-events: auto; }
