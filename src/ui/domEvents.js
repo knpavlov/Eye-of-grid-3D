@@ -11,17 +11,9 @@ export function attachUIEvents() {
   });
   refreshInputLockUI();
 
-  document.getElementById('new-game-btn')?.addEventListener('click', () => {
-    const ds = w.__ui?.deckSelect;
-    if (ds && typeof ds.open === 'function') {
-      ds.open(deck => {
-        try { localStorage.setItem('selectedDeckId', deck.id); } catch {}
-        w.__selectedDeckObj = deck;
-        location.reload();
-      });
-    } else {
-      location.reload();
-    }
+  document.getElementById('menu-btn')?.addEventListener('click', () => {
+    // Открываем новое меню
+    try { w.__ui?.menu?.open(); } catch {}
   });
 
   document.getElementById('log-btn')?.addEventListener('click', () => {
@@ -96,6 +88,9 @@ export function attachUIEvents() {
       w.__interactions.placeUnitWithDirection(direction);
     });
   });
+
+  // При первом запуске показываем стартовое меню
+  try { w.__ui?.menu?.open({ start: true }); } catch {}
 }
 
 const api = { attachUIEvents };
