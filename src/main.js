@@ -37,6 +37,7 @@ import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
 import * as CancelButton from './ui/cancelButton.js';
+import * as MainMenu from './ui/mainMenu.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -181,6 +182,7 @@ try {
   window.__ui.summonLock = SummonLock;
   window.__ui.cancelButton = CancelButton;
   window.__ui.deckSelect = DeckSelect;
+  window.__ui.mainMenu = MainMenu;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
@@ -199,4 +201,6 @@ try {
 
 import * as UISync from './ui/sync.js';
 try { UISync.attachSocketUIRefresh(); if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.sync = UISync; } } catch {}
+
+try { MainMenu.open(); } catch {}
 

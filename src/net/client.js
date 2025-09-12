@@ -29,42 +29,7 @@
   `;
   const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
-  // ===== 2) Кнопка «Онлайн-игра» — как стандартные overlay-кнопки рядом с остальными =====
-  function mountOnlineButton() {
-    if (document.getElementById('find-match-btn')) return;
-    const btn = document.createElement('button');
-    btn.id = 'find-match-btn';
-    btn.className = 'overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors';
-    btn.textContent = 'Play Online';
-    // Place inside the right-side control panel, next to other buttons
-    const host = document.querySelector('#corner-right .flex') || document.getElementById('corner-right');
-    if (host) {
-      host.appendChild(btn);
-    } else {
-      // Fallback: if panel not yet mounted, use floater
-      const wrap = document.getElementById('mp-floater') || (() => {
-        const d = document.createElement('div'); d.id='mp-floater'; d.className='mp-floater'; document.body.appendChild(d); return d;
-      })();
-      wrap.appendChild(btn);
-    }
-    btn.addEventListener('click', () => {
-      const ds = window.__ui?.deckSelect;
-      if (ds && typeof ds.open === 'function') {
-        ds.open(deck => {
-          try { localStorage.setItem('selectedDeckId', deck.id); } catch {}
-          window.__selectedDeckObj = deck;
-          onFindMatchClick();
-        });
-      } else {
-        onFindMatchClick();
-      }
-    });
-  }
-  mountOnlineButton();
-  const mo = new MutationObserver(() => mountOnlineButton());
-  mo.observe(document.body, { childList:true, subtree:true });
-
-  // ===== 3) Queue modal + countdown =====
+  // ===== 2) Queue modal + countdown =====
   let queueModal=null, startModal=null;
   function showQueueModal(){
     hideQueueModal();
@@ -92,7 +57,7 @@
   }
   function hideStartCountdown(){ startModal?.remove(); startModal=null; }
 
-  // ===== 4) Socket + sync =====
+  // ===== 3) Socket + sync =====
   const socket = io(SERVER_URL, { 
     transports: ['websocket', 'polling'],
     upgrade: true,
@@ -704,16 +669,17 @@
   });
 
   // ===== 5) Queue / start =====
-  function onFindMatchClick(){ 
+  function onFindMatchClick(){
     console.log('[QUEUE] Attempting to join queue, socket connected:', socket.connected);
-    showQueueModal(); 
-    try { 
-      (window.socket || socket).emit('joinQueue'); 
+    showQueueModal();
+    try {
+      (window.socket || socket).emit('joinQueue');
       (window.socket || socket).emit('debugLog', { event: 'joinQueue_sent', connected: socket.connected });
     } catch(err) {
       console.error('[QUEUE] Error joining queue:', err);
     }
   }
+  try { window.__onFindMatchClick = onFindMatchClick; } catch {}
   socket.on('matchFound', ({ matchId, seat })=>{
     hideQueueModal();
     console.log('[MATCH] Match found, setting MY_SEAT to:', seat, 'matchId:', matchId);
@@ -766,7 +732,7 @@
   (function mountDebugLog(){
     try {
       if (document.getElementById('debug-log-btn')) return;
-      // Размещаем отдельно слева над индикатором, чтобы не перекрывать «Сдаться»
+      // Размещаем отдельно слева над индикатором, чтобы не перекрывать кнопку меню
       let host = document.getElementById('mp-debug');
       if (!host) { host = document.createElement('div'); host.id='mp-debug'; host.style.position='fixed'; host.style.left='12px'; host.style.bottom='52px'; host.style.zIndex='9998'; document.body.appendChild(host); }
       const btn = document.createElement('button'); btn.id='debug-log-btn'; btn.className='mp-btn'; btn.textContent='Download log';
@@ -937,36 +903,22 @@
     });
   }
 
-  // Кнопка «Сдаться» рядом с остальными
-  function mountResignButton(){
-    if (document.getElementById('resign-btn')) return;
+  // Кнопка «Menu» рядом с остальными кнопками
+  function mountMenuButton(){
+    if (document.getElementById('menu-btn')) return;
     const host = document.querySelector('#corner-right .flex') || document.getElementById('corner-right');
     if (!host) return;
     const btn = document.createElement('button');
-    btn.id = 'resign-btn';
-    btn.className = 'overlay-panel px-3 py-1.5 text-xs bg-red-600 hover:bg-red-700 transition-colors';
-    btn.textContent = 'Surrender';
+    btn.id = 'menu-btn';
+    btn.className = 'overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors';
+    btn.textContent = 'Menu';
     host.appendChild(btn);
     btn.addEventListener('click', ()=>{
-      const confirmModal = document.createElement('div');
-      confirmModal.className = 'mp-modal';
-      confirmModal.innerHTML = `<div class="mp-card">
-        <div>Вы уверены, что хотите сдаться?</div>
-        <div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
-          <button id="r-yes" class="mp-btn">Да</button>
-          <button id="r-no" class="mp-btn">Нет</button>
-        </div>
-      </div>`;
-      document.body.appendChild(confirmModal);
-      confirmModal.querySelector('#r-no').addEventListener('click', ()=> confirmModal.remove());
-      confirmModal.querySelector('#r-yes').addEventListener('click', ()=>{
-        try { (window.socket || socket).emit('resign'); } catch {}
-        try { confirmModal.remove(); } catch {}
-      });
+      try { window.__ui?.mainMenu?.open(); } catch {}
     });
   }
-  mountResignButton();
-  setInterval(mountResignButton, 1000);
+  mountMenuButton();
+  setInterval(mountMenuButton, 1000);
 
   socket.on('matchEnded', ({ winnerSeat, reason })=>{
     // Полный сброс клиентского онлайнового состояния и комнаты перед показом модалки
