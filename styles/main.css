@@ -106,3 +106,23 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
   background: #0f172a;
   transform-origin: bottom center;
 }
+
+/* Глянцевый эффект для кнопок в меню */
+.btn-gloss {
+  position: relative;
+  overflow: hidden;
+}
+.btn-gloss::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -40%;
+  width: 40%;
+  height: 200%;
+  background: rgba(255,255,255,0.2);
+  transform: rotate(25deg);
+  transition: left 0.6s;
+}
+.btn-gloss:hover::after {
+  left: 140%;
+}

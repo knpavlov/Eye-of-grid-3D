@@ -359,7 +359,18 @@
         // Взаимодействия с 3D-сценой вынесены в модуль src/scene/interactions.js
     
     async function initGame() {
-      gameState = startGame(STARTER_FIRESET, STARTER_FIRESET);
+      const decks = window.DECKS || [];
+      let chosen = window.__selectedDeckObj;
+      if (!chosen) {
+        try {
+          const id = localStorage.getItem('selectedDeckId');
+          chosen = decks.find(d => d.id === id) || decks[0];
+        } catch {
+          chosen = decks[0];
+        }
+      }
+      const d = chosen ? chosen.cards : STARTER_FIRESET;
+      gameState = startGame(d, d);
       try { window.applyGameState(gameState); } catch {}
       
       // Сразу строим сцену и мета-объекты, без задержки появления
