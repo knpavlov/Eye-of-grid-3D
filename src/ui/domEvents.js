@@ -11,7 +11,18 @@ export function attachUIEvents() {
   });
   refreshInputLockUI();
 
-  document.getElementById('new-game-btn')?.addEventListener('click', () => location.reload());
+  document.getElementById('new-game-btn')?.addEventListener('click', () => {
+    const ds = w.__ui?.deckSelect;
+    if (ds && typeof ds.open === 'function') {
+      ds.open(deck => {
+        try { localStorage.setItem('selectedDeckId', deck.id); } catch {}
+        w.__selectedDeckObj = deck;
+        location.reload();
+      });
+    } else {
+      location.reload();
+    }
+  });
 
   document.getElementById('log-btn')?.addEventListener('click', () => {
     const lp = document.getElementById('log-panel');
