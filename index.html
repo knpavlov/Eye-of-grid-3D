@@ -59,7 +59,7 @@
       <div class="flex gap-2 opacity-90">
         <button id="log-btn" class="overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors">Log</button>
         <button id="help-btn" class="overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors">Help</button>
-        <button id="new-game-btn" class="overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors">Play offline</button>
+        <button id="menu-btn" class="overlay-panel px-3 py-1.5 text-xs bg-slate-600 hover:bg-slate-700 transition-colors">Menu</button>
       </div>
     </div>
     
@@ -441,6 +441,7 @@
         // Привязка обработчиков взаимодействия теперь в модуле interactions
         window.__interactions.setupInteractions();
         try { window.attachUIEvents && window.attachUIEvents(); } catch {}
+        try { window.__ui?.mainMenu?.open?.(true); } catch {}
       }
     try { window.init = init; window.initThreeJS = initThreeJS; window.initGame = initGame; window.animate = animate; } catch {}
 
