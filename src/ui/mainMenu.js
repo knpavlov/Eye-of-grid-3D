@@ -41,60 +41,71 @@ export function open(initial = false) {
   addBtn('mm-online', 'Play Online', () => {
     close();
     const ds = window.__ui?.deckSelect;
+    // запускаем сетевую игру после выбора колоды
+    const startOnline = deck => {
+      try { localStorage.setItem('selectedDeckId', deck.id); } catch {}
+      window.__selectedDeckObj = deck;
+      firstOpen = false;
+      window.__net?.findMatch?.();
+    };
+    // если передумали — возвращаемся в стартовое меню
+    const back = () => open(true);
     if (ds && typeof ds.open === 'function') {
-      ds.open(deck => {
-        try { localStorage.setItem('selectedDeckId', deck.id); } catch {}
-        window.__selectedDeckObj = deck;
-        window.__net?.findMatch?.();
-      });
+      ds.open(startOnline, back);
     } else {
+      firstOpen = false;
       window.__net?.findMatch?.();
     }
-    firstOpen = false;
   });
 
   addBtn('mm-offline', 'Play Offline', () => {
     close();
     const ds = window.__ui?.deckSelect;
+    // старт офлайн-игры без перезагрузки страницы
+    const startOffline = deck => {
+      try { localStorage.setItem('selectedDeckId', deck.id); } catch {}
+      window.__selectedDeckObj = deck;
+      firstOpen = false;
+      try { window.initGame?.(); } catch {}
+    };
+    const back = () => open(true);
     if (ds && typeof ds.open === 'function') {
-      ds.open(deck => {
-        try { localStorage.setItem('selectedDeckId', deck.id); } catch {}
-        window.__selectedDeckObj = deck;
-        location.reload();
-      });
+      ds.open(startOffline, back);
     } else {
-      location.reload();
+      firstOpen = false;
+      try { window.initGame?.(); } catch {}
     }
-    firstOpen = false;
   });
 
   addBtn('mm-deck', 'Deck Builder', () => {}, true);
   addBtn('mm-settings', 'Settings', () => {}, true);
 
-  addBtn('mm-surrender', 'Surrender', () => {
-    close();
-    const confirmModal = document.createElement('div');
-    confirmModal.className = 'fixed inset-0 flex items-center justify-center bg-black bg-opacity-60 z-50';
-    confirmModal.innerHTML = `<div class="overlay-panel p-6 space-y-4 text-center">
+  if (!firstOpen) {
+    addBtn('mm-surrender', 'Surrender', () => {
+      close();
+      const confirmModal = document.createElement('div');
+      confirmModal.className = 'fixed inset-0 flex items-center justify-center bg-black bg-opacity-60 z-50';
+      confirmModal.innerHTML = `<div class="overlay-panel p-6 space-y-4 text-center">
       <div>Вы уверены, что хотите сдаться?</div>
       <div class="flex gap-2 justify-center">
         <button id="mm-r-yes" class="overlay-panel px-4 py-2 bg-red-600 hover:bg-red-700">Да</button>
         <button id="mm-r-no" class="overlay-panel px-4 py-2">Нет</button>
       </div>
     </div>`;
-    document.body.appendChild(confirmModal);
-    confirmModal.querySelector('#mm-r-no').addEventListener('click', () => confirmModal.remove());
-    confirmModal.querySelector('#mm-r-yes').addEventListener('click', () => {
-      try { window.socket?.emit('resign'); } catch {}
-      try { window.setWinner?.(1 - window.gameState.active, 'resign'); } catch {}
-      confirmModal.remove();
+      document.body.appendChild(confirmModal);
+      confirmModal.querySelector('#mm-r-no').addEventListener('click', () => confirmModal.remove());
+      confirmModal.querySelector('#mm-r-yes').addEventListener('click', () => {
+        try { window.socket?.emit('resign'); } catch {}
+        try { window.setWinner?.(1 - window.gameState.active, 'resign'); } catch {}
+        confirmModal.remove();
+        try { window.location.reload(); } catch {}
+      });
     });
-  });
 
-  addBtn('mm-cancel', 'Cancel', () => {
-    close();
-    firstOpen = false;
-  });
+    addBtn('mm-cancel', 'Cancel', () => {
+      close();
+    });
+  }
 
   document.body.appendChild(overlay);
 }

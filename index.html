@@ -434,10 +434,9 @@
       function init() {
         wireModules();
         initThreeJS();
-        // Start render loop early so scene is visible even if game init fails
+        // Запускаем рендер заранее, но игру инициализируем позже,
+        // когда игрок выберет режим и колоду
         animate();
-        initGame();
-
         // Привязка обработчиков взаимодействия теперь в модуле interactions
         window.__interactions.setupInteractions();
         try { window.attachUIEvents && window.attachUIEvents(); } catch {}
