@@ -31,7 +31,7 @@ const CARDS = {
     id: 'FIRE_HELLFIRE_SPITTER', name: 'Hellfire Spitter', type: 'UNIT',
     cost: 1, activation: 1, element: 'FIRE', atk: 1, hp: 1,
     pattern: 'ALL', range: 1, attackType: 'MELEE', blindspots: [],
-    firstStrike: true,
+    quickness: true,
     desc: 'Quickness: always strikes first.'
   },
   FIRE_FREEDONIAN_WANDERER: {
@@ -45,7 +45,7 @@ const CARDS = {
     id: 'FIRE_PARTMOLE_FLAME_LIZARD', name: 'Partmole Flame Lizard', type: 'UNIT',
     cost: 2, activation: 2, element: 'FIRE', atk: 2, hp: 2,
     pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
-    firstStrike: true,
+    quickness: true,
     desc: 'Quickness. The activation cost to attack is 1 less than listed.'
   },
   FIRE_FIREFLY_NINJA: {
@@ -59,7 +59,7 @@ const CARDS = {
     id: 'FIRE_GREAT_MINOS', name: 'Great Minos of Sciondar', type: 'UNIT',
     cost: 3, activation: 2, element: 'FIRE', atk: 2, hp: 1,
     pattern: 'FRONT', range: 2, attackType: 'MELEE', blindspots: ['S'],
-    dodge50: true, activationReduction: 1, diesOffElement: 'FIRE',
+    perfectDodge: true, activationReduction: 1, diesOffElement: 'FIRE',
     desc: 'Perfect Dodge. The activation cost to attack is 1 less. Destroy Great Minos if he is on a non‑Fire field.'
   },
   FIRE_FLAME_ASCETIC: {
@@ -115,7 +115,7 @@ const CARDS = {
     id: 'FIRE_DIDI_THE_ENLIGHTENED', name: 'Didi the Enlightened', type: 'UNIT',
     cost: 3, activation: 2, element: 'FIRE', atk: 2, hp: 4,
     pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
-    firstStrike: true, doubleAttack: true, plus1IfTargetOnElement: 'FIRE', protectFireFields: true,
+    quickness: true, doubleAttack: true, plus1IfTargetOnElement: 'FIRE', protectFireFields: true,
     desc: 'Quickness. Attacks the same target twice (counterattack after second attack). Adds 1 to his Attack if the target creature is on a Fire field. While Didi is on the board, no Fire field can be field‑quaked or exchanged.'
   },
   FIRE_WARDEN_HILDA: {
