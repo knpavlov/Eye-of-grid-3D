@@ -1,7 +1,9 @@
 ﻿// Bridge file to expose core modules to existing global code progressively
 import * as Constants from './core/constants.js';
-import { CARDS, STARTER_FIRESET } from './core/cards.js';
+import { CARDS } from './core/cards.js';
 import { DECKS } from './core/decks.js';
+// Стартовая колода по умолчанию — первая из списка
+const STARTER_FIRESET = DECKS[0]?.cards || [];
 import * as Rules from './core/rules.js';
 import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled, countUnits } from './core/state.js';
 import { netState, NET_ON } from './core/netState.js';
