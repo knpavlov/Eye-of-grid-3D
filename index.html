@@ -158,7 +158,7 @@
     // Исправление: N (стрелка вверх) = 0°, S (стрелка вниз) = 180°; E/W оставляем как есть
     let facingDeg;
     
-    let uid, inBounds, capMana, attackCost;
+    let uid, inBounds, capMana, attackCost, rotateCost;
     
     // Карты и наборы колод
     let CARDS, DECKS;
@@ -428,7 +428,7 @@
       try {
         DIR_VECTORS = window.DIR_VECTORS; OPPOSITE_ELEMENT = window.OPPOSITE_ELEMENT; elementEmoji = window.elementEmoji;
         turnCW = window.turnCW; turnCCW = window.turnCCW; facingDeg = window.facingDeg;
-        uid = window.uid; inBounds = window.inBounds; capMana = window.capMana; attackCost = window.attackCost;
+        uid = window.uid; inBounds = window.inBounds; capMana = window.capMana; attackCost = window.attackCost; rotateCost = window.rotateCost;
         CARDS = window.CARDS; DECKS = window.DECKS || [];
         computeCellBuff = window.computeCellBuff; effectiveStats = window.effectiveStats;
         hasAdjacentGuard = window.hasAdjacentGuard; computeHits = window.computeHits; stagedAttack = window.stagedAttack; magicAttack = window.magicAttack;
