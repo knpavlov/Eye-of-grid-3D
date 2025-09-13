@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { inBounds, capMana, attackCost } from '../src/core/constants.js';
+import { inBounds, capMana, attackCost, rotateCost } from '../src/core/constants.js';
 
 describe('constants helpers', () => {
   it('inBounds: within 3x3 grid', () => {
@@ -24,6 +24,12 @@ describe('constants helpers', () => {
     expect(attackCost({ cost: 3 })).toBe(2);
     expect(attackCost({ cost: 0 })).toBe(0);
     expect(attackCost({})).toBe(0);
+  });
+
+  it('rotateCost: не учитывает скидки', () => {
+    const tpl = { activation: 3, activationReduction: 2 };
+    expect(attackCost(tpl)).toBe(1);
+    expect(rotateCost(tpl)).toBe(3);
   });
 });
 
