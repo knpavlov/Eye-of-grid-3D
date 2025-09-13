@@ -1,6 +1,7 @@
 // Pure game rules helpers (no DOM/THREE/GSAP/socket)
 import { DIR_VECTORS, inBounds, attackCost, OPPOSITE_ELEMENT, capMana } from './constants.js';
 import { CARDS } from './cards.js';
+import { dynamicAtkBonus, randomAtkBonus, applyPenaltyByTargets, hasFirstStrike, checkElementDeaths } from './abilities.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -60,11 +61,12 @@ export function computeCellBuff(cellElement, unitElement) {
   return { atk: 0, hp: 0 };
 }
 
-export function effectiveStats(cell, unit) {
+export function effectiveStats(cell, unit, state) {
   const tpl = unit ? CARDS[unit.tplId] : null;
   const buff = computeCellBuff(cell?.element, tpl?.element);
   const tempAtk = typeof unit?.tempAtkBuff === 'number' ? unit.tempAtkBuff : 0;
-  const atk = Math.max(0, (tpl?.atk || 0) + buff.atk + tempAtk);
+  let atk = (tpl?.atk || 0) + buff.atk + tempAtk + dynamicAtkBonus(tpl, state, unit);
+  atk = Math.max(0, atk);
   const hp = Math.max(0, (tpl?.hp || 0) + buff.hp);
   return { atk, hp };
 }
@@ -75,7 +77,7 @@ export function computeHits(state, r, c, opts = {}) {
   const tplA = CARDS[attacker.tplId];
   // tplA.friendlyFire — может ли атака задевать союзников
   const cells = attackCellsForTpl(tplA, attacker.facing, opts);
-  const { atk } = effectiveStats(state.board[r][c], attacker);
+  const { atk } = effectiveStats(state.board[r][c], attacker, state);
   const hits = [];
   const aFlying = (tplA.keywords || []).includes('FLYING');
   const allowPierce = tplA.pierce;
@@ -142,6 +144,10 @@ export function stagedAttack(state, r, c, opts = {}) {
   const hitsRaw = computeHits(base, r, c, opts);
   if (!hitsRaw.length) return { empty: true };
 
+  const baseStats = effectiveStats(base.board[r][c], attacker, base);
+  let atkVal = baseStats.atk + randomAtkBonus(tplA);
+  atkVal = applyPenaltyByTargets(tplA, atkVal, hitsRaw.length);
+
   // Precompute damages once to keep behavior deterministic across calls
   const step1Damages = hitsRaw.map(h => {
     const cell = base.board?.[h.r]?.[h.c];
@@ -149,7 +155,8 @@ export function stagedAttack(state, r, c, opts = {}) {
     if (!B) return { ...h, dealt: 0 };
     const isMagic = tplA.attackType === 'MAGIC';
     const dodge = CARDS[B.tplId].dodge50 && !isMagic && Math.random() < 0.5;
-    const dealt = dodge ? 0 : h.dmg;
+    const extra = h.dmg - baseStats.atk;
+    const dealt = dodge ? 0 : Math.max(0, atkVal + extra);
     return { ...h, dealt, dodge };
   });
 
@@ -184,12 +191,14 @@ export function stagedAttack(state, r, c, opts = {}) {
     for (const h of step1Damages) {
       const B = n1.board?.[h.r]?.[h.c]?.unit;
       if (!B) continue;
+      const tplB = CARDS[B.tplId];
       const alive = (B.currentHP ?? B.hp) > 0;
-      if (!alive) continue;
+      if (!alive && !hasFirstStrike(tplB)) continue;
       const hitsB = computeHits(n1, h.r, h.c, { target: { r, c }, union: true });
       if (hitsB.length) {
-        const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B);
-        totalRetaliation += Math.max(0, batk);
+        const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B, n1);
+        const dmg = Math.max(0, batk + randomAtkBonus(tplB));
+        totalRetaliation += dmg;
         retaliators.push({ r: h.r, c: h.c });
       }
     }
@@ -229,8 +238,11 @@ export function stagedAttack(state, r, c, opts = {}) {
 
     if (A) {
       A.lastAttackTurn = nFinal.turn;
-      A.apSpent = (A.apSpent || 0) + attackCost(tplA);
+      A.apSpent = (A.apSpent || 0) + attackCost(tplA, nFinal.board[r][c]);
     }
+
+    const moreDeaths = checkElementDeaths(nFinal);
+    deaths.push(...moreDeaths);
 
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
     return { n1: nFinal, logLines, targets, deaths, retaliators: ret.retaliators };
@@ -256,8 +268,8 @@ export function magicAttack(state, fr, fc, tr, tc) {
   const mainTarget = n1.board?.[tr]?.[tc]?.unit;
   if (!allowFriendly && (!mainTarget || mainTarget.owner === attacker.owner)) return null;
 
-  const atkStats = effectiveStats(n1.board[fr][fc], attacker);
-  const dmg = Math.max(0, (atkStats.atk || 0) + (tplA.randomPlus2 && Math.random() < 0.5 ? 2 : 0));
+  const atkStats = effectiveStats(n1.board[fr][fc], attacker, n1);
+  const dmg = Math.max(0, (atkStats.atk || 0) + randomAtkBonus(tplA));
 
   const cells = [{ r: tr, c: tc }];
   const splash = tplA.splash || 0;
@@ -292,6 +304,8 @@ export function magicAttack(state, fr, fc, tr, tc) {
       n1.board[rr][cc].unit = null;
     }
   }
+  const extraDeaths = checkElementDeaths(n1);
+  deaths.push(...extraDeaths);
   try {
     for (const d of deaths) {
       if (n1 && n1.players && n1.players[d.owner]) {
@@ -300,6 +314,6 @@ export function magicAttack(state, fr, fc, tr, tc) {
     }
   } catch {}
   attacker.lastAttackTurn = n1.turn;
-  attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA);
+  attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA, n1.board[fr][fc]);
   return { n1, logLines, targets, deaths };
 }
