@@ -40,8 +40,8 @@ export function updateUnits(gameState) {
       } catch {}
       if (!unit) continue;
 
-      const cardData = CARDS[unit.tplId];
-      const stats = effectiveStats(gameState.board[r][c], unit);
+        const cardData = CARDS[unit.tplId];
+        const stats = effectiveStats(gameState, gameState.board[r][c], unit);
       const unitMesh = createCard3D(cardData, false, unit.currentHP, stats.atk);
 
       const x = (c - 1) * (tileSize + spacing);
