@@ -16,7 +16,7 @@ export function showUnitActionPanel(unitMesh){
       const cost = (typeof window !== 'undefined' && typeof window.attackCost === 'function') ? window.attackCost(cardData) : 1;
       attackBtn.textContent = alreadyAttacked ? 'Already attacked' : `Attack (-${cost})`;
     }
-    const rotateCost = (typeof window !== 'undefined' && typeof window.attackCost === 'function') ? window.attackCost(cardData) : 1;
+    const rotateCost = (typeof window !== 'undefined' && typeof window.rotateCost === 'function') ? window.rotateCost(cardData) : 1;
     const alreadyRotated = unitData.lastRotateTurn === gs.turn;
     const rCw = document.getElementById('rotate-cw-btn'); const rCcw = document.getElementById('rotate-ccw-btn');
     if (rCw && rCcw) { rCw.disabled = !!alreadyRotated; rCcw.disabled = !!alreadyRotated; rCw.textContent = alreadyRotated ? 'Already rotated' : `Rotate → (-${rotateCost})`; rCcw.textContent = alreadyRotated ? 'Already rotated' : `Rotate ← (-${rotateCost})`; }
