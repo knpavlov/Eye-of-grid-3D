@@ -31,8 +31,11 @@ export const uid = () => Math.random().toString(36).slice(2, 9);
 export const inBounds = (r, c) => r >= 0 && r < 3 && c >= 0 && c < 3;
 export const capMana = (m) => Math.min(10, m);
 
-// Some cards treat attack AP differently; keep centralized
-export const attackCost = (tpl) => (tpl && tpl.activation != null
-  ? tpl.activation
-  : Math.max(0, ((tpl && tpl.cost) || 0) - 1));
+import { attackCost as attackCostCore, activationCost as activationCostCore } from './abilities.js';
+
+// Стоимость атаки с учётом скидок
+export const attackCost = (tpl, fieldElement) => attackCostCore(tpl, fieldElement);
+
+// Стоимость поворота без скидок
+export const activationCost = (tpl) => activationCostCore(tpl);
 
