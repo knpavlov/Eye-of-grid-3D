@@ -28,13 +28,14 @@ export function open(onConfirm, onCancel) {
   panel.appendChild(title);
 
   const list = document.createElement('div');
-  // ограничиваем высоту списка, чтобы появился скролл при избытке колод
-  list.className = 'flex-1 overflow-y-auto space-y-3 pr-2 max-h-64 deck-scroll';
+  // ограничиваем высоту списка и добавляем отступы, чтобы карточки не вылезали за край
+  list.className = 'flex-1 overflow-y-auto space-y-3 px-2 max-h-64 deck-scroll';
   panel.appendChild(list);
 
   DECKS.forEach((d, idx) => {
     const item = document.createElement('div');
-    item.className = 'relative flex h-24 cursor-pointer rounded-md overflow-hidden border-2 border-slate-700 transition transform hover:bg-slate-700/30 hover:scale-[1.02]';
+    // Небольшой горизонтальный отступ оставляет место для эффекта увеличения
+    item.className = 'relative flex h-24 cursor-pointer rounded-md overflow-hidden border-2 border-slate-700 transition transform hover:bg-slate-700/30 hover:scale-[1.02] mx-1';
     if (idx === selected) item.classList.add('border-yellow-400');
 
     const imgWrap = document.createElement('div');

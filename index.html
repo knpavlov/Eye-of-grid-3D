@@ -160,11 +160,8 @@
     
     let uid, inBounds, capMana, attackCost;
     
-    // Карты
-    let CARDS;
-    
-    // Стартер: только Fire Set + несколько спеллов
-    let STARTER_FIRESET;
+    // Карты и наборы колод
+    let CARDS, DECKS;
     
     // Функции игровой логики (полные реализации находятся в core/*)
     let computeCellBuff, effectiveStats;
@@ -358,19 +355,23 @@
 
         // Взаимодействия с 3D-сценой вынесены в модуль src/scene/interactions.js
     
-    async function initGame() {
+    async function initGame(deck0 = null, deck1 = null) {
       const decks = window.DECKS || [];
-      let chosen = window.__selectedDeckObj;
-      if (!chosen) {
+      // колода игрока 1
+      let chosen0 = deck0 || window.__selectedDeckObj;
+      if (!chosen0) {
         try {
           const id = localStorage.getItem('selectedDeckId');
-          chosen = decks.find(d => d.id === id) || decks[0];
+          chosen0 = decks.find(d => d.id === id) || decks[0];
         } catch {
-          chosen = decks[0];
+          chosen0 = decks[0];
         }
       }
-      const d = chosen ? chosen.cards : STARTER_FIRESET;
-      gameState = startGame(d, d);
+      // колода игрока 2 (по умолчанию зеркалит первую)
+      let chosen1 = deck1 || chosen0;
+      const d0 = chosen0 ? chosen0.cards : (decks[0]?.cards || []);
+      const d1 = chosen1 ? chosen1.cards : d0;
+      gameState = startGame(d0, d1);
       try { window.applyGameState(gameState); } catch {}
       
       // Сразу строим сцену и мета-объекты, без задержки появления
@@ -424,7 +425,7 @@
         DIR_VECTORS = window.DIR_VECTORS; OPPOSITE_ELEMENT = window.OPPOSITE_ELEMENT; elementEmoji = window.elementEmoji;
         turnCW = window.turnCW; turnCCW = window.turnCCW; facingDeg = window.facingDeg;
         uid = window.uid; inBounds = window.inBounds; capMana = window.capMana; attackCost = window.attackCost;
-        CARDS = window.CARDS; STARTER_FIRESET = window.STARTER_FIRESET || [];
+        CARDS = window.CARDS; DECKS = window.DECKS || [];
         computeCellBuff = window.computeCellBuff; effectiveStats = window.effectiveStats;
         hasAdjacentGuard = window.hasAdjacentGuard; computeHits = window.computeHits; stagedAttack = window.stagedAttack; magicAttack = window.magicAttack;
         shuffle = window.shuffle; drawOne = window.drawOne; drawOneNoAdd = window.drawOneNoAdd; countControlled = window.countControlled; startGame = window.startGame;
@@ -434,10 +435,9 @@
       function init() {
         wireModules();
         initThreeJS();
-        // Start render loop early so scene is visible even if game init fails
+        // Запускаем рендер заранее, но игру инициализируем позже,
+        // когда игрок выберет режим и колоду
         animate();
-        initGame();
-
         // Привязка обработчиков взаимодействия теперь в модуле interactions
         window.__interactions.setupInteractions();
         try { window.attachUIEvents && window.attachUIEvents(); } catch {}

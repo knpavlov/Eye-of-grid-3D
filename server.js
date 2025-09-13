@@ -46,13 +46,13 @@ const matches = new Map(); // matchId -> { room, sockets:[s0,s1], lastState, las
 
 function pairIfPossible() {
   pushLog({ ev: 'pairIfPossible:start', queueSize: queue.length });
-  
+
   while (queue.length >= 2) {
     const s0 = queue.shift();
     const s1 = queue.shift();
-    
+
     pushLog({ ev: 'pairIfPossible:attempt', s0: s0?.id, s1: s1?.id, s0Connected: s0?.connected, s1Connected: s1?.connected });
-    
+
     if (!s0?.connected || !s1?.connected) {
       pushLog({ ev: 'pairIfPossible:skipDisconnected', s0: s0?.id, s1: s1?.id });
       continue;
@@ -68,9 +68,11 @@ function pairIfPossible() {
     s1.data.matchId = matchId; s1.data.seat = 1;
     s0.data.queueing = false; s1.data.queueing = false;
 
-    s0.emit("matchFound", { matchId, seat: 0 });
-    s1.emit("matchFound", { matchId, seat: 1 });
-    pushLog({ ev: 'matchFound', matchId, sids: [s0.id, s1.id] });
+    // передаём выбранные колоды обоих игроков
+    const deckIds = [s0.data.deckId, s1.data.deckId];
+    s0.emit("matchFound", { matchId, seat: 0, deckIds });
+    s1.emit("matchFound", { matchId, seat: 1, deckIds });
+    pushLog({ ev: 'matchFound', matchId, sids: [s0.id, s1.id], deckIds });
 
     // Старт серверного таймера тиков (без авто-энда)
     const m = matches.get(matchId);
@@ -83,7 +85,7 @@ function pairIfPossible() {
       io.to(m.room).emit('turnTimer', { seconds: m.timerSeconds, activeSeat: m.lastState.active });
     }, 1000);
   }
-  
+
   pushLog({ ev: 'pairIfPossible:end', queueSize: queue.length });
 }
 
@@ -96,8 +98,8 @@ io.on("connection", (socket) => {
       pushLog({ ev: 'client', sid: socket.id, matchId, ...payload });
     } catch {}
   });
-  socket.on("joinQueue", () => {
-    pushLog({ ev: 'joinQueue:start', sid: socket.id, currentQueueSize: queue.length });
+  socket.on("joinQueue", ({ deckId } = {}) => {
+    pushLog({ ev: 'joinQueue:start', sid: socket.id, currentQueueSize: queue.length, deckId });
     
     // если socket был в комнате завершённого матча — убедимся, что он вышел
     try {
@@ -109,10 +111,11 @@ io.on("connection", (socket) => {
       }
     } catch {}
     
-    // Очищаем состояние сокета
+    // Очищаем состояние сокета и сохраняем выбранную колоду
     socket.data.queueing = false;
     socket.data.matchId = undefined;
     socket.data.seat = undefined;
+    socket.data.deckId = deckId;
     
     // Удаляем из очереди если уже есть (очистка дубликатов)
     const existingIndex = queue.indexOf(socket);
@@ -125,10 +128,20 @@ io.on("connection", (socket) => {
     queue.push(socket);
     socket.data.queueing = true;
     
-    pushLog({ ev: 'joinQueue:added', sid: socket.id, newQueueSize: queue.length });
+    pushLog({ ev: 'joinQueue:added', sid: socket.id, newQueueSize: queue.length, deckId });
     
     // Пытаемся создать матч
     pairIfPossible();
+  });
+
+  // Позволяет игроку выйти из очереди вручную
+  socket.on('leaveQueue', () => {
+    const idx = queue.indexOf(socket);
+    if (idx >= 0) {
+      queue.splice(idx, 1);
+      pushLog({ ev: 'leaveQueue', sid: socket.id, newQueueSize: queue.length });
+    }
+    socket.data.queueing = false;
   });
 
   // активный игрок присылает актуальный gameState

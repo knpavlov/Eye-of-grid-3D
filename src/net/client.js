@@ -40,8 +40,17 @@
     queueModal.innerHTML = `<div class="mp-card">
       <div style="display:flex;gap:10px;justify-content:center;align-items:center">
         <div class="mp-spinner"></div><div>Поиск матча…</div>
-      </div><div class="mp-subtle">Ждём второго игрока</div></div>`;
+      </div>
+      <div class="mp-subtle">Ждём второго игрока</div>
+      <button id="mp-cancel" class="mp-btn" style="margin-top:12px">Отмена</button>
+    </div>`;
     document.body.appendChild(queueModal);
+    // кнопка отмены возвращает пользователя в главное меню
+    queueModal.querySelector('#mp-cancel').addEventListener('click', () => {
+      try { (window.socket || socket).emit('leaveQueue'); } catch {}
+      hideQueueModal();
+      try { window.__ui?.mainMenu?.open(true); } catch {}
+    });
   }
   function hideQueueModal(){ queueModal?.remove(); queueModal=null; }
   function showStartCountdown(seat, secs=3){
@@ -673,10 +682,13 @@
   // ===== 5) Queue / start =====
   function onFindMatchClick(){
     console.log('[QUEUE] Attempting to join queue, socket connected:', socket.connected);
+    // если соединение было разорвано (например, после офлайн-матча) — переподключаемся
+    try { if (!socket.connected) socket.connect(); } catch {}
     showQueueModal();
     try {
-      (window.socket || socket).emit('joinQueue');
-      (window.socket || socket).emit('debugLog', { event: 'joinQueue_sent', connected: socket.connected });
+      const deckId = (window.__selectedDeckObj?.id) || (typeof localStorage!=='undefined' && localStorage.getItem('selectedDeckId'));
+      (window.socket || socket).emit('joinQueue', { deckId });
+      (window.socket || socket).emit('debugLog', { event: 'joinQueue_sent', connected: socket.connected, deckId });
     } catch(err) {
       console.error('[QUEUE] Error joining queue:', err);
     }
@@ -687,11 +699,16 @@
       window.__net.findMatch = onFindMatchClick;
     }
   } catch {}
-  socket.on('matchFound', ({ matchId, seat })=>{
+  socket.on('matchFound', ({ matchId, seat, deckIds })=>{
     hideQueueModal();
-    console.log('[MATCH] Match found, setting MY_SEAT to:', seat, 'matchId:', matchId);
+    console.log('[MATCH] Match found, setting MY_SEAT to:', seat, 'matchId:', matchId, 'deckIds:', deckIds);
+    // Запоминаем выбранные колоды обоих игроков
+    try {
+      window.__myDeckId = deckIds?.[seat] || window.__selectedDeckObj?.id || null;
+      window.__oppDeckId = deckIds?.[seat===0?1:0] || null;
+    } catch {}
     // Логирование для отладки
-    try { (window.socket || socket).emit('debugLog', { event: 'matchFound_received', seat, matchId }); } catch {}
+    try { (window.socket || socket).emit('debugLog', { event: 'matchFound_received', seat, matchId, deckIds }); } catch {}
     
     // Полный сброс локального состояния предыдущего матча перед стартом нового
     try { if (window.__pendingBattleFlushTimer) { clearInterval(window.__pendingBattleFlushTimer); window.__pendingBattleFlushTimer = null; } } catch {}
@@ -710,9 +727,16 @@
 
   async function onCountdownFinished(seat){
     if (seat===0){
-      try{ typeof initGame==='function' && await initGame(); }catch{}
+      // хост матча инициализирует игру с учётом колод обоих игроков
+      try {
+        const decks = window.DECKS || [];
+        const my = decks.find(d => d.id === window.__myDeckId) || window.__selectedDeckObj || decks[0];
+        const opp = decks.find(d => d.id === window.__oppDeckId) || decks[0];
+        typeof initGame==='function' && await initGame(my, opp);
+      } catch {}
       schedulePush('init-snapshot', {force:true}); // гарантированный первый снапшот
     } else {
+      // второй игрок просто запрашивает текущее состояние у сервера
       try { (window.socket || socket).emit('requestState'); } catch {}
     }
   }
