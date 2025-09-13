@@ -24,41 +24,42 @@ export const CARDS = {
     blindspots: [],
     desc: 'Quickness: always strikes first.'
   },
-  FIRE_FREEDONIAN: {
-    id: 'FIRE_FREEDONIAN', name: 'Freedonian Wanderer', type: 'UNIT', cost: 2, activation: 1,
+  FIRE_FREEDONIAN_WANDERER: {
+    id: 'FIRE_FREEDONIAN_WANDERER', name: 'Freedonian Wanderer', type: 'UNIT', cost: 2, activation: 1,
     element: 'FIRE', atk: 1, hp: 2,
     attackType: 'STANDARD',
     attacks: [ { dir: 'N', ranges: [1] } ],
     blindspots: ['S'], auraGainManaOnSummon: true,
-    desc: 'While not on Fire tile, you gain 1 mana on allied summon.'
+    desc: 'While Freedonian Wanderer is on a non‑Fire field, you gain 1 mana each time you summon an allied creature.'
   },
-  FIRE_FLAME_LIZARD: {
-    id: 'FIRE_FLAME_LIZARD', name: 'Partmole Flame Lizard', type: 'UNIT', cost: 2, activation: 1,
+  FIRE_PARTMOLE_FLAME_LIZARD: {
+    id: 'FIRE_PARTMOLE_FLAME_LIZARD', name: 'Partmole Flame Lizard', type: 'UNIT', cost: 2, activation: 2,
     element: 'FIRE', atk: 2, hp: 2,
-    attackType: 'STANDARD', firstStrike: true,
+    attackType: 'STANDARD', firstStrike: true, activationReduction: 1,
     attacks: [ { dir: 'N', ranges: [1] } ],
     blindspots: ['S'],
-    desc: 'Quickness.'
+    desc: 'Quickness. The activation cost to attack is 1 less than listed.'
   },
   FIRE_GREAT_MINOS: {
     id: 'FIRE_GREAT_MINOS', name: 'Great Minos of Sciondar', type: 'UNIT', cost: 3, activation: 2,
     element: 'FIRE', atk: 2, hp: 1,
     attackType: 'STANDARD',
-    attacks: [ { dir: 'N', ranges: [1, 2] } ], // бьёт сразу на 1 и 2 клетки вперёд
-    pierce: true, // игнорирует стоящих на пути
-    blindspots: ['S'], dodge50: true, diesOffElement: 'FIRE',
-    desc: 'Dodge 50% (non-magic). Destroy if not on Fire tile.'
+    // Бьёт две клетки подряд спереди, игнорируя препятствия и задевая союзников
+    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    pierce: true, friendlyFire: true,
+    blindspots: ['S'], perfectDodge: true, activationReduction: 1, diesOffElement: 'FIRE',
+    desc: 'Perfect Dodge. Always strikes two spaces ahead. The activation cost to attack is 1 less. Destroy Great Minos if he is on a non‑Fire field.'
   },
   FIRE_FLAME_ASCETIC: {
-    id: 'FIRE_FLAME_ASCETIC', name: 'Flame Ascetic', type: 'UNIT', cost: 3, activation: 2,
+    id: 'FIRE_FLAME_ASCETIC', name: 'Flame Ascetic', type: 'UNIT', cost: 3, activation: 3,
     element: 'FIRE', atk: 2, hp: 3,
-    attackType: 'STANDARD',
+    attackType: 'STANDARD', activationReduction: 2,
     attacks: [ { dir: 'N', ranges: [1] } ],
     blindspots: ['S'], randomPlus2: true,
-    desc: 'Attack +2 half the time.'
+    desc: 'Adds 2 to its Attack half the time. The activation cost to attack is 2 less than listed.'
   },
-  FIRE_TRICEPTAUR: {
-    id: 'FIRE_TRICEPTAUR', name: 'Triceptaur Behemoth', type: 'UNIT', cost: 5, activation: 4,
+  FIRE_TRICEPTAUR_BEHEMOTH: {
+    id: 'FIRE_TRICEPTAUR_BEHEMOTH', name: 'Triceptaur Behemoth', type: 'UNIT', cost: 5, activation: 5,
     element: 'FIRE', atk: 5, hp: 4,
     attackType: 'STANDARD',
     attacks: [
@@ -66,19 +67,17 @@ export const CARDS = {
       { dir: 'E', ranges: [1] },
       { dir: 'W', ranges: [1] }
     ],
-    blindspots: ['S'], penaltyByTargets: true,
-    friendlyFire: true, // задевает и своих
-    desc: 'If attacks 2 creatures, -2 ATK; if 3 creatures, -4 ATK.',
-    locked: true,
+    blindspots: ['S'], penaltyByTargets: { '2': -2, '3': -4 },
+    friendlyFire: true,
+    desc: 'When Triceptaur Behemoth attacks 2 creatures, subtract 2 from its Attack; when attacking 3 creatures, subtract 4.'
   },
-  FIRE_PURSUER: {
-    id: 'FIRE_PURSUER', name: 'Pursuer of Saint Dhees', type: 'UNIT', cost: 6, activation: 3,
+  FIRE_PURSUER_OF_SAINT_DHEES: {
+    id: 'FIRE_PURSUER_OF_SAINT_DHEES', name: 'Pursuer of Saint Dhees', type: 'UNIT', cost: 6, activation: 6,
     element: 'FIRE', atk: 5, hp: 4,
-    attackType: 'STANDARD',
+    attackType: 'STANDARD', activationReduction: 5,
     attacks: [ { dir: 'N', ranges: [1] } ],
     blindspots: ['S'], dynamicAtk: 'OTHERS_ON_BOARD',
-    desc: 'ATK = 5 + number of other creatures on board.',
-    locked: true,
+    desc: 'Attack = 5 plus the number of other creatures on the board. The activation cost to attack is 5 less than listed.'
   },
 
   // Spells (subset)
