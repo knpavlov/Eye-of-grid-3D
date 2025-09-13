@@ -2,6 +2,7 @@
 import { getCtx } from './context.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
+import { applyFreedonianAura } from '../core/abilities.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -522,8 +523,12 @@ export function placeUnitWithDirection(direction) {
     if (buff.hp > 0) window.addLog(`Элемент усиливает ${cardData.name}: HP ${before}→${unit.currentHP}`);
     else window.addLog(`Элемент ослабляет ${cardData.name}: HP ${before}→${unit.currentHP}`);
   }
-  if (unit.currentHP <= 0) {
-    window.addLog(`${cardData.name} погибает от неблагоприятной стихии!`);
+  let alive = unit.currentHP > 0;
+  if (alive && cardData.diesOffElement && cellElement !== cardData.diesOffElement) {
+    window.addLog(`${cardData.name} погибает вдали от стихии ${cardData.diesOffElement}!`);
+    alive = false;
+  }
+  if (!alive) {
     const owner = unit.owner;
     try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
     const ctx = getCtx();
@@ -532,6 +537,12 @@ export function placeUnitWithDirection(direction) {
     const slot = gameState.players?.[owner]?.mana || 0;
     window.animateManaGainFromWorld(pos, owner, true, slot);
     gameState.board[row][col].unit = null;
+  }
+  if (gameState.board[row][col].unit) {
+    const gained = applyFreedonianAura(gameState, gameState.active);
+    if (gained > 0) {
+      window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
+    }
   }
   // Синхронизируем состояние после призыва
   try { window.applyGameState(gameState); } catch {}
