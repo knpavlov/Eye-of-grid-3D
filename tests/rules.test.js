@@ -20,7 +20,8 @@ describe('buffs and stats', () => {
 
     const cell = { element: 'FIRE' };
     const unit = { tplId: 'FIRE_FLAME_LIZARD', tempAtkBuff: 1 };
-    const { atk, hp } = effectiveStats(cell, unit);
+    const state = { board: makeBoard() };
+    const { atk, hp } = effectiveStats(cell, unit, state);
     // From cards.js, FIRE_FLAME_LIZARD has atk:2, hp:2; +2 HP on same element, +1 temp atk
     expect(atk).toBeGreaterThanOrEqual(3);
     expect(hp).toBeGreaterThanOrEqual(4);
@@ -32,7 +33,7 @@ describe('guards and hits', () => {
 
   beforeEach(() => {
     if (!CARDS.TEST_GUARD) {
-      CARDS.TEST_GUARD = { id: 'TEST_GUARD', name: 'Test Guard', type: 'UNIT', cost: 0, element: 'FIRE', atk: 0, hp: 1, keywords: ['GUARD'], attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [1] } ] };
+      CARDS.TEST_GUARD = { id: 'TEST_GUARD', name: 'Test Guard', type: 'UNIT', cost: 0, element: 'FIRE', atk: 0, hp: 1, keywords: ['GUARD'], attackType: 'MELEE', attacks: [ { dir: 'N', ranges: [1] } ] };
       addedGuard = true;
     }
   });
