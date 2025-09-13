@@ -20,7 +20,7 @@ export function rotateUnit(unitMesh, dir) {
       return;
     }
     const tpl = window.CARDS?.[u.tplId];
-    const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
+    const cost = typeof window.rotateCost === 'function' ? window.rotateCost(tpl) : 0;
     if (gameState.players[gameState.active].mana < cost) {
       window.__ui?.notifications?.show(`${cost} mana is required to rotate`, 'error');
       return;
@@ -88,8 +88,13 @@ export function performUnitAttack(unitMesh) {
     const computeHits = window.computeHits;
     const attacks = tpl?.attacks || [];
     const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
-    const hitsAll = typeof computeHits === 'function' ? computeHits(gameState, r, c, { union: true }) : [];
-    const hasEnemy = hitsAll.some(h => gameState.board?.[h.r]?.[h.c]?.unit?.owner !== unit.owner);
+    // если у карты несколько дистанций, показываем также пустые клетки зоны удара
+    const includeEmpty = attacks.some(a => Array.isArray(a.ranges) && a.ranges.length > 1 && !a.mode);
+    const hitsAll = typeof computeHits === 'function' ? computeHits(gameState, r, c, { union: true, includeEmpty }) : [];
+    const hasEnemy = hitsAll.some(h => {
+      const u2 = gameState.board?.[h.r]?.[h.c]?.unit;
+      return u2 && u2.owner !== unit.owner;
+    });
     if (!hitsAll.length || !hasEnemy) {
       window.__ui?.notifications?.show('No available targets for attack', 'error');
       return;
