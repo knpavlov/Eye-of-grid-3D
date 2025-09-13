@@ -10,7 +10,7 @@ export function mount() {
   function ok(b){ return '<span style="color:' + (b ? '#22c55e' : '#ef4444') + '">●</span>'; }
   function upd(){
     const cardsOk = !!(window.CARDS && Object.keys(window.CARDS||{}).length);
-    const starterLen = (window.STARTER_FIRESET && window.STARTER_FIRESET.length) || 0;
+    const starterLen = (window.DEFAULT_DECK && window.DEFAULT_DECK.length) || 0;
     const rulesOk = ['computeCellBuff','effectiveStats','computeHits','stagedAttack','magicAttack','hasAdjacentGuard'].every(k=>typeof window[k]==='function');
     const stateOk = ['startGame','drawOne','drawOneNoAdd','shuffle','countControlled'].every(k=>typeof window[k]==='function');
     const threeOk = !!(window.renderer && window.scene && window.camera);
