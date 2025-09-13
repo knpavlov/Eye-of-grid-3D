@@ -1,4 +1,4 @@
-import { STARTER_FIRESET } from './cards.js';
+import { getDeckCards } from './decks.js';
 
 // Utilities
 export function shuffle(array) {
@@ -65,7 +65,7 @@ export function randomBoard() {
   return board;
 }
 
-export function startGame(deck0 = STARTER_FIRESET, deck1 = STARTER_FIRESET) {
+export function startGame(deck0 = getDeckCards('FIRE_STARTER'), deck1 = getDeckCards('FIRE_STARTER')) {
   const state = {
     board: randomBoard(),
     players: [

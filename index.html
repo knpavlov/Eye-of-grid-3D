@@ -163,8 +163,6 @@
     // Карты
     let CARDS;
     
-    // Стартер: только Fire Set + несколько спеллов
-    let STARTER_FIRESET;
     
     // Функции игровой логики (полные реализации находятся в core/*)
     let computeCellBuff, effectiveStats;
@@ -369,7 +367,7 @@
           chosen = decks[0];
         }
       }
-      const d = chosen ? chosen.cards : STARTER_FIRESET;
+      const d = chosen ? chosen.cards : (decks[0]?.cards || []);
       gameState = startGame(d, d);
       try { window.applyGameState(gameState); } catch {}
       
@@ -424,7 +422,7 @@
         DIR_VECTORS = window.DIR_VECTORS; OPPOSITE_ELEMENT = window.OPPOSITE_ELEMENT; elementEmoji = window.elementEmoji;
         turnCW = window.turnCW; turnCCW = window.turnCCW; facingDeg = window.facingDeg;
         uid = window.uid; inBounds = window.inBounds; capMana = window.capMana; attackCost = window.attackCost;
-        CARDS = window.CARDS; STARTER_FIRESET = window.STARTER_FIRESET || [];
+        CARDS = window.CARDS;
         computeCellBuff = window.computeCellBuff; effectiveStats = window.effectiveStats;
         hasAdjacentGuard = window.hasAdjacentGuard; computeHits = window.computeHits; stagedAttack = window.stagedAttack; magicAttack = window.magicAttack;
         shuffle = window.shuffle; drawOne = window.drawOne; drawOneNoAdd = window.drawOneNoAdd; countControlled = window.countControlled; startGame = window.startGame;
@@ -434,10 +432,9 @@
       function init() {
         wireModules();
         initThreeJS();
-        // Start render loop early so scene is visible even if game init fails
+        // Запускаем рендер заранее, но игру инициализируем позже,
+        // когда игрок выберет режим и колоду
         animate();
-        initGame();
-
         // Привязка обработчиков взаимодействия теперь в модуле interactions
         window.__interactions.setupInteractions();
         try { window.attachUIEvents && window.attachUIEvents(); } catch {}

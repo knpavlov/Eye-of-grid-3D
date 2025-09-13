@@ -1,7 +1,7 @@
 ﻿// Bridge file to expose core modules to existing global code progressively
 import * as Constants from './core/constants.js';
-import { CARDS, STARTER_FIRESET } from './core/cards.js';
-import { DECKS } from './core/decks.js';
+import { CARDS } from './core/cards.js';
+import { DECKS, getDeckCards } from './core/decks.js';
 import * as Rules from './core/rules.js';
 import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled, countUnits } from './core/state.js';
 import { netState, NET_ON } from './core/netState.js';
@@ -53,8 +53,9 @@ try {
   window.attackCost = Constants.attackCost;
 
   window.CARDS = CARDS;
-  window.STARTER_FIRESET = STARTER_FIRESET;
   window.DECKS = DECKS;
+  window.getDeckCards = getDeckCards;
+  window.STARTER_FIRESET = getDeckCards('FIRE_STARTER');
 
   window.hasAdjacentGuard = Rules.hasAdjacentGuard;
   window.computeCellBuff = Rules.computeCellBuff;
@@ -120,7 +121,8 @@ try { window.__store = store; } catch {}
 
 // Initialize only if no existing gameState is present (non-destructive)
 if (typeof window !== 'undefined' && !window.gameState) {
-  const s = startGame(STARTER_FIRESET, STARTER_FIRESET);
+  const defaultDeck = getDeckCards('FIRE_STARTER');
+  const s = startGame(defaultDeck, defaultDeck);
   try { applyGameState(s); } catch {}
 }
 
