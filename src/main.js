@@ -53,6 +53,7 @@ try {
   window.inBounds = Constants.inBounds;
   window.capMana = Constants.capMana;
   window.attackCost = Constants.attackCost;
+  window.activationCost = Constants.activationCost;
 
   window.CARDS = CARDS;
   window.STARTER_FIRESET = STARTER_FIRESET;

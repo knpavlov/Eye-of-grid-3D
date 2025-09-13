@@ -162,7 +162,14 @@
     const uid = () => Math.random().toString(36).slice(2, 9);
     const inBounds = (r, c) => r >= 0 && r < 3 && c >= 0 && c < 3;
     const capMana = (m) => Math.min(10, m);
-    const attackCost = (tpl) => (tpl.activation != null ? tpl.activation : Math.max(0, (tpl.cost || 0) - 1));
+    const activationCost = (tpl) => (tpl.activation != null ? tpl.activation : Math.max(0, (tpl.cost || 0) - 1));
+    const attackCost = (tpl, fieldElement) => {
+      let cost = activationCost(tpl);
+      if (tpl && tpl.attackCostReduction) cost = Math.max(0, cost - tpl.attackCostReduction);
+      const onElem = tpl && tpl.attackCostReductionOnElement;
+      if (onElem && fieldElement === onElem.element) cost = Math.max(0, cost - onElem.reduction);
+      return cost;
+    };
     
     // Карты
     const CARDS = {
@@ -2422,7 +2429,7 @@
       const cost = attackCost(cardData);
       attackBtn.textContent = alreadyAttacked ? 'Already attacked' : `Attack (−${cost})`;
       // Ротация: платное действие, 1 раз за ход
-      const rotateCost = attackCost(cardData);
+      const rotateCost = activationCost(cardData);
       const alreadyRotated = unitData.lastRotateTurn === gameState.turn;
       const rCw = document.getElementById('rotate-cw-btn');
       const rCcw = document.getElementById('rotate-ccw-btn');
@@ -2879,7 +2886,7 @@
       if (u.owner !== gameState.active) { showNotification('You can\'t rotate the other player\'s unit', 'error'); return; }
       if (u.lastRotateTurn === gameState.turn) { showNotification('The unit has already rotated in this turn', 'error'); return; }
       const tpl = CARDS[u.tplId];
-      const cost = attackCost(tpl);
+      const cost = activationCost(tpl);
       if (gameState.players[gameState.active].mana < cost) { showNotification(`${cost} mana is required to rotate`, 'error'); return; }
       gameState.players[gameState.active].mana -= cost; updateUI();
       u.facing = dir === 'cw' ? turnCW[u.facing] : turnCCW[u.facing];

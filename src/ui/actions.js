@@ -20,7 +20,7 @@ export function rotateUnit(unitMesh, dir) {
       return;
     }
     const tpl = window.CARDS?.[u.tplId];
-    const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
+    const cost = typeof window.activationCost === 'function' ? window.activationCost(tpl) : 0;
     if (gameState.players[gameState.active].mana < cost) {
       window.__ui?.notifications?.show(`${cost} mana is required to rotate`, 'error');
       return;
