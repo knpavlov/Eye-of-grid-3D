@@ -1,0 +1,242 @@
+
+// Карты из набора 1, собранные с сайта theeyeofjudgment.wordpress.com/card-list
+// Поля соответствуют формату из шаблона index.html. Для каждой карты указаны:
+// id — уникальный идентификатор (элемент_название в верхнем регистре с подчёркиваниями)
+// name — оригинальное название на английском
+// type — тип карты (UNIT для существ)
+// cost — стоимость призыва (Summoning Cost)
+// activation — стоимость активации (Activation Cost)
+// element — стихия карты (FIRE или WATER)
+// atk — базовое значение атаки. Знак «+» в оригинале обозначал переменную часть атаки;
+//        здесь указана только базовая составляющая
+// hp — количество очков здоровья (Hitpoints)
+// pattern — направление атаки (FRONT — вперёд, ALL — во все стороны, FRONT_SIDES — вперёд и по бокам)
+// range — дистанция атаки: 1 — на соседнюю клетку, 2 — через две клетки, 3 — магическая атака
+// attackType — вид атаки (MELEE или MAGIC)
+// blindspots — направления, по которым существо не может атаковать (N — север, E — восток, S — юг, W — запад);
+//              пустой массив означает отсутствие слепых зон
+// desc — текстовое описание особенностей карты, взятое с сайта
+// Дополнительные свойства, такие как quickness, perfect dodge и т.д.,
+// вынесены отдельно для большей наглядности, но в игре могут не использоваться.
+
+const CARDS = {
+  // --- FIRE ---
+  FIRE_FLAME_MAGUS: {
+    id: 'FIRE_FLAME_MAGUS', name: 'Flame Magus', type: 'UNIT',
+    cost: 1, activation: 1, element: 'FIRE', atk: 1, hp: 1,
+    pattern: 'FRONT', range: 3, attackType: 'MAGIC', blindspots: ['N','E','S','W'],
+    desc: 'Magic Attack: target any creature; no retaliation.'
+  },
+  FIRE_HELLFIRE_SPITTER: {
+    id: 'FIRE_HELLFIRE_SPITTER', name: 'Hellfire Spitter', type: 'UNIT',
+    cost: 1, activation: 1, element: 'FIRE', atk: 1, hp: 1,
+    pattern: 'ALL', range: 1, attackType: 'MELEE', blindspots: [],
+    firstStrike: true,
+    desc: 'Quickness: always strikes first.'
+  },
+  FIRE_FREEDONIAN_WANDERER: {
+    id: 'FIRE_FREEDONIAN_WANDERER', name: 'Freedonian Wanderer', type: 'UNIT',
+    cost: 2, activation: 1, element: 'FIRE', atk: 1, hp: 2,
+    pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
+    auraGainManaOnSummon: true,
+    desc: 'While Freedonian Wanderer is on a non‑Fire field, you gain 1 mana each time you summon an allied creature.'
+  },
+  FIRE_PARTMOLE_FLAME_LIZARD: {
+    id: 'FIRE_PARTMOLE_FLAME_LIZARD', name: 'Partmole Flame Lizard', type: 'UNIT',
+    cost: 2, activation: 2, element: 'FIRE', atk: 2, hp: 2,
+    pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
+    firstStrike: true,
+    desc: 'Quickness. The activation cost to attack is 1 less than listed.'
+  },
+  FIRE_FIREFLY_NINJA: {
+    id: 'FIRE_FIREFLY_NINJA', name: 'Firefly Ninja', type: 'UNIT',
+    cost: 3, activation: 2, element: 'FIRE', atk: 1, hp: 2,
+    pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
+    perfectDodgeOnFire: true, invisibilityWithSpider: true,
+    desc: 'While on a Fire field it gains Perfect Dodge. Gains Invisibility while at least one allied Spider Ninja is on the board.'
+  },
+  FIRE_GREAT_MINOS: {
+    id: 'FIRE_GREAT_MINOS', name: 'Great Minos of Sciondar', type: 'UNIT',
+    cost: 3, activation: 2, element: 'FIRE', atk: 2, hp: 1,
+    pattern: 'FRONT', range: 2, attackType: 'MELEE', blindspots: ['S'],
+    dodge50: true, activationReduction: 1, diesOffElement: 'FIRE',
+    desc: 'Perfect Dodge. The activation cost to attack is 1 less. Destroy Great Minos if he is on a non‑Fire field.'
+  },
+  FIRE_FLAME_ASCETIC: {
+    id: 'FIRE_FLAME_ASCETIC', name: 'Flame Ascetic', type: 'UNIT',
+    cost: 3, activation: 3, element: 'FIRE', atk: 2, hp: 3,
+    pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
+    randomPlus2: true, activationReduction: 2,
+    desc: 'Adds 2 to its Attack half the time. The activation cost to attack is 2 less than listed.'
+  },
+  FIRE_PARTMOLE_FLAME_GUARD: {
+    id: 'FIRE_PARTMOLE_FLAME_GUARD', name: 'Partmole Flame Guard', type: 'UNIT',
+    cost: 3, activation: 2, element: 'FIRE', atk: 1, hp: 3,
+    pattern: 'FRONT', range: 2, attackType: 'MELEE', blindspots: ['S'],
+    plus2IfWaterTarget: true,
+    desc: 'Adds 2 to its Attack if at least one target creature is on a water field.'
+  },
+  FIRE_LESSER_GRANVENOA: {
+    id: 'FIRE_LESSER_GRANVENOA', name: 'Lesser Granvenoa', type: 'UNIT',
+    cost: 4, activation: 2, element: 'FIRE', atk: 2, hp: 4,
+    pattern: 'ALL', range: 1, attackType: 'MELEE', blindspots: [],
+    fortress: true, diesOffElement: 'WATER',
+    desc: 'Fortress. Adjacent fields cannot be field‑quaked or exchanged. Destroy Lesser Granvenoa if it is on a Water field.'
+  },
+  FIRE_PARTMOLE_FIRE_ORACLE: {
+    id: 'FIRE_PARTMOLE_FIRE_ORACLE', name: 'Partmole Fire Oracle', type: 'UNIT',
+    cost: 4, activation: 2, element: 'FIRE', atk: 2, hp: 3,
+    pattern: 'FRONT', range: 3, attackType: 'MAGIC', blindspots: ['S'],
+    onDeathHealAll: 1,
+    desc: 'Magic Attack. If destroyed, all allied creatures on board gain 1 HP.'
+  },
+  FIRE_TRICEPTAUR_BEHEMOTH: {
+    id: 'FIRE_TRICEPTAUR_BEHEMOTH', name: 'Triceptaur Behemoth', type: 'UNIT',
+    cost: 5, activation: 5, element: 'FIRE', atk: 5, hp: 4,
+    pattern: 'FRONT_SIDES', range: 1, attackType: 'MELEE', blindspots: ['S'],
+    penaltyByTargets: { '2': -2, '3': -4 },
+    desc: 'When Triceptaur Behemoth attacks 2 creatures, subtract 2 from its Attack; when attacking 3 creatures, subtract 4.'
+  },
+  FIRE_PURSUER_OF_SAINT_DHEES: {
+    id: 'FIRE_PURSUER_OF_SAINT_DHEES', name: 'Pursuer of Saint Dhees', type: 'UNIT',
+    cost: 6, activation: 6, element: 'FIRE', atk: 5, hp: 4,
+    pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
+    dynamicAtk: 'OTHERS_ON_BOARD', activationReduction: 5,
+    desc: 'Attack = 5 plus the number of other creatures on the board. The activation cost to attack is 5 less than listed.'
+  },
+  FIRE_INFERNAL_SCIONDAR_DRAGON: {
+    id: 'FIRE_INFERNAL_SCIONDAR_DRAGON', name: 'Infernal Sciondar Dragon', type: 'UNIT',
+    cost: 7, activation: 4, element: 'FIRE', atk: 5, hp: 8,
+    pattern: 'FRONT', range: 2, attackType: 'MELEE', blindspots: [],
+    dynamicAtk: 'FIRE_CREATURES', activationReductionOnElement: { element: 'FIRE', reduction: 3 },
+    desc: 'Attack = 5 plus the number of other Fire creatures on the board. While on a Fire field, its activation cost to attack is 3 less than listed.'
+  },
+  FIRE_DIDI_THE_ENLIGHTENED: {
+    id: 'FIRE_DIDI_THE_ENLIGHTENED', name: 'Didi the Enlightened', type: 'UNIT',
+    cost: 3, activation: 2, element: 'FIRE', atk: 2, hp: 4,
+    pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
+    firstStrike: true, doubleAttack: true, plus1IfTargetOnElement: 'FIRE', protectFireFields: true,
+    desc: 'Quickness. Attacks the same target twice (counterattack after second attack). Adds 1 to his Attack if the target creature is on a Fire field. While Didi is on the board, no Fire field can be field‑quaked or exchanged.'
+  },
+  FIRE_WARDEN_HILDA: {
+    id: 'FIRE_WARDEN_HILDA', name: 'Warden Hilda', type: 'UNIT',
+    cost: 3, activation: 2, element: 'FIRE', atk: 2, hp: 4,
+    pattern: 'FRONT', range: 2, attackType: 'MELEE', blindspots: ['S'],
+    plus1IfTargetOnElement: 'FIRE', gainPossessionEnemiesOnElement: 'FIRE',
+    desc: 'Adds 1 to her Attack if the target is a Fire creature. If summoned on a non‑Fire field, you gain possession of any enemies on a Fire field.'
+  },
+  FIRE_CRUCIBLE_KING_DIOS_IV: {
+    id: 'FIRE_CRUCIBLE_KING_DIOS_IV', name: 'Crucible King Dios IV', type: 'UNIT',
+    cost: 6, activation: 4, element: 'FIRE', atk: 3, hp: 6,
+    pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
+    doubleAttack: true, magicAttackArea: true, mustUseMagicOnElement: 'FIRE', dynamicMagicAtk: 'FIRE_FIELDS',
+    desc: 'Attacks the same target twice (counterattack after second attack). While on a Fire field he must use his Magic Attack, which affects the target and all adjacent enemies. The Attack value is equal to the number of Fire fields.'
+  },
+  FIRE_SCIONDAR_FIRE_GOD: {
+    id: 'FIRE_SCIONDAR_FIRE_GOD', name: 'Sciondar Fire God', type: 'UNIT',
+    cost: 9, activation: 5, element: 'FIRE', atk: 3, hp: 9,
+    pattern: 'ALL', range: 3, attackType: 'MAGIC', blindspots: [],
+    incarnation: true, targetAllNonElement: 'FIRE', diesOffElement: 'BIOLITH',
+    desc: 'Incarnation. Its Magic Attack targets all enemies on non‑Fire fields. Destroy Sciondar Fire God if he is on a Biolith field.'
+  },
+  FIRE_RED_CUBIC: {
+    id: 'FIRE_RED_CUBIC', name: 'Red Cubic', type: 'UNIT',
+    cost: 1, activation: 1, element: 'FIRE', atk: 0, hp: 1,
+    pattern: 'FRONT', range: 0, attackType: 'MELEE', blindspots: ['E','S','W'],
+    transformSummon: true,
+    desc: 'Sacrifice Red Cubic to summon a non‑cubic Fire creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
+  },
+
+  // --- WATER ---
+  WATER_MONK_ELDER_OF_OKUNADA: {
+    id: 'WATER_MONK_ELDER_OF_OKUNADA', name: 'Monk Elder of Okunada', type: 'UNIT',
+    cost: 1, activation: 1, element: 'WATER', atk: 0, hp: 1,
+    pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
+    grantDodgeAdjacent: true,
+    desc: 'All allied creatures on adjacent fields gain one Dodge attempt.'
+  },
+  WATER_TRITONAN_ICE_GUARD: {
+    id: 'WATER_TRITONAN_ICE_GUARD', name: 'Tritonan Ice Guard', type: 'UNIT',
+    cost: 1, activation: 1, element: 'WATER', atk: 1, hp: 1,
+    pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
+    drawOnSummonIfNonElement: 'WATER',
+    desc: 'When Tritonan Ice Guard is summoned to a non‑Water field, draw a card.'
+  },
+  WATER_TRITONAN_HARPOONSMAN: {
+    id: 'WATER_TRITONAN_HARPOONSMAN', name: 'Tritonan Harpoonsman', type: 'UNIT',
+    cost: 2, activation: 1, element: 'WATER', atk: 1, hp: 2,
+    pattern: 'FRONT', range: 2, attackType: 'MELEE', blindspots: ['S'],
+    dodgeOnElement: 'WATER',
+    desc: 'Gains one Dodge attempt while on a Water field.'
+  },
+  WATER_ALUHJA_PRIESTESS: {
+    id: 'WATER_ALUHJA_PRIESTESS', name: 'Aluhja Priestess', type: 'UNIT',
+    cost: 2, activation: 1, element: 'WATER', atk: 1, hp: 1,
+    pattern: 'FRONT', range: 3, attackType: 'MAGIC', blindspots: ['N','E','S','W'],
+    dodgeOnElement: 'WATER',
+    desc: 'Magic Attack. While on a Water field, Aluhja Priestess gains one Dodge attempt.'
+  },
+  WATER_TENTACLES_OF_POSSESSION: {
+    id: 'WATER_TENTACLES_OF_POSSESSION', name: 'Tentacles of Possession', type: 'UNIT',
+    cost: 2, activation: 1, element: 'WATER', atk: 0, hp: 2,
+    pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
+    possession: true,
+    desc: 'Gain possession of the enemy directly in front of it.'
+  },
+  WATER_WOLF_NINJA: {
+    id: 'WATER_WOLF_NINJA', name: 'Wolf Ninja', type: 'UNIT',
+    cost: 3, activation: 2, element: 'WATER', atk: 1, hp: 3,
+    pattern: 'FRONT_SIDES', range: 2, attackType: 'MELEE', blindspots: ['S'],
+    invisibilityWithAlly: 'Swallow Ninja', switchOnDamage: true,
+    desc: 'Gains Invisibility while at least one allied Swallow Ninja is on the board. If Wolf Ninja damages a creature on a Water field, it changes places with that creature (who cannot counterattack).'
+  },
+  WATER_CLOUD_RUNNER: {
+    id: 'WATER_CLOUD_RUNNER', name: 'Cloud Runner', type: 'UNIT',
+    cost: 3, activation: 2, element: 'WATER', atk: 1, hp: 2,
+    pattern: 'SIDES', range: 2, attackType: 'MELEE', blindspots: ['N','S'],
+    drawCardsOnSummonByElementCount: 'WATER', dodgeOnSummon: true,
+    desc: 'When Cloud Runner is summoned, draw cards equal to the number of Water fields. Gains a Dodge attempt.'
+  },
+  WATER_DANCING_TEMPTRESS: {
+    id: 'WATER_DANCING_TEMPTRESS', name: 'Dancing Temptress', type: 'UNIT',
+    cost: 3, activation: 2, element: 'WATER', atk: 0, hp: 1,
+    pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
+    manaStealOnDeath: 1, moveFrontOnDeath: true,
+    desc: 'If Dancing Temptress is destroyed, steal 1 mana from the owner of the creature in front of her. When destroyed, the creature in front moves to her previous field.'
+  },
+  WATER_VENOAN_ASSASSIN: {
+    id: 'WATER_VENOAN_ASSASSIN', name: 'Venoan Assassin', type: 'UNIT',
+    cost: 3, activation: 2, element: 'WATER', atk: 2, hp: 3,
+    pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
+    backAttack: true,
+    desc: 'Always attacks the back of its target.'
+  },
+  WATER_QUEENS_SERVANT: {
+    id: 'WATER_QUEENS_SERVANT', name: "Queen's Servant", type: 'UNIT',
+    cost: 4, activation: 2, element: 'WATER', atk: 1, hp: 1,
+    pattern: 'FRONT', range: 3, attackType: 'MAGIC', blindspots: ['S'],
+    perfectDodge: true, manaStealOnDeath: 1,
+    desc: 'Magic Attack. Perfect Dodge. If destroyed, steal 1 mana from your opponent.'
+  },
+  WATER_MOVING_ISLE_OF_KADENA: {
+    id: 'WATER_MOVING_ISLE_OF_KADENA', name: 'Moving Isle of Kadena', type: 'UNIT',
+    cost: 4, activation: 2, element: 'WATER', atk: 1, hp: 4,
+    pattern: 'ALL', range: 1, attackType: 'MELEE', blindspots: [],
+    fortress: true, stealManaOnSummon: true, diesOffElement: 'FIRE',
+    desc: 'Fortress. If summoned to a non‑Water field, steal mana from your opponent equal to the number of Water fields. Destroy Moving Isle of Kadena if it is on a Fire field.'
+  },
+  WATER_DON_OF_VENOA: {
+    id: 'WATER_DON_OF_VENOA', name: 'Don of Venoa', type: 'UNIT',
+    cost: 5, activation: 3, element: 'WATER', atk: 2, hp: 3,
+    pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: [],
+    secondaryAttackOnElement: 'WATER', dodgePerAdjacentEnemy: true, grantDodgeToAllies: true,
+    desc: 'While on a Water field, Don must use his secondary attack. Gains one Dodge attempt for each adjacent enemy. Adjacent allied creatures gain one Dodge attempt.'
+  },
+  WATER_DRAGON_OF_VOICE_SEA: {
+    id: 'WATER_DRAGON_OF_VOICE_SEA', name: 'Dragon of Voice Sea', type: 'UNIT',
+    cost: 7, activation: 4, element: 'WATER', atk: 5, hp: 8,
+    pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
+    dynamicAtk: 'WATER_CREATURES', drawOnAdjacentSummon: true,
+    desc: 'Attack = 5 plus the number of other Water creatures on the board. While on a Water field, if you summon a creature to an adjacent field, draw a card.'
+  }
+};
