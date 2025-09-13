@@ -2,6 +2,7 @@
 import { getCtx } from './context.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
+import { applyFreedonianAura } from '../core/abilities.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -86,8 +87,9 @@ function onMouseMove(event) {
   if (interactionState.selectedUnit) {
     const r = interactionState.selectedUnit.userData.row;
     const c = interactionState.selectedUnit.userData.col;
+    // Подсвечиваем все потенциальные клетки атаки, даже пустые
     const hits = (typeof window !== 'undefined' && window.computeHits)
-      ? window.computeHits(window.gameState, r, c)
+      ? window.computeHits(window.gameState, r, c, { union: true, includeEmpty: true })
       : [];
     unitMeshes.forEach(m => { if (m.material && m.material[2]) { } });
     for (const h of hits) {
@@ -522,8 +524,12 @@ export function placeUnitWithDirection(direction) {
     if (buff.hp > 0) window.addLog(`Элемент усиливает ${cardData.name}: HP ${before}→${unit.currentHP}`);
     else window.addLog(`Элемент ослабляет ${cardData.name}: HP ${before}→${unit.currentHP}`);
   }
-  if (unit.currentHP <= 0) {
-    window.addLog(`${cardData.name} погибает от неблагоприятной стихии!`);
+  let alive = unit.currentHP > 0;
+  if (alive && cardData.diesOffElement && cellElement !== cardData.diesOffElement) {
+    window.addLog(`${cardData.name} погибает вдали от стихии ${cardData.diesOffElement}!`);
+    alive = false;
+  }
+  if (!alive) {
     const owner = unit.owner;
     try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
     const ctx = getCtx();
@@ -532,6 +538,12 @@ export function placeUnitWithDirection(direction) {
     const slot = gameState.players?.[owner]?.mana || 0;
     window.animateManaGainFromWorld(pos, owner, true, slot);
     gameState.board[row][col].unit = null;
+  }
+  if (gameState.board[row][col].unit) {
+    const gained = applyFreedonianAura(gameState, gameState.active);
+    if (gained > 0) {
+      window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
+    }
   }
   // Синхронизируем состояние после призыва
   try { window.applyGameState(gameState); } catch {}
@@ -587,8 +599,13 @@ export function placeUnitWithDirection(direction) {
       } else {
         const attacks = tpl?.attacks || [];
         const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
-        const hitsAll = window.computeHits(gameState, row, col, { union: true });
-        const hasEnemy = hitsAll.some(h => gameState.board?.[h.r]?.[h.c]?.unit?.owner !== unit.owner);
+        // если в шаблоне несколько дистанций без выбора, подсвечиваем и пустые клетки
+        const includeEmpty = attacks.some(a => Array.isArray(a.ranges) && a.ranges.length > 1 && !a.mode);
+        const hitsAll = window.computeHits(gameState, row, col, { union: true, includeEmpty });
+        const hasEnemy = hitsAll.some(h => {
+          const u2 = gameState.board?.[h.r]?.[h.c]?.unit;
+          return u2 && u2.owner !== unit.owner;
+        });
         if (hitsAll.length && hasEnemy) {
           if (needsChoice && hitsAll.length > 1) {
             interactionState.pendingAttack = { r: row, c: col };
