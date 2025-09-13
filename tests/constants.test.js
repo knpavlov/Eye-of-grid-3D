@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { inBounds, capMana, attackCost } from '../src/core/constants.js';
+import { inBounds, capMana, attackCost, activationCost } from '../src/core/constants.js';
 
 describe('constants helpers', () => {
   it('inBounds: within 3x3 grid', () => {
@@ -16,8 +16,10 @@ describe('constants helpers', () => {
     expect(capMana(11)).toBe(10);
   });
 
-  it('attackCost: prefers activation if provided', () => {
-    expect(attackCost({ activation: 2, cost: 5 })).toBe(2);
+  it('attackCost: учитывает скидки только для атаки', () => {
+    const tpl = { activation: 4, attackCostReduction: 2 };
+    expect(activationCost(tpl)).toBe(4);
+    expect(attackCost(tpl)).toBe(2);
   });
 
   it('attackCost: cost - 1 otherwise, floored at 0', () => {

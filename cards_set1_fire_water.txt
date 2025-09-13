@@ -45,7 +45,7 @@ const CARDS = {
     id: 'FIRE_PARTMOLE_FLAME_LIZARD', name: 'Partmole Flame Lizard', type: 'UNIT',
     cost: 2, activation: 2, element: 'FIRE', atk: 2, hp: 2,
     pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
-    firstStrike: true,
+    firstStrike: true, attackCostReduction: 1,
     desc: 'Quickness. The activation cost to attack is 1 less than listed.'
   },
   FIRE_FIREFLY_NINJA: {
@@ -59,14 +59,14 @@ const CARDS = {
     id: 'FIRE_GREAT_MINOS', name: 'Great Minos of Sciondar', type: 'UNIT',
     cost: 3, activation: 2, element: 'FIRE', atk: 2, hp: 1,
     pattern: 'FRONT', range: 2, attackType: 'MELEE', blindspots: ['S'],
-    dodge50: true, activationReduction: 1, diesOffElement: 'FIRE',
-    desc: 'Perfect Dodge. The activation cost to attack is 1 less. Destroy Great Minos if he is on a non‑Fire field.'
+    perfectDodge: true, attackCostReduction: 1, diesOffElement: 'FIRE',
+    desc: 'Perfect Dodge. Attacks and counterattacks two spaces ahead. The activation cost to attack is 1 less. Destroy Great Minos if he is on a non‑Fire field.'
   },
   FIRE_FLAME_ASCETIC: {
     id: 'FIRE_FLAME_ASCETIC', name: 'Flame Ascetic', type: 'UNIT',
     cost: 3, activation: 3, element: 'FIRE', atk: 2, hp: 3,
     pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
-    randomPlus2: true, activationReduction: 2,
+    randomPlus2: true, attackCostReduction: 2,
     desc: 'Adds 2 to its Attack half the time. The activation cost to attack is 2 less than listed.'
   },
   FIRE_PARTMOLE_FLAME_GUARD: {
@@ -101,14 +101,14 @@ const CARDS = {
     id: 'FIRE_PURSUER_OF_SAINT_DHEES', name: 'Pursuer of Saint Dhees', type: 'UNIT',
     cost: 6, activation: 6, element: 'FIRE', atk: 5, hp: 4,
     pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
-    dynamicAtk: 'OTHERS_ON_BOARD', activationReduction: 5,
+    dynamicAtk: 'OTHERS_ON_BOARD', attackCostReduction: 5,
     desc: 'Attack = 5 plus the number of other creatures on the board. The activation cost to attack is 5 less than listed.'
   },
   FIRE_INFERNAL_SCIONDAR_DRAGON: {
     id: 'FIRE_INFERNAL_SCIONDAR_DRAGON', name: 'Infernal Sciondar Dragon', type: 'UNIT',
     cost: 7, activation: 4, element: 'FIRE', atk: 5, hp: 8,
     pattern: 'FRONT', range: 2, attackType: 'MELEE', blindspots: [],
-    dynamicAtk: 'FIRE_CREATURES', activationReductionOnElement: { element: 'FIRE', reduction: 3 },
+    dynamicAtk: 'FIRE_CREATURES', attackCostReductionOnElement: { element: 'FIRE', reduction: 3 },
     desc: 'Attack = 5 plus the number of other Fire creatures on the board. While on a Fire field, its activation cost to attack is 3 less than listed.'
   },
   FIRE_DIDI_THE_ENLIGHTENED: {
