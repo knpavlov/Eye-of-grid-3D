@@ -1,54 +1,121 @@
-// Определение доступных колод
-// Каждая колода включает id, имя, описание и список карт
+// Структурированное описание всех доступных колод
+// Каждая колода задаётся списком ID карт, которые затем разворачиваются в объекты
+import { CARDS } from './cards.js';
 
-import { CARDS, STARTER_FIRESET } from './cards.js';
-
-// Колода, состоящая только из существ — без заклинаний
-const CREATURE_ONLY = [
-  CARDS.FIRE_FLAME_MAGUS,
-  CARDS.FIRE_HELLFIRE_SPITTER,
-  CARDS.FIRE_FREEDONIAN,
-  CARDS.FIRE_FLAME_LIZARD,
-  CARDS.FIRE_GREAT_MINOS,
-  CARDS.FIRE_FLAME_ASCETIC,
-  CARDS.FIRE_TRICEPTAUR,
-  CARDS.FIRE_PURSUER,
-  CARDS.FIRE_FLAME_MAGUS,
-  CARDS.FIRE_HELLFIRE_SPITTER,
-  CARDS.FIRE_FLAME_LIZARD,
-  CARDS.FIRE_FREEDONIAN,
-].filter(Boolean);
-
-// Экспериментальная колода — пока использует стартовый набор
-const ARCANE_MIX = STARTER_FIRESET.slice();
-
-export const DECKS = [
+// Список колод с перечислением карт по ID
+const RAW_DECKS = [
   {
     id: 'FIRE_STARTER',
     name: 'Fire Awakening',
     description: 'Baseline set of fiery spells and units.',
-    cards: STARTER_FIRESET,
+    cards: [
+      'FIRE_FLAME_MAGUS',
+      'FIRE_HELLFIRE_SPITTER',
+      'FIRE_FREEDONIAN',
+      'FIRE_FLAME_LIZARD',
+      'FIRE_GREAT_MINOS',
+      'FIRE_FLAME_ASCETIC',
+      'FIRE_TRICEPTAUR',
+      'FIRE_PURSUER',
+      'FIRE_FLAME_MAGUS',
+      'FIRE_HELLFIRE_SPITTER',
+      'FIRE_FLAME_LIZARD',
+      'FIRE_FREEDONIAN',
+      'RAISE_STONE',
+      'SPELL_PARMTETIC_HOLY_FEAST',
+      'SPELL_PARMTETIC_HOLY_FEAST',
+      'SPELL_GOGHLIE_ALTAR',
+      'SPELL_BEGUILING_FOG',
+      'SPELL_CLARE_WILS_BANNER',
+      "SPELL_SUMMONER_MESMERS_ERRAND",
+      'SPELL_FISSURES_OF_GOGHLIE',
+    ],
   },
   {
     id: 'ARCANE_MIX',
     name: 'Arcane Arsenal',
     description: 'Balanced mix of creatures and tricks.',
-    cards: ARCANE_MIX,
+    cards: [
+      'FIRE_FLAME_MAGUS',
+      'FIRE_HELLFIRE_SPITTER',
+      'FIRE_FREEDONIAN',
+      'FIRE_FLAME_LIZARD',
+      'FIRE_GREAT_MINOS',
+      'FIRE_FLAME_ASCETIC',
+      'FIRE_TRICEPTAUR',
+      'FIRE_PURSUER',
+      'FIRE_FLAME_MAGUS',
+      'FIRE_HELLFIRE_SPITTER',
+      'FIRE_FLAME_LIZARD',
+      'FIRE_FREEDONIAN',
+      'RAISE_STONE',
+      'SPELL_PARMTETIC_HOLY_FEAST',
+      'SPELL_PARMTETIC_HOLY_FEAST',
+      'SPELL_GOGHLIE_ALTAR',
+      'SPELL_BEGUILING_FOG',
+      'SPELL_CLARE_WILS_BANNER',
+      "SPELL_SUMMONER_MESMERS_ERRAND",
+      'SPELL_FISSURES_OF_GOGHLIE',
+    ],
   },
   {
     id: 'BEAST_HORDE',
     name: 'Beast Horde',
     description: 'All creature rush with no spells.',
-    cards: CREATURE_ONLY,
+    cards: [
+      'FIRE_FLAME_MAGUS',
+      'FIRE_HELLFIRE_SPITTER',
+      'FIRE_FREEDONIAN',
+      'FIRE_FLAME_LIZARD',
+      'FIRE_GREAT_MINOS',
+      'FIRE_FLAME_ASCETIC',
+      'FIRE_TRICEPTAUR',
+      'FIRE_PURSUER',
+      'FIRE_FLAME_MAGUS',
+      'FIRE_HELLFIRE_SPITTER',
+      'FIRE_FLAME_LIZARD',
+      'FIRE_FREEDONIAN',
+    ],
   },
   {
     id: 'COMING_SOON',
     name: 'Coming Soon',
     description: 'Another deck is on the way.',
-    cards: STARTER_FIRESET,
+    cards: [
+      // временно повторяем стартовую колоду
+      'FIRE_FLAME_MAGUS',
+      'FIRE_HELLFIRE_SPITTER',
+      'FIRE_FREEDONIAN',
+      'FIRE_FLAME_LIZARD',
+      'FIRE_GREAT_MINOS',
+      'FIRE_FLAME_ASCETIC',
+      'FIRE_TRICEPTAUR',
+      'FIRE_PURSUER',
+      'FIRE_FLAME_MAGUS',
+      'FIRE_HELLFIRE_SPITTER',
+      'FIRE_FLAME_LIZARD',
+      'FIRE_FREEDONIAN',
+      'RAISE_STONE',
+      'SPELL_PARMTETIC_HOLY_FEAST',
+      'SPELL_PARMTETIC_HOLY_FEAST',
+      'SPELL_GOGHLIE_ALTAR',
+      'SPELL_BEGUILING_FOG',
+      'SPELL_CLARE_WILS_BANNER',
+      "SPELL_SUMMONER_MESMERS_ERRAND",
+      'SPELL_FISSURES_OF_GOGHLIE',
+    ],
   },
 ];
 
+// Преобразуем ID карт в сами объекты карт
+function expand(ids) {
+  return ids.map(id => CARDS[id]).filter(Boolean);
+}
+
+export const DECKS = RAW_DECKS.map(d => ({ ...d, cards: expand(d.cards) }));
+
 const api = { DECKS };
-try { if (typeof window !== 'undefined') { window.DECKS = DECKS; } } catch {}
+try {
+  if (typeof window !== 'undefined') { window.DECKS = DECKS; }
+} catch {}
 export default api;
