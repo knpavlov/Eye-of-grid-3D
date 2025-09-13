@@ -68,9 +68,10 @@ function pairIfPossible() {
     s1.data.matchId = matchId; s1.data.seat = 1;
     s0.data.queueing = false; s1.data.queueing = false;
 
-    s0.emit("matchFound", { matchId, seat: 0 });
-    s1.emit("matchFound", { matchId, seat: 1 });
-    pushLog({ ev: 'matchFound', matchId, sids: [s0.id, s1.id] });
+    const decks = { 0: s0.data.deckId, 1: s1.data.deckId };
+    s0.emit("matchFound", { matchId, seat: 0, decks });
+    s1.emit("matchFound", { matchId, seat: 1, decks });
+    pushLog({ ev: 'matchFound', matchId, sids: [s0.id, s1.id], decks });
 
     // Старт серверного таймера тиков (без авто-энда)
     const m = matches.get(matchId);
@@ -96,8 +97,8 @@ io.on("connection", (socket) => {
       pushLog({ ev: 'client', sid: socket.id, matchId, ...payload });
     } catch {}
   });
-  socket.on("joinQueue", () => {
-    pushLog({ ev: 'joinQueue:start', sid: socket.id, currentQueueSize: queue.length });
+  socket.on("joinQueue", (data = {}) => {
+    pushLog({ ev: 'joinQueue:start', sid: socket.id, currentQueueSize: queue.length, deckId: data.deckId });
     
     // если socket был в комнате завершённого матча — убедимся, что он вышел
     try {
@@ -113,6 +114,7 @@ io.on("connection", (socket) => {
     socket.data.queueing = false;
     socket.data.matchId = undefined;
     socket.data.seat = undefined;
+    socket.data.deckId = data.deckId;
     
     // Удаляем из очереди если уже есть (очистка дубликатов)
     const existingIndex = queue.indexOf(socket);

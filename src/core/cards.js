@@ -1,4 +1,4 @@
-// Card database and starter decks
+// База данных всех карт
 
 export const CARDS = {
   // Fire Set (subset extracted; extend as needed)
@@ -90,27 +90,3 @@ export const CARDS = {
   SPELL_CLARE_WILS_BANNER: { id: 'SPELL_CLARE_WILS_BANNER', name: 'Clare Wil’s Banner', type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 1, text: 'Friendly creatures get +1 ATK until end of turn.' },
   SPELL_SUMMONER_MESMERS_ERRAND: { id: 'SPELL_SUMMONER_MESMERS_ERRAND', name: "Summoner Mesmer's Errand", type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 1, text: 'Draw two cards.' },
 };
-
-// Example starter deck (mirrors the inlined one; adjust as needed)
-export const STARTER_FIRESET = [
-  CARDS.FIRE_FLAME_MAGUS,
-  CARDS.FIRE_HELLFIRE_SPITTER,
-  CARDS.FIRE_FREEDONIAN,
-  CARDS.FIRE_FLAME_LIZARD,
-  CARDS.FIRE_GREAT_MINOS,
-  CARDS.FIRE_FLAME_ASCETIC,
-  CARDS.FIRE_TRICEPTAUR,
-  CARDS.FIRE_PURSUER,
-  CARDS.FIRE_FLAME_MAGUS,
-  CARDS.FIRE_HELLFIRE_SPITTER,
-  CARDS.FIRE_FLAME_LIZARD,
-  CARDS.FIRE_FREEDONIAN,
-  CARDS.RAISE_STONE,
-  CARDS.SPELL_PARMTETIC_HOLY_FEAST,
-  CARDS.SPELL_PARMTETIC_HOLY_FEAST,
-  CARDS.SPELL_GOGHLIE_ALTAR,
-  CARDS.SPELL_BEGUILING_FOG,
-  CARDS.SPELL_CLARE_WILS_BANNER,
-  CARDS.SPELL_SUMMONER_MESMERS_ERRAND,
-  CARDS.SPELL_FISSURES_OF_GOGHLIE,
-].filter(Boolean);
