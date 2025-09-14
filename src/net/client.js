@@ -512,6 +512,8 @@
       const targetPos = tileMeshes[first.r][first.c].position;
       const dir = new THREE.Vector3().subVectors(targetPos, aMesh.position).normalize();
       const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
+      const tplA = window.gameState?.board?.[attacker.r]?.[attacker.c]?.unit ? window.CARDS?.[window.gameState.board[attacker.r][attacker.c].unit.tplId] : null;
+      const isDouble = tplA && tplA.doubleAttack;
       // Wrap target mesh into a transient group to ensure movement is visible
       const parent = aMesh.parent; if (!parent) return false;
       const fromPos = aMesh.position.clone();
@@ -525,25 +527,32 @@
       }});
       tl.to(wrapper.position, { x: toPos.x, z: toPos.z, duration: 0.22, ease: 'power2.out' })
         .to(wrapper.position, { x: fromPos.x, z: fromPos.z, duration: 0.30, ease: 'power2.inOut' });
-      __REMOTE_BATTLE_ANIM_UNTIL = Date.now() + 720; try { window.__REMOTE_BATTLE_ANIM_UNTIL = __REMOTE_BATTLE_ANIM_UNTIL; } catch {}
-      
+      if (isDouble) {
+        tl.to(wrapper.position, { x: toPos.x, z: toPos.z, duration: 0.22, ease: 'power2.out' })
+          .to(wrapper.position, { x: fromPos.x, z: fromPos.z, duration: 0.30, ease: 'power2.inOut' });
+      }
+      __REMOTE_BATTLE_ANIM_UNTIL = Date.now() + (isDouble ? 1440 : 720);
+      try { window.__REMOTE_BATTLE_ANIM_UNTIL = __REMOTE_BATTLE_ANIM_UNTIL; } catch {}
+
       // Тряска цели и синхронный урон для неинициатора
-      setTimeout(() => {
-        try {
-          for (const target of targets) {
-            const tMesh = unitMeshes.find(m => m.userData.row === target.r && m.userData.col === target.c);
-            if (tMesh && typeof target.dmg === 'number' && target.dmg > 0) {
-              window.__fx?.shakeMesh(tMesh, 6, 0.12);
-              try { window.__fx?.cancelPendingHpPopup(`${target.r},${target.c}`, -target.dmg); } catch {}
-              try { window.__fx?.spawnDamageText(tMesh, `-${target.dmg}`, '#ff5555'); } catch {}
-              try {
-                const key = `${target.r},${target.c}`;
-                RECENT_REMOTE_DAMAGE.set(key, { delta: -target.dmg, ts: Date.now() });
-              } catch {}
+      for (let i = 0; i < (isDouble ? 2 : 1); i++) {
+        setTimeout(() => {
+          try {
+            for (const target of targets) {
+              const tMesh = unitMeshes.find(m => m.userData.row === target.r && m.userData.col === target.c);
+              if (tMesh && typeof target.dmg === 'number' && target.dmg > 0) {
+                window.__fx?.shakeMesh(tMesh, 6, 0.12);
+                try { window.__fx?.cancelPendingHpPopup(`${target.r},${target.c}`, -target.dmg); } catch {}
+                try { window.__fx?.spawnDamageText(tMesh, `-${target.dmg}`, '#ff5555'); } catch {}
+                try {
+                  const key = `${target.r},${target.c}`;
+                  RECENT_REMOTE_DAMAGE.set(key, { delta: -target.dmg, ts: Date.now() });
+                } catch {}
+              }
             }
-          }
-        } catch {}
-      }, 420);
+          } catch {}
+        }, 420 + i*520);
+      }
       
       return true;
     } catch { return false; }
@@ -612,6 +621,9 @@
   function tryPlayRetaliation(attacker, retaliators, total){
     try {
       if (!attacker || !Array.isArray(retaliators)) return false;
+      const now = Date.now();
+      const until = (typeof window !== 'undefined' && typeof window.__REMOTE_BATTLE_ANIM_UNTIL === 'number') ? window.__REMOTE_BATTLE_ANIM_UNTIL : __REMOTE_BATTLE_ANIM_UNTIL;
+      if (until && now < until) return false;
       const aMesh = unitMeshes.find(m => m.userData.row === attacker.r && m.userData.col === attacker.c);
       if (!aMesh) return false;
       let maxDur = 0;

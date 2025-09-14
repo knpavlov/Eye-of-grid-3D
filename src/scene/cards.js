@@ -269,8 +269,9 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
       // заливаем все потенциальные клетки (включая выходящие за 3x3)
       ctx.fillStyle = 'rgba(56,189,248,0.35)';
       ctx.fillRect(cx, cy, cell, cell);
-      // красная рамка только если направление фиксировано
-      const mustHit = (!isChoice) && dist === minDist;
+      // если атака охватывает несколько дистанций одновременно, подсвечиваем все
+      const multi = (!a.mode || a.mode !== 'ANY') && (a.ranges && a.ranges.length > 1);
+      const mustHit = (!isChoice) && (multi || dist === minDist);
       ctx.strokeStyle = mustHit ? '#ef4444' : 'rgba(56,189,248,0.6)';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);

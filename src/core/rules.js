@@ -67,7 +67,8 @@ export function effectiveStats(cell, unit) {
   const buff = computeCellBuff(cell?.element, tpl?.element);
   const tempAtk = typeof unit?.tempAtkBuff === 'number' ? unit.tempAtkBuff : 0;
   const atk = Math.max(0, (tpl?.atk || 0) + buff.atk + tempAtk);
-  const hp = Math.max(0, (tpl?.hp || 0) + buff.hp);
+  const extra = typeof unit?.bonusHP === 'number' ? unit.bonusHP : 0;
+  const hp = Math.max(0, (tpl?.hp || 0) + buff.hp + extra);
   return { atk, hp };
 }
 
@@ -340,19 +341,21 @@ export function stagedAttack(state, r, c, opts = {}) {
 
     for (const d of deaths) {
       const tplD = CARDS[d.tplId];
-      if (tplD?.onDeathHealAll) {
+      if (tplD?.onDeathAddHPAll) {
         for (let rr = 0; rr < 3; rr++) {
           for (let cc = 0; cc < 3; cc++) {
             const ally = nFinal.board[rr][cc]?.unit;
             if (!ally || ally.owner !== d.owner) continue;
             const tplAlly = CARDS[ally.tplId];
             const buff = computeCellBuff(nFinal.board[rr][cc].element, tplAlly.element);
-            const maxHP = (tplAlly.hp || 0) + buff.hp;
+            const amount = tplD.onDeathAddHPAll;
+            ally.bonusHP = (ally.bonusHP || 0) + amount;
+            const maxHP = (tplAlly.hp || 0) + buff.hp + (ally.bonusHP || 0);
             const before = ally.currentHP ?? tplAlly.hp;
-            ally.currentHP = Math.min(maxHP, before + tplD.onDeathHealAll);
+            ally.currentHP = Math.min(maxHP, before + amount);
           }
         }
-        logLines.push(`${tplD.name}: союзники получают +${tplD.onDeathHealAll} HP`);
+        logLines.push(`${tplD.name}: союзники получают +${tplD.onDeathAddHPAll} HP`);
       }
     }
 

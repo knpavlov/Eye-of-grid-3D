@@ -84,7 +84,9 @@ export const CARDS = {
     id: 'FIRE_PARTMOLE_FLAME_GUARD', name: 'Partmole Flame Guard', type: 'UNIT', cost: 3, activation: 2,
     element: 'FIRE', atk: 1, hp: 3,
     attackType: 'STANDARD',
+    // пробивает первую цель и бьёт следующую за ней
     attacks: [ { dir: 'N', ranges: [1,2] } ],
+    pierce: true,
     blindspots: ['S'],
     plusAtkIfTargetOnElement: { element: 'WATER', amount: 2 },
     desc: 'Adds 2 to its Attack if at least one target creature is on a water field.'
@@ -100,7 +102,7 @@ export const CARDS = {
       { dir: 'S', ranges: [1] },
       { dir: 'W', ranges: [1] }
     ],
-    blindspots: [], fortress: true, diesOffElement: 'WATER', fieldquakeLock: { type: 'ADJACENT' },
+    blindspots: [], fortress: true, diesOnElement: 'WATER', fieldquakeLock: { type: 'ADJACENT' },
     desc: 'Fortress. Adjacent fields cannot be field‑quaked or exchanged. Destroy Lesser Granvenoa if it is on a Water field.'
   },
 
@@ -109,7 +111,7 @@ export const CARDS = {
     element: 'FIRE', atk: 2, hp: 3,
     attackType: 'MAGIC',
     attacks: [ { dir: 'N', ranges: [1,2,3], mode: 'ANY' } ],
-    blindspots: ['N','E','S','W'], onDeathHealAll: 1,
+    blindspots: ['N','E','S','W'], onDeathAddHPAll: 1,
     desc: 'Magic Attack. If destroyed, all allied creatures on board gain 1 HP.'
   },
 

@@ -2,6 +2,7 @@
 // These functions rely on existing globals to minimize coupling.
 import { highlightTiles, clearHighlights } from '../scene/highlight.js';
 import { enforceHandLimit } from './handLimit.js';
+import { canAttack } from '../core/abilities.js';
 
 export function rotateUnit(unitMesh, dir) {
   try {
@@ -44,12 +45,17 @@ export function performUnitAttack(unitMesh) {
     const r = unitMesh.userData?.row; const c = unitMesh.userData?.col;
     if (r == null || c == null || !gameState) return;
     const unit = gameState.board?.[r]?.[c]?.unit; if (!unit) return;
+    // запрет на повторную атаку и на атаку укреплений
+    const tpl = window.CARDS?.[unit.tplId];
+    if (!canAttack(tpl)) {
+      window.__ui?.notifications?.show('Это укрепление не может атаковать', 'error');
+      return;
+    }
     // запрет на повторную атаку в пределах одного хода
     if (unit.lastAttackTurn === gameState.turn) {
       window.__ui?.notifications?.show('Это существо уже атаковало в этом ходу', 'error');
       return;
     }
-    const tpl = window.CARDS?.[unit.tplId];
     const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
     const iState = window.__interactions?.interactionState;
     if (tpl?.attackType === 'MAGIC') {
