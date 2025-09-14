@@ -24,12 +24,26 @@ export function showFieldLockTiles(cells = []) {
   for (const { r, c } of cells) {
     const tile = tileMeshes?.[r]?.[c];
     if (!tile) continue;
-    const mat = new THREE.SpriteMaterial({ map: tex, color: 0xf97316, transparent: true, opacity: 0.25 });
+
+    // изначально почти прозрачный замок
+    const mat = new THREE.SpriteMaterial({ map: tex, color: 0xf97316, transparent: true, opacity: 0.2 });
     const spr = new THREE.Sprite(mat);
-    spr.position.copy(tile.position).add(new THREE.Vector3(0, 0.52, 0));
-    spr.scale.set(0.8, 0.8, 0.8);
+
+    // смещаем иконку ближе к углу, но чуть опускаем, чтобы она не залезала на верхнюю ячейку
+    const tileSize = tile.geometry?.parameters?.width || 1;
+    const iconSize = 0.8;
+    const offset = tileSize / 2 - iconSize / 2;
+    const extra = iconSize * 0.15;
+    const downShift = iconSize * 0.15; // сдвиг вниз
+    spr.position
+      .copy(tile.position)
+      .add(new THREE.Vector3(offset + extra, 0.8, -(offset + extra) + downShift));
+    spr.scale.set(iconSize, iconSize, iconSize);
+    spr.renderOrder = 1300; // поверх карт на поле
     effectsGroup.add(spr);
-    try { window.gsap?.to(mat, { opacity: 0.05, duration: 0.8, yoyo: true, repeat: -1 }); } catch {}
+
+    // пульсация почти до полной непрозрачности
+    try { window.gsap?.to(mat, { opacity: 0.95, duration: 0.8, yoyo: true, repeat: -1 }); } catch {}
     state.sprites.push(spr);
   }
 }
