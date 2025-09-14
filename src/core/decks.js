@@ -105,6 +105,20 @@ const RAW_DECKS = [
       'SPELL_FISSURES_OF_GOGHLIE',
     ],
   },
+  {
+    id: 'FIRE_LOCK_TEST',
+    name: 'Fire Lock Test',
+    description: 'New fire units and fieldquake spells.',
+    cards: [
+      'FIRE_PARTMOLE_FLAME_GUARD',
+      'FIRE_LESSER_GRANVENOA',
+      'FIRE_PARTMOLE_FIRE_ORACLE',
+      'FIRE_INFERNAL_SCIONDAR_DRAGON',
+      'FIRE_DIDI_THE_ENLIGHTENED',
+      'SPELL_FISSURES_OF_GOGHLIE',
+      'SPELL_FISSURES_OF_GOGHLIE',
+    ],
+  },
 ];
 
 // Преобразуем ID карт в сами объекты карт

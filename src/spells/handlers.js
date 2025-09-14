@@ -7,6 +7,7 @@ import { spendAndDiscardSpell, burnSpellCard } from '../ui/spellUtils.js';
 import { getCtx } from '../scene/context.js';
 import { interactionState, resetCardSelection } from '../scene/interactions.js';
 import { discardHandCard } from '../scene/discard.js';
+import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -329,6 +330,11 @@ export const handlers = {
         c = tileMesh.userData.col;
       const cell = gameState.board[r][c];
       if (!cell) return;
+      const locked = computeFieldquakeLockedCells(gameState);
+      if (locked.some(p => p.r === r && p.c === c)) {
+        showNotification('This field is protected', 'error');
+        return;
+      }
       if (cell.element === 'MECH') {
         showNotification("This cell can't be changed", 'error');
         return;

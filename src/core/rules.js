@@ -1,7 +1,7 @@
 // Pure game rules helpers (no DOM/THREE/GSAP/socket)
 import { DIR_VECTORS, inBounds, attackCost, OPPOSITE_ELEMENT, capMana } from './constants.js';
 import { CARDS } from './cards.js';
-import { hasFirstStrike } from './abilities.js';
+import { hasFirstStrike, hasDoubleAttack, canAttack } from './abilities.js';
 import { countUnits } from './board.js';
 
 export function hasAdjacentGuard(state, r, c) {
@@ -147,8 +147,9 @@ export function stagedAttack(state, r, c, opts = {}) {
   if (!attacker) return null;
   // не позволяем атаковать более одного раза за ход
   if (attacker.lastAttackTurn === base.turn) return null;
-
   const tplA = CARDS[attacker.tplId];
+  if (!canAttack(tplA)) return null;
+  
   const baseStats = effectiveStats(base.board[r][c], attacker);
   let atk = baseStats.atk;
   let logLines = [];
@@ -160,6 +161,27 @@ export function stagedAttack(state, r, c, opts = {}) {
     const others = countUnits(base) - 1;
     atk += others;
     logLines.push(`${tplA.name}: атака увеличена на ${others}`);
+  }
+  if (tplA.dynamicAtk === 'FIRE_CREATURES') {
+    let cnt = 0;
+    for (let rr = 0; rr < 3; rr++) {
+      for (let cc = 0; cc < 3; cc++) {
+        if (rr === r && cc === c) continue;
+        const u = base.board[rr][cc]?.unit;
+        if (u && CARDS[u.tplId]?.element === 'FIRE') cnt++;
+      }
+    }
+    atk += cnt;
+    logLines.push(`${tplA.name}: атака увеличена на ${cnt}`);
+  }
+  const plusCfg = tplA.plusAtkIfTargetOnElement || (tplA.plus1IfTargetOnElement ? { element: tplA.plus1IfTargetOnElement, amount: 1 } : null);
+  if (plusCfg) {
+    const { element: el, amount } = plusCfg;
+    const has = hitsRaw.some(h => base.board?.[h.r]?.[h.c]?.element === el);
+    if (has) {
+      atk += amount;
+      logLines.push(`${tplA.name}: +${amount} ATK по целям на поле ${el}`);
+    }
   }
   if (tplA.randomPlus2 && Math.random() < 0.5) {
     atk += 2;
@@ -243,6 +265,19 @@ export function stagedAttack(state, r, c, opts = {}) {
         if (h.dodge) parts.push('(dodge)');
         logLines.push(parts.join(' '));
       }
+      if (hasDoubleAttack(tplA)) {
+        for (const h of step1Damages) {
+          const cell2 = n1.board?.[h.r]?.[h.c];
+          const B2 = cell2?.unit; if (!B2) continue;
+          if ((B2.currentHP ?? CARDS[B2.tplId].hp) <= 0) continue;
+          const before2 = B2.currentHP ?? CARDS[B2.tplId].hp;
+          B2.currentHP = Math.max(0, before2 - (h.dealt || 0));
+          const after2 = B2.currentHP;
+          const nameA = CARDS[attacker.tplId]?.name || 'Attacker';
+          const nameB = CARDS[B2.tplId]?.name || 'Target';
+          logLines.push(`${nameA} (2nd) → ${nameB}: ${h.dealt || 0} dmg (HP ${before2}→${after2})`);
+        }
+      }
     }
     step1Done = true;
   }
@@ -303,6 +338,24 @@ export function stagedAttack(state, r, c, opts = {}) {
       }
     } catch {}
 
+    for (const d of deaths) {
+      const tplD = CARDS[d.tplId];
+      if (tplD?.onDeathHealAll) {
+        for (let rr = 0; rr < 3; rr++) {
+          for (let cc = 0; cc < 3; cc++) {
+            const ally = nFinal.board[rr][cc]?.unit;
+            if (!ally || ally.owner !== d.owner) continue;
+            const tplAlly = CARDS[ally.tplId];
+            const buff = computeCellBuff(nFinal.board[rr][cc].element, tplAlly.element);
+            const maxHP = (tplAlly.hp || 0) + buff.hp;
+            const before = ally.currentHP ?? tplAlly.hp;
+            ally.currentHP = Math.min(maxHP, before + tplD.onDeathHealAll);
+          }
+        }
+        logLines.push(`${tplD.name}: союзники получают +${tplD.onDeathHealAll} HP`);
+      }
+    }
+
     if (A) {
       A.lastAttackTurn = nFinal.turn;
       const cellEl = nFinal.board?.[r]?.[c]?.element;
@@ -334,12 +387,20 @@ export function magicAttack(state, fr, fc, tr, tc) {
   // не позволяем магам бить дважды в одном ходу
   if (attacker.lastAttackTurn === n1.turn) return null;
   const tplA = CARDS[attacker.tplId];
+  if (!canAttack(tplA)) return null;
   const allowFriendly = !!tplA.friendlyFire;
   const mainTarget = n1.board?.[tr]?.[tc]?.unit;
   if (!allowFriendly && (!mainTarget || mainTarget.owner === attacker.owner)) return null;
 
   const atkStats = effectiveStats(n1.board[fr][fc], attacker);
-  const dmg = Math.max(0, (atkStats.atk || 0) + (tplA.randomPlus2 && Math.random() < 0.5 ? 2 : 0));
+  let atk = atkStats.atk || 0;
+  const plusCfg2 = tplA.plusAtkIfTargetOnElement || (tplA.plus1IfTargetOnElement ? { element: tplA.plus1IfTargetOnElement, amount: 1 } : null);
+  if (plusCfg2) {
+    const { element: el, amount } = plusCfg2;
+    const cellEl = n1.board?.[tr]?.[tc]?.element;
+    if (cellEl === el) atk += amount;
+  }
+  const dmg = Math.max(0, atk + (tplA.randomPlus2 && Math.random() < 0.5 ? 2 : 0));
 
   const cells = [{ r: tr, c: tc }];
   const splash = tplA.splash || 0;
@@ -364,6 +425,19 @@ export function magicAttack(state, fr, fc, tr, tc) {
     u.currentHP = Math.max(0, before - dmg);
     targets.push({ r: cell.r, c: cell.c, dmg });
     logLines.push(`${CARDS[attacker.tplId].name} (Magic) → ${CARDS[u.tplId].name}: ${dmg} dmg (HP ${before}→${u.currentHP})`);
+  }
+
+  if (hasDoubleAttack(tplA)) {
+    for (const cell of cells) {
+      const u2 = n1.board?.[cell.r]?.[cell.c]?.unit;
+      if (!u2) continue;
+      const tplB2 = CARDS[u2.tplId];
+      if ((u2.currentHP ?? tplB2.hp) <= 0) continue;
+      const before2 = u2.currentHP ?? tplB2.hp;
+      u2.currentHP = Math.max(0, before2 - dmg);
+      targets.push({ r: cell.r, c: cell.c, dmg });
+      logLines.push(`${CARDS[attacker.tplId].name} (Magic 2nd) → ${CARDS[u2.tplId].name}: ${dmg} dmg (HP ${before2}→${u2.currentHP})`);
+    }
   }
 
   const deaths = [];
