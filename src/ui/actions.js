@@ -50,6 +50,11 @@ export function performUnitAttack(unitMesh) {
       return;
     }
     const tpl = window.CARDS?.[unit.tplId];
+    // крепости не могут атаковать
+    if (!window.canAttack || !window.canAttack(tpl)) {
+      window.__ui?.notifications?.show('Это существо не может атаковать', 'error');
+      return;
+    }
     const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
     const iState = window.__interactions?.interactionState;
     if (tpl?.attackType === 'MAGIC') {

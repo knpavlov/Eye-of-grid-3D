@@ -12,9 +12,12 @@ export function showUnitActionPanel(unitMesh){
     const el = document.getElementById('unit-info'); if (el) el.textContent = `${cardData.name} (${(unitMesh.userData.row||0) + 1},${(unitMesh.userData.col||0) + 1})`;
     const alreadyAttacked = unitData.lastAttackTurn === gs.turn;
     const attackBtn = document.getElementById('attack-btn'); if (attackBtn) {
-      attackBtn.disabled = !!alreadyAttacked;
+      const canAtk = typeof window.canAttack === 'function' ? window.canAttack(cardData) : true;
+      attackBtn.disabled = !!alreadyAttacked || !canAtk;
       const cost = (typeof window !== 'undefined' && typeof window.attackCost === 'function') ? window.attackCost(cardData) : 1;
-      attackBtn.textContent = alreadyAttacked ? 'Already attacked' : `Attack (-${cost})`;
+      attackBtn.textContent = alreadyAttacked
+        ? 'Already attacked'
+        : (canAtk ? `Attack (-${cost})` : 'Cannot attack');
     }
     const rotateCost = (typeof window !== 'undefined' && typeof window.rotateCost === 'function') ? window.rotateCost(cardData) : 1;
     const alreadyRotated = unitData.lastRotateTurn === gs.turn;

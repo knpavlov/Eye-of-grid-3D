@@ -520,6 +520,8 @@
         if (hpA <= 0) hitsPrev.length = 0;
       }
       const fromPos = (aMesh ? aMesh.position.clone() : tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 0.8, 0)));
+      const tplAttacker = gameState.board?.[r]?.[c]?.unit ? CARDS[gameState.board[r][c].unit.tplId] : null;
+      const attackerDouble = tplAttacker && tplAttacker.doubleAttack;
 
       const doStep1 = () => {
         // Убраны жёлтые лучи/стрелки под картами
@@ -531,9 +533,15 @@
         // Тряска и всплывающий урон — уже по актуальным мешам после обновления
         for (const h of hitsPrev) {
           const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
-          if (tMesh) { 
-            window.__fx.shakeMesh(tMesh, 6, 0.12); 
+          if (tMesh) {
+            window.__fx.shakeMesh(tMesh, 6, 0.12);
             window.__fx.spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555');
+            if (attackerDouble) {
+              setTimeout(() => {
+                window.__fx.shakeMesh(tMesh, 6, 0.12);
+                window.__fx.spawnDamageText(tMesh, `-${h.dmg}`, '#ff5555');
+              }, 300);
+            }
           }
         }
         setTimeout(async () => {
@@ -643,9 +651,15 @@
         if (firstTargetMesh) {
           const dir = new THREE.Vector3().subVectors(firstTargetMesh.position, aMesh.position).normalize();
           const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
+          const tplA = CARDS[gameState.board[r][c]?.unit?.tplId];
+          const isDouble = tplA && tplA.doubleAttack;
           const tl = gsap.timeline({ onComplete: doStep1 });
           tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
             .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.3, ease: 'power2.inOut' });
+          if (isDouble) {
+            tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
+              .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.3, ease: 'power2.inOut' });
+          }
           // Онлайновая синхронизация выпадов (атакующий и цели)
           try {
             const shouldSend = (typeof window !== 'undefined' && window.socket && (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) && (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active);

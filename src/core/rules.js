@@ -67,7 +67,8 @@ export function effectiveStats(cell, unit) {
   const buff = computeCellBuff(cell?.element, tpl?.element);
   const tempAtk = typeof unit?.tempAtkBuff === 'number' ? unit.tempAtkBuff : 0;
   const atk = Math.max(0, (tpl?.atk || 0) + buff.atk + tempAtk);
-  const hp = Math.max(0, (tpl?.hp || 0) + buff.hp);
+  const baseHp = unit?.hp != null ? unit.hp : (tpl?.hp || 0);
+  const hp = Math.max(0, baseHp + buff.hp);
   return { atk, hp };
 }
 
@@ -347,8 +348,10 @@ export function stagedAttack(state, r, c, opts = {}) {
             if (!ally || ally.owner !== d.owner) continue;
             const tplAlly = CARDS[ally.tplId];
             const buff = computeCellBuff(nFinal.board[rr][cc].element, tplAlly.element);
-            const maxHP = (tplAlly.hp || 0) + buff.hp;
-            const before = ally.currentHP ?? tplAlly.hp;
+            const baseBefore = ally.hp != null ? ally.hp : (tplAlly.hp || 0);
+            const before = ally.currentHP ?? baseBefore;
+            ally.hp = baseBefore + tplD.onDeathHealAll;
+            const maxHP = ally.hp + buff.hp;
             ally.currentHP = Math.min(maxHP, before + tplD.onDeathHealAll);
           }
         }

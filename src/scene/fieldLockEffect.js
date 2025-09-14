@@ -1,49 +1,33 @@
-// Визуальный эффект для клеток, защищённых от fieldquake/exchange
-// Основан на эффекте подсветки, но имеет иной цвет и форму
+// Визуальный эффект блокировки поля в виде иконки замка
+// Отдельный модуль, не затрагивающий логику игры
 import { getCtx } from './context.js';
 
 const state = {
-  tiles: [],
-  uniforms: [],
+  meshes: [],
   rafId: 0,
+  tex: null,
 };
 
-function createLockMaterial(origMat, THREE) {
-  const mat = origMat.clone();
-  mat.transparent = true;
-  mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = { value: 0 };
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vUv;')
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\n vUv = uv;');
-    const head = `\n varying vec2 vUv;\n uniform float uTime;\n`;
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>' + head)
-      .replace(
-        '#include <dithering_fragment>',
-        `#include <dithering_fragment>\n{
-          float pulse = sin(uTime*3.0)*0.5+0.5;
-          vec2 centered = vUv*2.0-1.0;
-          float ring = smoothstep(0.4,0.38, length(centered));
-          vec3 glow = vec3(1.0,0.6,0.1)*ring*(0.6+0.4*pulse);
-          gl_FragColor.rgb += glow;
-          gl_FragColor.a = max(gl_FragColor.a, ring*pulse*0.9);
-        }`
-      );
-    state.uniforms.push(shader.uniforms.uTime);
-  };
-  return mat;
+// загрузка текстуры замка один раз
+function ensureTexture(THREE) {
+  if (!state.tex) {
+    const loader = new THREE.TextureLoader();
+    state.tex = loader.load('textures/lock.svg');
+  }
+  return state.tex;
 }
 
 function startAnim() {
   const start = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-  function tick() {
+  const tick = () => {
     const t = ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - start) / 1000;
-    state.uniforms.forEach(u => { if (u) u.value = t; });
+    for (const m of state.meshes) {
+      m.material.opacity = 0.2 + 0.2 * Math.sin(t * 3);
+    }
     state.rafId = (typeof requestAnimationFrame !== 'undefined')
       ? requestAnimationFrame(tick)
       : setTimeout(tick, 16);
-  }
+  };
   tick();
 }
 
@@ -52,18 +36,19 @@ export function showFieldLockTiles(cells = []) {
   const { tileMeshes, THREE } = ctx;
   if (!tileMeshes || !THREE) return;
   clearFieldLockTiles();
+  const tex = ensureTexture(THREE);
   for (const { r, c } of cells) {
     const tile = tileMeshes?.[r]?.[c];
     if (!tile) continue;
-    tile.traverse(obj => {
-      if (obj.isMesh) {
-        obj.userData._lockOrigMat = obj.material;
-        obj.material = createLockMaterial(obj.material, THREE);
-      }
-    });
-    state.tiles.push(tile);
+    const geom = new THREE.PlaneGeometry(1, 1);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0 });
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(0, 0.01, 0); // чуть над плиткой
+    tile.add(mesh);
+    state.meshes.push(mesh);
   }
-  if (state.tiles.length) startAnim();
+  if (state.meshes.length) startAnim();
 }
 
 export function clearFieldLockTiles() {
@@ -72,17 +57,12 @@ export function clearFieldLockTiles() {
     else clearTimeout(state.rafId);
     state.rafId = 0;
   }
-  state.uniforms = [];
-  state.tiles.forEach(tile => {
-    tile.traverse(obj => {
-      if (obj.isMesh && obj.userData._lockOrigMat) {
-        try { obj.material.dispose(); } catch {}
-        obj.material = obj.userData._lockOrigMat;
-        delete obj.userData._lockOrigMat;
-      }
-    });
+  state.meshes.forEach(m => {
+    m.parent?.remove(m);
+    try { m.geometry.dispose(); } catch {}
+    try { m.material.dispose(); } catch {}
   });
-  state.tiles = [];
+  state.meshes = [];
 }
 
 export default { showFieldLockTiles, clearFieldLockTiles };
