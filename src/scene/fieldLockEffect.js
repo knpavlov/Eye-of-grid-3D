@@ -23,11 +23,16 @@ function createLockMaterial(origMat, THREE) {
         '#include <dithering_fragment>',
         `#include <dithering_fragment>\n{
           float pulse = sin(uTime*3.0)*0.5+0.5;
-          vec2 centered = vUv*2.0-1.0;
-          float ring = smoothstep(0.4,0.38, length(centered));
-          vec3 glow = vec3(1.0,0.6,0.1)*ring*(0.6+0.4*pulse);
+          vec2 uv = vUv*2.0-1.0;
+          // простая фигура замка: дуга + прямоугольное тело
+          float body = step(abs(uv.x),0.3)*step(-0.2,uv.y)*step(uv.y,0.4);
+          float outer = step(length(uv+vec2(0.0,0.3)),0.5);
+          float inner = step(length(uv+vec2(0.0,0.3)),0.3);
+          float shackle = (outer-inner)*step(uv.y,0.0);
+          float lock = max(body, shackle);
+          vec3 glow = vec3(1.0,0.6,0.1)*lock*(0.3+0.2*pulse);
           gl_FragColor.rgb += glow;
-          gl_FragColor.a = max(gl_FragColor.a, ring*pulse*0.9);
+          gl_FragColor.a = max(gl_FragColor.a, lock*pulse*0.4);
         }`
       );
     state.uniforms.push(shader.uniforms.uTime);

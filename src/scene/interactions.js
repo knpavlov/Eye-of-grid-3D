@@ -532,7 +532,27 @@ export function placeUnitWithDirection(direction) {
     window.addLog(`${cardData.name} погибает вдали от стихии ${cardData.diesOffElement}!`);
     alive = false;
   }
+  if (alive && cardData.diesOnElement && cellElement === cardData.diesOnElement) {
+    window.addLog(`${cardData.name} не переносит стихию ${cardData.diesOnElement} и погибает!`);
+    alive = false;
+  }
   if (!alive) {
+    // обработка эффектов при смерти (например, лечение союзников)
+    if (cardData.onDeathHealAll) {
+      for (let rr = 0; rr < 3; rr++) {
+        for (let cc = 0; cc < 3; cc++) {
+          const ally = gameState.board?.[rr]?.[cc]?.unit;
+          if (!ally || ally.owner !== unit.owner) continue;
+          const tplAlly = window.CARDS?.[ally.tplId];
+          const cellEl2 = gameState.board[rr][cc].element;
+          const buff2 = window.computeCellBuff(cellEl2, tplAlly.element);
+          const maxHP = (tplAlly.hp || 0) + buff2.hp;
+          const before = ally.currentHP ?? tplAlly.hp;
+          ally.currentHP = Math.min(maxHP, before + cardData.onDeathHealAll);
+        }
+      }
+      window.addLog(`${cardData.name}: союзники получают +${cardData.onDeathHealAll} HP`);
+    }
     const owner = unit.owner;
     try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
     const ctx = getCtx();

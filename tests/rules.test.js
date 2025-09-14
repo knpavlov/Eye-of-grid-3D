@@ -233,6 +233,28 @@ describe('новые механики', () => {
     expect(fin.n1.board[0][1].unit).toBeNull();
   });
 
+  it('double attack вызывает только одну контратаку', () => {
+    const state = makeState();
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_DIDI_THE_ENLIGHTENED', facing:'N', currentHP:4 };
+    state.board[0][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'S', currentHP:10 };
+    const res = stagedAttack(state,1,1);
+    const fin = res.finish();
+    const attacker = fin.n1.board[1][1].unit;
+    expect(attacker.currentHP).toBe(2);
+  });
+
+  it('Flame Guard атакует две клетки вперёд', () => {
+    const state = makeState();
+    state.board[2][1].unit = { owner:0, tplId:'FIRE_PARTMOLE_FLAME_GUARD', facing:'N' };
+    state.board[1][1].unit = { owner:1, tplId:'FIRE_FLAME_MAGUS', facing:'S', currentHP:1 };
+    state.board[0][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FIRE_ORACLE', facing:'S', currentHP:3 };
+    const res = stagedAttack(state,2,1);
+    const fin = res.finish();
+    expect(fin.n1.board[1][1].unit).toBeNull();
+    const second = fin.n1.board[0][1].unit;
+    expect(second.currentHP).toBeLessThan(3);
+  });
+
   it('fortress не может атаковать, но может контратаковать', () => {
     const state = makeState();
     state.board[1][1].unit = { owner:0, tplId:'FIRE_LESSER_GRANVENOA', facing:'N' };
