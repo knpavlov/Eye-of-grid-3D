@@ -24,12 +24,22 @@ export function showFieldLockTiles(cells = []) {
   for (const { r, c } of cells) {
     const tile = tileMeshes?.[r]?.[c];
     if (!tile) continue;
-    const mat = new THREE.SpriteMaterial({ map: tex, color: 0xf97316, transparent: true, opacity: 0.25 });
+
+    // чуть менее прозрачный замок
+    const mat = new THREE.SpriteMaterial({ map: tex, color: 0xf97316, transparent: true, opacity: 0.6 });
     const spr = new THREE.Sprite(mat);
-    spr.position.copy(tile.position).add(new THREE.Vector3(0, 0.52, 0));
-    spr.scale.set(0.8, 0.8, 0.8);
+
+    // смещаем иконку в верхний правый угол плитки, чтобы её было видно под существом
+    const tileSize = tile.geometry?.parameters?.width || 1;
+    const iconSize = 0.8;
+    const offset = tileSize / 2 - iconSize / 2;
+    spr.position.copy(tile.position).add(new THREE.Vector3(offset, 0.52, -offset));
+    spr.scale.set(iconSize, iconSize, iconSize);
+    spr.renderOrder = 700;
     effectsGroup.add(spr);
-    try { window.gsap?.to(mat, { opacity: 0.05, duration: 0.8, yoyo: true, repeat: -1 }); } catch {}
+
+    // лёгкая пульсация прозрачности
+    try { window.gsap?.to(mat, { opacity: 0.3, duration: 0.8, yoyo: true, repeat: -1 }); } catch {}
     state.sprites.push(spr);
   }
 }
