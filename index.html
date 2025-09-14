@@ -610,19 +610,23 @@
             for (const d of res.deaths) {
               try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
               const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
-              if (deadMesh) {
-                const fromMesh = aMesh || deadMesh;
-                const dirUp = new THREE.Vector3().subVectors(deadMesh.position, fromMesh.position).normalize().multiplyScalar(0.4);
-                window.__fx.dissolveAndAsh(deadMesh, dirUp, 0.9);
-              }
-              // Орб маны появляется с задержкой 400мс после начала анимации смерти
-              setTimeout(() => {
-                const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.6, 0));
-                // Показать визуальный орб у обоих игроков; фактическое начисление маны уже в res.n1
-                animateManaGainFromWorld(p, d.owner, true);
-              }, 400);
+            if (deadMesh) {
+              const fromMesh = aMesh || deadMesh;
+              const dirUp = new THREE.Vector3().subVectors(deadMesh.position, fromMesh.position).normalize().multiplyScalar(0.4);
+              window.__fx.dissolveAndAsh(deadMesh, dirUp, 0.9);
             }
-            if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
+            // Орб маны появляется с задержкой 400мс после начала анимации смерти
+            setTimeout(() => {
+              const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.6, 0));
+              // Показать визуальный орб у обоих игроков; фактическое начисление маны уже в res.n1
+              animateManaGainFromWorld(p, d.owner, true);
+            }, 400);
+            const tplDead = CARDS[d.tplId];
+            if (tplDead?.onDeathAddHPAll) {
+              window.__interactions?.showOracleDeathBuff?.(d.owner, tplDead.onDeathAddHPAll);
+            }
+          }
+          if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
             setTimeout(() => {
               updateUnits(); updateUI();
               for (const l of res.logLines.reverse()) addLog(l);
@@ -728,6 +732,10 @@
             // Только визуальный орб; фактическое начисление — в res.n1
             animateManaGainFromWorld(p, d.owner, true);
           }, 400);
+          const tplDead = CARDS[d.tplId];
+          if (tplDead?.onDeathAddHPAll) {
+            window.__interactions?.showOracleDeathBuff?.(d.owner, tplDead.onDeathAddHPAll);
+          }
         }
         gameState = res.n1;
         try { window.applyGameState(gameState); } catch {}

@@ -345,6 +345,22 @@ function returnCardToHand(card) {
 
 export { returnCardToHand };
 
+// Визуальное оповещение для эффекта Оракула при смерти
+export function showOracleDeathBuff(owner, amount) {
+  const ctx = getCtx();
+  const { unitMeshes } = ctx;
+  const gs = window.gameState;
+  if (!unitMeshes || !gs) return;
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const u = gs.board?.[r]?.[c]?.unit;
+      if (!u || u.owner !== owner) continue;
+      const m = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
+      try { window.__fx?.spawnDamageText?.(m, `+${amount}`, '#22c55e'); } catch {}
+    }
+  }
+}
+
 export function resetCardSelection() {
   const THREE = getCtx().THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
   if (interactionState.selectedCard) {
@@ -394,6 +410,10 @@ function performMagicAttack(from, targetMesh) {
         const slot = gameState.players?.[d.owner]?.mana || 0;
         window.animateManaGainFromWorld(p, d.owner, true, slot);
       }, 400);
+      const tplDead = CARDS[d.tplId];
+      if (tplDead?.onDeathAddHPAll) {
+        showOracleDeathBuff(d.owner, tplDead.onDeathAddHPAll);
+      }
     }
     // Обновляем состояние сразу, чтобы клетка считалась свободной
     try { window.applyGameState(res.n1); } catch {}
@@ -536,28 +556,30 @@ export function placeUnitWithDirection(direction) {
     window.addLog(`${cardData.name} не переносит стихию ${cardData.diesOnElement} и погибает!`);
     alive = false;
   }
-  if (!alive) {
-    // обработка эффектов при смерти (например, лечение союзников)
-    if (cardData.onDeathAddHPAll) {
-      for (let rr = 0; rr < 3; rr++) {
-        for (let cc = 0; cc < 3; cc++) {
-          const ally = gameState.board?.[rr]?.[cc]?.unit;
-          if (!ally || ally.owner !== unit.owner) continue;
-          const tplAlly = window.CARDS?.[ally.tplId];
-          const cellEl2 = gameState.board[rr][cc].element;
-          const buff2 = window.computeCellBuff(cellEl2, tplAlly.element);
-          const amount = cardData.onDeathAddHPAll;
-          ally.bonusHP = (ally.bonusHP || 0) + amount;
-          const maxHP = (tplAlly.hp || 0) + buff2.hp + (ally.bonusHP || 0);
-          const before = ally.currentHP ?? tplAlly.hp;
-          ally.currentHP = Math.min(maxHP, before + amount);
+    if (!alive) {
+      // обработка эффектов при смерти (например, лечение союзников)
+      if (cardData.onDeathAddHPAll) {
+        const amount = cardData.onDeathAddHPAll;
+        for (let rr = 0; rr < 3; rr++) {
+          for (let cc = 0; cc < 3; cc++) {
+            if (rr === row && cc === col) continue; // пропускаем саму погибшую карту
+            const ally = gameState.board?.[rr]?.[cc]?.unit;
+            if (!ally || ally.owner !== unit.owner) continue;
+            const tplAlly = window.CARDS?.[ally.tplId];
+            const cellEl2 = gameState.board[rr][cc].element;
+            const buff2 = window.computeCellBuff(cellEl2, tplAlly.element);
+            ally.bonusHP = (ally.bonusHP || 0) + amount;
+            const maxHP = (tplAlly.hp || 0) + buff2.hp + (ally.bonusHP || 0);
+            const before = ally.currentHP ?? tplAlly.hp;
+            ally.currentHP = Math.min(maxHP, before + amount);
+          }
         }
+        showOracleDeathBuff(unit.owner, amount);
+        window.addLog(`${cardData.name}: союзники получают +${amount} HP`);
       }
-      window.addLog(`${cardData.name}: союзники получают +${cardData.onDeathAddHPAll} HP`);
-    }
-    const owner = unit.owner;
-    try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
-    const ctx = getCtx();
+      const owner = unit.owner;
+      try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
+      const ctx = getCtx();
     const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
     const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
     const slot = gameState.players?.[owner]?.mana || 0;
