@@ -73,6 +73,7 @@ const CARDS = {
     id: 'FIRE_PARTMOLE_FLAME_GUARD', name: 'Partmole Flame Guard', type: 'UNIT',
     cost: 3, activation: 2, element: 'FIRE', atk: 1, hp: 3,
     pattern: 'FRONT', range: 2, attackType: 'MELEE', blindspots: ['S'],
+    pierce: true,
     plusAtkIfTargetOnElement: { element: 'WATER', amount: 2 },
     desc: 'Adds 2 to its Attack if at least one target creature is on a water field.'
   },
@@ -80,14 +81,14 @@ const CARDS = {
     id: 'FIRE_LESSER_GRANVENOA', name: 'Lesser Granvenoa', type: 'UNIT',
     cost: 4, activation: 2, element: 'FIRE', atk: 2, hp: 4,
     pattern: 'ALL', range: 1, attackType: 'MELEE', blindspots: [],
-    fortress: true, diesOffElement: 'WATER', fieldquakeLock: { type: 'ADJACENT' },
+    fortress: true, diesOnElement: 'WATER', fieldquakeLock: { type: 'ADJACENT' },
     desc: 'Fortress. Adjacent fields cannot be field‑quaked or exchanged. Destroy Lesser Granvenoa if it is on a Water field.'
   },
   FIRE_PARTMOLE_FIRE_ORACLE: {
     id: 'FIRE_PARTMOLE_FIRE_ORACLE', name: 'Partmole Fire Oracle', type: 'UNIT',
     cost: 4, activation: 2, element: 'FIRE', atk: 2, hp: 3,
     pattern: 'FRONT', range: 3, attackType: 'MAGIC', blindspots: ['S'],
-    onDeathHealAll: 1,
+    onDeathAddHPAll: 1,
     desc: 'Magic Attack. If destroyed, all allied creatures on board gain 1 HP.'
   },
   FIRE_TRICEPTAUR_BEHEMOTH: {

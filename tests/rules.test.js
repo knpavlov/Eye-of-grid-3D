@@ -233,6 +233,28 @@ describe('новые механики', () => {
     expect(fin.n1.board[0][1].unit).toBeNull();
   });
 
+  it('double attack вызывает только одну контратаку', () => {
+    const state = makeState();
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_DIDI_THE_ENLIGHTENED', facing:'N', currentHP:4 };
+    state.board[0][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'S', currentHP:10 };
+    const res = stagedAttack(state,1,1);
+    const fin = res.finish();
+    const attacker = fin.n1.board[1][1].unit;
+    expect(attacker.currentHP).toBe(2);
+  });
+
+  it('Flame Guard атакует две клетки вперёд', () => {
+    const state = makeState();
+    state.board[2][1].unit = { owner:0, tplId:'FIRE_PARTMOLE_FLAME_GUARD', facing:'N' };
+    state.board[1][1].unit = { owner:1, tplId:'FIRE_FLAME_MAGUS', facing:'S', currentHP:1 };
+    state.board[0][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FIRE_ORACLE', facing:'S', currentHP:3 };
+    const res = stagedAttack(state,2,1);
+    const fin = res.finish();
+    expect(fin.n1.board[1][1].unit).toBeNull();
+    const second = fin.n1.board[0][1].unit;
+    expect(second.currentHP).toBeLessThan(3);
+  });
+
   it('fortress не может атаковать, но может контратаковать', () => {
     const state = makeState();
     state.board[1][1].unit = { owner:0, tplId:'FIRE_LESSER_GRANVENOA', facing:'N' };
@@ -245,15 +267,33 @@ describe('новые механики', () => {
     expect(fort && (fort.currentHP ?? CARDS[fort.tplId].hp)).toBeGreaterThan(0);
   });
 
-  it('onDeathHealAll лечит союзников', () => {
+  it('onDeathAddHPAll увеличивает максимальное и текущее HP союзников', () => {
     const state = makeState();
     state.board[1][1].unit = { owner:0, tplId:'FIRE_PARTMOLE_FIRE_ORACLE', facing:'N', currentHP:1 };
     state.board[2][1].unit = { owner:0, tplId:'FIRE_FLAME_MAGUS', facing:'N', currentHP:1 };
     state.board[0][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'S', currentHP:3 };
     const res = stagedAttack(state,0,1);
     const fin = res.finish();
-    const healed = fin.n1.board[2][1].unit;
-    expect(healed.currentHP).toBeGreaterThan(1);
+    const buffed = fin.n1.board[2][1].unit;
+    const cell = fin.n1.board[2][1];
+    const stats = effectiveStats(cell, buffed);
+    expect(buffed.currentHP).toBe(2);
+    const tpl = CARDS[buffed.tplId];
+    const buff = computeCellBuff(cell.element, CARDS[buffed.tplId].element);
+    expect(stats.hp).toBe(tpl.hp + buff.hp + 1);
+  });
+
+  it('Infernal Sciondar Dragon не учитывает себя при подсчёте огненных существ', () => {
+    if (!CARDS.TEST_DUMMY) {
+      CARDS.TEST_DUMMY = { id: 'TEST_DUMMY', name: 'Dummy', type: 'UNIT', element: 'WATER', atk: 0, hp: 10, attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [1] } ] };
+    }
+    const state = makeState();
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_INFERNAL_SCIONDAR_DRAGON', facing:'N', currentHP:8 };
+    state.board[0][1].unit = { owner:1, tplId:'TEST_DUMMY', facing:'S', currentHP:10 };
+    const res = stagedAttack(state,1,1);
+    const fin = res.finish();
+    const defender = fin.n1.board[0][1].unit;
+    expect(defender.currentHP).toBe(5);
   });
 
   it('fieldquake lock корректно рассчитывает защищённые клетки', () => {
