@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack, stagedAttack } from '../src/core/rules.js';
 import { hasFirstStrike } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
+import { computeLockedCells } from '../src/core/fieldLocks.js';
+import { applyOnDeathEffects } from '../src/core/onDeath.js';
 
 function makeBoard() {
   const b = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE', unit: null })));
@@ -217,6 +219,48 @@ describe('magicAttack', () => {
     expect(hitCoords).toContain('0,0');
     expect(hitCoords).toContain('0,1');
     delete CARDS.TEST_MAGIC_SPLASH;
+  });
+});
+
+describe('новые огненные карты', () => {
+  it('двойная атака наносит двойной урон', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_DIDI_THE_ENLIGHTENED', facing:'E', currentHP:4 };
+    state.board[1][2].unit = { owner:1, tplId:'FIRE_FREEDONIAN_WANDERER', facing:'W', currentHP:4 };
+    const res = stagedAttack(state,1,1);
+    const fin = res.finish();
+    expect(fin.n1.board[1][2].unit).toBeNull();
+  });
+
+  it('крепость не может атаковать', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_LESSER_GRANVENOA', facing:'N' };
+    expect(stagedAttack(state,1,1)).toBeNull();
+  });
+
+  it('fieldquake lock от крепости защищает соседние клетки', () => {
+    const state = { board: makeBoard() };
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_LESSER_GRANVENOA', facing:'N' };
+    const cells = computeLockedCells(state);
+    expect(cells.some(c=>c.r===1 && c.c===0)).toBe(true);
+  });
+
+  it('Flame Guard получает +2 против цели на воде', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_PARTMOLE_FLAME_GUARD', facing:'E' };
+    state.board[1][2] = { element:'WATER', unit:{ owner:1, tplId:'FIRE_FREEDONIAN_WANDERER', facing:'W', currentHP:3 } };
+    const res = stagedAttack(state,1,1);
+    const fin = res.finish();
+    expect(fin.n1.board[1][2].unit).toBeNull();
+  });
+
+  it('смерть Оракула лечит союзников', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[0][0].unit = { owner:0, tplId:'FIRE_PARTMOLE_FIRE_ORACLE', facing:'N' };
+    state.board[0][1].unit = { owner:0, tplId:'FIRE_FREEDONIAN_WANDERER', facing:'N', currentHP:1 };
+    const deaths = [{ r:0, c:0, owner:0, tplId:'FIRE_PARTMOLE_FIRE_ORACLE' }];
+    applyOnDeathEffects(state, deaths);
+    expect(state.board[0][1].unit.currentHP).toBe(2);
   });
 });
 

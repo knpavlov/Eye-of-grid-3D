@@ -2,6 +2,7 @@
 // These functions rely on existing globals to minimize coupling.
 import { highlightTiles, clearHighlights } from '../scene/highlight.js';
 import { enforceHandLimit } from './handLimit.js';
+import { canInitiateAttack } from '../core/mechanics/fortress.js';
 
 export function rotateUnit(unitMesh, dir) {
   try {
@@ -50,6 +51,10 @@ export function performUnitAttack(unitMesh) {
       return;
     }
     const tpl = window.CARDS?.[unit.tplId];
+    if (!canInitiateAttack(tpl)) {
+      window.__ui?.notifications?.show('Это существо не может атаковать', 'error');
+      return;
+    }
     const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
     const iState = window.__interactions?.interactionState;
     if (tpl?.attackType === 'MAGIC') {

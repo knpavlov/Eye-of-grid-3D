@@ -3,6 +3,7 @@ import { getCtx } from './context.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
 import { applyFreedonianAura } from '../core/abilities.js';
+import { applyOnDeathEffects } from '../core/onDeath.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -535,6 +536,8 @@ export function placeUnitWithDirection(direction) {
   if (!alive) {
     const owner = unit.owner;
     try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
+    const death = { r: row, c: col, owner, tplId: unit.tplId };
+    applyOnDeathEffects(gameState, [death]);
     const ctx = getCtx();
     const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
     const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));

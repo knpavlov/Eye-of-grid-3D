@@ -78,6 +78,20 @@ const RAW_DECKS = [
     ],
   },
   {
+    id: 'FIRE_LOCK_TEST',
+    name: 'Fire Lock Demo',
+    description: 'Новые огненные существа и несколько fieldquake.',
+    cards: [
+      'FIRE_PARTMOLE_FLAME_GUARD',
+      'FIRE_LESSER_GRANVENOA',
+      'FIRE_PARTMOLE_FIRE_ORACLE',
+      'FIRE_INFERNAL_SCIONDAR_DRAGON',
+      'FIRE_DIDI_THE_ENLIGHTENED',
+      'SPELL_FISSURES_OF_GOGHLIE',
+      'SPELL_FISSURES_OF_GOGHLIE'
+    ],
+  },
+  {
     id: 'COMING_SOON',
     name: 'Coming Soon',
     description: 'Another deck is on the way.',

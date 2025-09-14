@@ -1,6 +1,7 @@
 // Units rendering on the board
 import { getCtx } from './context.js';
 import { createCard3D } from './cards.js';
+import { applyFieldLockFx } from './fieldLockFx.js';
 
 function getTHREE() {
   const ctx = getCtx();
@@ -63,6 +64,8 @@ export function updateUnits(gameState) {
 
   // Mirror for legacy code
   try { if (typeof window !== 'undefined') window.unitMeshes = ctx.unitMeshes; } catch {}
+
+  try { applyFieldLockFx(gameState); } catch {}
 }
 
 try { if (typeof window !== 'undefined') window.__units = { updateUnits }; } catch {}

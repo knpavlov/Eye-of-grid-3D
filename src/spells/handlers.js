@@ -7,6 +7,9 @@ import { spendAndDiscardSpell, burnSpellCard } from '../ui/spellUtils.js';
 import { getCtx } from '../scene/context.js';
 import { interactionState, resetCardSelection } from '../scene/interactions.js';
 import { discardHandCard } from '../scene/discard.js';
+import { isFieldquakeLocked } from '../core/fieldLocks.js';
+import { applyOnDeathEffects } from '../core/onDeath.js';
+import { applyFieldLockFx } from '../scene/fieldLockFx.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -333,6 +336,10 @@ export const handlers = {
         showNotification("This cell can't be changed", 'error');
         return;
       }
+      if (isFieldquakeLocked(gameState, r, c)) {
+        showNotification('This field cannot be changed', 'error');
+        return;
+      }
       const oppMap = {
         FIRE: 'WATER',
         WATER: 'FIRE',
@@ -373,16 +380,15 @@ export const handlers = {
               deltaHp > 0 ? '#22c55e' : '#ef4444'
             );
           if (u.currentHP <= 0) {
+            const death = { r, c, owner: u.owner, tplId: u.tplId };
             try { gameState.players[u.owner].graveyard.push(CARDS[u.tplId]); } catch {}
+            gameState.board[r][c].unit = null;
+            applyOnDeathEffects(gameState, [death]);
             const deadMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
             if (deadMesh) {
               window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9);
-              setTimeout(() => {
-                gameState.board[r][c].unit = null;
-                updateUnits();
-                updateUI();
-              }, 1000);
-            }
+              setTimeout(() => { updateUnits(); updateUI(); }, 1000);
+            } else { updateUnits(); updateUI(); }
           }
         }
       }
@@ -391,6 +397,7 @@ export const handlers = {
       resetCardSelection();
       updateHand();
       updateUnits();
+      applyFieldLockFx(gameState);
       updateUI();
     },
   },

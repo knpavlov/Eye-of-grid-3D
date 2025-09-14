@@ -1,4 +1,5 @@
 // Panels: log/help/orientation/unit actions/prompt
+import { isFortress } from '../core/mechanics/fortress.js';
 
 export function showOrientationPanel(){ try { document.getElementById('orientation-panel')?.classList.remove('hidden'); } catch {} }
 export function hideOrientationPanel(){ try { document.getElementById('orientation-panel')?.classList.add('hidden'); if (typeof window !== 'undefined') window.pendingPlacement = null; } catch {} }
@@ -12,9 +13,10 @@ export function showUnitActionPanel(unitMesh){
     const el = document.getElementById('unit-info'); if (el) el.textContent = `${cardData.name} (${(unitMesh.userData.row||0) + 1},${(unitMesh.userData.col||0) + 1})`;
     const alreadyAttacked = unitData.lastAttackTurn === gs.turn;
     const attackBtn = document.getElementById('attack-btn'); if (attackBtn) {
-      attackBtn.disabled = !!alreadyAttacked;
+      const forbidden = isFortress(cardData);
+      attackBtn.disabled = !!alreadyAttacked || forbidden;
       const cost = (typeof window !== 'undefined' && typeof window.attackCost === 'function') ? window.attackCost(cardData) : 1;
-      attackBtn.textContent = alreadyAttacked ? 'Already attacked' : `Attack (-${cost})`;
+      attackBtn.textContent = forbidden ? 'Cannot attack' : (alreadyAttacked ? 'Already attacked' : `Attack (-${cost})`);
     }
     const rotateCost = (typeof window !== 'undefined' && typeof window.rotateCost === 'function') ? window.rotateCost(cardData) : 1;
     const alreadyRotated = unitData.lastRotateTurn === gs.turn;

@@ -80,6 +80,56 @@ export const CARDS = {
     desc: 'Attack = 5 plus the number of other creatures on the board. The activation cost to attack is 5 less than listed.'
   },
 
+  FIRE_PARTMOLE_FLAME_GUARD: {
+    id: 'FIRE_PARTMOLE_FLAME_GUARD', name: 'Partmole Flame Guard', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FIRE', atk: 1, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    blindspots: ['S'], plus2IfWaterTarget: true,
+    desc: 'Adds 2 to its Attack if at least one target creature is on a water field.'
+  },
+
+  FIRE_LESSER_GRANVENOA: {
+    id: 'FIRE_LESSER_GRANVENOA', name: 'Lesser Granvenoa', type: 'UNIT', cost: 4, activation: 2,
+    element: 'FIRE', atk: 2, hp: 4,
+    attackType: 'STANDARD', fortress: true, diesOffElement: 'WATER',
+    attacks: [
+      { dir: 'N', ranges: [1] },
+      { dir: 'E', ranges: [1] },
+      { dir: 'S', ranges: [1] },
+      { dir: 'W', ranges: [1] }
+    ],
+    blindspots: [], fieldquakeLock: { scope: 'ADJACENT' },
+    desc: 'Fortress. Adjacent fields cannot be field‑quaked or exchanged. Destroy Lesser Granvenoa if it is on a Water field.'
+  },
+
+  FIRE_PARTMOLE_FIRE_ORACLE: {
+    id: 'FIRE_PARTMOLE_FIRE_ORACLE', name: 'Partmole Fire Oracle', type: 'UNIT', cost: 4, activation: 2,
+    element: 'FIRE', atk: 2, hp: 3,
+    attackType: 'MAGIC', blindspots: ['S'],
+    onDeathHealAll: 1,
+    desc: 'Magic Attack. If destroyed, all allied creatures on board gain 1 HP.'
+  },
+
+  FIRE_INFERNAL_SCIONDAR_DRAGON: {
+    id: 'FIRE_INFERNAL_SCIONDAR_DRAGON', name: 'Infernal Sciondar Dragon', type: 'UNIT', cost: 7, activation: 4,
+    element: 'FIRE', atk: 5, hp: 8,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    blindspots: [], dynamicAtk: 'FIRE_CREATURES',
+    activationReductionOnElement: { element: 'FIRE', reduction: 3 },
+    desc: 'Attack = 5 plus the number of other Fire creatures on the board. While on a Fire field, its activation cost to attack is 3 less than listed.'
+  },
+
+  FIRE_DIDI_THE_ENLIGHTENED: {
+    id: 'FIRE_DIDI_THE_ENLIGHTENED', name: 'Didi the Enlightened', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FIRE', atk: 2, hp: 4,
+    attackType: 'STANDARD', firstStrike: true, doubleAttack: true,
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'], plus1IfTargetOnElement: 'FIRE', fieldquakeLock: { scope: 'ELEMENT', element: 'FIRE' },
+    desc: 'Quickness. Attacks the same target twice (counterattack after second attack). Adds 1 to his Attack if the target creature is on a Fire field. While Didi is on the board, no Fire field can be field‑quaked or exchanged.'
+  },
+
   // Spells (subset)
   RAISE_STONE: { id:'RAISE_STONE', name:'Raise Stone', type:'SPELL', cost:2, element:'EARTH', text:'+2 HP to a friendly unit.' },
   SPELL_FISSURES_OF_GOGHLIE: { id: 'SPELL_FISSURES_OF_GOGHLIE', name: 'Fissures of Goghlie', type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 2, text: 'Fieldquake any one field.' },

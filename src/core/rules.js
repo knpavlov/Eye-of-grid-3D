@@ -3,6 +3,9 @@ import { DIR_VECTORS, inBounds, attackCost, OPPOSITE_ELEMENT, capMana } from './
 import { CARDS } from './cards.js';
 import { hasFirstStrike } from './abilities.js';
 import { countUnits } from './board.js';
+import { applyDoubleAttack } from './mechanics/doubleAttack.js';
+import { isFortress } from './mechanics/fortress.js';
+import { applyOnDeathEffects } from './onDeath.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -149,6 +152,7 @@ export function stagedAttack(state, r, c, opts = {}) {
   if (attacker.lastAttackTurn === base.turn) return null;
 
   const tplA = CARDS[attacker.tplId];
+  if (isFortress(tplA)) return null; // крепость не может инициировать атаку
   const baseStats = effectiveStats(base.board[r][c], attacker);
   let atk = baseStats.atk;
   let logLines = [];
@@ -160,6 +164,19 @@ export function stagedAttack(state, r, c, opts = {}) {
     const others = countUnits(base) - 1;
     atk += others;
     logLines.push(`${tplA.name}: атака увеличена на ${others}`);
+  }
+  if (tplA.dynamicAtk === 'FIRE_CREATURES') {
+    let fire = 0;
+    for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
+      const u = base.board[rr][cc].unit;
+      if (u && !(rr === r && cc === c) && CARDS[u.tplId]?.element === 'FIRE') fire++;
+    }
+    atk += fire;
+    logLines.push(`${tplA.name}: атака увеличена на ${fire}`);
+  }
+  if (tplA.plus2IfWaterTarget) {
+    const water = hitsRaw.some(h => base.board?.[h.r]?.[h.c]?.element === 'WATER');
+    if (water) { atk += 2; logLines.push(`${tplA.name}: бонус +2 ATK против воды`); }
   }
   if (tplA.randomPlus2 && Math.random() < 0.5) {
     atk += 2;
@@ -175,6 +192,18 @@ export function stagedAttack(state, r, c, opts = {}) {
   const deltaAtk = atk - baseStats.atk;
   if (deltaAtk !== 0) {
     for (const h of hitsRaw) { h.dmg = Math.max(0, h.dmg + deltaAtk); }
+  }
+
+  if (tplA.plus1IfTargetOnElement) {
+    for (const h of hitsRaw) {
+      const el = base.board?.[h.r]?.[h.c]?.element;
+      if (el === tplA.plus1IfTargetOnElement) h.dmg = Math.max(0, h.dmg + 1);
+    }
+  }
+
+  if (tplA.doubleAttack) {
+    hitsRaw.splice(0, hitsRaw.length, ...applyDoubleAttack(hitsRaw));
+    logLines.push(`${tplA.name}: двойная атака`);
   }
 
   const attackerQuick = hasFirstStrike(tplA);
@@ -309,6 +338,8 @@ export function stagedAttack(state, r, c, opts = {}) {
       A.apSpent = (A.apSpent || 0) + attackCost(tplA, cellEl);
     }
 
+    applyOnDeathEffects(nFinal, deaths);
+
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
     return { n1: nFinal, logLines, targets, deaths, retaliators: ret.retaliators };
   }
@@ -334,6 +365,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
   // не позволяем магам бить дважды в одном ходу
   if (attacker.lastAttackTurn === n1.turn) return null;
   const tplA = CARDS[attacker.tplId];
+  if (isFortress(tplA)) return null;
   const allowFriendly = !!tplA.friendlyFire;
   const mainTarget = n1.board?.[tr]?.[tc]?.unit;
   if (!allowFriendly && (!mainTarget || mainTarget.owner === attacker.owner)) return null;
@@ -381,6 +413,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
       }
     }
   } catch {}
+  applyOnDeathEffects(n1, deaths);
   attacker.lastAttackTurn = n1.turn;
   const cellEl = n1.board?.[fr]?.[fc]?.element;
   attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA, cellEl);
