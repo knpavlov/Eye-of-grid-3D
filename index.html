@@ -473,6 +473,9 @@
       // flashy заставка BATTLE (сокращённая)
       await showBattleSplash();
 
+      const attUnit = gameState.board?.[r]?.[c]?.unit;
+      const tplA = attUnit ? CARDS[attUnit.tplId] : null;
+      const isDouble = tplA && tplA.doubleAttack;
       let aMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
       if (staged.quickRetaliation > 0) {
         const quickers = staged.quickRetaliators || [];
@@ -643,31 +646,39 @@
         if (firstTargetMesh) {
           const dir = new THREE.Vector3().subVectors(firstTargetMesh.position, aMesh.position).normalize();
           const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
-          const tl = gsap.timeline({ onComplete: doStep1 });
-          tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
-            .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.3, ease: 'power2.inOut' });
-          // Онлайновая синхронизация выпадов (атакующий и цели)
-          try {
-            const shouldSend = (typeof window !== 'undefined' && window.socket && (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) && (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active);
-            console.log('[battleAnim] Checking if should send:', {
-              hasWindow: typeof window !== 'undefined',
-              hasSocket: !!(typeof window !== 'undefined' && window.socket),
-              NET_ACTIVE: typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : 'undefined',
-              MY_SEAT: typeof MY_SEAT !== 'undefined' ? MY_SEAT : 'undefined',
-              gameStateActive: gameState.active,
-              seatMatches: (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active,
-              shouldSend
-            });
-            if (shouldSend) {
-              window.socket.emit('battleAnim', {
-                attacker: { r, c },
-                targets: hitsPrev.map(h => ({ r: h.r, c: h.c, dmg: h.dmg })),
-                bySeat: typeof window.MY_SEAT === 'number' ? window.MY_SEAT : null
-              });
-              console.log('[battleAnim] Sent battleAnim event', { attacker: { r, c }, targets: hitsPrev.length });
+          const doLunge = (onComplete, send = true) => {
+            const tl = gsap.timeline({ onComplete });
+            tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
+              .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.3, ease: 'power2.inOut' });
+            if (send) {
+              try {
+                const shouldSend = (typeof window !== 'undefined' && window.socket && (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) && (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active);
+                console.log('[battleAnim] Checking if should send:', {
+                  hasWindow: typeof window !== 'undefined',
+                  hasSocket: !!(typeof window !== 'undefined' && window.socket),
+                  NET_ACTIVE: typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : 'undefined',
+                  MY_SEAT: typeof MY_SEAT !== 'undefined' ? MY_SEAT : 'undefined',
+                  gameStateActive: gameState.active,
+                  seatMatches: (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active,
+                  shouldSend
+                });
+                if (shouldSend) {
+                  window.socket.emit('battleAnim', {
+                    attacker: { r, c },
+                    targets: hitsPrev.map(h => ({ r: h.r, c: h.c, dmg: h.dmg })),
+                    bySeat: typeof window.MY_SEAT === 'number' ? window.MY_SEAT : null
+                  });
+                  console.log('[battleAnim] Sent battleAnim event', { attacker: { r, c }, targets: hitsPrev.length });
+                }
+              } catch (e) {
+                console.error('[battleAnim] Error sending battleAnim:', e);
+              }
             }
-          } catch (e) {
-            console.error('[battleAnim] Error sending battleAnim:', e);
+          };
+          if (isDouble) {
+            doLunge(() => doLunge(doStep1, false));
+          } else {
+            doLunge(doStep1);
           }
         } else {
           gsap.to(aMesh.position, { y: aMesh.position.y + 0.25, yoyo: true, repeat: 1, duration: 0.2, onComplete: doStep1 });

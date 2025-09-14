@@ -24,10 +24,15 @@ function createLockMaterial(origMat, THREE) {
         `#include <dithering_fragment>\n{
           float pulse = sin(uTime*3.0)*0.5+0.5;
           vec2 centered = vUv*2.0-1.0;
-          float ring = smoothstep(0.4,0.38, length(centered));
-          vec3 glow = vec3(1.0,0.6,0.1)*ring*(0.6+0.4*pulse);
+          vec2 uv = centered;
+          float body = (1.0 - step(0.3, abs(uv.x))) * step(-0.5, uv.y) * (1.0 - step(0.1, uv.y));
+          float shOuter = smoothstep(0.45,0.43,length(uv - vec2(0.0,0.25)));
+          float shInner = smoothstep(0.25,0.23,length(uv - vec2(0.0,0.25)));
+          float shackle = (shOuter - shInner) * step(uv.y,0.25);
+          float lockShape = max(body, shackle);
+          vec3 glow = vec3(1.0,0.6,0.1)*lockShape*(0.4+0.2*pulse);
           gl_FragColor.rgb += glow;
-          gl_FragColor.a = max(gl_FragColor.a, ring*pulse*0.9);
+          gl_FragColor.a = max(gl_FragColor.a, lockShape*pulse*0.4);
         }`
       );
     state.uniforms.push(shader.uniforms.uTime);

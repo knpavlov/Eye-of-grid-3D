@@ -262,5 +262,28 @@ describe('новые механики', () => {
     const cells = computeFieldquakeLockedCells(state);
     expect(cells.length).toBe(8);
   });
+
+  it('Flame Guard пробивает и атакует две клетки вперёд', () => {
+    const state = makeState();
+    state.board[2][1].unit = { owner:0, tplId:'FIRE_PARTMOLE_FLAME_GUARD', facing:'N' };
+    state.board[1][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'S', currentHP:1 };
+    state.board[0][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'S', currentHP:1 };
+    const res = stagedAttack(state,2,1);
+    const fin = res.finish();
+    expect(fin.n1.board[1][1].unit).toBeNull();
+    expect(fin.n1.board[0][1].unit).toBeNull();
+  });
+
+  it('Fire Oracle лечит союзников при гибели от магии', () => {
+    CARDS.TEST_MAGIC = { id:'TEST_MAGIC', name:'Test Mage', type:'UNIT', cost:0, element:'FIRE', atk:2, hp:1, attackType:'MAGIC', attacks:[{ dir:'N', ranges:[1] }] };
+    const state = makeState();
+    state.board[2][1].unit = { owner:0, tplId:'TEST_MAGIC', facing:'N', currentHP:1 };
+    state.board[1][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FIRE_ORACLE', facing:'S', currentHP:1 };
+    state.board[0][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'S', currentHP:1 };
+    const res = magicAttack(state,2,1,1,1);
+    const healed = res.n1.board[0][1].unit;
+    expect(healed.currentHP).toBeGreaterThan(1);
+    delete CARDS.TEST_MAGIC;
+  });
 });
 

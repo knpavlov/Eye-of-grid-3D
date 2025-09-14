@@ -528,6 +528,10 @@ export function placeUnitWithDirection(direction) {
     else window.addLog(`Элемент ослабляет ${cardData.name}: HP ${before}→${unit.currentHP}`);
   }
   let alive = unit.currentHP > 0;
+  if (alive && cardData.diesOnElement && cellElement === cardData.diesOnElement) {
+    window.addLog(`${cardData.name} погибает на поле стихии ${cardData.diesOnElement}!`);
+    alive = false;
+  }
   if (alive && cardData.diesOffElement && cellElement !== cardData.diesOffElement) {
     window.addLog(`${cardData.name} погибает вдали от стихии ${cardData.diesOffElement}!`);
     alive = false;

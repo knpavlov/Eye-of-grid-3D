@@ -512,7 +512,6 @@
       const targetPos = tileMeshes[first.r][first.c].position;
       const dir = new THREE.Vector3().subVectors(targetPos, aMesh.position).normalize();
       const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
-      // Wrap target mesh into a transient group to ensure movement is visible
       const parent = aMesh.parent; if (!parent) return false;
       const fromPos = aMesh.position.clone();
       const fromRot = aMesh.rotation.clone();
@@ -520,13 +519,23 @@
       wrapper.position.copy(fromPos); wrapper.rotation.copy(fromRot);
       try { parent.add(wrapper); parent.remove(aMesh); aMesh.position.set(0,0,0); aMesh.rotation.set(0,0,0); wrapper.add(aMesh); } catch {}
       const toPos = wrapper.position.clone(); toPos.x += push.x; toPos.z += push.z;
+      const unit = window.gameState?.board?.[attacker.r]?.[attacker.c]?.unit;
+      const tplA = unit ? CARDS[unit.tplId] : null;
+      const isDouble = tplA && tplA.doubleAttack;
+      const lungeOnce = () => {
+        const t = gsap.timeline();
+        t.to(wrapper.position, { x: toPos.x, z: toPos.z, duration: 0.22, ease: 'power2.out' })
+         .to(wrapper.position, { x: fromPos.x, z: fromPos.z, duration: 0.30, ease: 'power2.inOut' });
+        return t;
+      };
       const tl = gsap.timeline({ onComplete: () => {
         try { parent.add(aMesh); parent.remove(wrapper); aMesh.position.copy(fromPos); aMesh.rotation.copy(fromRot); } catch {}
       }});
-      tl.to(wrapper.position, { x: toPos.x, z: toPos.z, duration: 0.22, ease: 'power2.out' })
-        .to(wrapper.position, { x: fromPos.x, z: fromPos.z, duration: 0.30, ease: 'power2.inOut' });
-      __REMOTE_BATTLE_ANIM_UNTIL = Date.now() + 720; try { window.__REMOTE_BATTLE_ANIM_UNTIL = __REMOTE_BATTLE_ANIM_UNTIL; } catch {}
-      
+      tl.add(lungeOnce());
+      if (isDouble) tl.add(lungeOnce());
+      const dmgDelay = isDouble ? 840 : 420;
+      __REMOTE_BATTLE_ANIM_UNTIL = Date.now() + dmgDelay + 300; try { window.__REMOTE_BATTLE_ANIM_UNTIL = __REMOTE_BATTLE_ANIM_UNTIL; } catch {}
+
       // Тряска цели и синхронный урон для неинициатора
       setTimeout(() => {
         try {
@@ -543,8 +552,8 @@
             }
           }
         } catch {}
-      }, 420);
-      
+      }, dmgDelay);
+
       return true;
     } catch { return false; }
   }

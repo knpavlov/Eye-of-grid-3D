@@ -85,6 +85,7 @@ export const CARDS = {
     element: 'FIRE', atk: 1, hp: 3,
     attackType: 'STANDARD',
     attacks: [ { dir: 'N', ranges: [1,2] } ],
+    pierce: true,
     blindspots: ['S'],
     plusAtkIfTargetOnElement: { element: 'WATER', amount: 2 },
     desc: 'Adds 2 to its Attack if at least one target creature is on a water field.'
@@ -100,7 +101,7 @@ export const CARDS = {
       { dir: 'S', ranges: [1] },
       { dir: 'W', ranges: [1] }
     ],
-    blindspots: [], fortress: true, diesOffElement: 'WATER', fieldquakeLock: { type: 'ADJACENT' },
+    blindspots: [], fortress: true, diesOnElement: 'WATER', fieldquakeLock: { type: 'ADJACENT' },
     desc: 'Fortress. Adjacent fields cannot be field‑quaked or exchanged. Destroy Lesser Granvenoa if it is on a Water field.'
   },
 
