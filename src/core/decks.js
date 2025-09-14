@@ -59,6 +59,23 @@ const RAW_DECKS = [
     ],
   },
   {
+    id: 'FIRE_NEW_SET',
+    name: 'Incarnate Flames',
+    description: 'Колода из десяти огненных карт с новыми механиками.',
+    cards: [
+      'FIRE_FIREFLY_NINJA',
+      'FIRE_PARTMOLE_FLAME_GUARD',
+      'FIRE_LESSER_GRANVENOA',
+      'FIRE_PARTMOLE_FIRE_ORACLE',
+      'FIRE_INFERNAL_SCIONDAR_DRAGON',
+      'FIRE_DIDI_THE_ENLIGHTENED',
+      'FIRE_WARDEN_HILDA',
+      'FIRE_CRUCIBLE_KING_DIOS_IV',
+      'FIRE_SCIONDAR_FIRE_GOD',
+      'FIRE_RED_CUBIC',
+    ],
+  },
+  {
     id: 'BEAST_HORDE',
     name: 'Beast Horde',
     description: 'All creature rush with no spells.',

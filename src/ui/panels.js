@@ -20,6 +20,14 @@ export function showUnitActionPanel(unitMesh){
     const alreadyRotated = unitData.lastRotateTurn === gs.turn;
     const rCw = document.getElementById('rotate-cw-btn'); const rCcw = document.getElementById('rotate-ccw-btn');
     if (rCw && rCcw) { rCw.disabled = !!alreadyRotated; rCcw.disabled = !!alreadyRotated; rCw.textContent = alreadyRotated ? 'Already rotated' : `Rotate → (-${rotateCost})`; rCcw.textContent = alreadyRotated ? 'Already rotated' : `Rotate ← (-${rotateCost})`; }
+    const sacBtn = document.getElementById('sacrifice-btn');
+    if (sacBtn) {
+      if (cardData.sacrificeTransform) {
+        sacBtn.classList.remove('hidden');
+      } else {
+        sacBtn.classList.add('hidden');
+      }
+    }
     // Flash rings on potential targets
     try {
       const computeHits = (typeof window !== 'undefined') ? window.computeHits : null;

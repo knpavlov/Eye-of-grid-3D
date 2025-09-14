@@ -30,6 +30,38 @@ export const rotateCost = (tpl) => baseActivationCost(tpl);
 // Проверка наличия способности "быстрота"
 export const hasFirstStrike = (tpl) => !!(tpl && tpl.firstStrike);
 
+// Проверка способности Fortress
+export const isFortress = (tpl) => !!tpl?.fortress;
+
+// Проверка невидимости: возвращает true если существо полностью избегает урона
+export function hasInvisibility(state, r, c, tpl) {
+  if (!tpl) return false;
+  if (tpl.invisibility) return true;
+  if (tpl.invisibilityWithSpider) {
+    // ищем союзного Spider Ninja
+    const owner = state.board?.[r]?.[c]?.unit?.owner;
+    for (let rr = 0; rr < 3; rr++) {
+      for (let cc = 0; cc < 3; cc++) {
+        const u = state.board?.[rr]?.[cc]?.unit;
+        if (u && u.owner === owner) {
+          const name = CARDS[u.tplId]?.name || '';
+          if (name.includes('Spider Ninja')) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Проверка уклонения (50%)
+export function hasDodge(tpl, cellElement) {
+  if (tpl.perfectDodge) return true;
+  if (tpl.perfectDodgeOnFire && cellElement === 'FIRE') return true;
+  if (tpl.dodge50) return Math.random() < 0.5;
+  if (tpl.dodgeOnElement && cellElement === tpl.dodgeOnElement) return Math.random() < 0.5;
+  return false;
+}
+
 // Реализация ауры Фридонийского Странника при призыве союзников
 // Возвращает количество полученных единиц маны
 export function applyFreedonianAura(state, owner) {

@@ -50,9 +50,12 @@ export function performUnitAttack(unitMesh) {
       return;
     }
     const tpl = window.CARDS?.[unit.tplId];
-    const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
+    if (tpl?.fortress) { window.__ui?.notifications?.show('Fortress cannot attack', 'error'); return; }
+    const cellEl = gameState.board[r][c].element;
+    const forcedMagic = tpl?.mustUseMagicOnElement && cellEl === tpl.mustUseMagicOnElement;
+    const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl, cellEl) : 0;
     const iState = window.__interactions?.interactionState;
-    if (tpl?.attackType === 'MAGIC') {
+    if (tpl?.attackType === 'MAGIC' || forcedMagic) {
       const allowFriendly = !!tpl.friendlyFire;
       const cells = [];
       let hasEnemy = false;
@@ -130,6 +133,44 @@ export function performUnitAttack(unitMesh) {
     if (typeof window.performBattleSequence === 'function') {
       window.performBattleSequence(r, c, true, opts);
     }
+  } catch {}
+}
+
+// Жертвоприношение: превращение существа в карту из руки
+export function sacrificeUnit(unitMesh) {
+  try {
+    if (!unitMesh || typeof window === 'undefined') return;
+    const gameState = window.gameState;
+    const r = unitMesh.userData?.row; const c = unitMesh.userData?.col;
+    const unit = gameState.board?.[r]?.[c]?.unit;
+    const tpl = window.CARDS?.[unit.tplId];
+    if (!tpl?.sacrificeTransform) return;
+    const hand = gameState.players[gameState.active].hand;
+    const onPicked = (handIdx) => {
+      const card = hand[handIdx];
+      if (!card || card.element !== 'FIRE' || card.id.includes('CUBIC')) {
+        window.__ui?.notifications?.show('Нужно выбрать некубическую карту Огня', 'error');
+        return;
+      }
+      // убираем старое существо без получения маны
+      try { gameState.players[unit.owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
+      gameState.board[r][c].unit = {
+        uid: window.uid(),
+        owner: gameState.active,
+        originalOwner: gameState.active,
+        tplId: card.id,
+        currentHP: card.hp,
+        facing: unit.facing,
+        lastAttackTurn: gameState.turn, // не может атаковать в этот ход
+      };
+      gameState.players[gameState.active].discard.push(card);
+      hand.splice(handIdx,1);
+      window.updateHand(); window.updateUnits(); window.updateUI();
+    };
+    const iState = window.__interactions?.interactionState;
+    if (iState) iState.pendingDiscardSelection = { requiredType: 'UNIT', onPicked };
+    window.__ui?.panels?.hideUnitActionPanel();
+    window.__ui?.notifications?.show('Выберите карту в руке для превращения', 'info');
   } catch {}
 }
 
@@ -340,7 +381,7 @@ export async function endTurn() {
   } catch {}
 }
 
-const api = { rotateUnit, performUnitAttack, endTurn };
+const api = { rotateUnit, performUnitAttack, sacrificeUnit, endTurn };
 try {
   if (typeof window !== 'undefined') {
     window.__ui = window.__ui || {};

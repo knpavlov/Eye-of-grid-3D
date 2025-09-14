@@ -55,6 +55,13 @@ export function updateUnits(gameState) {
       const glowGeometry = new THREE.BoxGeometry(1.8, 0.02, 2.4);
       const glow = new THREE.Mesh(glowGeometry, glowMaterial); glow.position.set(0, -0.05, 0); unitMesh.add(glow);
 
+      if (unit.originalOwner != null && unit.originalOwner !== unit.owner) {
+        const ringGeom = new THREE.RingGeometry(1.2, 1.6, 32);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0x9333ea, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+        const ring = new THREE.Mesh(ringGeom, ringMat);
+        ring.rotation.x = -Math.PI/2; ring.position.set(0, -0.06, 0); unitMesh.add(ring);
+      }
+
       unitMesh.userData = { type: 'unit', row: r, col: c, unitData: unit, cardData };
       try { cardGroup.add(unitMesh); } catch {}
       ctx.unitMeshes.push(unitMesh);

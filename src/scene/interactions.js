@@ -501,15 +501,39 @@ export function placeUnitWithDirection(direction) {
     interactionState.pendingPlacement = null;
     return;
   }
+  // поддержка Инкарнации: призыв поверх союзного существа
+  let baseUnit = gameState.board[row][col].unit;
+  if (cardData.incarnation) {
+    if (!baseUnit || baseUnit.owner !== gameState.active) {
+      showNotification('Инкарнация требует союзного существа на поле', 'error');
+      returnCardToHand(card);
+      try { window.__ui.panels.hideOrientationPanel(); } catch {}
+      interactionState.pendingPlacement = null;
+      return;
+    }
+    const costDiff = Math.max(0, cardData.cost - window.CARDS[baseUnit.tplId].cost);
+    if (player.mana < costDiff) {
+      showNotification('Недостаточно маны для инкарнации', 'error');
+      returnCardToHand(card);
+      try { window.__ui.panels.hideOrientationPanel(); } catch {}
+      interactionState.pendingPlacement = null;
+      return;
+    }
+    player.mana -= costDiff;
+    try { player.graveyard.push(window.CARDS[baseUnit.tplId]); } catch {}
+  } else {
+    player.mana -= cardData.cost;
+    baseUnit = null;
+  }
   const unit = {
     uid: window.uid(),
     owner: gameState.active,
+    originalOwner: gameState.active,
     tplId: cardData.id,
     currentHP: cardData.hp,
     facing: direction,
   };
   gameState.board[row][col].unit = unit;
-  player.mana -= cardData.cost;
   player.discard.push(cardData);
   player.hand.splice(handIndex, 1);
   // проверяем состояние Summoning Lock до начала действий
@@ -546,6 +570,20 @@ export function placeUnitWithDirection(direction) {
     const gained = applyFreedonianAura(gameState, gameState.active);
     if (gained > 0) {
       window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
+    }
+  }
+  if (cardData.gainPossessionEnemiesOnElement && cellElement !== cardData.element) {
+    for (let rr = 0; rr < 3; rr++) {
+      for (let cc = 0; cc < 3; cc++) {
+        const cell = gameState.board?.[rr]?.[cc];
+        const enemy = cell?.unit;
+        if (!enemy || enemy.owner === gameState.active) continue;
+        if (cell.element === cardData.gainPossessionEnemiesOnElement) {
+          enemy.originalOwner = enemy.originalOwner ?? enemy.owner;
+          enemy.owner = gameState.active;
+          enemy.possessed = true;
+        }
+      }
     }
   }
   // Синхронизируем состояние после призыва

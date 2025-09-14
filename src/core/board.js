@@ -30,7 +30,8 @@ export function drawOneNoAdd(state, player) {
 export function countControlled(state, player) {
   let count = 0;
   for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
-    if (state.board[r][c].unit?.owner === player) count++;
+    const u = state.board[r][c].unit;
+    if (u && (u.originalOwner ?? u.owner) === player) count++;
   }
   return count;
 }
