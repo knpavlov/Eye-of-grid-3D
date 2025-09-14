@@ -621,6 +621,21 @@
                 // Показать визуальный орб у обоих игроков; фактическое начисление маны уже в res.n1
                 animateManaGainFromWorld(p, d.owner, true);
               }, 400);
+
+              // если погибший юнит усиливает союзников при смерти — показываем зелёные +1
+              const tplD = CARDS[d.tplId];
+              if (tplD && tplD.onDeathAddHPAll) {
+                const amount = tplD.onDeathAddHPAll;
+                for (let rr = 0; rr < 3; rr++) {
+                  for (let cc = 0; cc < 3; cc++) {
+                    if (rr === d.r && cc === d.c) continue;
+                    const ally = gameState.board?.[rr]?.[cc]?.unit;
+                    if (!ally || ally.owner !== d.owner) continue;
+                    const tMesh = unitMeshes.find(m => m.userData.row === rr && m.userData.col === cc);
+                    if (tMesh) window.__fx.spawnDamageText(tMesh, `+${amount}`, '#22c55e');
+                  }
+                }
+              }
             }
             if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
             setTimeout(() => {
@@ -728,6 +743,21 @@
             // Только визуальный орб; фактическое начисление — в res.n1
             animateManaGainFromWorld(p, d.owner, true);
           }, 400);
+
+          // усиливаем союзников при смерти соответствующего юнита
+          const tplD = CARDS[d.tplId];
+          if (tplD && tplD.onDeathAddHPAll) {
+            const amount = tplD.onDeathAddHPAll;
+            for (let rr = 0; rr < 3; rr++) {
+              for (let cc = 0; cc < 3; cc++) {
+                if (rr === d.r && cc === d.c) continue;
+                const ally = gameState.board?.[rr]?.[cc]?.unit;
+                if (!ally || ally.owner !== d.owner) continue;
+                const tMesh = unitMeshes.find(m => m.userData.row === rr && m.userData.col === cc);
+                if (tMesh) window.__fx.spawnDamageText(tMesh, `+${amount}`, '#22c55e');
+              }
+            }
+          }
         }
         gameState = res.n1;
         try { window.applyGameState(gameState); } catch {}

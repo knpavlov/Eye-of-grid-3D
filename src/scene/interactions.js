@@ -536,28 +536,35 @@ export function placeUnitWithDirection(direction) {
     window.addLog(`${cardData.name} не переносит стихию ${cardData.diesOnElement} и погибает!`);
     alive = false;
   }
-  if (!alive) {
-    // обработка эффектов при смерти (например, лечение союзников)
-    if (cardData.onDeathAddHPAll) {
-      for (let rr = 0; rr < 3; rr++) {
-        for (let cc = 0; cc < 3; cc++) {
-          const ally = gameState.board?.[rr]?.[cc]?.unit;
-          if (!ally || ally.owner !== unit.owner) continue;
-          const tplAlly = window.CARDS?.[ally.tplId];
-          const cellEl2 = gameState.board[rr][cc].element;
-          const buff2 = window.computeCellBuff(cellEl2, tplAlly.element);
-          const amount = cardData.onDeathAddHPAll;
-          ally.bonusHP = (ally.bonusHP || 0) + amount;
-          const maxHP = (tplAlly.hp || 0) + buff2.hp + (ally.bonusHP || 0);
-          const before = ally.currentHP ?? tplAlly.hp;
-          ally.currentHP = Math.min(maxHP, before + amount);
+    if (!alive) {
+      // обработка эффектов при смерти (например, лечение союзников)
+      if (cardData.onDeathAddHPAll) {
+        const amount = cardData.onDeathAddHPAll;
+        for (let rr = 0; rr < 3; rr++) {
+          for (let cc = 0; cc < 3; cc++) {
+            if (rr === row && cc === col) continue; // пропускаем саму погибшую карту
+            const ally = gameState.board?.[rr]?.[cc]?.unit;
+            if (!ally || ally.owner !== unit.owner) continue;
+            const tplAlly = window.CARDS?.[ally.tplId];
+            const cellEl2 = gameState.board[rr][cc].element;
+            const buff2 = window.computeCellBuff(cellEl2, tplAlly.element);
+            ally.bonusHP = (ally.bonusHP || 0) + amount;
+            const maxHP = (tplAlly.hp || 0) + buff2.hp + (ally.bonusHP || 0);
+            const before = ally.currentHP ?? tplAlly.hp;
+            ally.currentHP = Math.min(maxHP, before + amount);
+
+            // визуальный эффект +1 HP
+            try {
+              const tMesh = getCtx().unitMeshes.find(m => m.userData.row === rr && m.userData.col === cc);
+              window.__fx?.spawnDamageText?.(tMesh, `+${amount}`, '#22c55e');
+            } catch {}
+          }
         }
+        window.addLog(`${cardData.name}: союзники получают +${amount} HP`);
       }
-      window.addLog(`${cardData.name}: союзники получают +${cardData.onDeathAddHPAll} HP`);
-    }
-    const owner = unit.owner;
-    try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
-    const ctx = getCtx();
+      const owner = unit.owner;
+      try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
+      const ctx = getCtx();
     const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
     const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
     const slot = gameState.players?.[owner]?.mana || 0;

@@ -24,12 +24,38 @@ export function showFieldLockTiles(cells = []) {
   for (const { r, c } of cells) {
     const tile = tileMeshes?.[r]?.[c];
     if (!tile) continue;
-    const mat = new THREE.SpriteMaterial({ map: tex, color: 0xf97316, transparent: true, opacity: 0.25 });
+
+    // менее прозрачный замок с отключённым тестом глубины, чтобы он был поверх карты
+    const mat = new THREE.SpriteMaterial({
+      map: tex,
+      color: 0xf97316,
+      transparent: true,
+      opacity: 0.25,
+      depthTest: false,
+      depthWrite: false,
+    });
     const spr = new THREE.Sprite(mat);
-    spr.position.copy(tile.position).add(new THREE.Vector3(0, 0.52, 0));
-    spr.scale.set(0.8, 0.8, 0.8);
+
+    // поднимаем иконку выше и ещё чуть сдвигаем вправо/вперёд
+    const tileSize = tile.geometry?.parameters?.width || 1;
+    const iconSize = 0.8;
+    const offset = tileSize / 2 - iconSize / 2;
+    const extra = tileSize * 0.05;
+    spr.position.copy(tile.position).add(new THREE.Vector3(offset + extra, 1.4, -offset - extra));
+    spr.scale.set(iconSize, iconSize, iconSize);
+    spr.renderOrder = 1500;
     effectsGroup.add(spr);
-    try { window.gsap?.to(mat, { opacity: 0.05, duration: 0.8, yoyo: true, repeat: -1 }); } catch {}
+
+    // пульсация почти до полной непрозрачности
+    try {
+      window.gsap?.to(mat, {
+        opacity: 0.95,
+        duration: 0.8,
+        yoyo: true,
+        repeat: -1,
+        ease: 'sine.inOut',
+      });
+    } catch {}
     state.sprites.push(spr);
   }
 }
