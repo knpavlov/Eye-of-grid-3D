@@ -12,9 +12,19 @@ export function showUnitActionPanel(unitMesh){
     const el = document.getElementById('unit-info'); if (el) el.textContent = `${cardData.name} (${(unitMesh.userData.row||0) + 1},${(unitMesh.userData.col||0) + 1})`;
     const alreadyAttacked = unitData.lastAttackTurn === gs.turn;
     const attackBtn = document.getElementById('attack-btn'); if (attackBtn) {
-      attackBtn.disabled = !!alreadyAttacked;
       const cost = (typeof window !== 'undefined' && typeof window.attackCost === 'function') ? window.attackCost(cardData) : 1;
-      attackBtn.textContent = alreadyAttacked ? 'Already attacked' : `Attack (-${cost})`;
+      if (cardData.fortress) {
+        attackBtn.disabled = true;
+        attackBtn.textContent = 'Cannot attack';
+      } else {
+        attackBtn.disabled = !!alreadyAttacked;
+        attackBtn.textContent = alreadyAttacked ? 'Already attacked' : `Attack (-${cost})`;
+      }
+    }
+    const sacBtn = document.getElementById('sacrifice-btn');
+    if (sacBtn) {
+      if (cardData.transformSummon) sacBtn.classList.remove('hidden');
+      else sacBtn.classList.add('hidden');
     }
     const rotateCost = (typeof window !== 'undefined' && typeof window.rotateCost === 'function') ? window.rotateCost(cardData) : 1;
     const alreadyRotated = unitData.lastRotateTurn === gs.turn;

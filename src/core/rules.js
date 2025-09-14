@@ -7,13 +7,28 @@ import { countUnits } from './board.js';
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
   if (!target) return false;
+  const tCtrl = target.controller ?? target.owner;
   for (const [dr, dc] of Object.values(DIR_VECTORS)) {
     const nr = r + dr, nc = c + dc;
     if (!inBounds(nr, nc)) continue;
     const u = state.board[nr][nc]?.unit;
-    if (u && u.owner === target.owner && ((CARDS[u.tplId].keywords || []).includes('GUARD'))) return true;
+    if (u && ((u.controller ?? u.owner) === tCtrl) && ((CARDS[u.tplId].keywords || []).includes('GUARD'))) return true;
   }
   return false;
+}
+
+// Сброс контроля при смерти владеющего юнита
+function breakPossessions(state, deaths) {
+  const deadIds = deaths.map(d => d.uid);
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const u = state.board?.[r]?.[c]?.unit;
+      if (u && u.possessedBy && deadIds.includes(u.possessedBy)) {
+        u.controller = u.owner;
+        delete u.possessedBy;
+      }
+    }
+  }
 }
 
 // Поворот относительного направления в абсолютное
@@ -75,6 +90,7 @@ export function computeHits(state, r, c, opts = {}) {
   const attacker = state.board?.[r]?.[c]?.unit;
   if (!attacker) return [];
   const tplA = CARDS[attacker.tplId];
+  const attackerCtrl = attacker.controller ?? attacker.owner;
   // tplA.friendlyFire — может ли атака задевать союзников
   const cells = attackCellsForTpl(tplA, attacker.facing, opts);
   const { atk } = effectiveStats(state.board[r][c], attacker);
@@ -108,11 +124,12 @@ export function computeHits(state, r, c, opts = {}) {
       if (opts.includeEmpty) hits.push({ r: nr, c: nc, dmg: 0 });
       continue;
     }
-    if (B.owner === attacker.owner && !allowFriendly) {
+    const Bctrl = B.controller ?? B.owner;
+    if (Bctrl === attackerCtrl && !allowFriendly) {
       if (opts.includeEmpty) hits.push({ r: nr, c: nc, dmg: 0 });
       continue; // по умолчанию союзников не бьём
     }
-    if (B.owner !== attacker.owner &&
+    if (Bctrl !== attackerCtrl &&
         !aFlying && hasAdjacentGuard(state, nr, nc) && !(CARDS[B.tplId].keywords || []).includes('GUARD')) {
       continue; // охрана работает только против врагов
     }
@@ -203,7 +220,17 @@ export function stagedAttack(state, r, c, opts = {}) {
     if (!B) return { ...h, dealt: 0 };
     const isMagic = tplA.attackType === 'MAGIC';
     const tplB = CARDS[B.tplId];
-    const dodge = !isMagic && (tplB.perfectDodge || (tplB.dodge50 && Math.random() < 0.5));
+    const fieldEl = cell?.element;
+    const hasInvis = tplB.invisible || B.invisible;
+    let dodge = false;
+    if (hasInvis) dodge = true;
+    else if (!isMagic) {
+      if (tplB.perfectDodge || (tplB.perfectDodgeOnElement && fieldEl === tplB.perfectDodgeOnElement)) {
+        dodge = true;
+      } else if (tplB.dodge || tplB.dodge50) {
+        dodge = Math.random() < 0.5;
+      }
+    }
     const dealt = dodge ? 0 : h.dmg;
     return { ...h, dealt, dodge };
   });
@@ -290,7 +317,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
       const u = nFinal.board?.[rr]?.[cc]?.unit;
       if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId });
+        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid });
         nFinal.board[rr][cc].unit = null;
       }
     }
@@ -310,6 +337,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     }
 
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
+    breakPossessions(nFinal, deaths);
     return { n1: nFinal, logLines, targets, deaths, retaliators: ret.retaliators };
   }
 
@@ -335,8 +363,10 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (attacker.lastAttackTurn === n1.turn) return null;
   const tplA = CARDS[attacker.tplId];
   const allowFriendly = !!tplA.friendlyFire;
+  const attackerCtrl = attacker.controller ?? attacker.owner;
   const mainTarget = n1.board?.[tr]?.[tc]?.unit;
-  if (!allowFriendly && (!mainTarget || mainTarget.owner === attacker.owner)) return null;
+  const mainCtrl = mainTarget ? (mainTarget.controller ?? mainTarget.owner) : null;
+  if (!allowFriendly && (!mainTarget || mainCtrl === attackerCtrl)) return null;
 
   const atkStats = effectiveStats(n1.board[fr][fc], attacker);
   const dmg = Math.max(0, (atkStats.atk || 0) + (tplA.randomPlus2 && Math.random() < 0.5 ? 2 : 0));
@@ -359,7 +389,10 @@ export function magicAttack(state, fr, fc, tr, tc) {
   for (const cell of cells) {
     const u = n1.board?.[cell.r]?.[cell.c]?.unit;
     if (!u) continue;
-    if (!allowFriendly && u.owner === attacker.owner) continue;
+    const uCtrl = u.controller ?? u.owner;
+    if (!allowFriendly && uCtrl === attackerCtrl) continue;
+    const tplT = CARDS[u.tplId];
+    if (tplT.invisible || u.invisible) continue;
     const before = u.currentHP ?? u.hp;
     u.currentHP = Math.max(0, before - dmg);
     targets.push({ r: cell.r, c: cell.c, dmg });
@@ -370,7 +403,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
   for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
     const u = n1.board[rr][cc].unit;
     if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId });
+      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid });
       n1.board[rr][cc].unit = null;
     }
   }
@@ -384,5 +417,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
   attacker.lastAttackTurn = n1.turn;
   const cellEl = n1.board?.[fr]?.[fc]?.element;
   attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA, cellEl);
+  // прерываем владение, если владеющий юнит погиб
+  breakPossessions(n1, deaths);
   return { n1, logLines, targets, deaths };
 }

@@ -120,7 +120,7 @@ export const handlers = {
   SPELL_CLARE_WILS_BANNER: {
     requiresUnitTarget: true,
     onUnit({ tpl, pl, idx, r, c, u }) {
-      if (!u || u.owner !== gameState.active) {
+      if (!u || (u.controller ?? u.owner) !== gameState.active) {
         showNotification('Target: friendly unit', 'error');
         return;
       }
@@ -298,7 +298,7 @@ export const handlers = {
         showNotification('Need to drag this card to a unit', 'error');
         return;
       }
-      if (u.owner !== gameState.active) {
+      if ((u.controller ?? u.owner) !== gameState.active) {
         showNotification('Only friendly unit', 'error');
         return;
       }

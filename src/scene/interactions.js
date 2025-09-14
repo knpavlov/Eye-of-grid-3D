@@ -189,9 +189,12 @@ function onMouseDown(event) {
     }
     if (interactionState.selectedCard && interactionState.selectedCard.userData.cardData.type === 'SPELL') {
       castSpellOnUnit(interactionState.selectedCard, unit);
-    } else if (unit.userData.unitData.owner === gameState.active) {
-      interactionState.selectedUnit = unit;
-      try { window.__ui.panels.showUnitActionPanel(unit); } catch {}
+    } else {
+      const ctrl = unit.userData.unitData.controller ?? unit.userData.unitData.owner;
+      if (ctrl === gameState.active) {
+        interactionState.selectedUnit = unit;
+        try { window.__ui.panels.showUnitActionPanel(unit); } catch {}
+      }
     }
     return;
   }
@@ -504,6 +507,7 @@ export function placeUnitWithDirection(direction) {
   const unit = {
     uid: window.uid(),
     owner: gameState.active,
+    controller: gameState.active,
     tplId: cardData.id,
     currentHP: cardData.hp,
     facing: direction,
@@ -547,6 +551,22 @@ export function placeUnitWithDirection(direction) {
     if (gained > 0) {
       window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
     }
+    if (cardData.gainPossessionEnemiesOnElement && cellElement !== cardData.element) {
+      for (let rr = 0; rr < 3; rr++) {
+        for (let cc = 0; cc < 3; cc++) {
+          const cell = gameState.board?.[rr]?.[cc];
+          const u = cell?.unit;
+          if (!u) continue;
+          const ctrl = u.controller ?? u.owner;
+          if (ctrl === gameState.active) continue;
+          if (cell.element === cardData.gainPossessionEnemiesOnElement) {
+            u.controller = gameState.active;
+            u.possessedBy = unit.uid;
+            window.addLog?.(`${cardData.name}: possession of ${window.CARDS[u.tplId].name}`);
+          }
+        }
+      }
+    }
   }
   // Синхронизируем состояние после призыва
   try { window.applyGameState(gameState); } catch {}
@@ -572,6 +592,7 @@ export function placeUnitWithDirection(direction) {
       window.updateUnits();
       window.updateUI();
       const tpl = window.CARDS?.[cardData.id];
+      const unitCtrl = unit.controller ?? unit.owner;
       if (tpl?.attackType === 'MAGIC') {
         const allowFriendly = !!tpl.friendlyFire;
         const cells = [];
@@ -580,10 +601,10 @@ export function placeUnitWithDirection(direction) {
           for (let cc = 0; cc < 3; cc++) {
             if (rr === row && cc === col) continue;
             const u = gameState.board?.[rr]?.[cc]?.unit;
-            if (allowFriendly || (u && u.owner !== unit.owner)) {
+            if (allowFriendly || (u && (u.controller ?? u.owner) !== unitCtrl)) {
               cells.push({ r: rr, c: cc });
             }
-            if (u && u.owner !== unit.owner) hasEnemy = true;
+            if (u && (u.controller ?? u.owner) !== unitCtrl) hasEnemy = true;
           }
         }
         if (cells.length && (allowFriendly || hasEnemy)) {
@@ -607,7 +628,7 @@ export function placeUnitWithDirection(direction) {
         const hitsAll = window.computeHits(gameState, row, col, { union: true, includeEmpty });
         const hasEnemy = hitsAll.some(h => {
           const u2 = gameState.board?.[h.r]?.[h.c]?.unit;
-          return u2 && u2.owner !== unit.owner;
+          return u2 && (u2.controller ?? u2.owner) !== unitCtrl;
         });
         if (hitsAll.length && hasEnemy) {
           if (needsChoice && hitsAll.length > 1) {

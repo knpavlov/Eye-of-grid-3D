@@ -11,7 +11,8 @@ export function rotateUnit(unitMesh, dir) {
     const gameState = window.gameState;
     const u = unitMesh.userData?.unitData;
     if (!u || !gameState) return;
-    if (u.owner !== gameState.active) {
+    const ctrl = u.controller ?? u.owner;
+    if (ctrl !== gameState.active) {
       window.__ui?.notifications?.show("You can't rotate the other player's unit", 'error');
       return;
     }
@@ -44,12 +45,21 @@ export function performUnitAttack(unitMesh) {
     const r = unitMesh.userData?.row; const c = unitMesh.userData?.col;
     if (r == null || c == null || !gameState) return;
     const unit = gameState.board?.[r]?.[c]?.unit; if (!unit) return;
+    const tpl = window.CARDS?.[unit.tplId];
+    const ctrl = unit.controller ?? unit.owner;
+    if (ctrl !== gameState.active) {
+      window.__ui?.notifications?.show("You can't use the other player's unit", 'error');
+      return;
+    }
+    if (tpl?.fortress) {
+      window.__ui?.notifications?.show('Fortress cannot attack', 'error');
+      return;
+    }
     // запрет на повторную атаку в пределах одного хода
     if (unit.lastAttackTurn === gameState.turn) {
       window.__ui?.notifications?.show('Это существо уже атаковало в этом ходу', 'error');
       return;
     }
-    const tpl = window.CARDS?.[unit.tplId];
     const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
     const iState = window.__interactions?.interactionState;
     if (tpl?.attackType === 'MAGIC') {
@@ -60,10 +70,10 @@ export function performUnitAttack(unitMesh) {
         for (let cc = 0; cc < 3; cc++) {
           if (rr === r && cc === c) continue; // нельзя бить себя
           const u = gameState.board?.[rr]?.[cc]?.unit;
-          if (allowFriendly || (u && u.owner !== unit.owner)) {
+          if (allowFriendly || (u && (u.controller ?? u.owner) !== ctrl)) {
             cells.push({ r: rr, c: cc });
           }
-          if (u && u.owner !== unit.owner) hasEnemy = true;
+          if (u && (u.controller ?? u.owner) !== ctrl) hasEnemy = true;
         }
       }
       if (!cells.length || (!allowFriendly && !hasEnemy)) {
@@ -93,7 +103,7 @@ export function performUnitAttack(unitMesh) {
     const hitsAll = typeof computeHits === 'function' ? computeHits(gameState, r, c, { union: true, includeEmpty }) : [];
     const hasEnemy = hitsAll.some(h => {
       const u2 = gameState.board?.[h.r]?.[h.c]?.unit;
-      return u2 && u2.owner !== unit.owner;
+      return u2 && (u2.controller ?? u2.owner) !== ctrl;
     });
     if (!hitsAll.length || !hasEnemy) {
       window.__ui?.notifications?.show('No available targets for attack', 'error');
@@ -130,6 +140,54 @@ export function performUnitAttack(unitMesh) {
     if (typeof window.performBattleSequence === 'function') {
       window.performBattleSequence(r, c, true, opts);
     }
+  } catch {}
+}
+
+export function sacrificeUnit(unitMesh) {
+  try {
+    if (!unitMesh || typeof window === 'undefined') return;
+    const gs = window.gameState;
+    const { row, col, unitData, cardData } = unitMesh.userData || {};
+    if (!gs || !unitData || !cardData) return;
+    const tpl = window.CARDS?.[unitData.tplId];
+    if (!tpl?.transformSummon) return;
+    const pl = gs.players[gs.active];
+    const validIdx = [];
+    pl.hand.forEach((c, i) => {
+      if (c.type === 'UNIT' && c.element === 'FIRE' && !c.id.includes('_CUBIC')) validIdx.push(i);
+    });
+    if (!validIdx.length) {
+      window.__ui?.notifications?.show('Нет подходящих карт в руке', 'error');
+      return;
+    }
+    const iState = window.__interactions?.interactionState;
+    if (iState) iState.pendingDiscardSelection = {
+      requiredType: 'UNIT',
+      onPicked: (handIdx) => {
+        const chosen = pl.hand[handIdx];
+        if (!chosen) return;
+        window.__ui?.panels?.hidePrompt?.();
+        iState.pendingDiscardSelection = null;
+        // исходное существо в кладбище без маны
+        gs.players[unitData.owner].graveyard.push(window.CARDS[unitData.tplId]);
+        gs.board[row][col].unit = {
+          uid: window.uid(),
+          owner: gs.active,
+          controller: gs.active,
+          tplId: chosen.id,
+          currentHP: chosen.hp,
+          facing: unitData.facing,
+        };
+        pl.discard.push(chosen);
+        pl.hand.splice(handIdx, 1);
+        window.updateHand?.();
+        window.updateUnits?.(gs);
+        window.updateUI?.(gs);
+      }
+    };
+    window.__ui?.panels?.showPrompt('Выберите карту из руки для превращения', () => {
+      if (iState) iState.pendingDiscardSelection = null;
+    });
   } catch {}
 }
 
@@ -340,7 +398,7 @@ export async function endTurn() {
   } catch {}
 }
 
-const api = { rotateUnit, performUnitAttack, endTurn };
+const api = { rotateUnit, performUnitAttack, sacrificeUnit, endTurn };
 try {
   if (typeof window !== 'undefined') {
     window.__ui = window.__ui || {};

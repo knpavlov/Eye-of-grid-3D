@@ -62,6 +62,10 @@ export function attachUIEvents() {
     const u = w.__interactions?.getSelectedUnit?.();
     if (u) w.__ui?.actions?.performUnitAttack?.(u);
   });
+  document.getElementById('sacrifice-btn')?.addEventListener('click', () => {
+    const u = w.__interactions?.getSelectedUnit?.();
+    if (u) w.__ui?.actions?.sacrificeUnit?.(u);
+  });
 
   document.querySelectorAll('[data-dir]').forEach(btn => {
     btn.addEventListener('click', () => {
