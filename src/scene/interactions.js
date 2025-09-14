@@ -3,6 +3,7 @@ import { getCtx } from './context.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
 import { applyFreedonianAura } from '../core/abilities.js';
+import { applyPossession, releasePossessions } from '../core/extraAbilities.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -21,6 +22,7 @@ export const interactionState = {
   pendingRitualSpellHandIndex: null,
   pendingRitualSpellCard: null,
   spellDragHandled: false,
+  pendingSacrifice: null,
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
 };
@@ -241,9 +243,32 @@ function onMouseUp(event) {
       if (interactionState.hoveredTile) {
         const row = interactionState.hoveredTile.userData.row;
         const col = interactionState.hoveredTile.userData.col;
-        if (gameState.board[row][col].unit) {
-          showNotification('Cell is already occupied!', 'error');
-          returnCardToHand(interactionState.draggedCard);
+        const existing = gameState.board[row][col].unit;
+        if (existing) {
+          if (cardData.incarnation && existing.owner === gameState.active) {
+            const baseCost = cardData.cost;
+            const existCost = window.CARDS?.[existing.tplId]?.cost || 0;
+            const diff = Math.max(0, baseCost - existCost);
+            interactionState.pendingPlacement = {
+              card: interactionState.draggedCard,
+              row,
+              col,
+              handIndex: interactionState.draggedCard.userData.handIndex,
+              incarnationOf: existing,
+              costOverride: diff,
+            };
+            try {
+              const baseY = (tileFrames?.[row]?.[col]?.children?.[0]?.position?.y ?? 1.0) + 0.28;
+              const pos = tileMeshes[row][col].position.clone();
+              pos.y = baseY;
+              gsap.to(interactionState.draggedCard.position, { x: pos.x, y: pos.y, z: pos.z, duration: 0.15 });
+            } catch {}
+            try { window.__ui.panels.showOrientationPanel(); } catch {}
+            try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+          } else {
+            showNotification('Cell is already occupied!', 'error');
+            returnCardToHand(interactionState.draggedCard);
+          }
         } else {
           interactionState.pendingPlacement = {
             card: interactionState.draggedCard,
@@ -251,7 +276,7 @@ function onMouseUp(event) {
             col,
             handIndex: interactionState.draggedCard.userData.handIndex,
           };
-          // Сразу опускаем карту на высоту клетки, чтобы убрать резкий подъём
+          // Сразу опускаем карту на высоту клетки
           try {
             const baseY = (tileFrames?.[row]?.[col]?.children?.[0]?.position?.y ?? 1.0) + 0.28;
             const pos = tileMeshes[row][col].position.clone();
@@ -490,11 +515,32 @@ function castSpellByDrag(cardMesh, unitMesh, tileMesh) {
 
 export function placeUnitWithDirection(direction) {
   const gameState = window.gameState;
-  if (!interactionState.pendingPlacement) return;
-  const { card, row, col, handIndex } = interactionState.pendingPlacement;
+  if (!interactionState.pendingPlacement && !interactionState.pendingSacrifice) return;
+  if (interactionState.pendingSacrifice) {
+    const { card, handIdx, row, col, oldUnitUid } = interactionState.pendingSacrifice;
+    const pl = gameState.players[gameState.active];
+    const tplOld = window.CARDS?.[gameState.board[row][col].unit.tplId];
+    // удаляем старого юнита без получения маны
+    gameState.players[gameState.active].graveyard.push(tplOld);
+    gameState.board[row][col].unit = null;
+    releasePossessions(gameState, oldUnitUid);
+    // извлекаем карту из руки
+    pl.discard.push(card); pl.hand.splice(handIdx, 1);
+    const unit = { uid: window.uid(), owner: gameState.active, tplId: card.id, currentHP: card.hp, facing: direction };
+    unit.originalOwner = gameState.active;
+    unit.lastAttackTurn = gameState.turn; // не может атаковать
+    gameState.board[row][col].unit = unit;
+    applyFreedonianAura(gameState, gameState.active);
+    window.updateHand(); window.updateUnits(); window.updateUI();
+    interactionState.pendingSacrifice = null;
+    try { window.__ui.panels.hideOrientationPanel(); } catch {}
+    return;
+  }
+  const { card, row, col, handIndex, incarnationOf, costOverride } = interactionState.pendingPlacement;
   const cardData = card.userData.cardData;
   const player = gameState.players[gameState.active];
-  if (cardData.cost > player.mana) {
+  const cost = costOverride != null ? costOverride : cardData.cost;
+  if (cost > player.mana) {
     showNotification('Insufficient mana!', 'error');
     returnCardToHand(card);
     try { window.__ui.panels.hideOrientationPanel(); } catch {}
@@ -509,9 +555,14 @@ export function placeUnitWithDirection(direction) {
     facing: direction,
   };
   gameState.board[row][col].unit = unit;
-  player.mana -= cardData.cost;
+  player.mana -= cost;
   player.discard.push(cardData);
   player.hand.splice(handIndex, 1);
+  if (incarnationOf) {
+    // отправляем заменённое существо в кладбище без маны
+    try { gameState.players[incarnationOf.owner].graveyard.push(window.CARDS[incarnationOf.tplId]); } catch {}
+    releasePossessions(gameState, incarnationOf.uid);
+  }
   // проверяем состояние Summoning Lock до начала действий
   const totalUnits = (typeof window.countUnits === 'function') ? window.countUnits(gameState) : 0;
   const unlockTriggered = !gameState.summoningUnlocked && totalUnits >= 4;
@@ -541,8 +592,18 @@ export function placeUnitWithDirection(direction) {
     const slot = gameState.players?.[owner]?.mana || 0;
     window.animateManaGainFromWorld(pos, owner, true, slot);
     gameState.board[row][col].unit = null;
+    releasePossessions(gameState, unit.uid);
   }
   if (gameState.board[row][col].unit) {
+    if (cardData.gainPossessionEnemiesOnElement && cellElement !== cardData.element) {
+      for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
+        const cell = gameState.board[rr][cc];
+        const u = cell?.unit;
+        if (u && u.owner !== gameState.active && cell.element === cardData.gainPossessionEnemiesOnElement) {
+          applyPossession(gameState, cell, gameState.active, unit.uid);
+        }
+      }
+    }
     const gained = applyFreedonianAura(gameState, gameState.active);
     if (gained > 0) {
       window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
@@ -572,7 +633,10 @@ export function placeUnitWithDirection(direction) {
       window.updateUnits();
       window.updateUI();
       const tpl = window.CARDS?.[cardData.id];
-      if (tpl?.attackType === 'MAGIC') {
+      if (tpl?.fortress) {
+        if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
+        try { window.endTurn && window.endTurn(); } catch {}
+      } else if (tpl?.attackType === 'MAGIC') {
         const allowFriendly = !!tpl.friendlyFire;
         const cells = [];
         let hasEnemy = false;

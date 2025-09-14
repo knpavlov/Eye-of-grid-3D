@@ -2,6 +2,7 @@
 // These functions rely on existing globals to minimize coupling.
 import { highlightTiles, clearHighlights } from '../scene/highlight.js';
 import { enforceHandLimit } from './handLimit.js';
+import { isFortress } from '../core/extraAbilities.js';
 
 export function rotateUnit(unitMesh, dir) {
   try {
@@ -50,6 +51,10 @@ export function performUnitAttack(unitMesh) {
       return;
     }
     const tpl = window.CARDS?.[unit.tplId];
+    if (isFortress(tpl)) {
+      window.__ui?.notifications?.show('Фортресс не может атаковать', 'error');
+      return;
+    }
     const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
     const iState = window.__interactions?.interactionState;
     if (tpl?.attackType === 'MAGIC') {
@@ -129,6 +134,45 @@ export function performUnitAttack(unitMesh) {
     }
     if (typeof window.performBattleSequence === 'function') {
       window.performBattleSequence(r, c, true, opts);
+    }
+  } catch {}
+}
+
+export function performSacrifice(unitMesh) {
+  try {
+    if (!unitMesh || typeof window === 'undefined') return;
+    const gameState = window.gameState;
+    const unit = unitMesh.userData?.unitData;
+    const tpl = window.CARDS?.[unit?.tplId];
+    if (!gameState || !unit || !tpl?.sacrificeTransform) return;
+    if (unit.owner !== gameState.active) {
+      window.__ui?.notifications?.show('Можно жертвовать только свои существа', 'error');
+      return;
+    }
+    const pl = gameState.players[gameState.active];
+    const candidates = pl.hand
+      .map((c, i) => (c && c.type === 'UNIT' && c.element === 'FIRE' && !c.id.includes('CUBIC') ? i : -1))
+      .filter(i => i >= 0);
+    if (!candidates.length) {
+      window.__ui?.notifications?.show('В руке нет подходящих огненных существ', 'error');
+      return;
+    }
+    const iState = window.__interactions?.interactionState;
+    window.__ui?.panels?.showPrompt('Выберите существо из руки для Sacrifice', () => {
+      if (iState) iState.pendingDiscardSelection = null;
+      window.__ui?.panels?.hidePrompt();
+    });
+    if (iState) {
+      iState.pendingDiscardSelection = {
+        requiredType: 'UNIT',
+        onPicked: handIdx => {
+          const card = pl.hand[handIdx];
+          if (!card || card.element !== 'FIRE' || card.id.includes('CUBIC')) return;
+          iState.pendingSacrifice = { card, handIdx, row: unitMesh.userData.row, col: unitMesh.userData.col, oldUnitUid: unit.uid };
+          window.__ui?.panels?.hidePrompt();
+          window.__ui?.panels?.showOrientationPanel();
+        }
+      };
     }
   } catch {}
 }
@@ -340,7 +384,7 @@ export async function endTurn() {
   } catch {}
 }
 
-const api = { rotateUnit, performUnitAttack, endTurn };
+const api = { rotateUnit, performUnitAttack, performSacrifice, endTurn };
 try {
   if (typeof window !== 'undefined') {
     window.__ui = window.__ui || {};

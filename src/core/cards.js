@@ -80,6 +80,80 @@ export const CARDS = {
     desc: 'Attack = 5 plus the number of other creatures on the board. The activation cost to attack is 5 less than listed.'
   },
 
+  // --- новые огненные карты ---
+  FIRE_FIREFLY_NINJA: {
+    id: 'FIRE_FIREFLY_NINJA', name: 'Firefly Ninja', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FIRE', atk: 1, hp: 2,
+    attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'], perfectDodgeOnFire: true, invisibilityWithSpider: 'FIRE_SPIDER_NINJA',
+    desc: 'На огненной клетке получает Perfect Dodge. Невидимость, если на поле есть союзный Spider Ninja.'
+  },
+  FIRE_PARTMOLE_FLAME_GUARD: {
+    id: 'FIRE_PARTMOLE_FLAME_GUARD', name: 'Partmole Flame Guard', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FIRE', atk: 1, hp: 3,
+    attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [2] } ],
+    blindspots: ['S'], plus2IfWaterTarget: true,
+    desc: 'Добавляет 2 к атаке, если цель стоит на водной клетке.'
+  },
+  FIRE_LESSER_GRANVENOA: {
+    id: 'FIRE_LESSER_GRANVENOA', name: 'Lesser Granvenoa', type: 'UNIT', cost: 4, activation: 2,
+    element: 'FIRE', atk: 2, hp: 4,
+    attackType: 'STANDARD', attacks: [
+      { dir: 'N', ranges: [1] }, { dir: 'E', ranges: [1] }, { dir: 'S', ranges: [1] }, { dir: 'W', ranges: [1] }
+    ],
+    blindspots: [], fortress: true, diesOffElement: 'WATER',
+    desc: 'Фортресс. Соседние клетки нельзя менять или field-quake. Погибает на водной клетке.'
+  },
+  FIRE_PARTMOLE_FIRE_ORACLE: {
+    id: 'FIRE_PARTMOLE_FIRE_ORACLE', name: 'Partmole Fire Oracle', type: 'UNIT', cost: 4, activation: 2,
+    element: 'FIRE', atk: 2, hp: 3,
+    attackType: 'MAGIC', attacks: [ { dir: 'N', ranges: [3] } ],
+    blindspots: ['S'], onDeathHealAll: 1,
+    desc: 'Магическая атака. При смерти все союзные существа получают +1 HP.'
+  },
+  FIRE_INFERNAL_SCIONDAR_DRAGON: {
+    id: 'FIRE_INFERNAL_SCIONDAR_DRAGON', name: 'Infernal Sciondar Dragon', type: 'UNIT', cost: 7, activation: 4,
+    element: 'FIRE', atk: 5, hp: 8,
+    attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [2] } ],
+    blindspots: [], dynamicAtk: 'FIRE_CREATURES', activationReductionOnElement: { element: 'FIRE', reduction: 3 },
+    desc: 'Атака = 5 + число других огненных существ. На огненной клетке стоимость активации на 3 меньше.'
+  },
+  FIRE_DIDI_THE_ENLIGHTENED: {
+    id: 'FIRE_DIDI_THE_ENLIGHTENED', name: 'Didi the Enlightened', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FIRE', atk: 2, hp: 4,
+    attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'], firstStrike: true, doubleAttack: true, plus1IfTargetOnElement: 'FIRE',
+    desc: 'Quickness. Бьёт дважды. +1 ATK против огненных целей.'
+  },
+  FIRE_WARDEN_HILDA: {
+    id: 'FIRE_WARDEN_HILDA', name: 'Warden Hilda', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FIRE', atk: 2, hp: 4,
+    attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [2] } ],
+    blindspots: ['S'], plus1IfTargetOnElement: 'FIRE', gainPossessionEnemiesOnElement: 'FIRE',
+    desc: '+1 ATK против огненных существ. При призыве на неогненное поле захватывает врагов на огненных клетках.'
+  },
+  FIRE_CRUCIBLE_KING_DIOS_IV: {
+    id: 'FIRE_CRUCIBLE_KING_DIOS_IV', name: 'Crucible King Dios IV', type: 'UNIT', cost: 6, activation: 4,
+    element: 'FIRE', atk: 3, hp: 6,
+    attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'], doubleAttack: true,
+    desc: 'Атакует дважды. Дополнительные магические эффекты пока не реализованы.'
+  },
+  FIRE_SCIONDAR_FIRE_GOD: {
+    id: 'FIRE_SCIONDAR_FIRE_GOD', name: 'Sciondar Fire God', type: 'UNIT', cost: 9, activation: 5,
+    element: 'FIRE', atk: 3, hp: 9,
+    attackType: 'MAGIC', attacks: [ { dir: 'N', ranges: [3] } ],
+    blindspots: [], incarnation: true, targetAllNonElement: 'FIRE', diesOffElement: 'BIOLITH',
+    desc: 'Инкарнация. Магическая атака по всем врагам не на огненных клетках. Гибнет на биолитовой клетке.'
+  },
+  FIRE_RED_CUBIC: {
+    id: 'FIRE_RED_CUBIC', name: 'Red Cubic', type: 'UNIT', cost: 1, activation: 1,
+    element: 'FIRE', atk: 0, hp: 1,
+    attackType: 'STANDARD', attacks: [],
+    blindspots: ['E','S','W'], sacrificeTransform: true,
+    desc: 'Sacrifice: превращается в любое некубическое огненное существо из руки.'
+  },
+
   // Spells (subset)
   RAISE_STONE: { id:'RAISE_STONE', name:'Raise Stone', type:'SPELL', cost:2, element:'EARTH', text:'+2 HP to a friendly unit.' },
   SPELL_FISSURES_OF_GOGHLIE: { id: 'SPELL_FISSURES_OF_GOGHLIE', name: 'Fissures of Goghlie', type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 2, text: 'Fieldquake any one field.' },

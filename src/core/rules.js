@@ -3,6 +3,7 @@ import { DIR_VECTORS, inBounds, attackCost, OPPOSITE_ELEMENT, capMana } from './
 import { CARDS } from './cards.js';
 import { hasFirstStrike } from './abilities.js';
 import { countUnits } from './board.js';
+import { hasInvisibility, releasePossessions } from './extraAbilities.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -76,6 +77,21 @@ export function computeHits(state, r, c, opts = {}) {
   if (!attacker) return [];
   const tplA = CARDS[attacker.tplId];
   // tplA.friendlyFire — может ли атака задевать союзников
+  if (tplA.targetAllNonElement) {
+    const element = tplA.targetAllNonElement;
+    const hits = [];
+    for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
+      if (rr === r && cc === c) continue;
+      const cell = state.board?.[rr]?.[cc];
+      const u = cell?.unit;
+      if (u && u.owner !== attacker.owner && cell.element !== element) {
+        const [dr, dc] = [rr - r, cc - c];
+        const dirAbs = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
+        hits.push({ r: rr, c: cc, dmg: effectiveStats(state.board[r][c], attacker).atk, dirAbs });
+      }
+    }
+    return hits;
+  }
   const cells = attackCellsForTpl(tplA, attacker.facing, opts);
   const { atk } = effectiveStats(state.board[r][c], attacker);
   const hits = [];
@@ -161,6 +177,15 @@ export function stagedAttack(state, r, c, opts = {}) {
     atk += others;
     logLines.push(`${tplA.name}: атака увеличена на ${others}`);
   }
+  if (tplA.dynamicAtk === 'FIRE_CREATURES') {
+    let count = 0;
+    for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
+      const u = base.board?.[rr]?.[cc]?.unit;
+      if (u && u !== attacker && CARDS[u.tplId].element === 'FIRE') count++;
+    }
+    atk += count;
+    logLines.push(`${tplA.name}: атака увеличена на ${count}`);
+  }
   if (tplA.randomPlus2 && Math.random() < 0.5) {
     atk += 2;
     logLines.push(`${tplA.name}: случайный бонус +2 ATK`);
@@ -175,6 +200,21 @@ export function stagedAttack(state, r, c, opts = {}) {
   const deltaAtk = atk - baseStats.atk;
   if (deltaAtk !== 0) {
     for (const h of hitsRaw) { h.dmg = Math.max(0, h.dmg + deltaAtk); }
+  }
+  if (tplA.plus2IfWaterTarget) {
+    const water = hitsRaw.some(h => base.board?.[h.r]?.[h.c]?.element === 'WATER');
+    if (water) {
+      for (const h of hitsRaw) { h.dmg = Math.max(0, h.dmg + 2); }
+      logLines.push(`${tplA.name}: +2 ATK против цели на воде`);
+    }
+  }
+  if (tplA.plus1IfTargetOnElement) {
+    for (const h of hitsRaw) {
+      const u = base.board?.[h.r]?.[h.c]?.unit;
+      if (u && CARDS[u.tplId].element === tplA.plus1IfTargetOnElement) {
+        h.dmg = Math.max(0, h.dmg + 1);
+      }
+    }
   }
 
   const attackerQuick = hasFirstStrike(tplA);
@@ -203,9 +243,11 @@ export function stagedAttack(state, r, c, opts = {}) {
     if (!B) return { ...h, dealt: 0 };
     const isMagic = tplA.attackType === 'MAGIC';
     const tplB = CARDS[B.tplId];
-    const dodge = !isMagic && (tplB.perfectDodge || (tplB.dodge50 && Math.random() < 0.5));
-    const dealt = dodge ? 0 : h.dmg;
-    return { ...h, dealt, dodge };
+    const invisible = hasInvisibility(base, B);
+    const cellEl = base.board?.[h.r]?.[h.c]?.element;
+    const dodge = !isMagic && !invisible && (tplB.perfectDodge || (tplB.perfectDodgeOnFire && cellEl === 'FIRE') || (tplB.dodge50 && Math.random() < 0.5));
+    const dealt = (invisible || dodge) ? 0 : h.dmg;
+    return { ...h, dealt, dodge, invisible };
   });
 
   const n1 = JSON.parse(JSON.stringify(base));
@@ -241,6 +283,7 @@ export function stagedAttack(state, r, c, opts = {}) {
         const parts = [`${nameA} → ${nameB}: ${h.dealt || 0} dmg (HP ${before}→${afterHP})`];
         if (h.backstab) parts.push('(+1 backstab)');
         if (h.dodge) parts.push('(dodge)');
+        if (h.invisible) parts.push('(invisible)');
         logLines.push(parts.join(' '));
       }
     }
@@ -290,7 +333,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
       const u = nFinal.board?.[rr]?.[cc]?.unit;
       if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId });
+        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid });
         nFinal.board[rr][cc].unit = null;
       }
     }
@@ -300,6 +343,17 @@ export function stagedAttack(state, r, c, opts = {}) {
         if (nFinal && nFinal.players && nFinal.players[d.owner]) {
           nFinal.players[d.owner].mana = capMana((nFinal.players[d.owner].mana || 0) + 1);
         }
+        const tpl = CARDS[d.tplId];
+        if (tpl?.onDeathHealAll) {
+          for (let r0 = 0; r0 < 3; r0++) for (let c0 = 0; c0 < 3; c0++) {
+            const u2 = nFinal.board?.[r0]?.[c0]?.unit;
+            if (u2 && u2.owner === d.owner) {
+              const tpl2 = CARDS[u2.tplId];
+              u2.currentHP = Math.min((u2.currentHP ?? tpl2.hp) + tpl.onDeathHealAll, tpl2.hp);
+            }
+          }
+        }
+        releasePossessions(nFinal, d.uid);
       }
     } catch {}
 
@@ -370,7 +424,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
   for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
     const u = n1.board[rr][cc].unit;
     if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId });
+      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid });
       n1.board[rr][cc].unit = null;
     }
   }
@@ -379,6 +433,19 @@ export function magicAttack(state, fr, fc, tr, tc) {
       if (n1 && n1.players && n1.players[d.owner]) {
         n1.players[d.owner].mana = capMana((n1.players[d.owner].mana || 0) + 1);
       }
+    }
+    for (const d of deaths) {
+      const tpl = CARDS[d.tplId];
+      if (tpl?.onDeathHealAll) {
+        for (let r0 = 0; r0 < 3; r0++) for (let c0 = 0; c0 < 3; c0++) {
+          const u2 = n1.board?.[r0]?.[c0]?.unit;
+          if (u2 && u2.owner === d.owner) {
+            const tpl2 = CARDS[u2.tplId];
+            u2.currentHP = Math.min((u2.currentHP ?? tpl2.hp) + tpl.onDeathHealAll, tpl2.hp);
+          }
+        }
+      }
+      releasePossessions(n1, d.uid);
     }
   } catch {}
   attacker.lastAttackTurn = n1.turn;

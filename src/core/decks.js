@@ -105,6 +105,23 @@ const RAW_DECKS = [
       'SPELL_FISSURES_OF_GOGHLIE',
     ],
   },
+  {
+    id: 'FIRE_EXPERIMENTAL',
+    name: 'Fire Experiments',
+    description: 'Новые огненные существа с особыми механиками.',
+    cards: [
+      'FIRE_FIREFLY_NINJA',
+      'FIRE_PARTMOLE_FLAME_GUARD',
+      'FIRE_LESSER_GRANVENOA',
+      'FIRE_PARTMOLE_FIRE_ORACLE',
+      'FIRE_INFERNAL_SCIONDAR_DRAGON',
+      'FIRE_DIDI_THE_ENLIGHTENED',
+      'FIRE_WARDEN_HILDA',
+      'FIRE_CRUCIBLE_KING_DIOS_IV',
+      'FIRE_SCIONDAR_FIRE_GOD',
+      'FIRE_RED_CUBIC',
+    ],
+  },
 ];
 
 // Преобразуем ID карт в сами объекты карт
