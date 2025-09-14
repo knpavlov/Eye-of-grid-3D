@@ -80,6 +80,88 @@ export const CARDS = {
     desc: 'Attack = 5 plus the number of other creatures on the board. The activation cost to attack is 5 less than listed.'
   },
 
+  // --- Новые огненные карты ---
+  FIRE_FIREFLY_NINJA: {
+    id: 'FIRE_FIREFLY_NINJA', name: 'Firefly Ninja', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FIRE', atk: 1, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'], dodge50: true, perfectDodgeOnFire: true, invisibilityWithSpider: true,
+    desc: 'While on a Fire field gains Perfect Dodge. Gains Invisibility while an allied Spider Ninja is on the board.'
+  },
+  FIRE_PARTMOLE_FLAME_GUARD: {
+    id: 'FIRE_PARTMOLE_FLAME_GUARD', name: 'Partmole Flame Guard', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FIRE', atk: 1, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    blindspots: ['S'], plus2IfWaterTarget: true,
+    desc: 'Adds 2 to its Attack if at least one target creature is on a Water field.'
+  },
+  FIRE_LESSER_GRANVENOA: {
+    id: 'FIRE_LESSER_GRANVENOA', name: 'Lesser Granvenoa', type: 'UNIT', cost: 4, activation: 2,
+    element: 'FIRE', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] }, { dir: 'E', ranges: [1] }, { dir: 'S', ranges: [1] }, { dir: 'W', ranges: [1] } ],
+    blindspots: [], fortress: true, diesOffElement: 'WATER',
+    desc: 'Fortress. Adjacent fields cannot be field‑quaked or exchanged. Destroy if on a Water field.'
+  },
+  FIRE_PARTMOLE_FIRE_ORACLE: {
+    id: 'FIRE_PARTMOLE_FIRE_ORACLE', name: 'Partmole Fire Oracle', type: 'UNIT', cost: 4, activation: 2,
+    element: 'FIRE', atk: 2, hp: 3,
+    attackType: 'MAGIC',
+    attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
+    blindspots: ['S'], onDeathHealAll: 1,
+    desc: 'Magic Attack. If destroyed, all allied creatures gain 1 HP.'
+  },
+  FIRE_INFERNAL_SCIONDAR_DRAGON: {
+    id: 'FIRE_INFERNAL_SCIONDAR_DRAGON', name: 'Infernal Sciondar Dragon', type: 'UNIT', cost: 7, activation: 4,
+    element: 'FIRE', atk: 5, hp: 8,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    blindspots: [], dynamicAtk: 'FIRE_CREATURES', activationReductionOnElement: { element: 'FIRE', reduction: 3 },
+    desc: 'Attack = 5 plus the number of other Fire creatures on the board. While on a Fire field, its activation cost to attack is 3 less.'
+  },
+  FIRE_DIDI_THE_ENLIGHTENED: {
+    id: 'FIRE_DIDI_THE_ENLIGHTENED', name: 'Didi the Enlightened', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FIRE', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'], firstStrike: true, doubleAttack: true, plus1IfTargetOnElement: 'FIRE', protectElementFields: 'FIRE',
+    desc: 'Quickness. Attacks the same target twice. +1 ATK if the target is on a Fire field. Fire fields cannot be quaked or exchanged.'
+  },
+  FIRE_WARDEN_HILDA: {
+    id: 'FIRE_WARDEN_HILDA', name: 'Warden Hilda', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FIRE', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    blindspots: ['S'], plus1IfTargetOnElement: 'FIRE', gainPossessionEnemiesOnElement: 'FIRE',
+    desc: 'Adds 1 ATK if the target is a Fire creature. If summoned on a non‑Fire field, gain possession of enemies on Fire fields.'
+  },
+  FIRE_CRUCIBLE_KING_DIOS_IV: {
+    id: 'FIRE_CRUCIBLE_KING_DIOS_IV', name: 'Crucible King Dios IV', type: 'UNIT', cost: 6, activation: 4,
+    element: 'FIRE', atk: 3, hp: 6,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'], doubleAttack: true, magicAttackArea: true, mustUseMagicOnElement: 'FIRE', dynamicMagicAtk: 'FIRE_FIELDS',
+    desc: 'Attacks the same target twice. On a Fire field must use a Magic Attack affecting the target and adjacent enemies. Attack equals number of Fire fields.'
+  },
+  FIRE_SCIONDAR_FIRE_GOD: {
+    id: 'FIRE_SCIONDAR_FIRE_GOD', name: 'Sciondar Fire God', type: 'UNIT', cost: 9, activation: 5,
+    element: 'FIRE', atk: 3, hp: 9,
+    attackType: 'MAGIC',
+    attacks: [],
+    blindspots: [], incarnation: true, targetAllNonElement: 'FIRE', diesOffElement: 'BIOLITH',
+    desc: 'Incarnation. Magic Attack targets all enemies on non‑Fire fields. Destroy if on a Biolith field.'
+  },
+  FIRE_RED_CUBIC: {
+    id: 'FIRE_RED_CUBIC', name: 'Red Cubic', type: 'UNIT', cost: 1, activation: 1,
+    element: 'FIRE', atk: 0, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [],
+    blindspots: ['E','S','W'], transformSummon: true,
+    desc: 'Sacrifice Red Cubic to summon a non‑cubic Fire creature in its place without paying its cost.'
+  },
+
   // Spells (subset)
   RAISE_STONE: { id:'RAISE_STONE', name:'Raise Stone', type:'SPELL', cost:2, element:'EARTH', text:'+2 HP to a friendly unit.' },
   SPELL_FISSURES_OF_GOGHLIE: { id: 'SPELL_FISSURES_OF_GOGHLIE', name: 'Fissures of Goghlie', type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 2, text: 'Fieldquake any one field.' },

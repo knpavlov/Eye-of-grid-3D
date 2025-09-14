@@ -62,10 +62,19 @@ export function attachUIEvents() {
     const u = w.__interactions?.getSelectedUnit?.();
     if (u) w.__ui?.actions?.performUnitAttack?.(u);
   });
+  document.getElementById('sacrifice-btn')?.addEventListener('click', () => {
+    const u = w.__interactions?.getSelectedUnit?.();
+    if (u) w.__ui?.actions?.sacrificeUnit?.(u);
+  });
 
   document.querySelectorAll('[data-dir]').forEach(btn => {
     btn.addEventListener('click', () => {
       const direction = btn.getAttribute('data-dir');
+      const ps = w.__interactions?.getPendingSacrifice?.();
+      if (ps && ps.chosenCard) {
+        w.__interactions?.resolveSacrifice?.(direction);
+        return;
+      }
       const pso = w.__interactions?.getPendingSpellOrientation?.();
       const gameState = w.gameState;
       if (pso) {

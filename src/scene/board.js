@@ -125,7 +125,8 @@ export function createBoard(gameState) {
   // Cleanup previous
   (ctx.tileMeshes || []).forEach(row => row && row.forEach(tile => { try { boardGroup.remove(tile); } catch {} }));
   (ctx.tileFrames || []).forEach(row => row && row.forEach(f => { try { boardGroup.remove(f); } catch {} }));
-  ctx.tileMeshes = []; ctx.tileFrames = [];
+  (ctx.possessFrames || []).forEach(row => row && row.forEach(f => { try { boardGroup.remove(f); } catch {} }));
+  ctx.tileMeshes = []; ctx.tileFrames = []; ctx.possessFrames = [];
 
   const tileSize = 6.2;
   const tileHeight = 0.35;
@@ -134,7 +135,7 @@ export function createBoard(gameState) {
   const boardZShift = -3.5;
 
   for (let r = 0; r < 3; r++) {
-    const row = []; const frameRow = [];
+    const row = []; const frameRow = []; const possRow = [];
     for (let c = 0; c < 3; c++) {
       const cell = gameState.board[r][c];
       const geometry = new THREE.BoxGeometry(tileSize, tileHeight, tileSize);
@@ -162,9 +163,14 @@ export function createBoard(gameState) {
       for (const seg of [top, bottom, left, right]) { seg.renderOrder = 600; frame.add(seg); }
       frame.renderOrder = 800;
       boardGroup.add(frame); frameRow.push(frame);
+      // рамка для владения
+      const pFrame = frame.clone();
+      pFrame.traverse(ch => { if (ch.isMesh && ch.material) { ch.material = ch.material.clone(); ch.material.opacity = 0; } });
+      boardGroup.add(pFrame); possRow.push(pFrame);
     }
     ctx.tileMeshes.push(row);
     ctx.tileFrames.push(frameRow);
+    ctx.possessFrames.push(possRow);
   }
 
   return ctx.tileMeshes;

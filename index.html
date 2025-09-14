@@ -116,6 +116,7 @@
           <button id="rotate-cw-btn" class="overlay-panel px-4 py-2 hover:bg-slate-700">Rotate ↻</button>
           <button id="rotate-ccw-btn" class="overlay-panel px-4 py-2 hover:bg-slate-700">Rotate ↺</button>
         </div>
+        <button id="sacrifice-btn" class="w-full overlay-panel px-4 py-2 bg-yellow-600 hover:bg-yellow-700 hidden">Sacrifice</button>
         <button id="cancel-action-btn" class="w-full overlay-panel px-4 py-2 bg-gray-600 hover:bg-gray-700">Cancel</button>
       </div>
     </div>
@@ -181,7 +182,7 @@
       let computeHits;
 
     let stagedAttack;
-    let magicAttack;
+    let magicAttack; let magicAttackAll;
     
       /* MODULE: 3D scene setup and rendering
          Target module: src/scene/*.js (board, cards, units). Inline code below
@@ -431,7 +432,7 @@
         uid = window.uid; inBounds = window.inBounds; capMana = window.capMana; attackCost = window.attackCost; rotateCost = window.rotateCost;
         CARDS = window.CARDS; DECKS = window.DECKS || [];
         computeCellBuff = window.computeCellBuff; effectiveStats = window.effectiveStats;
-        hasAdjacentGuard = window.hasAdjacentGuard; computeHits = window.computeHits; stagedAttack = window.stagedAttack; magicAttack = window.magicAttack;
+        hasAdjacentGuard = window.hasAdjacentGuard; computeHits = window.computeHits; stagedAttack = window.stagedAttack; magicAttack = window.magicAttack; magicAttackAll = window.magicAttackAll;
         shuffle = window.shuffle; drawOne = window.drawOne; drawOneNoAdd = window.drawOneNoAdd; countControlled = window.countControlled; startGame = window.startGame;
       } catch {}
     }

@@ -12,9 +12,14 @@ export function showUnitActionPanel(unitMesh){
     const el = document.getElementById('unit-info'); if (el) el.textContent = `${cardData.name} (${(unitMesh.userData.row||0) + 1},${(unitMesh.userData.col||0) + 1})`;
     const alreadyAttacked = unitData.lastAttackTurn === gs.turn;
     const attackBtn = document.getElementById('attack-btn'); if (attackBtn) {
-      attackBtn.disabled = !!alreadyAttacked;
-      const cost = (typeof window !== 'undefined' && typeof window.attackCost === 'function') ? window.attackCost(cardData) : 1;
-      attackBtn.textContent = alreadyAttacked ? 'Already attacked' : `Attack (-${cost})`;
+      const cellEl = gs.board?.[unitMesh.userData.row]?.[unitMesh.userData.col]?.element;
+      const cost = (typeof window !== 'undefined' && typeof window.attackCost === 'function') ? window.attackCost(cardData, cellEl) : 1;
+      attackBtn.disabled = !!alreadyAttacked || cardData.fortress;
+      attackBtn.textContent = cardData.fortress ? 'Cannot attack' : (alreadyAttacked ? 'Already attacked' : `Attack (-${cost})`);
+    }
+    const sacrificeBtn = document.getElementById('sacrifice-btn');
+    if (sacrificeBtn) {
+      if (cardData.transformSummon) sacrificeBtn.classList.remove('hidden'); else sacrificeBtn.classList.add('hidden');
     }
     const rotateCost = (typeof window !== 'undefined' && typeof window.rotateCost === 'function') ? window.rotateCost(cardData) : 1;
     const alreadyRotated = unitData.lastRotateTurn === gs.turn;

@@ -1,4 +1,5 @@
 import { DECKS } from './decks.js';
+import { CARDS } from './cards.js';
 // Дефолтная колода для запуска игры
 const DEFAULT_DECK = DECKS[0]?.cards || [];
 
@@ -41,6 +42,18 @@ export function countUnits(state) {
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 3; c++) {
       if (state.board[r][c].unit) count++;
+    }
+  }
+  return count;
+}
+
+// Подсчёт существ определённой стихии
+export function countUnitsByElement(state, element) {
+  let count = 0;
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const u = state.board?.[r]?.[c]?.unit;
+      if (u && CARDS[u.tplId]?.element === element) count++;
     }
   }
   return count;

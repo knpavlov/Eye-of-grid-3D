@@ -49,3 +49,49 @@ export function applyFreedonianAura(state, owner) {
   }
   return gained;
 }
+
+// Проверяем, обладает ли существо невидимостью
+export function hasInvisibility(state, r, c, unit, tpl) {
+  if (!state || !unit || !tpl) return false;
+  if (unit.invisible || tpl.invisibility) return true;
+  if (tpl.invisibilityWithSpider) {
+    for (let rr = 0; rr < 3; rr++) {
+      for (let cc = 0; cc < 3; cc++) {
+        const u = state.board?.[rr]?.[cc]?.unit;
+        if (u && u.owner === unit.owner && /SPIDER_NINJA/.test(u.tplId)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Передача контроля над существами на нужных полях (Possession)
+export function gainPossession(state, controller, sourceUid, element) {
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const cell = state.board?.[r]?.[c];
+      const u = cell?.unit;
+      if (!u) continue;
+      if (cell.element === element && u.owner !== controller) {
+        u.controller = controller;
+        u.possessedBy = { controller, source: sourceUid };
+        u.possessedAt = state.turn;
+      }
+    }
+  }
+}
+
+// Сбрасываем владение, если источник контроля исчез
+export function removePossessionBySource(state, sourceUid) {
+  if (!state || !sourceUid) return;
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const u = state.board?.[r]?.[c]?.unit;
+      if (u && u.possessedBy?.source === sourceUid) {
+        delete u.controller;
+        delete u.possessedBy;
+        delete u.possessedAt;
+      }
+    }
+  }
+}

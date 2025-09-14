@@ -37,6 +37,13 @@ export function updateUnits(gameState) {
             const isMine = (unit.owner === viewerSeat); const col = isMine ? 0x22c55e : 0xef4444; setFrame(0.95, col);
           } else { setFrame(0.0, 0x000000); }
         }
+        const pFrame = ctx.possessFrames?.[r]?.[c];
+        if (pFrame) {
+          const setFrame = (opacity, color) => { pFrame.traverse(child => { if (child.isMesh && child.material) { child.material.opacity = opacity; child.material.color = new THREE.Color(color); } }); };
+          if (unit && unit.controller != null && unit.controller !== unit.owner) {
+            setFrame(0.95, 0x9333ea);
+          } else { setFrame(0.0, 0x000000); }
+        }
       } catch {}
       if (!unit) continue;
 

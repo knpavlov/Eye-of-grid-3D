@@ -11,8 +11,13 @@ export function rotateUnit(unitMesh, dir) {
     const gameState = window.gameState;
     const u = unitMesh.userData?.unitData;
     if (!u || !gameState) return;
-    if (u.owner !== gameState.active) {
+    const controller = u.controller ?? u.owner;
+    if (controller !== gameState.active) {
       window.__ui?.notifications?.show("You can't rotate the other player's unit", 'error');
+      return;
+    }
+    if (u.possessedAt === gameState.turn && controller !== u.owner) {
+      window.__ui?.notifications?.show('You cannot control this unit yet', 'error');
       return;
     }
     if (u.lastRotateTurn === gameState.turn) {
@@ -44,15 +49,45 @@ export function performUnitAttack(unitMesh) {
     const r = unitMesh.userData?.row; const c = unitMesh.userData?.col;
     if (r == null || c == null || !gameState) return;
     const unit = gameState.board?.[r]?.[c]?.unit; if (!unit) return;
+    const controller = unit.controller ?? unit.owner;
+    if (controller !== gameState.active) {
+      window.__ui?.notifications?.show("You can't command this unit", 'error');
+      return;
+    }
+    if (unit.possessedAt === gameState.turn && controller !== unit.owner) {
+      window.__ui?.notifications?.show('You cannot control this unit yet', 'error');
+      return;
+    }
     // запрет на повторную атаку в пределах одного хода
     if (unit.lastAttackTurn === gameState.turn) {
       window.__ui?.notifications?.show('Это существо уже атаковало в этом ходу', 'error');
       return;
     }
     const tpl = window.CARDS?.[unit.tplId];
-    const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
+    if (tpl?.fortress) {
+      window.__ui?.notifications?.show('This fortress cannot attack', 'error');
+      return;
+    }
+    const cellElement = gameState.board[r][c].element;
+    const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl, cellElement) : 0;
     const iState = window.__interactions?.interactionState;
-    if (tpl?.attackType === 'MAGIC') {
+    const mustMagic = tpl?.mustUseMagicOnElement && cellElement === tpl.mustUseMagicOnElement;
+    if (tpl?.targetAllNonElement) {
+      if (gameState.players[gameState.active].mana < cost) {
+        window.__ui?.notifications?.show(`${cost} mana is required to attack`, 'error');
+        return;
+      }
+      const res = window.magicAttackAll(gameState, r, c, tpl.targetAllNonElement);
+      if (!res) { window.__ui?.notifications?.show('No targets for attack', 'error'); return; }
+      gameState.players[gameState.active].mana -= cost;
+      window.__ui?.updateUI?.(gameState);
+      try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
+      for (const l of res.logLines.reverse()) window.addLog(l);
+      try { window.applyGameState(res.n1); } catch {}
+      window.updateUnits(); window.updateUI();
+      return;
+    }
+    if (tpl?.attackType === 'MAGIC' || mustMagic) {
       const allowFriendly = !!tpl.friendlyFire;
       const cells = [];
       let hasEnemy = false;
@@ -130,6 +165,34 @@ export function performUnitAttack(unitMesh) {
     if (typeof window.performBattleSequence === 'function') {
       window.performBattleSequence(r, c, true, opts);
     }
+  } catch {}
+}
+
+// Sacrifice для карт с transformSummon
+export function sacrificeUnit(unitMesh) {
+  try {
+    if (!unitMesh || typeof window === 'undefined') return;
+    const gameState = window.gameState;
+    const u = unitMesh.userData?.unitData; const cardData = unitMesh.userData?.cardData;
+    if (!u || !cardData || !cardData.transformSummon) return;
+    const iState = window.__interactions?.interactionState;
+    if (!iState) return;
+    iState.pendingSacrifice = { unitMesh };
+    iState.pendingDiscardSelection = {
+      requiredType: 'UNIT',
+      onPicked(handIdx) {
+        const pl = gameState.players[gameState.active];
+        const card = pl.hand[handIdx];
+        if (!card || card.element !== 'FIRE' || /CUBIC/.test(card.id)) {
+          window.__ui?.notifications?.show('Нужна некубическая огненная карта', 'error');
+          return;
+        }
+        iState.pendingSacrifice.chosenCard = card;
+        iState.pendingSacrifice.handIdx = handIdx;
+        window.__ui?.panels.showOrientationPanel();
+      }
+    };
+    window.__ui?.panels.showPrompt('Выберите карту из руки для превращения', () => { iState.pendingSacrifice = null; iState.pendingDiscardSelection = null; });
   } catch {}
 }
 
@@ -340,7 +403,7 @@ export async function endTurn() {
   } catch {}
 }
 
-const api = { rotateUnit, performUnitAttack, endTurn };
+const api = { rotateUnit, performUnitAttack, sacrificeUnit, endTurn };
 try {
   if (typeof window !== 'undefined') {
     window.__ui = window.__ui || {};
