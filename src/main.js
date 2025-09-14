@@ -4,6 +4,8 @@ import { CARDS } from './core/cards.js';
 import { DECKS } from './core/decks.js';
 // Стартовая колода по умолчанию — первая из списка
 const STARTER_FIRESET = DECKS[0]?.cards || [];
+import { recomputeFieldLocks, getLockedCells } from './core/fieldLocks.js';
+import * as FieldLockFx from './scene/fieldLockEffect.js';
 import * as Rules from './core/rules.js';
 import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled, countUnits } from './core/state.js';
 import { netState, NET_ON } from './core/netState.js';
@@ -121,6 +123,11 @@ const netMiddleware = makeMiddleware(({ getState, next, action }) => {
 export const store = createStore(reducer, undefined, [netMiddleware]);
 try { window.__store = store; } catch {}
 
+export function recomputeAndRenderFieldLocks() {
+  recomputeFieldLocks(window.gameState);
+  try { FieldLockFx.applyFieldLocks(getLockedCells(window.gameState)); } catch {}
+}
+try { window.recomputeAndRenderFieldLocks = recomputeAndRenderFieldLocks; } catch {}
 // Initialize only if no existing gameState is present (non-destructive)
 if (typeof window !== 'undefined' && !window.gameState) {
   const s = startGame(STARTER_FIRESET, STARTER_FIRESET);
@@ -132,6 +139,7 @@ export function applyGameState(state) {
   try {
     // Обновляем глобальную переменную
     window.gameState = state;
+    window.recomputeAndRenderFieldLocks?.();
     // Синхронизируем стораж, чтобы состояние не откатывалось в конце хода
     window.__store?.dispatch({ type: A.REPLACE_STATE, payload: state });
     // Сообщаем страницам с локальной переменной gameState о новом состоянии

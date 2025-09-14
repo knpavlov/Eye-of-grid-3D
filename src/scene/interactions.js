@@ -532,6 +532,10 @@ export function placeUnitWithDirection(direction) {
     window.addLog(`${cardData.name} погибает вдали от стихии ${cardData.diesOffElement}!`);
     alive = false;
   }
+  if (alive && cardData.diesOnElement && cellElement === cardData.diesOnElement) {
+    window.addLog(`${cardData.name} погибает на стихии ${cardData.diesOnElement}!`);
+    alive = false;
+  }
   if (!alive) {
     const owner = unit.owner;
     try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}

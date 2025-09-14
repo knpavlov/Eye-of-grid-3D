@@ -49,3 +49,34 @@ export function applyFreedonianAura(state, owner) {
   }
   return gained;
 }
+
+// Проверка наличия способности "двойная атака"
+export const hasDoubleAttack = (tpl) => !!(tpl && tpl.doubleAttack);
+
+// Проверка способности "форт"
+export const isFortress = (tpl) => !!(tpl && tpl.fortress);
+
+// Обработка триггеров при смерти существ (например, лечение союзников)
+export function handleDeathTriggers(state, deaths) {
+  const log = [];
+  for (const d of deaths || []) {
+    const tpl = CARDS[d.tplId];
+    if (tpl?.onDeathHealAll) {
+      const heal = tpl.onDeathHealAll;
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const cell = state.board?.[r]?.[c];
+          const u = cell?.unit;
+          if (!u || u.owner !== d.owner) continue;
+          const tplU = CARDS[u.tplId];
+          const max = (tplU.hp || 0) + 2;
+          const before = u.currentHP ?? tplU.hp;
+          u.currentHP = Math.min(max, before + heal);
+        }
+      }
+      log.push(`${tpl.name}: союзники получают +${heal} HP.`);
+    }
+  }
+  return log;
+}
+

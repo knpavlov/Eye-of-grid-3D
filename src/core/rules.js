@@ -1,7 +1,7 @@
 // Pure game rules helpers (no DOM/THREE/GSAP/socket)
 import { DIR_VECTORS, inBounds, attackCost, OPPOSITE_ELEMENT, capMana } from './constants.js';
 import { CARDS } from './cards.js';
-import { hasFirstStrike } from './abilities.js';
+import { hasFirstStrike, hasDoubleAttack, isFortress, handleDeathTriggers } from './abilities.js';
 import { countUnits } from './board.js';
 
 export function hasAdjacentGuard(state, r, c) {
@@ -75,6 +75,7 @@ export function computeHits(state, r, c, opts = {}) {
   const attacker = state.board?.[r]?.[c]?.unit;
   if (!attacker) return [];
   const tplA = CARDS[attacker.tplId];
+  if (tplA.fortress && !opts.allowFortress) return [];
   // tplA.friendlyFire — может ли атака задевать союзников
   const cells = attackCellsForTpl(tplA, attacker.facing, opts);
   const { atk } = effectiveStats(state.board[r][c], attacker);
@@ -149,6 +150,7 @@ export function stagedAttack(state, r, c, opts = {}) {
   if (attacker.lastAttackTurn === base.turn) return null;
 
   const tplA = CARDS[attacker.tplId];
+  if (isFortress(tplA)) return null;
   const baseStats = effectiveStats(base.board[r][c], attacker);
   let atk = baseStats.atk;
   let logLines = [];
@@ -161,6 +163,20 @@ export function stagedAttack(state, r, c, opts = {}) {
     atk += others;
     logLines.push(`${tplA.name}: атака увеличена на ${others}`);
   }
+  if (tplA.dynamicAtk === 'FIRE_CREATURES') {
+    let cnt = 0;
+    for (let rr = 0; rr < 3; rr++) {
+      for (let cc = 0; cc < 3; cc++) {
+        const u = base.board?.[rr]?.[cc]?.unit;
+        if (u && (rr !== r || cc !== c)) {
+          const t = CARDS[u.tplId];
+          if (t.element === 'FIRE') cnt++;
+        }
+      }
+    }
+    atk += cnt;
+    logLines.push(`${tplA.name}: атака увеличена на ${cnt}`);
+  }
   if (tplA.randomPlus2 && Math.random() < 0.5) {
     atk += 2;
     logLines.push(`${tplA.name}: случайный бонус +2 ATK`);
@@ -170,6 +186,19 @@ export function stagedAttack(state, r, c, opts = {}) {
     if (penalty) {
       atk += penalty;
       logLines.push(`${tplA.name}: штраф атаки ${penalty}`);
+    }
+  }
+  if (tplA.plus2IfWaterTarget) {
+    if (hitsRaw.some(h => base.board?.[h.r]?.[h.c]?.element === 'WATER')) {
+      atk += 2;
+      logLines.push(`${tplA.name}: +2 ATK против цели на воде`);
+    }
+  }
+  if (tplA.plus1IfTargetOnElement) {
+    const el = tplA.plus1IfTargetOnElement;
+    if (hitsRaw.some(h => base.board?.[h.r]?.[h.c]?.element === el)) {
+      atk += 1;
+      logLines.push(`${tplA.name}: +1 ATK против цели на ${el}`);
     }
   }
   const deltaAtk = atk - baseStats.atk;
@@ -197,7 +226,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     }
   }
 
-  const step1Damages = hitsRaw.map(h => {
+  const rollDamages = () => hitsRaw.map(h => {
     const cell = base.board?.[h.r]?.[h.c];
     const B = cell?.unit;
     if (!B) return { ...h, dealt: 0 };
@@ -207,6 +236,9 @@ export function stagedAttack(state, r, c, opts = {}) {
     const dealt = dodge ? 0 : h.dmg;
     return { ...h, dealt, dodge };
   });
+  const damageRounds = [rollDamages()];
+  if (hasDoubleAttack(tplA) && hitsRaw.length === 1) damageRounds.push(rollDamages());
+  const step1Damages = damageRounds[0].map((h,i)=>({ ...h, dealt: damageRounds.reduce((s,r)=>s+(r[i]?.dealt||0),0), dodge: damageRounds.some(r=>r[i]?.dodge) }));
 
   const n1 = JSON.parse(JSON.stringify(base));
   let quickDone = false;
@@ -229,24 +261,26 @@ export function stagedAttack(state, r, c, opts = {}) {
     stepQuick();
     const A = n1.board?.[r]?.[c]?.unit;
     if (A && ((A.currentHP ?? tplA.hp) > 0 || attackerQuick)) {
-      for (const h of step1Damages) {
-        const cell = n1.board?.[h.r]?.[h.c];
-        const B = cell?.unit; if (!B) continue;
-        const tplB2 = CARDS[B.tplId];
-        const before = B.currentHP ?? tplB2.hp;
-        B.currentHP = Math.max(0, before - (h.dealt || 0));
-        const afterHP = B.currentHP;
-        const nameA = CARDS[attacker.tplId]?.name || 'Attacker';
-        const nameB = CARDS[B.tplId]?.name || 'Target';
-        const parts = [`${nameA} → ${nameB}: ${h.dealt || 0} dmg (HP ${before}→${afterHP})`];
-        if (h.backstab) parts.push('(+1 backstab)');
-        if (h.dodge) parts.push('(dodge)');
-        logLines.push(parts.join(' '));
+      for (const [idx, round] of damageRounds.entries()) {
+        for (const h of round) {
+          const cell = n1.board?.[h.r]?.[h.c];
+          const B = cell?.unit; if (!B) continue;
+          const tplB2 = CARDS[B.tplId];
+          const before = B.currentHP ?? tplB2.hp;
+          B.currentHP = Math.max(0, before - (h.dealt || 0));
+          const afterHP = B.currentHP;
+          const nameA = CARDS[attacker.tplId]?.name || 'Attacker';
+          const nameB = CARDS[B.tplId]?.name || 'Target';
+          const parts = [`${nameA} → ${nameB}: ${h.dealt || 0} dmg (HP ${before}→${afterHP})`];
+          if (h.backstab) parts.push('(+1 backstab)');
+          if (h.dodge) parts.push('(dodge)');
+          if (idx === 1) parts.push('(2nd)');
+          logLines.push(parts.join(' '));
+        }
       }
     }
     step1Done = true;
   }
-
   function ensureStep1() { if (!step1Done) doStep1(); }
 
   function step2() {
@@ -294,6 +328,9 @@ export function stagedAttack(state, r, c, opts = {}) {
         nFinal.board[rr][cc].unit = null;
       }
     }
+
+    const triggerLog = handleDeathTriggers(nFinal, deaths);
+    logLines.push(...triggerLog);
 
     try {
       for (const d of deaths) {

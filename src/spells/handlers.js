@@ -7,6 +7,7 @@ import { spendAndDiscardSpell, burnSpellCard } from '../ui/spellUtils.js';
 import { getCtx } from '../scene/context.js';
 import { interactionState, resetCardSelection } from '../scene/interactions.js';
 import { discardHandCard } from '../scene/discard.js';
+import { recomputeFieldLocks, getLockedCells, isFieldLocked } from '../core/fieldLocks.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -165,6 +166,8 @@ export const handlers = {
       updateHand();
       updateUnits();
       updateUI();
+      recomputeFieldLocks(gameState);
+      try { window.__tileLocks.applyFieldLocks(getLockedCells(gameState)); } catch {}
     },
   },
 
@@ -230,6 +233,8 @@ export const handlers = {
       resetCardSelection();
       updateHand();
       updateUI();
+      recomputeFieldLocks(gameState);
+      try { window.__tileLocks.applyFieldLocks(getLockedCells(gameState)); } catch {}
     },
   },
   SPELL_PARMTETIC_HOLY_FEAST: {
@@ -247,6 +252,8 @@ export const handlers = {
       updateHand();
       updateUnits();
       updateUI();
+      recomputeFieldLocks(gameState);
+      try { window.__tileLocks.applyFieldLocks(getLockedCells(gameState)); } catch {}
     },
   },
 
@@ -263,7 +270,7 @@ export const handlers = {
           const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
           if (tMesh) window.__fx.spawnDamageText(tMesh, `-1`, '#ef4444');
         } catch {}
-        if (u.currentHP <= 0) {
+        if (u.currentHP <= 0 || (tplUnit.diesOnElement && nextEl === tplUnit.diesOnElement) || (tplUnit.diesOffElement && nextEl !== tplUnit.diesOffElement)) {
           const owner = u.owner;
           try { gameState.players[owner].graveyard.push(CARDS[u.tplId]); } catch {}
           const pos = getCtx().tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
@@ -288,6 +295,8 @@ export const handlers = {
       updateHand();
       updateUnits();
       updateUI();
+      recomputeFieldLocks(gameState);
+      try { window.__tileLocks.applyFieldLocks(getLockedCells(gameState)); } catch {}
     },
   },
 
@@ -316,6 +325,8 @@ export const handlers = {
       updateHand();
       updateUnits();
       updateUI();
+      recomputeFieldLocks(gameState);
+      try { window.__tileLocks.applyFieldLocks(getLockedCells(gameState)); } catch {}
     },
   },
 
@@ -329,6 +340,10 @@ export const handlers = {
         c = tileMesh.userData.col;
       const cell = gameState.board[r][c];
       if (!cell) return;
+      if (isFieldLocked(gameState, r, c)) {
+        showNotification('This field is protected', 'error');
+        return;
+      }
       if (cell.element === 'MECH') {
         showNotification("This cell can't be changed", 'error');
         return;
@@ -372,7 +387,7 @@ export const handlers = {
               `${deltaHp > 0 ? '+' : ''}${deltaHp}`,
               deltaHp > 0 ? '#22c55e' : '#ef4444'
             );
-          if (u.currentHP <= 0) {
+          if (u.currentHP <= 0 || (tplUnit.diesOnElement && nextEl === tplUnit.diesOnElement) || (tplUnit.diesOffElement && nextEl !== tplUnit.diesOffElement)) {
             try { gameState.players[u.owner].graveyard.push(CARDS[u.tplId]); } catch {}
             const deadMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
             if (deadMesh) {
@@ -392,6 +407,8 @@ export const handlers = {
       updateHand();
       updateUnits();
       updateUI();
+      recomputeFieldLocks(gameState);
+      try { window.__tileLocks.applyFieldLocks(getLockedCells(gameState)); } catch {}
     },
   },
 };
