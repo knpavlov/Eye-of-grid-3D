@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack, stagedAttack } from '../src/core/rules.js';
+import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
 import { hasFirstStrike } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
 
@@ -217,6 +218,49 @@ describe('magicAttack', () => {
     expect(hitCoords).toContain('0,0');
     expect(hitCoords).toContain('0,1');
     delete CARDS.TEST_MAGIC_SPLASH;
+  });
+});
+
+describe('новые механики', () => {
+  const makeState = () => ({ board: makeBoard(), players: [{ mana:0 }, { mana:0 }], turn:1 });
+
+  it('double attack наносит урон дважды', () => {
+    const state = makeState();
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_DIDI_THE_ENLIGHTENED', facing:'N' };
+    state.board[0][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'S', currentHP:3 };
+    const res = stagedAttack(state,1,1);
+    const fin = res.finish();
+    expect(fin.n1.board[0][1].unit).toBeNull();
+  });
+
+  it('fortress не может атаковать, но может контратаковать', () => {
+    const state = makeState();
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_LESSER_GRANVENOA', facing:'N' };
+    expect(stagedAttack(state,1,1)).toBeNull();
+    state.board[0][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'S', currentHP:2 };
+    const res = stagedAttack(state,0,1);
+    const fin = res.finish();
+    expect(fin.n1.board[0][1].unit).toBeNull();
+    const fort = fin.n1.board[1][1].unit;
+    expect(fort && (fort.currentHP ?? CARDS[fort.tplId].hp)).toBeGreaterThan(0);
+  });
+
+  it('onDeathHealAll лечит союзников', () => {
+    const state = makeState();
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_PARTMOLE_FIRE_ORACLE', facing:'N', currentHP:1 };
+    state.board[2][1].unit = { owner:0, tplId:'FIRE_FLAME_MAGUS', facing:'N', currentHP:1 };
+    state.board[0][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'S', currentHP:3 };
+    const res = stagedAttack(state,0,1);
+    const fin = res.finish();
+    const healed = fin.n1.board[2][1].unit;
+    expect(healed.currentHP).toBeGreaterThan(1);
+  });
+
+  it('fieldquake lock корректно рассчитывает защищённые клетки', () => {
+    const state = makeState();
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_DIDI_THE_ENLIGHTENED', facing:'N' };
+    const cells = computeFieldquakeLockedCells(state);
+    expect(cells.length).toBe(8);
   });
 });
 

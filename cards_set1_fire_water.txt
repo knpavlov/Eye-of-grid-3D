@@ -73,14 +73,14 @@ const CARDS = {
     id: 'FIRE_PARTMOLE_FLAME_GUARD', name: 'Partmole Flame Guard', type: 'UNIT',
     cost: 3, activation: 2, element: 'FIRE', atk: 1, hp: 3,
     pattern: 'FRONT', range: 2, attackType: 'MELEE', blindspots: ['S'],
-    plus2IfWaterTarget: true,
+    plusAtkIfTargetOnElement: { element: 'WATER', amount: 2 },
     desc: 'Adds 2 to its Attack if at least one target creature is on a water field.'
   },
   FIRE_LESSER_GRANVENOA: {
     id: 'FIRE_LESSER_GRANVENOA', name: 'Lesser Granvenoa', type: 'UNIT',
     cost: 4, activation: 2, element: 'FIRE', atk: 2, hp: 4,
     pattern: 'ALL', range: 1, attackType: 'MELEE', blindspots: [],
-    fortress: true, diesOffElement: 'WATER',
+    fortress: true, diesOffElement: 'WATER', fieldquakeLock: { type: 'ADJACENT' },
     desc: 'Fortress. Adjacent fields cannot be field‑quaked or exchanged. Destroy Lesser Granvenoa if it is on a Water field.'
   },
   FIRE_PARTMOLE_FIRE_ORACLE: {
@@ -115,7 +115,7 @@ const CARDS = {
     id: 'FIRE_DIDI_THE_ENLIGHTENED', name: 'Didi the Enlightened', type: 'UNIT',
     cost: 3, activation: 2, element: 'FIRE', atk: 2, hp: 4,
     pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
-    firstStrike: true, doubleAttack: true, plus1IfTargetOnElement: 'FIRE', protectFireFields: true,
+    firstStrike: true, doubleAttack: true, plusAtkIfTargetOnElement: { element: 'FIRE', amount: 1 }, fieldquakeLock: { type: 'ELEMENT', element: 'FIRE' },
     desc: 'Quickness. Attacks the same target twice (counterattack after second attack). Adds 1 to his Attack if the target creature is on a Fire field. While Didi is on the board, no Fire field can be field‑quaked or exchanged.'
   },
   FIRE_WARDEN_HILDA: {

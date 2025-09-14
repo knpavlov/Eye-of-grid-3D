@@ -30,6 +30,12 @@ export const rotateCost = (tpl) => baseActivationCost(tpl);
 // Проверка наличия способности "быстрота"
 export const hasFirstStrike = (tpl) => !!(tpl && tpl.firstStrike);
 
+// Проверка способности "двойная атака"
+export const hasDoubleAttack = (tpl) => !!(tpl && tpl.doubleAttack);
+
+// Может ли существо атаковать (крепости не могут)
+export const canAttack = (tpl) => !(tpl && tpl.fortress);
+
 // Реализация ауры Фридонийского Странника при призыве союзников
 // Возвращает количество полученных единиц маны
 export function applyFreedonianAura(state, owner) {
