@@ -643,9 +643,16 @@
         if (firstTargetMesh) {
           const dir = new THREE.Vector3().subVectors(firstTargetMesh.position, aMesh.position).normalize();
           const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
+          const attackerUnit = gameState.board?.[r]?.[c]?.unit;
+          const tplA = attackerUnit ? CARDS[attackerUnit.tplId] : null;
+          const doubleAtk = tplA?.doubleAttack;
           const tl = gsap.timeline({ onComplete: doStep1 });
           tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
             .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.3, ease: 'power2.inOut' });
+          if (doubleAtk) {
+            tl.to(aMesh.position, { x: `+=${push.x}`, z: `+=${push.z}`, duration: 0.22, ease: 'power2.out' })
+              .to(aMesh.position, { x: `-=${push.x}`, z: `-=${push.z}`, duration: 0.3, ease: 'power2.inOut' });
+          }
           // Онлайновая синхронизация выпадов (атакующий и цели)
           try {
             const shouldSend = (typeof window !== 'undefined' && window.socket && (typeof NET_ACTIVE !== 'undefined' ? NET_ACTIVE : false) && (typeof MY_SEAT !== 'undefined' ? MY_SEAT : null) === gameState.active);

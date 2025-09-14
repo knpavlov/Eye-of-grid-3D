@@ -512,6 +512,9 @@
       const targetPos = tileMeshes[first.r][first.c].position;
       const dir = new THREE.Vector3().subVectors(targetPos, aMesh.position).normalize();
       const push = { x: dir.x * 0.6, z: dir.z * 0.6 };
+      const unit = gameState?.board?.[attacker.r]?.[attacker.c]?.unit;
+      const tpl = unit ? (typeof window !== 'undefined' ? window.CARDS?.[unit.tplId] : null) : null;
+      const doubleAtk = tpl?.doubleAttack;
       // Wrap target mesh into a transient group to ensure movement is visible
       const parent = aMesh.parent; if (!parent) return false;
       const fromPos = aMesh.position.clone();
@@ -525,10 +528,16 @@
       }});
       tl.to(wrapper.position, { x: toPos.x, z: toPos.z, duration: 0.22, ease: 'power2.out' })
         .to(wrapper.position, { x: fromPos.x, z: fromPos.z, duration: 0.30, ease: 'power2.inOut' });
-      __REMOTE_BATTLE_ANIM_UNTIL = Date.now() + 720; try { window.__REMOTE_BATTLE_ANIM_UNTIL = __REMOTE_BATTLE_ANIM_UNTIL; } catch {}
+      if (doubleAtk) {
+        tl.to(wrapper.position, { x: toPos.x, z: toPos.z, duration: 0.22, ease: 'power2.out' })
+          .to(wrapper.position, { x: fromPos.x, z: fromPos.z, duration: 0.30, ease: 'power2.inOut' });
+      }
+      const totalDur = doubleAtk ? 1440 : 720;
+      __REMOTE_BATTLE_ANIM_UNTIL = Date.now() + totalDur; try { window.__REMOTE_BATTLE_ANIM_UNTIL = __REMOTE_BATTLE_ANIM_UNTIL; } catch {}
       
       // Тряска цели и синхронный урон для неинициатора
-      setTimeout(() => {
+        const shakeDelay = doubleAtk ? 840 : 420;
+        setTimeout(() => {
         try {
           for (const target of targets) {
             const tMesh = unitMeshes.find(m => m.userData.row === target.r && m.userData.col === target.c);
@@ -543,7 +552,7 @@
             }
           }
         } catch {}
-      }, 420);
+        }, shakeDelay);
       
       return true;
     } catch { return false; }

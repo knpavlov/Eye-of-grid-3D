@@ -256,6 +256,59 @@ describe('новые механики', () => {
     expect(healed.currentHP).toBeGreaterThan(1);
   });
 
+  it('onDeathHealAll работает при магической атаке', () => {
+    const state = makeState();
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_PARTMOLE_FIRE_ORACLE', facing:'N', currentHP:1 };
+    state.board[2][1].unit = { owner:0, tplId:'FIRE_FLAME_MAGUS', facing:'N', currentHP:1 };
+    state.board[0][1].unit = { owner:1, tplId:'FIRE_FLAME_MAGUS', facing:'S', currentHP:1 };
+    const res = magicAttack(state,0,1,1,1);
+    const healed = res.n1.board[2][1].unit;
+    expect(healed.currentHP).toBeGreaterThan(1);
+  });
+
+  it('flame guard атакует две клетки перед собой', () => {
+    const state = makeState();
+    state.board[2][1].unit = { owner:0, tplId:'FIRE_PARTMOLE_FLAME_GUARD', facing:'N' };
+    state.board[1][1].unit = { owner:1, tplId:'FIRE_FLAME_MAGUS', facing:'S', currentHP:1 };
+    state.board[0][1].unit = { owner:1, tplId:'FIRE_FLAME_MAGUS', facing:'S', currentHP:1 };
+    const res = stagedAttack(state,2,1);
+    const fin = res.finish();
+    expect(fin.n1.board[1][1].unit).toBeNull();
+    expect(fin.n1.board[0][1].unit).toBeNull();
+  });
+
+  it('контратака происходит только после второй атаки', () => {
+    const state = makeState();
+    if (!CARDS.TEST_TANK) {
+      CARDS.TEST_TANK = { id:'TEST_TANK', name:'Test Tank', type:'UNIT', cost:0, element:'FIRE', atk:1, hp:10, attackType:'STANDARD', attacks:[{dir:'N', ranges:[1]}] };
+    }
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_DIDI_THE_ENLIGHTENED', facing:'N' };
+    state.board[0][1].unit = { owner:1, tplId:'TEST_TANK', facing:'S', currentHP:10 };
+    state.board[0][1].element = 'MECH';
+    const res = stagedAttack(state,1,1);
+    res.step1();
+    const midUnit = res.n1.board[1][1].unit;
+    const midHp = midUnit.currentHP ?? CARDS[midUnit.tplId].hp;
+    expect(midHp).toBe(4);
+    const fin = res.finish();
+    expect(fin.n1.board[1][1].unit.currentHP).toBe(3);
+  });
+
+  it('didi с quickness контратакует первым', () => {
+    const state = makeState();
+    if (!CARDS.TEST_TANK_Q) {
+      CARDS.TEST_TANK_Q = { id:'TEST_TANK_Q', name:'Test Tank Q', type:'UNIT', cost:0, element:'FIRE', atk:1, hp:5, attackType:'STANDARD', attacks:[{dir:'N', ranges:[1]}] };
+    }
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_DIDI_THE_ENLIGHTENED', facing:'N' };
+    state.board[0][1].unit = { owner:1, tplId:'TEST_TANK_Q', facing:'S', currentHP:5 };
+    const res = stagedAttack(state,0,1);
+    res.stepQuick();
+    expect(res.nQuick.board[0][1].unit.currentHP).toBeLessThan(5);
+    const didiUnit = res.nQuick.board[1][1].unit;
+    const didiHp = didiUnit.currentHP ?? CARDS[didiUnit.tplId].hp;
+    expect(didiHp).toBe(4);
+  });
+
   it('fieldquake lock корректно рассчитывает защищённые клетки', () => {
     const state = makeState();
     state.board[1][1].unit = { owner:0, tplId:'FIRE_DIDI_THE_ENLIGHTENED', facing:'N' };

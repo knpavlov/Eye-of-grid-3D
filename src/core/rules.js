@@ -455,6 +455,23 @@ export function magicAttack(state, fr, fc, tr, tc) {
       }
     }
   } catch {}
+  for (const d of deaths) {
+    const tplD = CARDS[d.tplId];
+    if (tplD?.onDeathHealAll) {
+      for (let rr = 0; rr < 3; rr++) {
+        for (let cc = 0; cc < 3; cc++) {
+          const ally = n1.board[rr][cc]?.unit;
+          if (!ally || ally.owner !== d.owner) continue;
+          const tplAlly = CARDS[ally.tplId];
+          const buff = computeCellBuff(n1.board[rr][cc].element, tplAlly.element);
+          const maxHP = (tplAlly.hp || 0) + buff.hp;
+          const before = ally.currentHP ?? tplAlly.hp;
+          ally.currentHP = Math.min(maxHP, before + tplD.onDeathHealAll);
+        }
+      }
+      logLines.push(`${tplD.name}: союзники получают +${tplD.onDeathHealAll} HP`);
+    }
+  }
   attacker.lastAttackTurn = n1.turn;
   const cellEl = n1.board?.[fr]?.[fc]?.element;
   attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA, cellEl);
