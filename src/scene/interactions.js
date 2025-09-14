@@ -539,6 +539,7 @@ export function placeUnitWithDirection(direction) {
   if (!alive) {
     // обработка эффектов при смерти (например, лечение союзников)
     if (cardData.onDeathAddHPAll) {
+      const { unitMeshes } = getCtx();
       for (let rr = 0; rr < 3; rr++) {
         for (let cc = 0; cc < 3; cc++) {
           const ally = gameState.board?.[rr]?.[cc]?.unit;
@@ -551,6 +552,11 @@ export function placeUnitWithDirection(direction) {
           const maxHP = (tplAlly.hp || 0) + buff2.hp + (ally.bonusHP || 0);
           const before = ally.currentHP ?? tplAlly.hp;
           ally.currentHP = Math.min(maxHP, before + amount);
+          // показываем всплывающий текст лечения над союзником
+          try {
+            const tMesh = unitMeshes.find(m => m.userData.row === rr && m.userData.col === cc);
+            if (tMesh) window.__fx?.spawnDamageText(tMesh, `+${amount}`, '#22c55e');
+          } catch {}
         }
       }
       window.addLog(`${cardData.name}: союзники получают +${cardData.onDeathAddHPAll} HP`);

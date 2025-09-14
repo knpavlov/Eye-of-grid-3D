@@ -24,12 +24,16 @@ export function showFieldLockTiles(cells = []) {
   for (const { r, c } of cells) {
     const tile = tileMeshes?.[r]?.[c];
     if (!tile) continue;
-    const mat = new THREE.SpriteMaterial({ map: tex, color: 0xf97316, transparent: true, opacity: 0.25 });
+    // делаем замок менее прозрачным и смещаем в верхний правый угол клетки
+    const mat = new THREE.SpriteMaterial({ map: tex, color: 0xf97316, transparent: true, opacity: 0.6 });
     const spr = new THREE.Sprite(mat);
-    spr.position.copy(tile.position).add(new THREE.Vector3(0, 0.52, 0));
-    spr.scale.set(0.8, 0.8, 0.8);
+    // небольшое смещение по горизонтали, чтобы иконка была видна под существом
+    spr.position.copy(tile.position).add(new THREE.Vector3(0.35, 0.32, -0.35));
+    // меньший размер, чтобы уместиться в углу
+    spr.scale.set(0.4, 0.4, 0.4);
     effectsGroup.add(spr);
-    try { window.gsap?.to(mat, { opacity: 0.05, duration: 0.8, yoyo: true, repeat: -1 }); } catch {}
+    // мигаем между 0.3 и 0.6, чтобы привлечь внимание, но не перекрывать существо
+    try { window.gsap?.to(mat, { opacity: 0.3, duration: 0.8, yoyo: true, repeat: -1 }); } catch {}
     state.sprites.push(spr);
   }
 }
