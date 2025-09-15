@@ -5,6 +5,22 @@ import { getCtx } from './context.js';
 const CARD_TEX = { front: null, back: null, deckSide: null };
 const CARD_IMAGES = {};
 const CARD_PENDING = {};
+// Наблюдатели, которым нужно перерисовать 2D-вью карточек при подгрузке текстур
+const CARD_FACE_LISTENERS = new Set();
+
+function notifyCardFaceListeners() {
+  CARD_FACE_LISTENERS.forEach(cb => {
+    try { cb(); } catch (err) { console.error('[cards] repaint listener failed', err); }
+  });
+}
+
+export function subscribeCardFaceUpdates(listener) {
+  if (typeof listener !== 'function') {
+    return () => {};
+  }
+  CARD_FACE_LISTENERS.add(listener);
+  return () => CARD_FACE_LISTENERS.delete(listener);
+}
 
 function getTHREE() {
   const ctx = getCtx();
@@ -22,6 +38,7 @@ export function getCachedTexture(url) {
     try { t.anisotropy = renderer?.capabilities?.getMaxAnisotropy?.() || 1; } catch {}
     try { if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace; } catch {}
     try { if (typeof window !== 'undefined' && typeof window.requestCardsRedraw === 'function') window.requestCardsRedraw(); } catch {}
+    try { notifyCardFaceListeners(); } catch {}
   });
   try { tex.anisotropy = renderer?.capabilities?.getMaxAnisotropy?.() || 1; } catch {}
   try { if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace; } catch {}
@@ -40,36 +57,74 @@ export function preloadCardTextures() {
 
 export function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
   const THREE = getTHREE();
-  // Front background
+  const scale = width / 256;
+  const padding = 14 * scale;
+  const safeX = padding;
+  const safeY = padding;
+  const safeW = width - padding * 2;
+  const safeH = height - padding * 2;
+  const bannerH = 46 * scale;
+  const artGap = 10 * scale;
+  const artH = 142 * scale;
+  const artX = safeX + 6 * scale;
+  const artY = safeY + bannerH + artGap;
+  const artW = safeW - 12 * scale;
+  const statsH = 62 * scale;
+  const bodyTop = artY + artH + artGap;
+  const bodyBottom = height - padding - statsH - 10 * scale;
+  const bodyH = Math.max(48 * scale, bodyBottom - bodyTop);
+  const gridCell = 12 * scale;
+  const gridGap = 2 * scale;
+  const gridSpacing = 14 * scale;
+  const gridWidth = gridCell * 3 + gridGap * 2;
+  const gridsTotalWidth = gridWidth * 2 + gridSpacing;
+  const textBoxW = Math.max(80 * scale, safeW - 18 * scale - gridsTotalWidth);
+  const textBoxX = safeX + 6 * scale;
+  const textBoxY = bodyTop;
+  const gridsX = textBoxX + textBoxW + 12 * scale;
+  const gridsY = bodyTop + 4 * scale;
+  const statsY = height - padding - statsH;
+
+  // Фон карты — используем текстуру, чтобы повторить оформление из игры
   try {
     const imgFront = CARD_TEX.front && CARD_TEX.front.image ? CARD_TEX.front.image : null;
     if (imgFront && imgFront.width && imgFront.height) {
       ctx.drawImage(imgFront, 0, 0, width, height);
     } else {
       const gradient = ctx.createLinearGradient(0, 0, 0, height);
-      gradient.addColorStop(0, '#1e293b'); gradient.addColorStop(1, '#0f172a');
+      gradient.addColorStop(0, '#1f2937'); gradient.addColorStop(1, '#0f172a');
       ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
     }
   } catch {
     const gradient = ctx.createLinearGradient(0, 0, 0, height);
-    gradient.addColorStop(0, '#1e293b'); gradient.addColorStop(1, '#0f172a');
+    gradient.addColorStop(0, '#1f2937'); gradient.addColorStop(1, '#0f172a');
     ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
   }
-  // Border + name
+
+  const frameColor = 'rgba(148,163,184,0.45)';
+  drawRoundedFrame(ctx, safeX - 4 * scale, safeY - 4 * scale, safeW + 8 * scale, safeH + 8 * scale, 22 * scale, frameColor);
+  drawRoundedFrame(ctx, safeX, safeY, safeW, safeH, 18 * scale, 'rgba(15,23,42,0.75)');
+
+  // Верхний баннер с именем
+  drawRoundedRect(ctx, safeX + 4 * scale, safeY + 4 * scale, safeW - 8 * scale, bannerH, 12 * scale, 'rgba(15,23,42,0.82)', 'rgba(148,163,184,0.25)');
   const elementEmoji = (typeof window !== 'undefined' && window.elementEmoji) || {};
-  ctx.strokeStyle = getElementColor(cardData.element);
-  ctx.lineWidth = 4; ctx.strokeRect(4, 4, width - 8, height - 8);
-  ctx.fillStyle = '#f1f5f9'; ctx.font = 'bold 18px Arial, sans-serif'; ctx.textAlign = 'center';
-  const name = (cardData.name || '').length > 20 ? (cardData.name || '').substring(0, 20) + '...' : (cardData.name || '');
-  ctx.fillText(name, width / 2, 30);
-  ctx.font = '24px Arial'; ctx.fillText(elementEmoji[cardData.element] || '', width / 2, 55);
+  const name = (cardData.name || '').length > 26 ? `${(cardData.name || '').slice(0, 23)}…` : (cardData.name || '');
+  ctx.fillStyle = '#f8fafc';
+  ctx.textAlign = 'center';
+  ctx.font = `600 ${Math.max(10, Math.round(14 * scale))}px "Cinzel", "Times New Roman", serif`;
+  ctx.fillText(name, width / 2, safeY + bannerH / 2 + 6 * scale);
+  ctx.font = `${Math.max(9, Math.round(12 * scale))}px "Source Sans Pro", system-ui`;
+  ctx.fillStyle = 'rgba(226,232,240,0.75)';
+  const subline = cardData.type === 'UNIT' ? 'Creature' : 'Spell';
+  ctx.fillText(subline, width / 2, safeY + bannerH - 6 * scale);
 
-  // Illustration frame
-  const illX = 16, illY = 70, illW = width - 32, illH = 120;
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'; ctx.fillRect(illX, illY, illW, illH);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)'; ctx.lineWidth = 2; ctx.strokeRect(illX, illY, illW, illH);
+  // Бейдж элемента и стоимости
+  const badgeY = safeY + bannerH / 2 + 2 * scale;
+  drawElementBadge(ctx, width - safeX - 26 * scale, badgeY, 20 * scale, cardData.element, elementEmoji[cardData.element]);
+  drawCostBadge(ctx, safeX + 26 * scale, badgeY, 20 * scale, cardData.cost || 0, !!cardData.locked);
 
-  // Draw illustration if available (not on file://)
+  // Иллюстрация
+  drawRoundedRect(ctx, artX, artY, artW, artH, 12 * scale, 'rgba(15,23,42,0.55)', 'rgba(148,163,184,0.25)');
   let img = CARD_IMAGES[cardData.id] || CARD_IMAGES[cardData.id?.toLowerCase?.()] || CARD_IMAGES[(cardData.name||'').toLowerCase().replace(/[^a-z0-9\s_-]/g,'').replace(/\s+/g,'_')];
   if (!img && !CARD_PENDING[cardData.id]) {
     CARD_PENDING[cardData.id] = true;
@@ -82,71 +137,99 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     (function tryLoad(i){
       if (i>=candidates.length) { CARD_PENDING[cardData.id] = false; return; }
       const im = new Image();
-      im.onload = () => { CARD_IMAGES[cardData.id] = im; CARD_PENDING[cardData.id] = false; try { if (window.requestCardsRedraw) window.requestCardsRedraw(); } catch {} };
+      im.onload = () => {
+        CARD_IMAGES[cardData.id] = im;
+        CARD_PENDING[cardData.id] = false;
+        try { if (typeof window !== 'undefined' && window.requestCardsRedraw) window.requestCardsRedraw(); } catch {}
+        notifyCardFaceListeners();
+      };
       im.onerror = () => tryLoad(i+1);
       im.src = encodeURI(candidates[i]);
     })(0);
   }
   if (img && img.complete && !(typeof location !== 'undefined' && location.protocol === 'file:')) {
     const ar = img.width / img.height;
-    let w = illW, h = illH; if (w / h > ar) { w = h * ar; } else { h = w / ar; }
-    const dx = illX + (illW - w) / 2; const dy = illY + (illH - h) / 2;
+    let w = artW - 10 * scale;
+    let h = artH - 10 * scale;
+    if (w / h > ar) { w = h * ar; } else { h = w / ar; }
+    const dx = artX + (artW - w) / 2;
+    const dy = artY + (artH - h) / 2;
     try { ctx.drawImage(img, dx, dy, w, h); } catch {}
   } else {
-    ctx.fillStyle = '#94a3b8'; ctx.font = '12px Arial'; ctx.fillText('Illustration', width / 2, 135);
+    ctx.fillStyle = 'rgba(148,163,184,0.6)';
+    ctx.font = `${Math.max(8, Math.round(11 * scale))}px "Source Sans Pro", system-ui`;
+    ctx.textAlign = 'center';
+    ctx.fillText('Illustration pending', width / 2, artY + artH / 2 + 4 * scale);
   }
 
-  // Text box
-  ctx.fillStyle = '#cbd5e1'; ctx.font = '11px Arial'; ctx.textAlign = 'left';
-  const text = cardData.desc || cardData.text || (cardData.keywords ? cardData.keywords.join(', ') : '');
-  wrapText(ctx, text, 16, 210, width - 32, 14);
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; ctx.fillRect(0, height - 40, width, 40);
-  ctx.fillStyle = '#f1f5f9'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'left';
-  const iconSize = 14; // Размер иконок маны и активации
-  drawManaOrbIcon(ctx, 16 + iconSize / 2, height - 20, iconSize);
+  // Текстовое поле и описание
+  drawRoundedRect(ctx, textBoxX, textBoxY, textBoxW, bodyH, 10 * scale, 'rgba(15,23,42,0.7)', 'rgba(148,163,184,0.18)');
+  ctx.fillStyle = '#e2e8f0';
   ctx.textAlign = 'left';
-  ctx.font = 'bold 14px Arial';
-  ctx.fillText(String(cardData.cost || 0), 16 + iconSize + 4, height - 15);
+  const desc = cardData.desc || cardData.text || (cardData.keywords ? cardData.keywords.join(', ') : '');
+  const lineHeight = Math.max(12 * scale, 10);
+  ctx.font = `${Math.max(9, Math.round(11 * scale))}px "Source Sans Pro", system-ui`;
+  wrapText(ctx, desc, textBoxX + 10 * scale, textBoxY + 18 * scale, textBoxW - 20 * scale, lineHeight);
+
+  if (cardData.type === 'UNIT') {
+    drawAttacksGrid(ctx, cardData, gridsX, gridsY, gridCell, gridGap);
+    drawBlindspotGrid(ctx, cardData, gridsX + gridWidth + gridSpacing, gridsY, gridCell, gridGap);
+  }
+
+  // Нижняя панель со статами
+  drawRoundedRect(ctx, safeX + 6 * scale, statsY, safeW - 12 * scale, statsH, 16 * scale, 'rgba(15,23,42,0.82)', 'rgba(148,163,184,0.28)');
+  const iconSize = 20 * scale;
+  const costX = safeX + 24 * scale;
+  const centerY = statsY + statsH / 2;
+  drawManaOrbIcon(ctx, costX, centerY, iconSize);
+  ctx.fillStyle = '#f8fafc';
+  ctx.textAlign = 'left';
+  ctx.font = `600 ${Math.max(10, Math.round(14 * scale))}px "Source Sans Pro", system-ui`;
+  ctx.fillText(String(cardData.cost || 0), costX + iconSize * 0.7, centerY + 4 * scale);
   let costWidth = ctx.measureText(String(cardData.cost || 0)).width;
   if (cardData.locked) {
-    // рисуем иконку замка рядом со стоимостью
-    const lx = 16 + iconSize + 4 + costWidth + iconSize / 2;
-    drawLockIcon(ctx, lx, height - 20, iconSize);
-    costWidth += iconSize + 4;
+    drawLockIcon(ctx, costX + iconSize * 0.9 + costWidth + iconSize * 0.4, centerY, iconSize * 0.9);
+    costWidth += iconSize;
   }
+
   if (cardData.type === 'UNIT') {
-    ctx.textAlign = 'left'; ctx.font = 'bold 13px Arial';
     const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
-    const shift = iconSize + 4 + costWidth + 10;
-    drawPlayIcon(ctx, 16 + shift + iconSize / 2, height - 20, iconSize);
-    ctx.fillText(String(act), 16 + shift + iconSize + 4, height - 15);
-  }
-  if (cardData.type === 'UNIT') {
-    ctx.textAlign = 'right';
+    const playX = costX + iconSize * 1.4 + costWidth;
+    drawPlayIcon(ctx, playX, centerY, iconSize);
+    ctx.fillText(String(act), playX + iconSize * 0.7, centerY + 4 * scale);
+
     const hpToShow = (hpOverride != null) ? hpOverride : (cardData.hp || 0);
     const atkToShow = (atkOverride != null) ? atkOverride : (cardData.atk || 0);
-    ctx.fillText(`\u2694${atkToShow}  \u2764${hpToShow}`, width - 16, height - 15);
-    // Чуть опускаем схемы и разводим их шире
-    const cell = 10, gap = 2, spacing = 16; // большее расстояние для запаса под доп. клетку
-    const gridW = cell * 3 + gap * 2;
-    const startX = (width - (gridW * 2 + spacing)) / 2;
-    const gridY = 260; // опускаем схемы ближе к нижней полоске
-    drawAttacksGrid(ctx, cardData, startX, gridY, cell, gap);
-    drawBlindspotGrid(ctx, cardData, startX + gridW + spacing, gridY, cell, gap);
+    const statsRight = safeX + safeW - 24 * scale;
+    drawStatPill(ctx, statsRight - 82 * scale, centerY - 16 * scale, 36 * scale, 32 * scale, '#ef4444', '\u2694', atkToShow, scale);
+    drawStatPill(ctx, statsRight - 40 * scale, centerY - 16 * scale, 36 * scale, 32 * scale, '#22c55e', '\u2764', hpToShow, scale);
+  } else {
+    ctx.fillStyle = 'rgba(226,232,240,0.75)';
+    ctx.textAlign = 'right';
+    ctx.font = `${Math.max(9, Math.round(11 * scale))}px "Source Sans Pro", system-ui`;
+    ctx.fillText('Instant effect', safeX + safeW - 28 * scale, centerY + 4 * scale);
   }
 }
 
 function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
   if (!text) return; const words = text.split(' '); let line = '';
   for (let n = 0; n < words.length; n++) {
-    const testLine = line + words[n] + ' '; const metrics = ctx.measureText(testLine); const testWidth = metrics.width;
-    if (testWidth > maxWidth && n > 0) { ctx.fillText(line, x, y); line = words[n] + ' '; y += lineHeight; } else { line = testLine; }
+    const testLine = line + words[n] + ' ';
+    const metrics = ctx.measureText(testLine);
+    const testWidth = metrics.width;
+    if (testWidth > maxWidth && n > 0) {
+      ctx.fillText(line.trimEnd(), x, y);
+      line = words[n] + ' ';
+      y += lineHeight;
+    } else {
+      line = testLine;
+    }
   }
-  ctx.fillText(line, x, y);
+  ctx.fillText(line.trimEnd(), x, y);
 }
 
 function getElementColor(element) {
-  const colors = { FIRE: '#dc2626', WATER: '#0369a1', EARTH: '#525252', FOREST: '#166534' };
+  const colors = { FIRE: '#dc2626', WATER: '#0369a1', EARTH: '#525252', FOREST: '#166534', BIOLITH: '#64748b', NEUTRAL: '#94a3b8' };
   return colors[element] || '#64748b';
 }
 
@@ -164,10 +247,122 @@ function drawManaOrbIcon(ctx, x, y, size) {
   ctx.fill();
 }
 
+function drawRoundedFrame(ctx, x, y, w, h, r, strokeStyle) {
+  ctx.save();
+  ctx.strokeStyle = strokeStyle;
+  ctx.lineWidth = Math.max(1, r * 0.12);
+  ctx.beginPath();
+  roundedRectPath(ctx, x, y, w, h, r);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawRoundedRect(ctx, x, y, w, h, r, fillStyle, strokeStyle = null) {
+  ctx.save();
+  ctx.beginPath();
+  roundedRectPath(ctx, x, y, w, h, r);
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
+  if (strokeStyle) {
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = Math.max(1, r * 0.15);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function roundedRectPath(ctx, x, y, w, h, r) {
+  const radius = Math.max(4, r);
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+function drawElementBadge(ctx, x, y, size, element, emoji) {
+  const radius = size / 2;
+  const color = getElementColor(element);
+  const gradient = ctx.createRadialGradient(x - radius * 0.4, y - radius * 0.4, radius * 0.1, x, y, radius);
+  gradient.addColorStop(0, '#ffffff');
+  gradient.addColorStop(0.35, color);
+  gradient.addColorStop(1, shadeColor(color, -40));
+  ctx.save();
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(15,23,42,0.65)';
+  ctx.lineWidth = Math.max(1, radius * 0.18);
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = `${Math.max(8, Math.round(size * 0.55))}px system-ui`;
+  ctx.textAlign = 'center';
+  ctx.fillText(emoji || element?.[0] || '', x, y + size * 0.22);
+}
+
+function drawCostBadge(ctx, x, y, size, cost, locked) {
+  const radius = size / 2;
+  ctx.save();
+  ctx.fillStyle = 'rgba(15,23,42,0.85)';
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(148,163,184,0.4)';
+  ctx.lineWidth = Math.max(1, radius * 0.18);
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = '#f8fafc';
+  ctx.textAlign = 'center';
+  ctx.font = `600 ${Math.max(8, Math.round(size * 0.6))}px "Source Sans Pro", system-ui`;
+  ctx.fillText(String(cost), x, y + size * 0.22);
+  if (locked) {
+    drawLockIcon(ctx, x + radius * 1.2, y, size * 0.55);
+  }
+}
+
+function drawStatPill(ctx, x, y, w, h, color, symbol, value, scale) {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.85;
+  ctx.beginPath();
+  roundedRectPath(ctx, x, y, w, h, Math.min(w, h) / 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#0f172a';
+  ctx.font = `600 ${Math.max(10, Math.round(12 * scale))}px "Source Sans Pro", system-ui`;
+  ctx.textAlign = 'center';
+  ctx.fillText(symbol, x + w * 0.3, y + h * 0.65);
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = `700 ${Math.max(12, Math.round(16 * scale))}px "Source Sans Pro", system-ui`;
+  ctx.fillText(String(value), x + w * 0.68, y + h * 0.68);
+  ctx.restore();
+}
+
+function shadeColor(color, percent) {
+  const num = parseInt(color.replace('#', ''), 16);
+  const amt = Math.round(2.55 * percent);
+  const R = (num >> 16) + amt;
+  const G = (num >> 8 & 0x00FF) + amt;
+  const B = (num & 0x0000FF) + amt;
+  return '#' + (
+    0x1000000 +
+    (R < 255 ? (R < 0 ? 0 : R) : 255) * 0x10000 +
+    (G < 255 ? (G < 0 ? 0 : G) : 255) * 0x100 +
+    (B < 255 ? (B < 0 ? 0 : B) : 255)
+  ).toString(16).slice(1);
+}
+
 // Рисуем иконку play (треугольник)
 function drawPlayIcon(ctx, x, y, size) {
   const r = size / 2;
-  ctx.fillStyle = '#f1f5f9';
+  ctx.fillStyle = '#38bdf8';
   ctx.beginPath();
   ctx.moveTo(x - r * 0.6, y - r * 0.7);
   ctx.lineTo(x - r * 0.6, y + r * 0.7);
@@ -369,5 +564,17 @@ export function createCard3D(cardData, isInHand = false, hpOverride = null, atkO
 }
 
 // Expose caches for legacy access
-try { if (typeof window !== 'undefined') { window.__cards = { getCachedTexture, preloadCardTextures, createCard3D, drawCardFace, CARD_TEX, CARD_IMAGES }; } } catch {}
+try {
+  if (typeof window !== 'undefined') {
+    window.__cards = {
+      getCachedTexture,
+      preloadCardTextures,
+      createCard3D,
+      drawCardFace,
+      subscribeCardFaceUpdates,
+      CARD_TEX,
+      CARD_IMAGES,
+    };
+  }
+} catch {}
 
