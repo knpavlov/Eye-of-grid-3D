@@ -22,6 +22,12 @@ const ELEMENTS = [
   { id: 'NEUTRAL', label: 'Neutral', icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23aaa"/></svg>' },
 ];
 
+// Настройка узкой полоски иллюстрации для строк колоды
+// STRIP_SCALE увеличивает изображение, чтобы скрыть рамки карты
+// STRIP_OFFSET_Y смещает видимую область по вертикали
+const STRIP_SCALE = 150; // процентов
+const STRIP_OFFSET_Y = 0; // пикселей
+
 export function open(deck = null, onDone) {
   if (typeof document === 'undefined') return;
 
@@ -36,6 +42,8 @@ export function open(deck = null, onDone) {
   });
 
   const overlay = document.createElement('div');
+  // Отдельный id позволяет навесить специфичные стили (например, скроллбар)
+  overlay.id = 'deck-builder-overlay';
   overlay.className = 'fixed inset-0 z-50 flex items-start justify-center bg-black bg-opacity-60 overflow-auto';
 
   const panel = document.createElement('div');
@@ -65,7 +73,8 @@ export function open(deck = null, onDone) {
 
   function openElementFilter() {
     const fo = document.createElement('div');
-    fo.className = 'fixed inset-0 z-60';
+    // Высокий z-index обеспечивает отображение поверх остального контента
+    fo.className = 'fixed inset-0 z-[100]';
     const rect = elementBtn.getBoundingClientRect();
     const menu = document.createElement('div');
     menu.className = 'overlay-panel bg-slate-700 p-2 flex flex-col gap-1 absolute';
@@ -112,7 +121,8 @@ export function open(deck = null, onDone) {
 
     renderMenu();
     fo.addEventListener('click', e => { if (e.target === fo) fo.remove(); });
-    panel.appendChild(fo);
+    // Добавляем непосредственно в overlay, чтобы окно не перекрывалось панелью
+    overlay.appendChild(fo);
   }
 
   elementBtn.addEventListener('click', openElementFilter);
@@ -148,6 +158,15 @@ export function open(deck = null, onDone) {
   deckList.className = 'flex-1 overflow-y-auto space-y-1 text-sm';
   left.appendChild(deckList);
 
+  // Принимаем перетаскивание карт из каталога
+  deckList.addEventListener('dragover', e => e.preventDefault());
+  deckList.addEventListener('drop', e => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData('text/plain');
+    const card = CARDS[id];
+    if (card) addCard(card);
+  });
+
   const summary = document.createElement('div');
   summary.className = 'mt-2 text-center';
   left.appendChild(summary);
@@ -159,7 +178,9 @@ export function open(deck = null, onDone) {
 
   // === Каталог карт ===
   const catalog = document.createElement('div');
-  catalog.className = 'flex-1 overflow-y-auto grid grid-cols-4 gap-2 pl-4';
+  // Сетка 4х2 с кастомным скроллбаром
+  catalog.className = 'flex-1 overflow-y-auto grid grid-cols-4 gap-2 pl-4 catalog-scroll';
+  catalog.style.gridAutoRows = '1fr';
   main.appendChild(catalog);
 
   // Подсказка для строк колоды
@@ -176,7 +197,8 @@ export function open(deck = null, onDone) {
 
   function openFilters() {
     const fo = document.createElement('div');
-    fo.className = 'fixed inset-0 z-60';
+    // z-index повышен, чтобы окно фильтров перекрывало список карт
+    fo.className = 'fixed inset-0 z-[100]';
     const rect = filtersBtn.getBoundingClientRect();
     const box = document.createElement('div');
     box.className = 'overlay-panel bg-slate-800 p-4 rounded-lg w-72 space-y-4 absolute';
@@ -264,7 +286,8 @@ export function open(deck = null, onDone) {
         updateFiltersBtn();
       }
     });
-    panel.appendChild(fo);
+    // Размещаем во всём оверлее, а не внутри панели
+    overlay.appendChild(fo);
   }
 
   function updateFiltersBtn() {
@@ -305,8 +328,9 @@ export function open(deck = null, onDone) {
         const row = document.createElement('div');
         row.className = 'relative h-12 rounded overflow-hidden cursor-pointer';
         row.style.backgroundImage = `url(card images/${card.id}.png)`;
-        row.style.backgroundSize = 'cover';
-        row.style.backgroundPosition = 'center';
+        // Используем центральный горизонтальный срез иллюстрации
+        row.style.backgroundSize = `${STRIP_SCALE}% auto`;
+        row.style.backgroundPosition = `center calc(50% + ${STRIP_OFFSET_Y}px)`;
 
         // Градиент для затемнения слева (при желании направление можно изменить)
         const fade = document.createElement('div');
@@ -403,16 +427,17 @@ export function open(deck = null, onDone) {
     });
     cards.forEach(card => {
       const item = document.createElement('div');
-      item.className = 'overlay-panel p-2 text-center cursor-pointer hover:bg-slate-700';
+      item.className = 'cursor-pointer select-none';
+      item.draggable = true;
       const img = document.createElement('img');
       img.src = `card images/${card.id}.png`;
-      img.className = 'w-full h-32 object-cover mb-1';
+      img.className = 'w-full h-auto pointer-events-none';
       item.appendChild(img);
-      const nm = document.createElement('div');
-      nm.className = 'text-xs';
-      nm.textContent = card.name;
-      item.appendChild(nm);
       item.addEventListener('click', () => addCard(card));
+      // Передача id карты при перетаскивании
+      item.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('text/plain', card.id);
+      });
       catalog.appendChild(item);
     });
   }
