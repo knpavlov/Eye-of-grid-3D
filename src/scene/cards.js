@@ -6,6 +6,15 @@ const CARD_TEX = { front: null, back: null, deckSide: null };
 const CARD_IMAGES = {};
 const CARD_PENDING = {};
 
+const ELEMENT_BADGE_META = {
+  FIRE:    { title: 'Fire', badge: 'F', gradient: ['#fee2e2', '#b91c1c'] },
+  WATER:   { title: 'Water', badge: 'W', gradient: ['#bfdbfe', '#0369a1'] },
+  EARTH:   { title: 'Earth', badge: 'E', gradient: ['#e5e7eb', '#4b5563'] },
+  FOREST:  { title: 'Forest', badge: 'F', gradient: ['#bbf7d0', '#166534'] },
+  BIOLITH: { title: 'Biolith', badge: 'B', gradient: ['#e2e8f0', '#6b7280'] },
+  NEUTRAL: { title: 'Neutral', badge: 'N', gradient: ['#e2e8f0', '#475569'] },
+};
+
 function getTHREE() {
   const ctx = getCtx();
   const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
@@ -39,110 +48,284 @@ export function preloadCardTextures() {
 }
 
 export function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
-  const THREE = getTHREE();
-  // Front background
+  getTHREE();
+  const BASE_W = 256;
+  const BASE_H = 356;
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.restore();
+
+  ctx.save();
+  const scaleX = width / BASE_W;
+  const scaleY = height / BASE_H;
+  ctx.scale(scaleX, scaleY);
+
+  let imgFront = null;
   try {
-    const imgFront = CARD_TEX.front && CARD_TEX.front.image ? CARD_TEX.front.image : null;
-    if (imgFront && imgFront.width && imgFront.height) {
-      ctx.drawImage(imgFront, 0, 0, width, height);
-    } else {
-      const gradient = ctx.createLinearGradient(0, 0, 0, height);
-      gradient.addColorStop(0, '#1e293b'); gradient.addColorStop(1, '#0f172a');
-      ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
-    }
-  } catch {
-    const gradient = ctx.createLinearGradient(0, 0, 0, height);
-    gradient.addColorStop(0, '#1e293b'); gradient.addColorStop(1, '#0f172a');
-    ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
+    imgFront = CARD_TEX.front && CARD_TEX.front.image && CARD_TEX.front.image.width ? CARD_TEX.front.image : null;
+  } catch {}
+  if (imgFront) {
+    try { ctx.drawImage(imgFront, 0, 0, BASE_W, BASE_H); } catch {}
+  } else {
+    const gradient = ctx.createLinearGradient(0, 0, 0, BASE_H);
+    gradient.addColorStop(0, '#111827');
+    gradient.addColorStop(1, '#020617');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, BASE_W, BASE_H);
   }
-  // Border + name
+  ctx.fillStyle = 'rgba(15,23,42,0.18)';
+  ctx.fillRect(0, 0, BASE_W, BASE_H);
+
+  const elementMeta = ELEMENT_BADGE_META[cardData.element] || ELEMENT_BADGE_META.NEUTRAL;
   const elementEmoji = (typeof window !== 'undefined' && window.elementEmoji) || {};
+  const badgeSymbol = elementEmoji[cardData.element] || elementMeta.badge;
+
+  const frameInset = 10;
   ctx.strokeStyle = getElementColor(cardData.element);
-  ctx.lineWidth = 4; ctx.strokeRect(4, 4, width - 8, height - 8);
-  ctx.fillStyle = '#f1f5f9'; ctx.font = 'bold 18px Arial, sans-serif'; ctx.textAlign = 'center';
-  const name = (cardData.name || '').length > 20 ? (cardData.name || '').substring(0, 20) + '...' : (cardData.name || '');
-  ctx.fillText(name, width / 2, 30);
-  ctx.font = '24px Arial'; ctx.fillText(elementEmoji[cardData.element] || '', width / 2, 55);
+  ctx.lineWidth = 5;
+  ctx.strokeRect(frameInset, frameInset, BASE_W - frameInset * 2, BASE_H - frameInset * 2);
 
-  // Illustration frame
-  const illX = 16, illY = 70, illW = width - 32, illH = 120;
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'; ctx.fillRect(illX, illY, illW, illH);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)'; ctx.lineWidth = 2; ctx.strokeRect(illX, illY, illW, illH);
+  const nameArea = { x: 24, y: 18, w: BASE_W - 48, h: 24 };
+  drawPanel(ctx, nameArea.x, nameArea.y, nameArea.w, nameArea.h, 8, 'rgba(15,23,42,0.82)', 'rgba(148,163,184,0.35)', 1.1);
+  ctx.fillStyle = '#e2e8f0';
+  ctx.font = '600 12px "Segoe UI", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const displayName = fitTextToWidth(ctx, cardData.name || '', nameArea.w - 16);
+  ctx.fillText(displayName, BASE_W / 2, nameArea.y + nameArea.h / 2 + 0.5);
 
-  // Draw illustration if available (not on file://)
-  let img = CARD_IMAGES[cardData.id] || CARD_IMAGES[cardData.id?.toLowerCase?.()] || CARD_IMAGES[(cardData.name||'').toLowerCase().replace(/[^a-z0-9\s_-]/g,'').replace(/\s+/g,'_')];
-  if (!img && !CARD_PENDING[cardData.id]) {
-    CARD_PENDING[cardData.id] = true;
-    const candidates = [
-      `card images/${cardData.id}.png`,
-      `card images/${(cardData.id||'').toLowerCase()}.png`,
-      `card images/${(cardData.name||'').toLowerCase().replace(/[^a-z0-9\s_-]/g,'').replace(/\s+/g,'_')}.png`,
-      `card images/${(cardData.name||'').toLowerCase().replace(/[^a-z0-9\s_-]/g,'').replace(/\s+/g,'-')}.png`
-    ];
-    (function tryLoad(i){
-      if (i>=candidates.length) { CARD_PENDING[cardData.id] = false; return; }
+  const badgeRadius = 14;
+  const badgeX = nameArea.x + badgeRadius;
+  const badgeY = nameArea.y + nameArea.h + 16;
+  drawElementBadge(ctx, badgeX, badgeY, badgeRadius, elementMeta, badgeSymbol);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = 'rgba(226,232,240,0.85)';
+  ctx.font = '600 9px "Segoe UI", sans-serif';
+  ctx.fillText(elementMeta.title.toUpperCase(), badgeX + badgeRadius + 10, badgeY + 3);
+
+  const artRect = { x: 22, y: badgeY + badgeRadius + 6, w: BASE_W - 44, h: 128 };
+  drawPanel(ctx, artRect.x, artRect.y, artRect.w, artRect.h, 12, 'rgba(15,23,42,0.32)', 'rgba(226,232,240,0.28)', 1);
+  const artClip = { x: artRect.x + 6, y: artRect.y + 6, w: artRect.w - 12, h: artRect.h - 12 };
+  drawCardIllustration(ctx, cardData, artClip.x, artClip.y, artClip.w, artClip.h);
+
+  const typeLabel = (cardData.type === 'UNIT' ? 'Creature' : 'Spell').toUpperCase();
+  drawPanel(ctx, artRect.x + 18, artRect.y + artRect.h - 18, artRect.w - 36, 20, 10, 'rgba(15,23,42,0.78)', 'rgba(148,163,184,0.25)', 1);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#facc15';
+  ctx.font = '700 10px "Segoe UI", sans-serif';
+  ctx.fillText(typeLabel, BASE_W / 2, artRect.y + artRect.h - 8);
+
+  let sectionTop = artRect.y + artRect.h + 12;
+
+  if (cardData.type === 'UNIT') {
+    const gridCell = 11;
+    const gridGap = 2;
+    const gridHeight = gridCell * 3 + gridGap * 2;
+    const gridX = artRect.x + 8;
+    const gridY = sectionTop;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = '600 8px "Segoe UI", sans-serif';
+    ctx.fillStyle = 'rgba(226,232,240,0.75)';
+    ctx.fillText('ATTACK PATTERN', gridX + (gridHeight / 2), gridY - 6);
+    ctx.fillText('BLIND SPOTS', gridX + gridHeight + 26 + (gridHeight / 2), gridY - 6);
+    drawAttacksGrid(ctx, cardData, gridX, gridY, gridCell, gridGap);
+    drawBlindspotGrid(ctx, cardData, gridX + gridHeight + 26, gridY, gridCell, gridGap);
+    sectionTop = gridY + gridHeight + 10;
+  }
+
+  const textRect = { x: 22, y: sectionTop, w: BASE_W - 44, h: 64 };
+  drawPanel(ctx, textRect.x, textRect.y, textRect.w, textRect.h, 12, 'rgba(15,23,42,0.82)', 'rgba(148,163,184,0.28)', 1);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = 'rgba(226,232,240,0.9)';
+  ctx.font = '700 9px "Segoe UI", sans-serif';
+  ctx.fillText(typeLabel, textRect.x + 12, textRect.y + 16);
+  ctx.font = '500 10px "Segoe UI", sans-serif';
+  const rulesText = cardData.desc || cardData.text || (cardData.keywords ? cardData.keywords.join(', ') : '');
+  wrapText(ctx, rulesText, textRect.x + 12, textRect.y + 30, textRect.w - 24, 12, textRect.y + textRect.h - 8);
+
+  const statsRect = { x: 20, y: textRect.y + textRect.h + 10, w: BASE_W - 40, h: 28 };
+  drawPanel(ctx, statsRect.x, statsRect.y, statsRect.w, statsRect.h, 14, 'rgba(15,23,42,0.88)', 'rgba(148,163,184,0.28)', 1);
+  const statsCenterY = statsRect.y + statsRect.h / 2;
+  const costOrbSize = 18;
+  const costCenterX = statsRect.x + 16;
+  drawManaOrbIcon(ctx, costCenterX, statsCenterY, costOrbSize);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = '700 11px "Segoe UI", sans-serif';
+  const costText = String(cardData.cost ?? 0);
+  ctx.fillText(costText, costCenterX + costOrbSize / 2 + 6, statsCenterY + 4);
+  let cursorX = costCenterX + costOrbSize / 2 + 6 + ctx.measureText(costText).width;
+  if (cardData.locked) {
+    const lockSize = 14;
+    cursorX += lockSize / 2 + 6;
+    drawLockIcon(ctx, cursorX, statsCenterY, lockSize);
+    cursorX += lockSize / 2 + 4;
+  }
+  if (cardData.type === 'UNIT') {
+    const actValue = cardData.activation != null ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
+    const playSize = 14;
+    cursorX += playSize / 2 + 8;
+    drawPlayIcon(ctx, cursorX, statsCenterY, playSize);
+    cursorX += playSize / 2 + 6;
+    ctx.fillText(String(actValue), cursorX, statsCenterY + 3);
+    ctx.textAlign = 'right';
+    ctx.font = '700 12px "Segoe UI", sans-serif';
+    const hpToShow = (hpOverride != null) ? hpOverride : (cardData.hp || 0);
+    const atkToShow = (atkOverride != null) ? atkOverride : (cardData.atk || 0);
+    const statsLabel = `\u2694 ${atkToShow}   \u2764 ${hpToShow}`;
+    ctx.fillText(statsLabel, statsRect.x + statsRect.w - 12, statsCenterY + 4);
+  }
+
+  ctx.restore();
+}
+
+function drawCardIllustration(ctx, cardData, x, y, width, height) {
+  const img = resolveCardImage(cardData);
+  ctx.save();
+  pathRoundedRect(ctx, x, y, width, height, 10);
+  ctx.clip();
+  if (img && img.complete && !(typeof location !== 'undefined' && location.protocol === 'file:')) {
+    const ar = img.width / img.height;
+    let drawW = width;
+    let drawH = height;
+    if (drawW / drawH > ar) { drawW = drawH * ar; } else { drawH = drawW / ar; }
+    const dx = x + (width - drawW) / 2;
+    const dy = y + (height - drawH) / 2;
+    try { ctx.drawImage(img, dx, dy, drawW, drawH); } catch {}
+  } else {
+    const gradient = ctx.createLinearGradient(x, y, x, y + height);
+    gradient.addColorStop(0, 'rgba(148,163,184,0.25)');
+    gradient.addColorStop(1, 'rgba(71,85,105,0.35)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x, y, width, height);
+    ctx.fillStyle = 'rgba(226,232,240,0.75)';
+    ctx.font = '600 11px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('ART LOADING', x + width / 2, y + height / 2);
+  }
+  ctx.restore();
+}
+
+function resolveCardImage(cardData) {
+  if (!cardData) return null;
+  if (typeof Image === 'undefined') return null;
+  const nameSlug = (cardData.name || '').toLowerCase().replace(/[^a-z0-9\s_-]/g, '').trim();
+  const variants = [];
+  if (cardData.id) variants.push(cardData.id);
+  if (typeof cardData.id === 'string') variants.push(cardData.id.toLowerCase());
+  if (nameSlug) {
+    variants.push(nameSlug.replace(/\s+/g, '_'));
+    variants.push(nameSlug.replace(/\s+/g, '-'));
+  }
+  const keys = [...new Set(variants.filter(Boolean))];
+  for (const key of keys) {
+    if (CARD_IMAGES[key]) return CARD_IMAGES[key];
+  }
+  const pendingKey = cardData.id || keys[0];
+  if (pendingKey && !CARD_PENDING[pendingKey]) {
+    CARD_PENDING[pendingKey] = true;
+    const candidates = keys.map(k => `card images/${k}.png`).filter(Boolean);
+    if (cardData.id && !candidates.includes(`card images/${cardData.id}.png`)) {
+      candidates.unshift(`card images/${cardData.id}.png`);
+    }
+    (function tryLoad(i) {
+      if (i >= candidates.length) { CARD_PENDING[pendingKey] = false; return; }
       const im = new Image();
-      im.onload = () => { CARD_IMAGES[cardData.id] = im; CARD_PENDING[cardData.id] = false; try { if (window.requestCardsRedraw) window.requestCardsRedraw(); } catch {} };
-      im.onerror = () => tryLoad(i+1);
+      im.onload = () => {
+        const registerKeys = [...new Set([...keys, cardData.id].filter(Boolean))];
+        registerKeys.forEach(k => { CARD_IMAGES[k] = im; });
+        CARD_PENDING[pendingKey] = false;
+        try { if (typeof window !== 'undefined' && typeof window.requestCardsRedraw === 'function') window.requestCardsRedraw(); } catch {}
+      };
+      im.onerror = () => tryLoad(i + 1);
       im.src = encodeURI(candidates[i]);
     })(0);
   }
-  if (img && img.complete && !(typeof location !== 'undefined' && location.protocol === 'file:')) {
-    const ar = img.width / img.height;
-    let w = illW, h = illH; if (w / h > ar) { w = h * ar; } else { h = w / ar; }
-    const dx = illX + (illW - w) / 2; const dy = illY + (illH - h) / 2;
-    try { ctx.drawImage(img, dx, dy, w, h); } catch {}
-  } else {
-    ctx.fillStyle = '#94a3b8'; ctx.font = '12px Arial'; ctx.fillText('Illustration', width / 2, 135);
-  }
+  return null;
+}
 
-  // Text box
-  ctx.fillStyle = '#cbd5e1'; ctx.font = '11px Arial'; ctx.textAlign = 'left';
-  const text = cardData.desc || cardData.text || (cardData.keywords ? cardData.keywords.join(', ') : '');
-  wrapText(ctx, text, 16, 210, width - 32, 14);
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; ctx.fillRect(0, height - 40, width, 40);
-  ctx.fillStyle = '#f1f5f9'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'left';
-  const iconSize = 14; // Размер иконок маны и активации
-  drawManaOrbIcon(ctx, 16 + iconSize / 2, height - 20, iconSize);
-  ctx.textAlign = 'left';
-  ctx.font = 'bold 14px Arial';
-  ctx.fillText(String(cardData.cost || 0), 16 + iconSize + 4, height - 15);
-  let costWidth = ctx.measureText(String(cardData.cost || 0)).width;
-  if (cardData.locked) {
-    // рисуем иконку замка рядом со стоимостью
-    const lx = 16 + iconSize + 4 + costWidth + iconSize / 2;
-    drawLockIcon(ctx, lx, height - 20, iconSize);
-    costWidth += iconSize + 4;
-  }
-  if (cardData.type === 'UNIT') {
-    ctx.textAlign = 'left'; ctx.font = 'bold 13px Arial';
-    const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
-    const shift = iconSize + 4 + costWidth + 10;
-    drawPlayIcon(ctx, 16 + shift + iconSize / 2, height - 20, iconSize);
-    ctx.fillText(String(act), 16 + shift + iconSize + 4, height - 15);
-  }
-  if (cardData.type === 'UNIT') {
-    ctx.textAlign = 'right';
-    const hpToShow = (hpOverride != null) ? hpOverride : (cardData.hp || 0);
-    const atkToShow = (atkOverride != null) ? atkOverride : (cardData.atk || 0);
-    ctx.fillText(`\u2694${atkToShow}  \u2764${hpToShow}`, width - 16, height - 15);
-    // Чуть опускаем схемы и разводим их шире
-    const cell = 10, gap = 2, spacing = 16; // большее расстояние для запаса под доп. клетку
-    const gridW = cell * 3 + gap * 2;
-    const startX = (width - (gridW * 2 + spacing)) / 2;
-    const gridY = 260; // опускаем схемы ближе к нижней полоске
-    drawAttacksGrid(ctx, cardData, startX, gridY, cell, gap);
-    drawBlindspotGrid(ctx, cardData, startX + gridW + spacing, gridY, cell, gap);
+function drawPanel(ctx, x, y, width, height, radius, fillStyle, strokeStyle, strokeWidth = 1) {
+  pathRoundedRect(ctx, x, y, width, height, radius);
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
+  if (strokeStyle) {
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = strokeWidth;
+    ctx.stroke();
   }
 }
 
-function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-  if (!text) return; const words = text.split(' '); let line = '';
-  for (let n = 0; n < words.length; n++) {
-    const testLine = line + words[n] + ' '; const metrics = ctx.measureText(testLine); const testWidth = metrics.width;
-    if (testWidth > maxWidth && n > 0) { ctx.fillText(line, x, y); line = words[n] + ' '; y += lineHeight; } else { line = testLine; }
+function pathRoundedRect(ctx, x, y, width, height, radius) {
+  const r = Math.max(0, Math.min(radius, Math.min(width, height) / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function fitTextToWidth(ctx, text, maxWidth) {
+  if (!text) return '';
+  let current = text.trim();
+  if (!current) return '';
+  if (ctx.measureText(current).width <= maxWidth) return current;
+  while (current.length > 0 && ctx.measureText(`${current}...`).width > maxWidth) {
+    current = current.slice(0, -1);
   }
-  ctx.fillText(line, x, y);
+  return current.length ? `${current}...` : text.slice(0, 1);
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxY = Infinity) {
+  if (!text) return;
+  const words = text.split(/\s+/);
+  let line = '';
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    const candidate = line ? `${line} ${word}` : word;
+    if (ctx.measureText(candidate).width > maxWidth && line) {
+      ctx.fillText(line, x, y);
+      y += lineHeight;
+      if (y > maxY) return;
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line && y <= maxY) ctx.fillText(line, x, y);
+}
+
+function drawElementBadge(ctx, x, y, radius, meta, symbol) {
+  const gradient = ctx.createRadialGradient(x - radius * 0.4, y - radius * 0.6, radius * 0.2, x, y, radius);
+  const [inner, outer] = meta.gradient || ['#e2e8f0', '#475569'];
+  gradient.addColorStop(0, '#ffffff');
+  gradient.addColorStop(0.55, inner);
+  gradient.addColorStop(1, outer);
+  ctx.beginPath();
+  ctx.fillStyle = gradient;
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = 'rgba(15,23,42,0.7)';
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(15,23,42,0.85)';
+  ctx.font = `600 ${Math.round(radius * 1.2)}px "Segoe UI Emoji", "Segoe UI", sans-serif`;
+  ctx.fillText(symbol, x, y + 0.5);
 }
 
 function getElementColor(element) {
@@ -226,9 +409,12 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
     for (let c = 0; c < 3; c++) {
       const cx = x + c * (cell + gap);
       const cy = y + r * (cell + gap);
-      ctx.fillStyle = 'rgba(148,163,184,0.35)';
-      if (r === 1 && c === 1) ctx.fillStyle = 'rgba(0,0,0,0.8)';
+      ctx.fillStyle = 'rgba(30,41,59,0.7)';
+      if (r === 1 && c === 1) ctx.fillStyle = 'rgba(15,23,42,0.95)';
       ctx.fillRect(cx, cy, cell, cell);
+      ctx.strokeStyle = 'rgba(148,163,184,0.35)';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(cx + 0.3, cy + 0.3, cell - 0.6, cell - 0.6);
     }
   }
 
@@ -242,16 +428,16 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
         const cy = y + r * (cell + gap);
         ctx.fillStyle = 'rgba(56,189,248,0.35)';
         ctx.fillRect(cx, cy, cell, cell);
-        ctx.strokeStyle = 'rgba(56,189,248,0.6)';
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+        ctx.strokeStyle = 'rgba(56,189,248,0.65)';
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(cx + 0.4, cy + 0.4, cell - 0.8, cell - 0.8);
       }
     }
     const cx = x + 1 * (cell + gap);
     const cy = y + 0 * (cell + gap);
     ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(cx + 0.4, cy + 0.4, cell - 0.8, cell - 0.8);
     return;
   }
 
@@ -272,9 +458,9 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
       // если атака охватывает несколько дистанций одновременно, подсвечиваем все
       const multi = (!a.mode || a.mode !== 'ANY') && (a.ranges && a.ranges.length > 1);
       const mustHit = (!isChoice) && (multi || dist === minDist);
-      ctx.strokeStyle = mustHit ? '#ef4444' : 'rgba(56,189,248,0.6)';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+      ctx.strokeStyle = mustHit ? '#ef4444' : 'rgba(56,189,248,0.65)';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(cx + 0.4, cy + 0.4, cell - 0.8, cell - 0.8);
     }
   }
   // Подсветка клетки перед существом при выборе направления
@@ -282,8 +468,8 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
     const cx = x + 1 * (cell + gap);
     const cy = y + 0 * (cell + gap);
     ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(cx + 0.4, cy + 0.4, cell - 0.8, cell - 0.8);
   }
 }
 
@@ -292,11 +478,15 @@ function drawBlindspotGrid(ctx, cardData, x, y, cell, gap) {
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 3; c++) {
       const cx = x + c * (cell + gap); const cy = y + r * (cell + gap);
-      ctx.fillStyle = 'rgba(148,163,184,0.35)'; if (r === 1 && c === 1) ctx.fillStyle = 'rgba(250,204,21,0.7)';
+      ctx.fillStyle = 'rgba(30,41,59,0.7)';
+      if (r === 1 && c === 1) ctx.fillStyle = 'rgba(250,204,21,0.7)';
       ctx.fillRect(cx, cy, cell, cell);
+      ctx.strokeStyle = 'rgba(148,163,184,0.35)';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(cx + 0.3, cy + 0.3, cell - 0.6, cell - 0.6);
       const isN = (r === 0 && c === 1), isE = (r === 1 && c === 2), isS = (r === 2 && c === 1), isW = (r === 1 && c === 0);
       if ((isN && blind.includes('N')) || (isE && blind.includes('E')) || (isS && blind.includes('S')) || (isW && blind.includes('W'))) {
-        ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1.5; ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
+        ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1.2; ctx.strokeRect(cx+0.4, cy+0.4, cell-0.8, cell-0.8);
       }
     }
   }
