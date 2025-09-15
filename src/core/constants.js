@@ -20,6 +20,7 @@ export const elementEmoji = {
   WATER: '💧',
   EARTH: '⛰️',
   FOREST: '🌿',
+  BIOLITH: '⚙️',
   MECH: '⚙️'
 };
 

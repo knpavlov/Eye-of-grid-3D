@@ -1,5 +1,5 @@
 // Меню выбора колоды
-import { DECKS } from '../core/decks.js';
+import { DECKS, removeDeck, saveDecks } from '../core/decks.js';
 
 function pickDeckImage(deck) {
   // выбираем самую дорогую по мане карту; при равенстве — случайная
@@ -10,8 +10,9 @@ function pickDeckImage(deck) {
   return `card images/${card.id}.png`;
 }
 
-export function open(onConfirm, onCancel) {
+export function open(opts = {}) {
   if (typeof document === 'undefined') return;
+  const { onConfirm, onCancel, onEdit, onCreate } = opts;
   let selected = 0;
   const overlay = document.createElement('div');
   overlay.id = 'deck-select-overlay';
@@ -71,23 +72,63 @@ export function open(onConfirm, onCancel) {
   });
 
   const btnWrap = document.createElement('div');
-  btnWrap.className = 'flex justify-end gap-2 mt-4';
+  btnWrap.className = 'flex justify-between gap-2 mt-4';
   panel.appendChild(btnWrap);
+
+  const leftBtns = document.createElement('div');
+  leftBtns.className = 'flex gap-2';
+  btnWrap.appendChild(leftBtns);
+  const rightBtns = document.createElement('div');
+  rightBtns.className = 'flex gap-2';
+  btnWrap.appendChild(rightBtns);
+
+  if (onEdit) {
+    const editBtn = document.createElement('button');
+    editBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700 glossy-btn transition-colors';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => {
+      try { document.body.removeChild(overlay); } catch {}
+      onEdit && onEdit(DECKS[selected]);
+    });
+    leftBtns.appendChild(editBtn);
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'overlay-panel px-3 py-1.5 bg-red-600 hover:bg-red-700 glossy-btn transition-colors';
+    delBtn.textContent = 'Delete';
+    delBtn.addEventListener('click', () => {
+      removeDeck(DECKS[selected].id);
+      saveDecks();
+      document.body.removeChild(overlay);
+      open(opts); // перерисовываем список
+    });
+    leftBtns.appendChild(delBtn);
+
+    const createBtn = document.createElement('button');
+    createBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700 glossy-btn transition-colors';
+    createBtn.textContent = 'Create New Deck';
+    createBtn.addEventListener('click', () => {
+      try { document.body.removeChild(overlay); } catch {}
+      onCreate && onCreate();
+    });
+    leftBtns.appendChild(createBtn);
+  }
 
   const cancelBtn = document.createElement('button');
   cancelBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700 glossy-btn transition-colors';
   cancelBtn.textContent = 'Cancel';
   cancelBtn.addEventListener('click', () => { document.body.removeChild(overlay); onCancel && onCancel(); });
-  btnWrap.appendChild(cancelBtn);
+  rightBtns.appendChild(cancelBtn);
 
-  const okBtn = document.createElement('button');
-  okBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700 glossy-btn transition-colors';
-  okBtn.textContent = 'Confirm';
-  okBtn.addEventListener('click', () => {
-    try { document.body.removeChild(overlay); } catch {}
-    onConfirm && onConfirm(DECKS[selected]);
-  });
-  btnWrap.appendChild(okBtn);
+  if (onConfirm) {
+    const okBtn = document.createElement('button');
+    okBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700 glossy-btn transition-colors';
+    okBtn.textContent = 'Confirm';
+    okBtn.addEventListener('click', () => {
+      try { document.body.removeChild(overlay); } catch {}
+      onConfirm && onConfirm(DECKS[selected]);
+    });
+    rightBtns.appendChild(okBtn);
+  }
 
   document.body.appendChild(overlay);
 }
