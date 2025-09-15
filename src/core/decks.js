@@ -126,9 +126,47 @@ function expand(ids) {
   return ids.map(id => CARDS[id]).filter(Boolean);
 }
 
-export const DECKS = RAW_DECKS.map(d => ({ ...d, cards: expand(d.cards) }));
+// Текущий список колод. Делается let, чтобы можно было модифицировать в рантайме.
+export let DECKS = RAW_DECKS.map(d => ({ ...d, cards: expand(d.cards) }));
 
-const api = { DECKS };
+// Сохраняем колоды в localStorage
+export function saveDecks() {
+  try {
+    const payload = DECKS.map(d => ({ ...d, cards: d.cards.map(c => c.id) }));
+    localStorage.setItem('customDecks', JSON.stringify(payload));
+  } catch {}
+}
+
+// Пытаемся загрузить сохранённые колоды
+try {
+  const saved = JSON.parse(localStorage.getItem('customDecks'));
+  if (Array.isArray(saved) && saved.length) {
+    DECKS = saved.map(d => ({ ...d, cards: expand(d.cards || []) }));
+  }
+} catch {}
+
+export function addDeck(deck) {
+  DECKS.push(deck);
+  saveDecks();
+}
+
+export function updateDeck(id, data) {
+  const idx = DECKS.findIndex(d => d.id === id);
+  if (idx >= 0) {
+    DECKS[idx] = { ...DECKS[idx], ...data };
+    saveDecks();
+  }
+}
+
+export function removeDeck(id) {
+  const idx = DECKS.findIndex(d => d.id === id);
+  if (idx >= 0) {
+    DECKS.splice(idx, 1);
+    saveDecks();
+  }
+}
+
+const api = { DECKS, addDeck, updateDeck, removeDeck, saveDecks };
 try {
   if (typeof window !== 'undefined') { window.DECKS = DECKS; }
 } catch {}
