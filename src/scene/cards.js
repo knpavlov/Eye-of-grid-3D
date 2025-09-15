@@ -40,7 +40,16 @@ export function preloadCardTextures() {
 
 export function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
   const THREE = getTHREE();
-  // Front background
+  const BASE_W = 256;
+  const BASE_H = 356;
+  const scaleX = width / BASE_W;
+  const scaleY = height / BASE_H;
+  const scale = (scaleX + scaleY) / 2;
+  const px = (val) => Math.round(val * scaleX);
+  const py = (val) => Math.round(val * scaleY);
+  const ps = (val) => Math.max(1, Math.round(val * scale));
+
+  // Фон карты (текстура или мягкий градиент в качестве запасного варианта)
   try {
     const imgFront = CARD_TEX.front && CARD_TEX.front.image ? CARD_TEX.front.image : null;
     if (imgFront && imgFront.width && imgFront.height) {
@@ -55,21 +64,55 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     gradient.addColorStop(0, '#1e293b'); gradient.addColorStop(1, '#0f172a');
     ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
   }
-  // Border + name
-  const elementEmoji = (typeof window !== 'undefined' && window.elementEmoji) || {};
+
+  // Цветная рамка в цвет стихии
+  const border = Math.max(2, ps(3));
   ctx.strokeStyle = getElementColor(cardData.element);
-  ctx.lineWidth = 4; ctx.strokeRect(4, 4, width - 8, height - 8);
-  ctx.fillStyle = '#f1f5f9'; ctx.font = 'bold 18px Arial, sans-serif'; ctx.textAlign = 'center';
-  const name = (cardData.name || '').length > 20 ? (cardData.name || '').substring(0, 20) + '...' : (cardData.name || '');
-  ctx.fillText(name, width / 2, 30);
-  ctx.font = '24px Arial'; ctx.fillText(elementEmoji[cardData.element] || '', width / 2, 55);
+  ctx.lineWidth = border;
+  ctx.strokeRect(border / 2, border / 2, width - border, height - border);
 
-  // Illustration frame
-  const illX = 16, illY = 70, illW = width - 32, illH = 120;
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'; ctx.fillRect(illX, illY, illW, illH);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)'; ctx.lineWidth = 2; ctx.strokeRect(illX, illY, illW, illH);
+  // Верхний блок: имя и короткая подпись
+  const elementLabels = { FIRE: 'Fire', WATER: 'Water', EARTH: 'Earth', FOREST: 'Forest', BIOLITH: 'Biolith', NEUTRAL: 'Neutral' };
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f8fafc';
+  const nameMaxWidth = width - px(64);
+  let displayName = (cardData.name || '').trim();
+  if (displayName.length > 40) displayName = displayName.slice(0, 40) + '…';
+  let nameFont = Math.max(ps(9), 9);
+  const minNameFont = Math.max(ps(7), 7);
+  while (true) {
+    ctx.font = `600 ${nameFont}px "Cinzel", "Times New Roman", serif`;
+    if (ctx.measureText(displayName).width <= nameMaxWidth || nameFont <= minNameFont) break;
+    nameFont = Math.max(minNameFont, nameFont - 1);
+  }
+  ctx.fillText(displayName, width / 2, py(44));
 
-  // Draw illustration if available (not on file://)
+  const typeParts = [];
+  const elementLabel = elementLabels[cardData.element] || elementLabels.NEUTRAL;
+  if (elementLabel) typeParts.push(elementLabel);
+  if (cardData.type === 'UNIT') typeParts.push('Creature');
+  else if (cardData.type === 'SPELL') typeParts.push('Spell');
+  const typeLine = typeParts.join(' · ');
+  if (typeLine) {
+    ctx.font = `500 ${Math.max(ps(7), 7)}px "Noto Sans", "Helvetica", sans-serif`;
+    ctx.fillStyle = 'rgba(226,232,240,0.82)';
+    ctx.fillText(typeLine, width / 2, py(62));
+  }
+
+  // Рамка под иллюстрацию
+  const illX = px(24);
+  const illY = py(72);
+  const illW = width - px(48);
+  const illH = py(148);
+  ctx.save();
+  ctx.fillStyle = 'rgba(8, 15, 32, 0.55)';
+  ctx.fillRect(illX, illY, illW, illH);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+  ctx.lineWidth = Math.max(1, ps(1.2));
+  ctx.strokeRect(illX, illY, illW, illH);
+  ctx.restore();
+
+  // Попытка загрузить иллюстрацию
   let img = CARD_IMAGES[cardData.id] || CARD_IMAGES[cardData.id?.toLowerCase?.()] || CARD_IMAGES[(cardData.name||'').toLowerCase().replace(/[^a-z0-9\s_-]/g,'').replace(/\s+/g,'_')];
   if (!img && !CARD_PENDING[cardData.id]) {
     CARD_PENDING[cardData.id] = true;
@@ -89,60 +132,101 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   }
   if (img && img.complete && !(typeof location !== 'undefined' && location.protocol === 'file:')) {
     const ar = img.width / img.height;
-    let w = illW, h = illH; if (w / h > ar) { w = h * ar; } else { h = w / ar; }
-    const dx = illX + (illW - w) / 2; const dy = illY + (illH - h) / 2;
+    let w = illW, h = illH;
+    if (w / h > ar) { w = h * ar; } else { h = w / ar; }
+    const dx = illX + (illW - w) / 2;
+    const dy = illY + (illH - h) / 2;
     try { ctx.drawImage(img, dx, dy, w, h); } catch {}
   } else {
-    ctx.fillStyle = '#94a3b8'; ctx.font = '12px Arial'; ctx.fillText('Illustration', width / 2, 135);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `500 ${Math.max(ps(7.5), 8)}px "Noto Sans", "Helvetica", sans-serif`;
+    ctx.fillText('Illustration', width / 2, illY + Math.round(illH / 2));
   }
 
-  // Text box
-  ctx.fillStyle = '#cbd5e1'; ctx.font = '11px Arial'; ctx.textAlign = 'left';
+  // Текстовое поле (уменьшенный шрифт и контролируемая высота)
   const text = cardData.desc || cardData.text || (cardData.keywords ? cardData.keywords.join(', ') : '');
-  wrapText(ctx, text, 16, 210, width - 32, 14);
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; ctx.fillRect(0, height - 40, width, 40);
-  ctx.fillStyle = '#f1f5f9'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'left';
-  const iconSize = 14; // Размер иконок маны и активации
-  drawManaOrbIcon(ctx, 16 + iconSize / 2, height - 20, iconSize);
+  ctx.fillStyle = '#cbd5e1';
+  ctx.font = `500 ${Math.max(ps(8.5), 9)}px "Noto Sans", "Helvetica", sans-serif`;
   ctx.textAlign = 'left';
-  ctx.font = 'bold 14px Arial';
-  ctx.fillText(String(cardData.cost || 0), 16 + iconSize + 4, height - 15);
-  let costWidth = ctx.measureText(String(cardData.cost || 0)).width;
+  const textX = illX;
+  const textY = illY + illH + Math.max(ps(8), 6);
+  const textWidth = illW;
+  const diagramTop = cardData.type === 'UNIT' ? (height - py(122)) : (height - py(78));
+  const textMaxY = diagramTop - Math.max(ps(6), 6);
+  wrapText(ctx, text, textX, textY, textWidth, Math.max(ps(11), 12), textMaxY);
+
+  // Нижний пояс карты с ресурсами
+  const footerHeight = Math.max(py(52), Math.round(40 * scaleY));
+  ctx.fillStyle = 'rgba(8, 12, 24, 0.58)';
+  ctx.fillRect(0, height - footerHeight, width, footerHeight);
+
+  ctx.fillStyle = '#f1f5f9';
+  ctx.textAlign = 'left';
+  const iconSize = Math.max(ps(16), 14);
+  const footerCenterY = height - Math.round(footerHeight * 0.58);
+  const manaCenterX = px(28);
+  drawManaOrbIcon(ctx, manaCenterX, footerCenterY, iconSize);
+  const costTextX = manaCenterX + iconSize / 2 + Math.max(ps(6), 6);
+  const costBaseline = footerCenterY + Math.max(ps(4), 4);
+  const costValue = String(cardData.cost ?? 0);
+  ctx.font = `700 ${Math.max(ps(11), 11)}px "Noto Sans", "Helvetica", sans-serif`;
+  ctx.fillText(costValue, costTextX, costBaseline);
+  let inlineOffset = ctx.measureText(costValue).width;
+
   if (cardData.locked) {
-    // рисуем иконку замка рядом со стоимостью
-    const lx = 16 + iconSize + 4 + costWidth + iconSize / 2;
-    drawLockIcon(ctx, lx, height - 20, iconSize);
-    costWidth += iconSize + 4;
+    const lockSize = Math.max(ps(14), 12);
+    const lockCenterX = costTextX + inlineOffset + lockSize / 2 + Math.max(ps(6), 4);
+    drawLockIcon(ctx, lockCenterX, footerCenterY, lockSize);
+    inlineOffset += lockSize + Math.max(ps(6), 4);
   }
+
   if (cardData.type === 'UNIT') {
-    ctx.textAlign = 'left'; ctx.font = 'bold 13px Arial';
     const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
-    const shift = iconSize + 4 + costWidth + 10;
-    drawPlayIcon(ctx, 16 + shift + iconSize / 2, height - 20, iconSize);
-    ctx.fillText(String(act), 16 + shift + iconSize + 4, height - 15);
+    const playSize = Math.max(ps(15), 13);
+    const playCenterX = costTextX + inlineOffset + playSize / 2 + Math.max(ps(12), 10);
+    drawPlayIcon(ctx, playCenterX, footerCenterY, playSize);
+    ctx.fillText(String(act), playCenterX + playSize / 2 + Math.max(ps(4), 4), costBaseline);
+    inlineOffset += playSize + Math.max(ps(18), 14);
   }
+
   if (cardData.type === 'UNIT') {
-    ctx.textAlign = 'right';
     const hpToShow = (hpOverride != null) ? hpOverride : (cardData.hp || 0);
     const atkToShow = (atkOverride != null) ? atkOverride : (cardData.atk || 0);
-    ctx.fillText(`\u2694${atkToShow}  \u2764${hpToShow}`, width - 16, height - 15);
-    // Чуть опускаем схемы и разводим их шире
-    const cell = 10, gap = 2, spacing = 16; // большее расстояние для запаса под доп. клетку
+    const statRadius = Math.max(ps(11), 10);
+    const hpCenterX = width - px(28);
+    const atkCenterX = hpCenterX - statRadius * 2.6;
+    drawStatBadge(ctx, atkCenterX, footerCenterY, statRadius, '#fb923c', '#fcd34d', atkToShow);
+    drawStatBadge(ctx, hpCenterX, footerCenterY, statRadius, '#f87171', '#fca5a5', hpToShow);
+
+    const cell = Math.max(Math.round(ps(8)), 6);
+    const gap = Math.max(Math.round(ps(1.5)), 1);
     const gridW = cell * 3 + gap * 2;
+    const spacing = Math.max(Math.round(ps(14)), 10);
     const startX = (width - (gridW * 2 + spacing)) / 2;
-    const gridY = 260; // опускаем схемы ближе к нижней полоске
+    const gridY = diagramTop;
     drawAttacksGrid(ctx, cardData, startX, gridY, cell, gap);
     drawBlindspotGrid(ctx, cardData, startX + gridW + spacing, gridY, cell, gap);
   }
 }
 
-function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-  if (!text) return; const words = text.split(' '); let line = '';
-  for (let n = 0; n < words.length; n++) {
-    const testLine = line + words[n] + ' '; const metrics = ctx.measureText(testLine); const testWidth = metrics.width;
-    if (testWidth > maxWidth && n > 0) { ctx.fillText(line, x, y); line = words[n] + ' '; y += lineHeight; } else { line = testLine; }
+function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxY = Infinity) {
+  if (!text) return;
+  const words = text.split(/\s+/);
+  let line = '';
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    if (!word) continue;
+    const testLine = line ? `${line} ${word}` : word;
+    if (ctx.measureText(testLine).width > maxWidth && line) {
+      ctx.fillText(line, x, y);
+      y += lineHeight;
+      if (y > maxY) return;
+      line = word;
+    } else {
+      line = testLine;
+    }
   }
-  ctx.fillText(line, x, y);
+  if (line && y <= maxY) ctx.fillText(line, x, y);
 }
 
 function getElementColor(element) {
@@ -221,37 +305,40 @@ function drawLockIcon(ctx, x, y, size) {
 
 function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
   const attacks = cardData.attacks || [];
-  // базовая сетка
+  const baseLine = Math.max(1, Math.round(cell * 0.18));
+  const accentLine = Math.max(1, Math.round(cell * 0.2));
+
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 3; c++) {
       const cx = x + c * (cell + gap);
       const cy = y + r * (cell + gap);
-      ctx.fillStyle = 'rgba(148,163,184,0.35)';
-      if (r === 1 && c === 1) ctx.fillStyle = 'rgba(0,0,0,0.8)';
+      ctx.fillStyle = 'rgba(30,41,59,0.62)';
+      if (r === 1 && c === 1) ctx.fillStyle = 'rgba(15,23,42,0.92)';
       ctx.fillRect(cx, cy, cell, cell);
+      ctx.strokeStyle = 'rgba(148,163,184,0.35)';
+      ctx.lineWidth = baseLine;
+      ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
     }
   }
 
-  // Для магической атаки подсвечиваем все клетки поля,
-  // а красной рамкой обозначаем только клетку спереди.
   if (cardData.attackType === 'MAGIC') {
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) {
-        if (r === 1 && c === 1) continue; // центр — сам атакующий
+        if (r === 1 && c === 1) continue;
         const cx = x + c * (cell + gap);
         const cy = y + r * (cell + gap);
-        ctx.fillStyle = 'rgba(56,189,248,0.35)';
+        ctx.fillStyle = 'rgba(56,189,248,0.28)';
         ctx.fillRect(cx, cy, cell, cell);
-        ctx.strokeStyle = 'rgba(56,189,248,0.6)';
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = 'rgba(56,189,248,0.65)';
+        ctx.lineWidth = accentLine;
         ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
       }
     }
-    const cx = x + 1 * (cell + gap);
-    const cy = y + 0 * (cell + gap);
+    const frontX = x + 1 * (cell + gap);
+    const frontY = y + 0 * (cell + gap);
     ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+    ctx.lineWidth = accentLine;
+    ctx.strokeRect(frontX + 0.5, frontY + 0.5, cell - 1, cell - 1);
     return;
   }
 
@@ -266,40 +353,68 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
       const cc = 1 + vec[1] * dist;
       const cx = x + cc * (cell + gap);
       const cy = y + rr * (cell + gap);
-      // заливаем все потенциальные клетки (включая выходящие за 3x3)
-      ctx.fillStyle = 'rgba(56,189,248,0.35)';
+      ctx.fillStyle = 'rgba(56,189,248,0.28)';
       ctx.fillRect(cx, cy, cell, cell);
-      // если атака охватывает несколько дистанций одновременно, подсвечиваем все
       const multi = (!a.mode || a.mode !== 'ANY') && (a.ranges && a.ranges.length > 1);
       const mustHit = (!isChoice) && (multi || dist === minDist);
-      ctx.strokeStyle = mustHit ? '#ef4444' : 'rgba(56,189,248,0.6)';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = mustHit ? '#ef4444' : 'rgba(56,189,248,0.65)';
+      ctx.lineWidth = accentLine;
       ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
     }
   }
-  // Подсветка клетки перед существом при выборе направления
+
   if (cardData.chooseDir || attacks.some(a => a.mode === 'ANY')) {
     const cx = x + 1 * (cell + gap);
     const cy = y + 0 * (cell + gap);
     ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = accentLine;
     ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
   }
 }
 
 function drawBlindspotGrid(ctx, cardData, x, y, cell, gap) {
   const blind = (cardData.blindspots && cardData.blindspots.length) ? cardData.blindspots : ['S'];
+  const baseLine = Math.max(1, Math.round(cell * 0.18));
+  const accentLine = Math.max(1, Math.round(cell * 0.2));
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 3; c++) {
-      const cx = x + c * (cell + gap); const cy = y + r * (cell + gap);
-      ctx.fillStyle = 'rgba(148,163,184,0.35)'; if (r === 1 && c === 1) ctx.fillStyle = 'rgba(250,204,21,0.7)';
+      const cx = x + c * (cell + gap);
+      const cy = y + r * (cell + gap);
+      ctx.fillStyle = 'rgba(30,41,59,0.62)';
+      if (r === 1 && c === 1) ctx.fillStyle = 'rgba(234,179,8,0.45)';
       ctx.fillRect(cx, cy, cell, cell);
-      const isN = (r === 0 && c === 1), isE = (r === 1 && c === 2), isS = (r === 2 && c === 1), isW = (r === 1 && c === 0);
+      ctx.strokeStyle = 'rgba(148,163,184,0.35)';
+      ctx.lineWidth = baseLine;
+      ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+      const isN = (r === 0 && c === 1);
+      const isE = (r === 1 && c === 2);
+      const isS = (r === 2 && c === 1);
+      const isW = (r === 1 && c === 0);
       if ((isN && blind.includes('N')) || (isE && blind.includes('E')) || (isS && blind.includes('S')) || (isW && blind.includes('W'))) {
-        ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1.5; ctx.strokeRect(cx+0.5, cy+0.5, cell-1, cell-1);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = accentLine;
+        ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
       }
     }
   }
+}
+
+// Компактный маркер для атаки/здоровья, напоминающий оригинальные жетоны
+function drawStatBadge(ctx, x, y, radius, fillColor, strokeColor, value) {
+  ctx.save();
+  ctx.fillStyle = fillColor;
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = Math.max(1, radius * 0.22);
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#0f172a';
+  ctx.font = `700 ${Math.max(10, Math.round(radius * 1.2))}px "Noto Sans", "Helvetica", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(value), x, y + radius * 0.08);
+  ctx.restore();
 }
 
 function attachIllustrationPlane(cardMesh, cardData) {

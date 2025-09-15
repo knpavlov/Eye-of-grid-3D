@@ -4,6 +4,8 @@
 import { CARDS } from '../core/cards.js';
 import { addDeck, updateDeck, saveDecks } from '../core/decks.js';
 import { show as showNotification } from './notifications.js';
+// Используем генератор карт из игрового рендера, чтобы показать карты целиком
+import { drawCardFace, preloadCardTextures } from '../scene/cards.js';
 
 // Генерация ID новой колоды
 function makeId() {
@@ -22,8 +24,23 @@ const ELEMENTS = [
   { id: 'NEUTRAL', label: 'Neutral', icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23aaa"/></svg>' },
 ];
 
+// Настройки полоски иллюстрации в левой панели
+// Высота строки и вертикальное смещение (0-100%) можно менять при необходимости
+const STRIP_HEIGHT = 48;
+const STRIP_OFFSET = 50;
+// Карты с нестандартным положением фокуса иллюстрации можно настроить здесь
+const STRIP_OVERRIDES = {
+  // Пример: FIRE_FLAME_MAGUS: 42,
+};
+// Размеры превью карты в каталоге
+const PREVIEW_W = 200;
+const PREVIEW_H = 300;
+
 export function open(deck = null, onDone) {
   if (typeof document === 'undefined') return;
+
+  // Подгружаем текстуры карт для рендера превью
+  try { preloadCardTextures(); } catch {}
 
   // Прячем диагностические панели на время работы редактора
   const hiddenEls = [];
@@ -36,10 +53,11 @@ export function open(deck = null, onDone) {
   });
 
   const overlay = document.createElement('div');
+  overlay.id = 'deck-builder-overlay';
   overlay.className = 'fixed inset-0 z-50 flex items-start justify-center bg-black bg-opacity-60 overflow-auto';
 
   const panel = document.createElement('div');
-  panel.className = 'bg-slate-800 mt-6 p-4 rounded-lg w-[90vw] h-[90vh] flex flex-col relative';
+  panel.className = 'bg-slate-800 mt-2 p-4 rounded-lg w-[92vw] h-[96vh] flex flex-col relative';
   overlay.appendChild(panel);
 
   // === Верхняя панель фильтров ===
@@ -65,7 +83,8 @@ export function open(deck = null, onDone) {
 
   function openElementFilter() {
     const fo = document.createElement('div');
-    fo.className = 'fixed inset-0 z-60';
+    // Поверх всех элементов
+    fo.className = 'fixed inset-0 z-[100]';
     const rect = elementBtn.getBoundingClientRect();
     const menu = document.createElement('div');
     menu.className = 'overlay-panel bg-slate-700 p-2 flex flex-col gap-1 absolute';
@@ -145,8 +164,16 @@ export function open(deck = null, onDone) {
   left.appendChild(nameInput);
 
   const deckList = document.createElement('div');
-  deckList.className = 'flex-1 overflow-y-auto space-y-1 text-sm';
+  deckList.className = 'flex-1 overflow-y-auto space-y-1 text-sm deck-scroll';
   left.appendChild(deckList);
+  // Принимаем перетаскиваемые карты из каталога
+  deckList.addEventListener('dragover', e => e.preventDefault());
+  deckList.addEventListener('drop', e => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData('text/plain');
+    const card = CARDS[id];
+    if (card) addCard(card);
+  });
 
   const summary = document.createElement('div');
   summary.className = 'mt-2 text-center';
@@ -159,8 +186,54 @@ export function open(deck = null, onDone) {
 
   // === Каталог карт ===
   const catalog = document.createElement('div');
-  catalog.className = 'flex-1 overflow-y-auto grid grid-cols-4 gap-2 pl-4';
+  // Сетка 5x2 с собственной полосой прокрутки
+  catalog.className = 'flex-1 overflow-y-auto grid grid-cols-5 grid-rows-2 gap-4 pl-4 deck-scroll catalog-grid';
   main.appendChild(catalog);
+
+  const scheduleCatalogRedraw = (() => {
+    let pending = false;
+    const raf = (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function')
+      ? window.requestAnimationFrame.bind(window)
+      : (fn => setTimeout(fn, 16));
+    return () => {
+      if (pending) return;
+      pending = true;
+      raf(() => {
+        pending = false;
+        catalog.querySelectorAll('canvas').forEach(canvas => {
+          const cardData = canvas.__cardData;
+          if (!cardData) return;
+          const ctx2d = canvas.getContext('2d');
+          if (!ctx2d) return;
+          drawCardFace(ctx2d, cardData, canvas.width, canvas.height);
+        });
+      });
+    };
+  })();
+
+  let prevRequestCardsRedraw = null;
+  function installCardsRedrawBridge() {
+    if (typeof window === 'undefined') return;
+    prevRequestCardsRedraw = window.requestCardsRedraw || null;
+    window.requestCardsRedraw = function deckBuilderCardsRedrawBridge() {
+      scheduleCatalogRedraw();
+      if (typeof prevRequestCardsRedraw === 'function') {
+        try { prevRequestCardsRedraw(); } catch {}
+      }
+    };
+  }
+
+  function restoreCardsRedrawBridge() {
+    if (typeof window === 'undefined') return;
+    if (prevRequestCardsRedraw) {
+      window.requestCardsRedraw = prevRequestCardsRedraw;
+    } else {
+      try { delete window.requestCardsRedraw; } catch { window.requestCardsRedraw = undefined; }
+    }
+    prevRequestCardsRedraw = null;
+  }
+
+  installCardsRedrawBridge();
 
   // Подсказка для строк колоды
   const tooltip = document.createElement('div');
@@ -174,9 +247,51 @@ export function open(deck = null, onDone) {
     activation: new Set([0,1,2,3,4,5,6,7]),
   };
 
+  const stripUrlCache = new Map();
+  function loadStripIllustration(imgEl, card, onFail) {
+    if (!imgEl || !card) { if (onFail) onFail(); return; }
+    const key = card.id || card.name;
+    if (!key) { if (onFail) onFail(); return; }
+    if (stripUrlCache.has(key)) {
+      const cached = stripUrlCache.get(key);
+      if (cached) { imgEl.src = cached; }
+      else if (onFail) onFail();
+      return;
+    }
+    const baseName = (card.name || '').toLowerCase().replace(/[^a-z0-9\s_-]/g, '').replace(/\s+/g, '_');
+    const variants = [
+      `card images/${card.id}.png`,
+      `card images/${(card.id || '').toLowerCase()}.png`,
+      `card images/${baseName}.png`,
+      `card images/${baseName.replace(/_/g, '-')}.png`
+    ].map(src => encodeURI(src));
+    let index = 0;
+    const tryNext = () => {
+      if (index >= variants.length) {
+        stripUrlCache.set(key, null);
+        if (onFail) onFail();
+        return;
+      }
+      const url = variants[index++];
+      const handleLoad = () => {
+        stripUrlCache.set(key, url);
+      };
+      const handleError = () => {
+        imgEl.removeEventListener('load', handleLoad);
+        imgEl.removeEventListener('error', handleError);
+        tryNext();
+      };
+      imgEl.addEventListener('load', handleLoad, { once: true });
+      imgEl.addEventListener('error', handleError, { once: true });
+      imgEl.src = url;
+    };
+    tryNext();
+  }
+
   function openFilters() {
     const fo = document.createElement('div');
-    fo.className = 'fixed inset-0 z-60';
+    // Поверх всех элементов
+    fo.className = 'fixed inset-0 z-[100]';
     const rect = filtersBtn.getBoundingClientRect();
     const box = document.createElement('div');
     box.className = 'overlay-panel bg-slate-800 p-4 rounded-lg w-72 space-y-4 absolute';
@@ -303,14 +418,27 @@ export function open(deck = null, onDone) {
       .sort((a,b) => (a.card.cost || 0) - (b.card.cost || 0))
       .forEach(({ card, count }) => {
         const row = document.createElement('div');
-        row.className = 'relative h-12 rounded overflow-hidden cursor-pointer';
-        row.style.backgroundImage = `url(card images/${card.id}.png)`;
-        row.style.backgroundSize = 'cover';
-        row.style.backgroundPosition = 'center';
+        row.className = 'relative rounded overflow-hidden cursor-pointer bg-slate-800/60';
+        row.style.height = STRIP_HEIGHT + 'px';
+
+        const art = document.createElement('img');
+        art.className = 'absolute inset-0 w-full h-full object-cover pointer-events-none select-none opacity-90';
+        art.alt = '';
+        art.draggable = false;
+        art.loading = 'lazy';
+        const stripOffset = (typeof card.stripOffset === 'number')
+          ? card.stripOffset
+          : (STRIP_OVERRIDES[card.id] ?? STRIP_OFFSET);
+        art.style.objectPosition = `center ${stripOffset}%`;
+        loadStripIllustration(art, card, () => {
+          row.classList.add('bg-slate-900/70');
+          try { row.removeChild(art); } catch {}
+        });
+        row.appendChild(art);
 
         // Градиент для затемнения слева (при желании направление можно изменить)
         const fade = document.createElement('div');
-        fade.className = 'absolute inset-0 bg-gradient-to-r from-slate-900/80 to-transparent';
+        fade.className = 'absolute inset-0 bg-gradient-to-r from-slate-900/80 via-slate-900/25 to-transparent';
         row.appendChild(fade);
 
         const content = document.createElement('div');
@@ -403,18 +531,19 @@ export function open(deck = null, onDone) {
     });
     cards.forEach(card => {
       const item = document.createElement('div');
-      item.className = 'overlay-panel p-2 text-center cursor-pointer hover:bg-slate-700';
-      const img = document.createElement('img');
-      img.src = `card images/${card.id}.png`;
-      img.className = 'w-full h-32 object-cover mb-1';
-      item.appendChild(img);
-      const nm = document.createElement('div');
-      nm.className = 'text-xs';
-      nm.textContent = card.name;
-      item.appendChild(nm);
+      item.className = 'catalog-card cursor-pointer';
+      item.draggable = true;
+      item.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', card.id));
       item.addEventListener('click', () => addCard(card));
+      const canvas = document.createElement('canvas');
+      canvas.width = PREVIEW_W; canvas.height = PREVIEW_H;
+      canvas.__cardData = card;
+      drawCardFace(canvas.getContext('2d'), card, PREVIEW_W, PREVIEW_H);
+      canvas.className = 'w-full h-auto';
+      item.appendChild(canvas);
       catalog.appendChild(item);
     });
+    scheduleCatalogRedraw();
   }
 
   searchInput.addEventListener('input', renderCatalog);
@@ -430,6 +559,7 @@ export function open(deck = null, onDone) {
   function cleanup() {
     document.body.removeChild(overlay);
     hiddenEls.forEach(({el, display}) => { el.style.display = display; });
+    restoreCardsRedrawBridge();
   }
 
   nameInput.value = working.name;
