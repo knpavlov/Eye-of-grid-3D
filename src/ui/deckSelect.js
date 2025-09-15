@@ -1,5 +1,6 @@
 // Меню выбора колоды
-import { DECKS } from '../core/decks.js';
+// Окно выбора колоды. Используется как перед началом игры, так и в редакторе колод
+import { DECKS, loadDecks } from '../core/decks.js';
 
 function pickDeckImage(deck) {
   // выбираем самую дорогую по мане карту; при равенстве — случайная
@@ -10,8 +11,13 @@ function pickDeckImage(deck) {
   return `card images/${card.id}.png`;
 }
 
-export function open(onConfirm, onCancel) {
+export function open(opts = {}) {
   if (typeof document === 'undefined') return;
+  // поддерживаем старый формат open(onConfirm, onCancel)
+  if (typeof opts === 'function') opts = { onConfirm: opts };
+  const { onConfirm, onCancel, onEdit, onDelete, onCreate } = opts;
+
+  loadDecks();
   let selected = 0;
   const overlay = document.createElement('div');
   overlay.id = 'deck-select-overlay';
@@ -71,8 +77,38 @@ export function open(onConfirm, onCancel) {
   });
 
   const btnWrap = document.createElement('div');
-  btnWrap.className = 'flex justify-end gap-2 mt-4';
+  btnWrap.className = 'flex justify-end gap-2 mt-4 flex-wrap';
   panel.appendChild(btnWrap);
+
+  if (onCreate) {
+    const createBtn = document.createElement('button');
+    createBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700 glossy-btn transition-colors mr-auto';
+    createBtn.textContent = 'Create New Deck';
+    createBtn.addEventListener('click', () => { document.body.removeChild(overlay); onCreate(); });
+    btnWrap.appendChild(createBtn);
+  }
+
+  if (onDelete) {
+    const delBtn = document.createElement('button');
+    delBtn.className = 'overlay-panel px-3 py-1.5 bg-red-600 hover:bg-red-700 glossy-btn transition-colors';
+    delBtn.textContent = 'Delete';
+    delBtn.addEventListener('click', () => {
+      onDelete(DECKS[selected]);
+      try { document.body.removeChild(overlay); } catch {}
+    });
+    btnWrap.appendChild(delBtn);
+  }
+
+  if (onEdit) {
+    const editBtn = document.createElement('button');
+    editBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700 glossy-btn transition-colors';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => {
+      try { document.body.removeChild(overlay); } catch {}
+      onEdit(DECKS[selected]);
+    });
+    btnWrap.appendChild(editBtn);
+  }
 
   const cancelBtn = document.createElement('button');
   cancelBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700 glossy-btn transition-colors';

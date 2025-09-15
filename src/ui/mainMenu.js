@@ -52,7 +52,7 @@ export function open(initial = false) {
     // если передумали — возвращаемся в стартовое меню
     const back = () => open(true);
     if (ds && typeof ds.open === 'function') {
-      ds.open(startOnline, back);
+      ds.open({ onConfirm: startOnline, onCancel: back });
     } else {
       firstOpen = false;
       window.__net?.findMatch?.(window.__selectedDeckObj?.id);
@@ -80,14 +80,28 @@ export function open(initial = false) {
     };
     const back = () => open(true);
     if (ds && typeof ds.open === 'function') {
-      ds.open(startOffline, back);
+      ds.open({ onConfirm: startOffline, onCancel: back });
     } else {
       firstOpen = false;
       startOffline(window.__selectedDeckObj || (window.DECKS && window.DECKS[0]));
     }
   });
 
-  addBtn('mm-deck', 'Deck Builder', () => {}, true);
+  addBtn('mm-deck', 'Deck Builder', () => {
+    close();
+    const ds = window.__ui?.deckSelect;
+    const db = window.__ui?.deckBuilder;
+    const mgr = window.deckManager;
+    function openSelector() {
+      ds.open({
+        onCancel: () => open(true),
+        onEdit: d => db.open({ deck: d, onDone: openSelector }),
+        onDelete: d => { mgr?.deleteDeck?.(d.id); openSelector(); },
+        onCreate: () => db.open({ onDone: openSelector })
+      });
+    }
+    if (ds && db) openSelector();
+  });
   addBtn('mm-settings', 'Settings', () => {}, true);
 
   if (!firstOpen) {

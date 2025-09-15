@@ -1,8 +1,9 @@
 // Структурированное описание всех доступных колод
-// Каждая колода задаётся списком ID карт, которые затем разворачиваются в объекты
+// Каждая колода задаётся списком ID карт и может редактироваться на клиенте
+// В перспективе данные будут храниться в БД, но пока используем localStorage
 import { CARDS } from './cards.js';
 
-// Список колод с перечислением карт по ID
+// Базовый набор колод по умолчанию (неизменяемый)
 const RAW_DECKS = [
   {
     id: 'FIRE_STARTER',
@@ -121,15 +122,78 @@ const RAW_DECKS = [
   },
 ];
 
-// Преобразуем ID карт в сами объекты карт
+// Преобразуем массив ID в сами объекты карт
 function expand(ids) {
-  return ids.map(id => CARDS[id]).filter(Boolean);
+  return (ids || []).map(id => CARDS[id]).filter(Boolean);
 }
 
-export const DECKS = RAW_DECKS.map(d => ({ ...d, cards: expand(d.cards) }));
+// Текущий список колод (мутабельный массив, чтобы ссылки сохранялись)
+export const DECKS = [];
 
-const api = { DECKS };
+// Загрузка пользовательских колод из localStorage
+function loadUserDecks() {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = JSON.parse(localStorage.getItem('userDecks') || '[]');
+    return raw.map(d => ({ ...d, cards: expand(d.cards) }));
+  } catch {
+    return [];
+  }
+}
+
+// Сохранение пользовательских колод в localStorage
+function saveUserDecks() {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const baseIds = new Set(RAW_DECKS.map(d => d.id));
+    const userDecks = DECKS
+      .filter(d => !baseIds.has(d.id))
+      .map(d => ({ id: d.id, name: d.name, description: d.description, cards: d.cards.map(c => c.id) }));
+    localStorage.setItem('userDecks', JSON.stringify(userDecks));
+  } catch {}
+}
+
+// Полная перезагрузка списка колод
+export function loadDecks() {
+  DECKS.length = 0;
+  RAW_DECKS.forEach(d => DECKS.push({ ...d, cards: expand(d.cards) }));
+  loadUserDecks().forEach(d => DECKS.push(d));
+}
+
+// Добавление новой колоды
+export function addDeck(deck) {
+  DECKS.push({ ...deck, cards: expand(deck.cards) });
+  saveUserDecks();
+}
+
+// Обновление существующей колоды
+export function updateDeck(id, deck) {
+  const idx = DECKS.findIndex(d => d.id === id);
+  if (idx !== -1) {
+    DECKS[idx] = { ...DECKS[idx], ...deck, cards: expand(deck.cards || DECKS[idx].cards.map(c => c.id)) };
+    saveUserDecks();
+  }
+}
+
+// Удаление колоды
+export function deleteDeck(id) {
+  const idx = DECKS.findIndex(d => d.id === id);
+  if (idx !== -1) {
+    DECKS.splice(idx, 1);
+    saveUserDecks();
+  }
+}
+
+// При первом подключении загружаем все колоды
+loadDecks();
+
+// API для использования в других модулях
+const api = { DECKS, loadDecks, addDeck, updateDeck, deleteDeck };
 try {
-  if (typeof window !== 'undefined') { window.DECKS = DECKS; }
+  if (typeof window !== 'undefined') {
+    window.DECKS = DECKS;
+    window.deckManager = api;
+  }
 } catch {}
+
 export default api;
