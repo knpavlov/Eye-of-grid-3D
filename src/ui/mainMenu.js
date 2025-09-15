@@ -87,7 +87,20 @@ export function open(initial = false) {
     }
   });
 
-  addBtn('mm-deck', 'Deck Builder', () => {}, true);
+  addBtn('mm-deck', 'Deck Builder', () => {
+    close();
+    const ds = window.__ui?.deckSelect;
+    const openMenu = () => open(true);
+    const openSelect = () => {
+      const opts = {
+        onEdit: d => window.__ui?.deckBuilder?.open(d, openSelect),
+        onCreate: () => window.__ui?.deckBuilder?.open(null, openSelect),
+        onDelete: () => openSelect(),
+      };
+      ds?.open(undefined, openMenu, opts);
+    };
+    openSelect();
+  });
   addBtn('mm-settings', 'Settings', () => {}, true);
 
   if (!firstOpen) {

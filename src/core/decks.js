@@ -2,7 +2,7 @@
 // Каждая колода задаётся списком ID карт, которые затем разворачиваются в объекты
 import { CARDS } from './cards.js';
 
-// Список колод с перечислением карт по ID
+// Список стандартных колод с перечислением карт по ID
 const RAW_DECKS = [
   {
     id: 'FIRE_STARTER',
@@ -121,15 +121,48 @@ const RAW_DECKS = [
   },
 ];
 
+// Отмечаем встроенные колоды, чтобы не сохранять их в локальное хранилище
+RAW_DECKS.forEach(d => d.builtIn = true);
+
+// Загружаем пользовательские колоды из localStorage
+let saved = [];
+try {
+  if (typeof localStorage !== 'undefined') {
+    const raw = localStorage.getItem('userDecks');
+    if (raw) saved = JSON.parse(raw);
+  }
+} catch {}
+
 // Преобразуем ID карт в сами объекты карт
 function expand(ids) {
   return ids.map(id => CARDS[id]).filter(Boolean);
 }
 
-export const DECKS = RAW_DECKS.map(d => ({ ...d, cards: expand(d.cards) }));
+const ALL_DECKS = RAW_DECKS.concat(saved.map(d => ({ ...d, builtIn: false })));
 
-const api = { DECKS };
+export const DECKS = ALL_DECKS.map(d => ({ ...d, cards: expand(d.cards) }));
+
+// Сохраняем пользовательские колоды в localStorage
+export function saveUserDecks() {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const custom = DECKS.filter(d => !d.builtIn)
+        .map(d => ({ id: d.id, name: d.name, description: d.description, cards: d.cards.map(c => c.id) }));
+      localStorage.setItem('userDecks', JSON.stringify(custom));
+    }
+  } catch {}
+}
+
+export function removeDeck(id) {
+  const idx = DECKS.findIndex(d => d.id === id && !d.builtIn);
+  if (idx >= 0) {
+    DECKS.splice(idx, 1);
+    saveUserDecks();
+  }
+}
+
+const api = { DECKS, saveUserDecks, removeDeck };
 try {
-  if (typeof window !== 'undefined') { window.DECKS = DECKS; }
+  if (typeof window !== 'undefined') { window.DECKS = DECKS; window.saveUserDecks = saveUserDecks; }
 } catch {}
 export default api;
