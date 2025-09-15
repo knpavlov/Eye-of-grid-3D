@@ -52,7 +52,7 @@ export function open(initial = false) {
     // если передумали — возвращаемся в стартовое меню
     const back = () => open(true);
     if (ds && typeof ds.open === 'function') {
-      ds.open(startOnline, back);
+      ds.open({ onConfirm: startOnline, onCancel: back });
     } else {
       firstOpen = false;
       window.__net?.findMatch?.(window.__selectedDeckObj?.id);
@@ -80,14 +80,22 @@ export function open(initial = false) {
     };
     const back = () => open(true);
     if (ds && typeof ds.open === 'function') {
-      ds.open(startOffline, back);
+      ds.open({ onConfirm: startOffline, onCancel: back });
     } else {
       firstOpen = false;
       startOffline(window.__selectedDeckObj || (window.DECKS && window.DECKS[0]));
     }
   });
 
-  addBtn('mm-deck', 'Deck Builder', () => {}, true);
+  addBtn('mm-deck', 'Deck Builder', () => {
+    close();
+    const ds = window.__ui?.deckSelect;
+    const openEditor = (deck) => {
+      const db = window.__ui?.deckBuilder;
+      db?.open(deck, () => ds.open({ onCancel: () => open(true), onEdit: openEditor, onCreate: () => openEditor(null) }));
+    };
+    ds.open({ onCancel: () => open(true), onEdit: openEditor, onCreate: () => openEditor(null) });
+  });
   addBtn('mm-settings', 'Settings', () => {}, true);
 
   if (!firstOpen) {
