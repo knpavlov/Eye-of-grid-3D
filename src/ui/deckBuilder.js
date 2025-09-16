@@ -60,14 +60,28 @@ export function open(deck = null, onDone) {
   panel.className = 'bg-slate-800 mt-2 p-4 rounded-lg w-[92vw] h-[96vh] flex flex-col relative';
   overlay.appendChild(panel);
 
-  // === Верхняя панель фильтров ===
+  // === Левая панель текущей колоды ===
+  const main = document.createElement('div');
+  main.className = 'flex flex-1 overflow-hidden';
+  panel.appendChild(main);
+
+  const left = document.createElement('div');
+  left.className = 'w-64 flex-shrink-0 flex flex-col border-r border-slate-700 pr-2';
+  main.appendChild(left);
+
+  // === Правая панель каталога и фильтров ===
+  const right = document.createElement('div');
+  right.className = 'flex-1 flex flex-col overflow-hidden pl-4';
+  main.appendChild(right);
+
+  // === Верхняя панель фильтров (внутри правой панели) ===
   const topBar = document.createElement('div');
-  topBar.className = 'flex items-center gap-4 mb-4';
-  panel.appendChild(topBar);
+  topBar.className = 'flex items-center justify-end gap-3 mb-4 pr-2 flex-shrink-0';
+  right.appendChild(topBar);
 
   // Переключатель стихий
   const elementBtn = document.createElement('button');
-  elementBtn.className = 'overlay-panel px-2 py-1';
+  elementBtn.className = 'overlay-panel px-2 py-1 flex-shrink-0';
   elementBtn.textContent = 'Elements';
   topBar.appendChild(elementBtn);
 
@@ -139,24 +153,15 @@ export function open(deck = null, onDone) {
 
   // Кнопка открытия фильтров
   const filtersBtn = document.createElement('button');
-  filtersBtn.className = 'overlay-panel px-2 py-1';
+  filtersBtn.className = 'overlay-panel px-2 py-1 flex-shrink-0';
   filtersBtn.textContent = 'Filters';
   topBar.appendChild(filtersBtn);
 
   // Поиск
   const searchInput = document.createElement('input');
   searchInput.placeholder = 'Search';
-  searchInput.className = 'overlay-panel px-2 py-1 flex-1';
+  searchInput.className = 'overlay-panel px-2 py-1 w-64 flex-shrink-0';
   topBar.appendChild(searchInput);
-
-  // === Левая панель текущей колоды ===
-  const main = document.createElement('div');
-  main.className = 'flex flex-1 overflow-hidden';
-  panel.appendChild(main);
-
-  const left = document.createElement('div');
-  left.className = 'w-64 flex-shrink-0 flex flex-col border-r border-slate-700 pr-2';
-  main.appendChild(left);
 
   const nameInput = document.createElement('input');
   nameInput.placeholder = 'Deck name';
@@ -186,9 +191,9 @@ export function open(deck = null, onDone) {
 
   // === Каталог карт ===
   const catalog = document.createElement('div');
-  // Сетка 5x2 с собственной полосой прокрутки
-  catalog.className = 'flex-1 overflow-y-auto grid grid-cols-5 grid-rows-2 gap-4 pl-4 deck-scroll catalog-grid';
-  main.appendChild(catalog);
+  // Сетка 5 столбцов с собственной полосой прокрутки
+  catalog.className = 'flex-1 overflow-y-auto grid grid-cols-5 gap-4 pr-2 deck-scroll catalog-grid';
+  right.appendChild(catalog);
 
   const scheduleCatalogRedraw = (() => {
     let pending = false;
