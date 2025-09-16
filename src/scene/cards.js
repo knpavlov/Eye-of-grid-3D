@@ -78,8 +78,8 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   const nameMaxWidth = width - px(64);
   let displayName = (cardData.name || '').trim();
   if (displayName.length > 40) displayName = displayName.slice(0, 40) + '…';
-  let nameFont = Math.max(ps(9), 9);
-  const minNameFont = Math.max(ps(7), 7);
+  let nameFont = Math.max(ps(12.6), 12);
+  const minNameFont = Math.max(ps(9.8), 9);
   while (true) {
     ctx.font = `600 ${nameFont}px "Cinzel", "Times New Roman", serif`;
     if (ctx.measureText(displayName).width <= nameMaxWidth || nameFont <= minNameFont) break;
@@ -143,6 +143,21 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     ctx.fillText('Illustration', width / 2, illY + Math.round(illH / 2));
   }
 
+  // Параметры нижней панели и области диаграмм
+  const footerHeight = Math.max(py(26), Math.round(20 * scaleY));
+  const footerTop = height - footerHeight;
+  let attacksLayout = null;
+  if (cardData.type === 'UNIT') {
+    const cell = Math.max(Math.round(ps(9)), 7);
+    const gap = Math.max(Math.round(ps(1.6)), 1);
+    const gridSize = cell * 3 + gap * 2;
+    const footerGap = Math.max(Math.round(ps(6)), 5);
+    const textGap = Math.max(Math.round(ps(6)), 5);
+    const spacingBetween = Math.max(Math.round(ps(14)), 10);
+    const top = footerTop - footerGap - gridSize;
+    attacksLayout = { cell, gap, gridSize, footerGap, textGap, spacingBetween, top };
+  }
+
   // Текстовое поле (уменьшенный шрифт и контролируемая высота)
   const text = cardData.desc || cardData.text || (cardData.keywords ? cardData.keywords.join(', ') : '');
   ctx.fillStyle = '#cbd5e1';
@@ -151,23 +166,23 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   const textX = illX;
   const textY = illY + illH + Math.max(ps(8), 6);
   const textWidth = illW;
-  const diagramTop = cardData.type === 'UNIT' ? (height - py(122)) : (height - py(78));
-  const textMaxY = diagramTop - Math.max(ps(6), 6);
+  const textMaxY = (cardData.type === 'UNIT' && attacksLayout)
+    ? Math.max(textY, attacksLayout.top - attacksLayout.textGap)
+    : Math.max(textY, footerTop - Math.max(ps(6), 6));
   wrapText(ctx, text, textX, textY, textWidth, Math.max(ps(11), 12), textMaxY);
 
   // Нижний пояс карты с ресурсами
-  const footerHeight = Math.max(py(52), Math.round(40 * scaleY));
   ctx.fillStyle = 'rgba(8, 12, 24, 0.58)';
-  ctx.fillRect(0, height - footerHeight, width, footerHeight);
+  ctx.fillRect(0, footerTop, width, footerHeight);
 
   ctx.fillStyle = '#f1f5f9';
   ctx.textAlign = 'left';
   const iconSize = Math.max(ps(16), 14);
-  const footerCenterY = height - Math.round(footerHeight * 0.58);
+  const footerMidY = footerTop + footerHeight / 2;
   const manaCenterX = px(28);
-  drawManaOrbIcon(ctx, manaCenterX, footerCenterY, iconSize);
+  drawManaOrbIcon(ctx, manaCenterX, footerMidY, iconSize);
   const costTextX = manaCenterX + iconSize / 2 + Math.max(ps(6), 6);
-  const costBaseline = footerCenterY + Math.max(ps(4), 4);
+  const costBaseline = footerMidY + Math.max(ps(4), 3);
   const costValue = String(cardData.cost ?? 0);
   ctx.font = `700 ${Math.max(ps(11), 11)}px "Noto Sans", "Helvetica", sans-serif`;
   ctx.fillText(costValue, costTextX, costBaseline);
@@ -176,7 +191,7 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   if (cardData.locked) {
     const lockSize = Math.max(ps(14), 12);
     const lockCenterX = costTextX + inlineOffset + lockSize / 2 + Math.max(ps(6), 4);
-    drawLockIcon(ctx, lockCenterX, footerCenterY, lockSize);
+    drawLockIcon(ctx, lockCenterX, footerMidY, lockSize);
     inlineOffset += lockSize + Math.max(ps(6), 4);
   }
 
@@ -184,28 +199,38 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
     const playSize = Math.max(ps(15), 13);
     const playCenterX = costTextX + inlineOffset + playSize / 2 + Math.max(ps(12), 10);
-    drawPlayIcon(ctx, playCenterX, footerCenterY, playSize);
+    drawPlayIcon(ctx, playCenterX, footerMidY, playSize);
     ctx.fillText(String(act), playCenterX + playSize / 2 + Math.max(ps(4), 4), costBaseline);
     inlineOffset += playSize + Math.max(ps(18), 14);
   }
 
-  if (cardData.type === 'UNIT') {
+  if (cardData.type === 'UNIT' && attacksLayout) {
     const hpToShow = (hpOverride != null) ? hpOverride : (cardData.hp || 0);
     const atkToShow = (atkOverride != null) ? atkOverride : (cardData.atk || 0);
-    const statRadius = Math.max(ps(11), 10);
-    const hpCenterX = width - px(28);
-    const atkCenterX = hpCenterX - statRadius * 2.6;
-    drawStatBadge(ctx, atkCenterX, footerCenterY, statRadius, '#fb923c', '#fcd34d', atkToShow);
-    drawStatBadge(ctx, hpCenterX, footerCenterY, statRadius, '#f87171', '#fca5a5', hpToShow);
+    const statIconSize = Math.max(ps(15), 13);
+    const statGap = Math.max(ps(6), 5);
+    const groupGap = Math.max(ps(18), 14);
+    const hpText = String(hpToShow);
+    const atkText = String(atkToShow);
+    const hpWidth = ctx.measureText(hpText).width;
+    const atkWidth = ctx.measureText(atkText).width;
+    let statCursor = width - px(24);
+    const hpGroup = statIconSize + statGap + hpWidth;
+    statCursor -= hpGroup;
+    drawHeartIcon(ctx, statCursor + statIconSize / 2, footerMidY, statIconSize);
+    ctx.fillText(hpText, statCursor + statIconSize + statGap, costBaseline);
 
-    const cell = Math.max(Math.round(ps(8)), 6);
-    const gap = Math.max(Math.round(ps(1.5)), 1);
-    const gridW = cell * 3 + gap * 2;
-    const spacing = Math.max(Math.round(ps(14)), 10);
-    const startX = (width - (gridW * 2 + spacing)) / 2;
-    const gridY = diagramTop;
-    drawAttacksGrid(ctx, cardData, startX, gridY, cell, gap);
-    drawBlindspotGrid(ctx, cardData, startX + gridW + spacing, gridY, cell, gap);
+    statCursor -= groupGap;
+    const atkGroup = statIconSize + statGap + atkWidth;
+    statCursor -= atkGroup;
+    drawSwordIcon(ctx, statCursor + statIconSize / 2, footerMidY, statIconSize);
+    ctx.fillText(atkText, statCursor + statIconSize + statGap, costBaseline);
+
+    const gridW = attacksLayout.gridSize;
+    const startX = (width - (gridW * 2 + attacksLayout.spacingBetween)) / 2;
+    const gridY = attacksLayout.top;
+    drawAttacksGrid(ctx, cardData, startX, gridY, attacksLayout.cell, attacksLayout.gap);
+    drawBlindspotGrid(ctx, cardData, startX + gridW + attacksLayout.spacingBetween, gridY, attacksLayout.cell, attacksLayout.gap);
   }
 }
 
@@ -399,21 +424,69 @@ function drawBlindspotGrid(ctx, cardData, x, y, cell, gap) {
   }
 }
 
-// Компактный маркер для атаки/здоровья, напоминающий оригинальные жетоны
-function drawStatBadge(ctx, x, y, radius, fillColor, strokeColor, value) {
+// Плоский значок сердца для отображения HP
+function drawHeartIcon(ctx, x, y, size) {
   ctx.save();
-  ctx.fillStyle = fillColor;
-  ctx.strokeStyle = strokeColor;
-  ctx.lineWidth = Math.max(1, radius * 0.22);
+  ctx.translate(x, y - size * 0.1);
+  const radius = size * 0.32;
+  const topY = -radius * 0.9;
+  const bottomY = size * 0.25;
   ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.moveTo(0, bottomY);
+  ctx.arc(-radius, topY, radius, Math.PI, 0, false);
+  ctx.arc(radius, topY, radius, Math.PI, 0, false);
+  ctx.lineTo(0, bottomY + size * 0.45);
+  ctx.closePath();
+  ctx.fillStyle = '#f87171';
+  ctx.strokeStyle = '#fca5a5';
+  ctx.lineWidth = Math.max(1, size * 0.12);
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = '#0f172a';
-  ctx.font = `700 ${Math.max(10, Math.round(radius * 1.2))}px "Noto Sans", "Helvetica", sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(String(value), x, y + radius * 0.08);
+  ctx.restore();
+}
+
+// Миниатюрный меч для отображения атаки
+function drawSwordIcon(ctx, x, y, size) {
+  ctx.save();
+  const bladeHeight = size * 0.76;
+  const guardHeight = size * 0.14;
+  const gripHeight = size * 0.24;
+  const pommelRadius = size * 0.14;
+  const totalHeight = bladeHeight + guardHeight + gripHeight + pommelRadius * 2;
+  ctx.translate(x, y - totalHeight / 2);
+
+  const bladeWidth = size * 0.28;
+  ctx.fillStyle = '#fde68a';
+  ctx.strokeStyle = '#facc15';
+  ctx.lineWidth = Math.max(1, size * 0.08);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(bladeWidth / 2, bladeHeight * 0.78);
+  ctx.lineTo(bladeWidth / 2, bladeHeight);
+  ctx.lineTo(-bladeWidth / 2, bladeHeight);
+  ctx.lineTo(-bladeWidth / 2, bladeHeight * 0.78);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  const guardWidth = size * 0.62;
+  ctx.fillStyle = '#fb923c';
+  ctx.strokeStyle = '#fdba74';
+  ctx.fillRect(-guardWidth / 2, bladeHeight, guardWidth, guardHeight);
+  ctx.strokeRect(-guardWidth / 2, bladeHeight, guardWidth, guardHeight);
+
+  const gripWidth = size * 0.2;
+  ctx.fillStyle = '#ea580c';
+  ctx.fillRect(-gripWidth / 2, bladeHeight + guardHeight, gripWidth, gripHeight);
+  ctx.strokeRect(-gripWidth / 2, bladeHeight + guardHeight, gripWidth, gripHeight);
+
+  const pommelY = bladeHeight + guardHeight + gripHeight + pommelRadius;
+  ctx.fillStyle = '#fb923c';
+  ctx.beginPath();
+  ctx.arc(0, pommelY, pommelRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
   ctx.restore();
 }
 

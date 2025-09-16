@@ -162,6 +162,7 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
 #deck-builder-overlay .catalog-grid {
   align-content: start;
   justify-items: center;
+  grid-auto-rows: max-content;
   padding-bottom: 1rem;
 }
 
