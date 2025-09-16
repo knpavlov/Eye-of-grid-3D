@@ -1,11 +1,17 @@
+import { getServerBase } from './config.js';
+
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
      countdowns, and input locking. */
 (() => {
   // ===== 0) Config =====
-  const SERVER_URL = (location.hostname === "localhost")
-    ? "http://localhost:3001"
-    : "https://eog-mp-server-production.up.railway.app"; // ← домен сервера
+  const SERVER_URL = getServerBase();
+  try {
+    if (typeof window !== 'undefined') {
+      const cfg = window.__netConfig = window.__netConfig || {};
+      cfg.socketUrl = SERVER_URL;
+    }
+  } catch {}
 
   // ===== 1) Styles =====
   const css = `
