@@ -2,6 +2,8 @@
 import { getCtx } from './context.js';
 import { createCard3D } from './cards.js';
 import { renderFieldLocks } from './fieldlocks.js';
+import { isUnitPossessed } from '../core/abilities.js';
+import { attachPossessionOverlay } from './possessionOverlay.js';
 
 function getTHREE() {
   const ctx = getCtx();
@@ -55,6 +57,10 @@ export function updateUnits(gameState) {
       const glowMaterial = new THREE.MeshStandardMaterial({ color: ownerColor, emissive: ownerColor, emissiveIntensity: 0.2, transparent: true, opacity: 0.3 });
       const glowGeometry = new THREE.BoxGeometry(1.8, 0.02, 2.4);
       const glow = new THREE.Mesh(glowGeometry, glowMaterial); glow.position.set(0, -0.05, 0); unitMesh.add(glow);
+
+      if (isUnitPossessed(unit)) {
+        try { attachPossessionOverlay(unitMesh); } catch {}
+      }
 
       unitMesh.userData = { type: 'unit', row: r, col: c, unitData: unit, cardData };
       try { cardGroup.add(unitMesh); } catch {}

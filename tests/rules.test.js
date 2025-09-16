@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack, stagedAttack } from '../src/core/rules.js';
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
-import { hasFirstStrike } from '../src/core/abilities.js';
+import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -218,6 +218,66 @@ describe('magicAttack', () => {
     expect(hitCoords).toContain('0,0');
     expect(hitCoords).toContain('0,1');
     delete CARDS.TEST_MAGIC_SPLASH;
+  });
+});
+
+describe('новые способности (Хильда и Диос)', () => {
+  it('Warden Hilda захватывает врагов на огненных полях при призыве вне Огня', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'WATER';
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_WARDEN_HILDA', facing: 'N', currentHP: 4 };
+    state.board[0][0].element = 'FIRE';
+    state.board[0][0].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'S', currentHP: 1 };
+    const events = applySummonAbilities(state, 1, 1);
+    expect(events.possessions.length).toBe(1);
+    const possessed = state.board[0][0].unit;
+    expect(possessed.owner).toBe(0);
+    expect(possessed.possessed.originalOwner).toBe(1);
+  });
+
+  it('Warden Hilda получает +1 к атаке против существ стихии Огонь', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'WATER';
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_WARDEN_HILDA', facing: 'N', currentHP: 4 };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'S', currentHP: 2 };
+    const res = stagedAttack(state, 1, 1);
+    const fin = res.finish();
+    const target = fin.targets.find(t => t.r === 0 && t.c === 1);
+    expect(target.dmg).toBeGreaterThanOrEqual(3);
+  });
+
+  it('захваченные существа возвращаются владельцу при гибели источника', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'WATER';
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_WARDEN_HILDA', facing: 'N', currentHP: 1 };
+    state.board[0][0].element = 'FIRE';
+    state.board[0][0].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'S', currentHP: 2 };
+    applySummonAbilities(state, 1, 1);
+    expect(state.board[0][0].unit.owner).toBe(0);
+    state.board[2][1].unit = { owner: 1, tplId: 'FIRE_TRICEPTAUR_BEHEMOTH', facing: 'N', currentHP: 5 };
+    const battle = stagedAttack(state, 2, 1);
+    const fin = battle.finish();
+    expect(fin.n1.board[0][0].unit.owner).toBe(1);
+    expect(fin.releases && fin.releases.length).toBeGreaterThan(0);
+  });
+
+  it('Crucible King Dios IV на огненном поле вынужден использовать магическую атаку', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'FIRE';
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_CRUCIBLE_KING_DIOS_IV', facing: 'N', currentHP: 6 };
+    const tpl = CARDS['FIRE_CRUCIBLE_KING_DIOS_IV'];
+    expect(shouldUseMagicAttack(state, 1, 1, tpl)).toBe(true);
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 4 };
+    state.board[0][0].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'S', currentHP: 2 };
+    state.board[0][2].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'S', currentHP: 2 };
+    const fireFields = state.board.flat().filter(cell => cell.element === 'FIRE').length;
+    const res = magicAttack(state, 1, 1, 0, 1);
+    expect(res).toBeTruthy();
+    const mainHit = res.targets.find(t => t.r === 0 && t.c === 1);
+    expect(mainHit.dmg).toBe(fireFields);
+    const sideHit = res.targets.find(t => t.r === 0 && t.c === 0);
+    expect(sideHit).toBeTruthy();
+    expect(sideHit.dmg).toBe(fireFields);
   });
 });
 

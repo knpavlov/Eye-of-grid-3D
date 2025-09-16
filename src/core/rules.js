@@ -1,7 +1,15 @@
 // Pure game rules helpers (no DOM/THREE/GSAP/socket)
 import { DIR_VECTORS, inBounds, attackCost, OPPOSITE_ELEMENT, capMana } from './constants.js';
 import { CARDS } from './cards.js';
-import { hasFirstStrike, hasDoubleAttack, canAttack } from './abilities.js';
+import {
+  hasFirstStrike,
+  hasDoubleAttack,
+  canAttack,
+  getTargetElementBonus,
+  computeMagicAreaCells,
+  computeDynamicMagicAttack,
+  releasePossessionsAfterDeaths,
+} from './abilities.js';
 import { countUnits } from './board.js';
 
 export function hasAdjacentGuard(state, r, c) {
@@ -175,6 +183,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     atk += cnt;
     logLines.push(`${tplA.name}: атака увеличена на ${cnt}`);
   }
+  const targetBonus = getTargetElementBonus(tplA, base, hitsRaw);
   const plusCfg = tplA.plusAtkIfTargetOnElement || (tplA.plus1IfTargetOnElement ? { element: tplA.plus1IfTargetOnElement, amount: 1 } : null);
   if (plusCfg) {
     const { element: el, amount } = plusCfg;
@@ -183,6 +192,10 @@ export function stagedAttack(state, r, c, opts = {}) {
       atk += amount;
       logLines.push(`${tplA.name}: +${amount} ATK по целям на поле ${el}`);
     }
+  }
+  if (targetBonus) {
+    atk += targetBonus.amount;
+    logLines.push(`${tplA.name}: +${targetBonus.amount} ATK против существ стихии ${targetBonus.element}`);
   }
   if (tplA.randomPlus2 && Math.random() < 0.5) {
     atk += 2;
@@ -326,7 +339,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
       const u = nFinal.board?.[rr]?.[cc]?.unit;
       if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId });
+        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null });
         nFinal.board[rr][cc].unit = null;
       }
     }
@@ -359,6 +372,16 @@ export function stagedAttack(state, r, c, opts = {}) {
       }
     }
 
+    const releaseEvents = releasePossessionsAfterDeaths(nFinal, deaths);
+    if (releaseEvents.releases.length) {
+      for (const rel of releaseEvents.releases) {
+        const unit = nFinal.board?.[rel.r]?.[rel.c]?.unit;
+        const tplRel = unit ? CARDS[unit.tplId] : null;
+        const name = tplRel?.name || 'Существо';
+        logLines.push(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
+      }
+    }
+
     if (A) {
       A.lastAttackTurn = nFinal.turn;
       const cellEl = nFinal.board?.[r]?.[c]?.element;
@@ -366,7 +389,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     }
 
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
-    return { n1: nFinal, logLines, targets, deaths, retaliators: ret.retaliators };
+    return { n1: nFinal, logLines, targets, deaths, retaliators: ret.retaliators, releases: releaseEvents.releases };
   }
 
   return {
@@ -395,31 +418,56 @@ export function magicAttack(state, fr, fc, tr, tc) {
   const mainTarget = n1.board?.[tr]?.[tc]?.unit;
   if (!allowFriendly && (!mainTarget || mainTarget.owner === attacker.owner)) return null;
 
+  const logLines = [];
+  const targets = [];
   const atkStats = effectiveStats(n1.board[fr][fc], attacker);
   let atk = atkStats.atk || 0;
+  const dynMagic = computeDynamicMagicAttack(n1, tplA);
+  if (dynMagic) {
+    atk = dynMagic.amount;
+    logLines.push(`${tplA.name}: сила магии = ${dynMagic.amount} (число огненных полей).`);
+  }
+
   const plusCfg2 = tplA.plusAtkIfTargetOnElement || (tplA.plus1IfTargetOnElement ? { element: tplA.plus1IfTargetOnElement, amount: 1 } : null);
   if (plusCfg2) {
     const { element: el, amount } = plusCfg2;
     const cellEl = n1.board?.[tr]?.[tc]?.element;
     if (cellEl === el) atk += amount;
   }
-  const dmg = Math.max(0, atk + (tplA.randomPlus2 && Math.random() < 0.5 ? 2 : 0));
 
-  const cells = [{ r: tr, c: tc }];
+  const seenCells = new Set();
+  const cells = [];
+  const addCell = (rr, cc) => {
+    if (!inBounds(rr, cc)) return;
+    const key = `${rr},${cc}`;
+    if (seenCells.has(key)) return;
+    seenCells.add(key);
+    cells.push({ r: rr, c: cc });
+  };
+
+  const baseArea = computeMagicAreaCells(tplA, tr, tc) || [];
+  for (const cell of baseArea) { addCell(cell.r, cell.c); }
+
   const splash = tplA.splash || 0;
   if (splash > 0) {
     const dirs = [ [-1,0], [1,0], [0,-1], [0,1] ];
     for (const [dr, dc] of dirs) {
       for (let dist = 1; dist <= splash; dist++) {
-        const rr = tr + dr * dist;
-        const cc = tc + dc * dist;
-        if (inBounds(rr, cc)) cells.push({ r: rr, c: cc });
+        addCell(tr + dr * dist, tc + dc * dist);
       }
     }
   }
 
-  const targets = [];
-  const logLines = [];
+  const elementBonus = getTargetElementBonus(tplA, n1, cells);
+  if (elementBonus) {
+    atk += elementBonus.amount;
+    logLines.push(`${tplA.name}: +${elementBonus.amount} ATK против существ стихии ${elementBonus.element}`);
+  }
+
+  const randomBonus = (tplA.randomPlus2 && Math.random() < 0.5) ? 2 : 0;
+  if (randomBonus) atk += randomBonus;
+  const dmg = Math.max(0, atk);
+
   for (const cell of cells) {
     const u = n1.board?.[cell.r]?.[cell.c]?.unit;
     if (!u) continue;
@@ -447,7 +495,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
   for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
     const u = n1.board[rr][cc].unit;
     if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId });
+      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null });
       n1.board[rr][cc].unit = null;
     }
   }
@@ -458,8 +506,17 @@ export function magicAttack(state, fr, fc, tr, tc) {
       }
     }
   } catch {}
+  const releaseEvents = releasePossessionsAfterDeaths(n1, deaths);
+  if (releaseEvents.releases.length) {
+    for (const rel of releaseEvents.releases) {
+      const unit = n1.board?.[rel.r]?.[rel.c]?.unit;
+      const tplRel = unit ? CARDS[unit.tplId] : null;
+      const name = tplRel?.name || 'Существо';
+      logLines.push(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
+    }
+  }
   attacker.lastAttackTurn = n1.turn;
   const cellEl = n1.board?.[fr]?.[fc]?.element;
   attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA, cellEl);
-  return { n1, logLines, targets, deaths };
+  return { n1, logLines, targets, deaths, releases: releaseEvents.releases };
 }

@@ -2,7 +2,7 @@
 // These functions rely on existing globals to minimize coupling.
 import { highlightTiles, clearHighlights } from '../scene/highlight.js';
 import { enforceHandLimit } from './handLimit.js';
-import { canAttack } from '../core/abilities.js';
+import { canAttack, shouldUseMagicAttack } from '../core/abilities.js';
 
 export function rotateUnit(unitMesh, dir) {
   try {
@@ -58,7 +58,8 @@ export function performUnitAttack(unitMesh) {
     }
     const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
     const iState = window.__interactions?.interactionState;
-    if (tpl?.attackType === 'MAGIC') {
+    const mustUseMagic = shouldUseMagicAttack(gameState, r, c, tpl);
+    if (tpl?.attackType === 'MAGIC' || mustUseMagic) {
       const allowFriendly = !!tpl.friendlyFire;
       const cells = [];
       let hasEnemy = false;
