@@ -2,9 +2,13 @@
 import http from "http";
 import cors from "cors";
 import { Server } from "socket.io";
+import decksRouter from "./routes/decks.js";
+import { ensureStorage, isMemoryStore } from "./server/decksStore.js";
 
 const app = express();
 app.use(cors());
+app.use(express.json({ limit: "1mb" }));
+app.use("/decks", decksRouter);
 app.get("/", (req, res) => res.send("MP server alive"));
 // ===== Debug log (in-memory) =====
 let LOG = [];
@@ -26,6 +30,14 @@ app.get('/queue-status', (req, res) => {
 });
 
 const server = http.createServer(app);
+ensureStorage()
+  .then(() => {
+    const mode = isMemoryStore() ? 'memory' : 'database';
+    console.log(`[DB] Deck storage ready (${mode} mode)`);
+  })
+  .catch((err) => {
+    console.error('[DB] Не удалось инициализировать хранилище колод', err);
+  });
 const io = new Server(server, {
   cors: { 
     origin: "*", 

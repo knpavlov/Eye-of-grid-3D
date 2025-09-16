@@ -2,7 +2,8 @@
 // Логика отделена от визуализации, чтобы упростить перенос на Unity
 
 import { CARDS } from '../core/cards.js';
-import { addDeck, updateDeck, saveDecks } from '../core/decks.js';
+import { addDeck, updateDeck, saveDecks, upsertDeckFromRemote } from '../core/decks.js';
+import { saveDeckRemote } from '../net/decks.js';
 import { show as showNotification } from './notifications.js';
 // Используем генератор карт из игрового рендера, чтобы показать карты целиком
 import { drawCardFace, preloadCardTextures } from '../scene/cards.js';
@@ -553,12 +554,43 @@ export function open(deck = null, onDone) {
 
   searchInput.addEventListener('input', renderCatalog);
 
-  doneBtn.addEventListener('click', () => {
+  doneBtn.addEventListener('click', async () => {
+    if (doneBtn.disabled) return;
     working.name = nameInput.value.trim() || 'Untitled';
-    if (deck) updateDeck(deck.id, working); else addDeck(working);
-    saveDecks();
-    cleanup();
-    onDone && onDone();
+
+    const restoreBtn = () => {
+      doneBtn.disabled = false;
+      doneBtn.textContent = 'Done';
+    };
+
+    doneBtn.disabled = true;
+    doneBtn.textContent = 'Saving...';
+
+    try {
+      await saveDeckRemote(working);
+      cleanup();
+      onDone && onDone();
+    } catch (err) {
+      if (Array.isArray(err?.validationErrors) && err.validationErrors.length) {
+        alert(`Колода не прошла проверку:\n${err.validationErrors.join('\n')}`);
+        restoreBtn();
+        return;
+      }
+
+      if (err?.status === 409 && err?.payload?.deck) {
+        upsertDeckFromRemote(err.payload.deck, { persist: true });
+        alert('Колода была изменена кем-то ещё. Список обновлён, попробуйте сохранить снова.');
+        restoreBtn();
+        return;
+      }
+
+      console.warn('[DeckBuilder] Сервер недоступен, сохраняем локально', err);
+      if (deck) updateDeck(deck.id, working); else addDeck(working);
+      saveDecks();
+      alert('Сервер недоступен – колода сохранена локально.');
+      cleanup();
+      onDone && onDone();
+    }
   });
 
   function cleanup() {

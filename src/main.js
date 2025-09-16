@@ -2,6 +2,7 @@
 import * as Constants from './core/constants.js';
 import { CARDS } from './core/cards.js';
 import { DECKS } from './core/decks.js';
+import * as DecksApi from './net/decks.js';
 // Стартовая колода по умолчанию — первая из списка
 const STARTER_FIRESET = DECKS[0]?.cards || [];
 import * as Rules from './core/rules.js';
@@ -198,11 +199,17 @@ try {
   window.forceTurnSplashWithRetry = Banner.forceTurnSplashWithRetry;
   window.requestTurnSplash = Banner.requestTurnSplash;
   window.showBattleSplash = BattleSplash.showBattleSplash;
+  window.__net = window.__net || {};
+  window.__net.decks = DecksApi;
   window.attachUIEvents = attachUIEvents;
   window.__ui.cancelButton.setupCancelButton();
   window.playDeltaAnimations = playDeltaAnimations;
   window.createMetaObjects = createMetaObjects;
 } catch {}
+
+if (typeof window !== 'undefined') {
+  DecksApi.syncDecksWithServer();
+}
 
 import * as UISync from './ui/sync.js';
 try { UISync.attachSocketUIRefresh(); if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.sync = UISync; } } catch {}
