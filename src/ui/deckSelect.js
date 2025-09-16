@@ -1,7 +1,11 @@
 // Меню выбора колоды
-import { DECKS, removeDeck, saveDecks } from '../core/decks.js';
+import { getDecks, subscribeToDecks } from '../core/decks.js';
+import { refreshDecks } from '../lib/deckController.js';
 
 function pickDeckImage(deck) {
+  if (!deck || !Array.isArray(deck.cards) || deck.cards.length === 0) {
+    return 'textures/card_deck_side_view.jpeg';
+  }
   // выбираем самую дорогую по мане карту; при равенстве — случайная
   const costs = deck.cards.map(c => c.cost || 0);
   const max = Math.max(...costs);
@@ -13,13 +17,16 @@ function pickDeckImage(deck) {
 export function open(opts = {}) {
   if (typeof document === 'undefined') return;
   const { onConfirm, onCancel, onEdit, onCreate } = opts;
-  let selected = 0;
+  const state = {
+    decks: getDecks(),
+    selected: 0,
+  };
+
   const overlay = document.createElement('div');
   overlay.id = 'deck-select-overlay';
   overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60';
 
   const panel = document.createElement('div');
-  // делаем панель шире примерно на 30%
   panel.className = 'bg-slate-800 p-4 rounded-lg w-[26rem] max-h-[90vh] flex flex-col shadow-2xl';
   overlay.appendChild(panel);
 
@@ -29,47 +36,8 @@ export function open(opts = {}) {
   panel.appendChild(title);
 
   const list = document.createElement('div');
-  // ограничиваем высоту списка и добавляем отступы, чтобы карточки не вылезали за край
   list.className = 'flex-1 overflow-y-auto space-y-3 px-2 max-h-64 deck-scroll';
   panel.appendChild(list);
-
-  DECKS.forEach((d, idx) => {
-    const item = document.createElement('div');
-    // Небольшой горизонтальный отступ оставляет место для эффекта увеличения
-    item.className = 'relative flex h-24 cursor-pointer rounded-md overflow-hidden border-2 border-slate-700 transition transform hover:bg-slate-700/30 hover:scale-[1.02] mx-1';
-    if (idx === selected) item.classList.add('border-yellow-400');
-
-    const imgWrap = document.createElement('div');
-    imgWrap.className = 'relative w-40 h-full flex-shrink-0 overflow-hidden';
-    const img = document.createElement('img');
-    img.src = pickDeckImage(d);
-    img.className = 'w-full h-full object-cover';
-    imgWrap.appendChild(img);
-    const fade = document.createElement('div');
-    fade.className = 'absolute inset-0 bg-gradient-to-r from-transparent to-slate-800';
-    imgWrap.appendChild(fade);
-    item.appendChild(imgWrap);
-
-    const text = document.createElement('div');
-    text.className = 'pl-4 pr-2 flex flex-col justify-center';
-    const nm = document.createElement('div');
-    nm.className = 'font-semibold';
-    nm.textContent = d.name;
-    const ds = document.createElement('div');
-    ds.className = 'text-sm text-slate-300';
-    ds.textContent = d.description;
-    text.appendChild(nm); text.appendChild(ds);
-    item.appendChild(text);
-
-    item.addEventListener('click', () => {
-      selected = idx;
-      [...list.children].forEach((el, i) => {
-        el.classList.toggle('border-yellow-400', i === selected);
-        el.classList.toggle('border-slate-700', i !== selected);
-      });
-    });
-    list.appendChild(item);
-  });
 
   const btnWrap = document.createElement('div');
   btnWrap.className = 'flex justify-between gap-2 mt-4';
@@ -78,36 +46,103 @@ export function open(opts = {}) {
   const leftBtns = document.createElement('div');
   leftBtns.className = 'flex gap-2';
   btnWrap.appendChild(leftBtns);
+
   const rightBtns = document.createElement('div');
   rightBtns.className = 'flex gap-2';
   btnWrap.appendChild(rightBtns);
 
-  if (onEdit) {
-    const editBtn = document.createElement('button');
-    editBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700 glossy-btn transition-colors';
-    editBtn.textContent = 'Edit';
-    editBtn.addEventListener('click', () => {
-      try { document.body.removeChild(overlay); } catch {}
-      onEdit && onEdit(DECKS[selected]);
-    });
-    leftBtns.appendChild(editBtn);
+  let unsubscribe = null;
+  let confirmBtn = null;
+  let editBtn = null;
 
-    const delBtn = document.createElement('button');
-    delBtn.className = 'overlay-panel px-3 py-1.5 bg-red-600 hover:bg-red-700 glossy-btn transition-colors';
-    delBtn.textContent = 'Delete';
-    delBtn.addEventListener('click', () => {
-      removeDeck(DECKS[selected].id);
-      saveDecks();
-      document.body.removeChild(overlay);
-      open(opts); // перерисовываем список
+  const cleanup = (action) => {
+    if (unsubscribe) unsubscribe();
+    unsubscribe = null;
+    try { document.body.removeChild(overlay); } catch {}
+    if (action === 'cancel') {
+      onCancel && onCancel();
+    }
+  };
+
+  function updateButtons() {
+    const hasDecks = state.decks.length > 0;
+    if (confirmBtn) confirmBtn.disabled = !hasDecks;
+    if (editBtn) editBtn.disabled = !hasDecks;
+  }
+
+  function renderList() {
+    list.innerHTML = '';
+    if (!state.decks.length) {
+      const empty = document.createElement('div');
+      empty.className = 'text-center text-sm text-slate-300 py-6';
+      empty.textContent = 'Колоды пока не найдены.';
+      list.appendChild(empty);
+      state.selected = 0;
+      updateButtons();
+      return;
+    }
+
+    if (state.selected >= state.decks.length) {
+      state.selected = Math.max(0, state.decks.length - 1);
+    }
+
+    state.decks.forEach((deck, idx) => {
+      const item = document.createElement('div');
+      item.className = 'relative flex h-24 cursor-pointer rounded-md overflow-hidden border-2 transition transform hover:bg-slate-700/30 hover:scale-[1.02] mx-1';
+      item.classList.add(idx === state.selected ? 'border-yellow-400' : 'border-slate-700');
+
+      const imgWrap = document.createElement('div');
+      imgWrap.className = 'relative w-40 h-full flex-shrink-0 overflow-hidden';
+      const img = document.createElement('img');
+      img.src = pickDeckImage(deck);
+      img.className = 'w-full h-full object-cover';
+      imgWrap.appendChild(img);
+      const fade = document.createElement('div');
+      fade.className = 'absolute inset-0 bg-gradient-to-r from-transparent to-slate-800';
+      imgWrap.appendChild(fade);
+      item.appendChild(imgWrap);
+
+      const text = document.createElement('div');
+      text.className = 'pl-4 pr-2 flex flex-col justify-center';
+      const nm = document.createElement('div');
+      nm.className = 'font-semibold';
+      nm.textContent = deck.name;
+      const ds = document.createElement('div');
+      ds.className = 'text-sm text-slate-300';
+      ds.textContent = deck.description || '';
+      text.appendChild(nm);
+      text.appendChild(ds);
+      item.appendChild(text);
+
+      item.addEventListener('click', () => {
+        state.selected = idx;
+        renderList();
+      });
+
+      list.appendChild(item);
     });
-    leftBtns.appendChild(delBtn);
+
+    updateButtons();
+  }
+
+  if (onEdit) {
+    const edit = document.createElement('button');
+    edit.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700 glossy-btn transition-colors';
+    edit.textContent = 'Edit';
+    edit.addEventListener('click', () => {
+      const deck = state.decks[state.selected];
+      if (!deck) return;
+      cleanup();
+      onEdit(deck);
+    });
+    leftBtns.appendChild(edit);
+    editBtn = edit;
 
     const createBtn = document.createElement('button');
     createBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700 glossy-btn transition-colors';
     createBtn.textContent = 'Create New Deck';
     createBtn.addEventListener('click', () => {
-      try { document.body.removeChild(overlay); } catch {}
+      cleanup();
       onCreate && onCreate();
     });
     leftBtns.appendChild(createBtn);
@@ -116,7 +151,7 @@ export function open(opts = {}) {
   const cancelBtn = document.createElement('button');
   cancelBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700 glossy-btn transition-colors';
   cancelBtn.textContent = 'Cancel';
-  cancelBtn.addEventListener('click', () => { document.body.removeChild(overlay); onCancel && onCancel(); });
+  cancelBtn.addEventListener('click', () => cleanup('cancel'));
   rightBtns.appendChild(cancelBtn);
 
   if (onConfirm) {
@@ -124,13 +159,26 @@ export function open(opts = {}) {
     okBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700 glossy-btn transition-colors';
     okBtn.textContent = 'Confirm';
     okBtn.addEventListener('click', () => {
-      try { document.body.removeChild(overlay); } catch {}
-      onConfirm && onConfirm(DECKS[selected]);
+      const deck = state.decks[state.selected];
+      if (!deck) return;
+      cleanup();
+      onConfirm(deck);
     });
     rightBtns.appendChild(okBtn);
+    confirmBtn = okBtn;
   }
 
+  unsubscribe = subscribeToDecks(next => {
+    state.decks = next;
+    renderList();
+  });
+
+  renderList();
   document.body.appendChild(overlay);
+
+  refreshDecks({ silent: true }).catch(err => {
+    console.warn('[deckSelect] Не удалось обновить список колод', err);
+  });
 }
 
 const api = { open };

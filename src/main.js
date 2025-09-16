@@ -1,9 +1,13 @@
 ﻿// Bridge file to expose core modules to existing global code progressively
 import * as Constants from './core/constants.js';
 import { CARDS } from './core/cards.js';
-import { DECKS } from './core/decks.js';
-// Стартовая колода по умолчанию — первая из списка
-const STARTER_FIRESET = DECKS[0]?.cards || [];
+import { getDecks, getDefaultDeckCards, subscribeToDecks } from './core/decks.js';
+import { bootstrapDecks, refreshDecks, persistDeck as persistDeckRemote } from './lib/deckController.js';
+// Стартовая колода по умолчанию — всегда актуальная первая в списке
+let STARTER_FIRESET = getDefaultDeckCards();
+subscribeToDecks(() => {
+  STARTER_FIRESET = getDefaultDeckCards();
+});
 import * as Rules from './core/rules.js';
 import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled, countUnits } from './core/state.js';
 import { netState, NET_ON } from './core/netState.js';
@@ -57,8 +61,14 @@ try {
   window.rotateCost = Constants.rotateCost;
 
   window.CARDS = CARDS;
-  window.STARTER_FIRESET = STARTER_FIRESET;
-  window.DECKS = DECKS;
+  Object.defineProperty(window, 'STARTER_FIRESET', {
+    get: () => getDefaultDeckCards(),
+    configurable: true,
+  });
+  Object.defineProperty(window, 'DECKS', {
+    get: () => getDecks(),
+    configurable: true,
+  });
 
   window.hasAdjacentGuard = Rules.hasAdjacentGuard;
   window.computeCellBuff = Rules.computeCellBuff;
@@ -110,6 +120,12 @@ try {
   window.__netState = netState;
   window.NET_ON = NET_ON;
 } catch {}
+
+if (typeof window !== 'undefined') {
+  bootstrapDecks({ allowEmptyReplace: false }).catch(err => {
+    console.warn('[decks] Не удалось загрузить удалённые колоды при старте', err);
+  });
+}
 
 // Optional: basic store and a push-state placeholder middleware
 const netMiddleware = makeMiddleware(({ getState, next, action }) => {
@@ -198,6 +214,11 @@ try {
   window.forceTurnSplashWithRetry = Banner.forceTurnSplashWithRetry;
   window.requestTurnSplash = Banner.requestTurnSplash;
   window.showBattleSplash = BattleSplash.showBattleSplash;
+  window.__deckController = {
+    bootstrapDecks,
+    refreshDecks,
+    persistDeck: persistDeckRemote,
+  };
   window.attachUIEvents = attachUIEvents;
   window.__ui.cancelButton.setupCancelButton();
   window.playDeltaAnimations = playDeltaAnimations;

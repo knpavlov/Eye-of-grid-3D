@@ -1,6 +1,9 @@
-import { DECKS } from './decks.js';
+import { getDefaultDeckCards } from './decks.js';
 // Дефолтная колода для запуска игры
-const DEFAULT_DECK = DECKS[0]?.cards || [];
+function fallbackDeck() {
+  const cards = getDefaultDeckCards();
+  return cards.length ? cards : [];
+}
 
 // Utilities
 export function shuffle(array) {
@@ -67,7 +70,7 @@ export function randomBoard() {
   return board;
 }
 
-export function startGame(deck0 = DEFAULT_DECK, deck1 = DEFAULT_DECK) {
+export function startGame(deck0 = fallbackDeck(), deck1 = fallbackDeck()) {
   const state = {
     board: randomBoard(),
     players: [

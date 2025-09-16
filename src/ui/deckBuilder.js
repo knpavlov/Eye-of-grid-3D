@@ -2,14 +2,15 @@
 // Логика отделена от визуализации, чтобы упростить перенос на Unity
 
 import { CARDS } from '../core/cards.js';
-import { addDeck, updateDeck, saveDecks } from '../core/decks.js';
+import { persistDeck as persistDeckRemote } from '../lib/deckController.js';
+import { generateDeckId } from '../shared/decks/validation.js';
 import { show as showNotification } from './notifications.js';
 // Используем генератор карт из игрового рендера, чтобы показать карты целиком
 import { drawCardFace, preloadCardTextures } from '../scene/cards.js';
 
 // Генерация ID новой колоды
 function makeId() {
-  return 'DECK_' + Math.random().toString(36).slice(2, 9);
+  return generateDeckId('DECK');
 }
 
 // Иконки стихий
@@ -188,6 +189,7 @@ export function open(deck = null, onDone) {
   doneBtn.className = 'overlay-panel mt-2 px-3 py-1.5 bg-slate-600 hover:bg-slate-700';
   doneBtn.textContent = 'Done';
   left.appendChild(doneBtn);
+  let saving = false;
 
   // === Каталог карт ===
   const catalog = document.createElement('div');
@@ -553,12 +555,35 @@ export function open(deck = null, onDone) {
 
   searchInput.addEventListener('input', renderCatalog);
 
-  doneBtn.addEventListener('click', () => {
+  doneBtn.addEventListener('click', async () => {
+    if (saving) return;
+    saving = true;
+    const originalText = doneBtn.textContent;
+    doneBtn.textContent = 'Saving...';
+    doneBtn.disabled = true;
     working.name = nameInput.value.trim() || 'Untitled';
-    if (deck) updateDeck(deck.id, working); else addDeck(working);
-    saveDecks();
-    cleanup();
-    onDone && onDone();
+
+    const payload = {
+      id: working.id,
+      name: working.name,
+      description: working.description || '',
+      cards: [...working.cards],
+    };
+
+    try {
+      await persistDeckRemote(payload, { allowLocalFallback: false });
+      showNotification('Колода сохранена', 'success');
+      cleanup();
+      onDone && onDone();
+    } catch (err) {
+      const message = Array.isArray(err?.errors) && err.errors.length
+        ? err.errors[0]
+        : err?.message || 'Не удалось сохранить колоду';
+      showNotification(message, 'error');
+      doneBtn.textContent = originalText;
+      doneBtn.disabled = false;
+      saving = false;
+    }
   });
 
   function cleanup() {

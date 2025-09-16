@@ -2,10 +2,23 @@
 import http from "http";
 import cors from "cors";
 import { Server } from "socket.io";
+import decksRouter from "./routes/decks.js";
+import { initDb } from "./server/db.js";
+
+const dbStatus = await initDb().catch(err => {
+  console.error('[db] Ошибка инициализации БД', err);
+  return { ready: false, reason: 'init-error', error: err };
+});
+if (!dbStatus?.ready) {
+  const reason = dbStatus?.reason ? ` (${dbStatus.reason})` : '';
+  console.warn(`[db] Работаем без внешней БД${reason}. Колоды будут храниться в памяти.`);
+}
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 app.get("/", (req, res) => res.send("MP server alive"));
+app.use("/decks", decksRouter);
 // ===== Debug log (in-memory) =====
 let LOG = [];
 const MAX_LOG = 2000;
@@ -395,6 +408,14 @@ app.get("/build", (req, res) => {
   } catch (e) {
     res.json({ message: "", sha: "", branch: "", time: new Date().toISOString() });
   }
+});
+
+app.use((err, req, res, next) => {
+  console.error('[http] Unhandled error', err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(500).json({ error: 'Internal Server Error' });
 });
 
 server.listen(PORT, () => console.log("MP server on", PORT));
