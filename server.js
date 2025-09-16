@@ -2,9 +2,15 @@
 import http from "http";
 import cors from "cors";
 import { Server } from "socket.io";
+import decksRouter from "./routes/decks.js";
+import { initDb, getDbError } from "./server/db.js";
+import { ensureDeckTable, seedDecks } from "./server/repositories/decksRepository.js";
+import { DEFAULT_DECK_BLUEPRINTS } from "./src/core/defaultDecks.js";
 
 const app = express();
 app.use(cors());
+app.use(express.json());
+app.use('/decks', decksRouter);
 app.get("/", (req, res) => res.send("MP server alive"));
 // ===== Debug log (in-memory) =====
 let LOG = [];
@@ -39,6 +45,19 @@ const io = new Server(server, {
   pingInterval: 25000
 });
 const PORT = process.env.PORT || 3001;
+
+const dbReadyOnStart = await initDb();
+if (dbReadyOnStart) {
+  try {
+    await ensureDeckTable();
+    await seedDecks(DEFAULT_DECK_BLUEPRINTS);
+  } catch (err) {
+    console.error('[server] Не удалось подготовить таблицу колод', err);
+  }
+} else {
+  const err = getDbError();
+  console.warn('[server] Хранилище колод недоступно при запуске:', err?.message || err);
+}
 
 // очередь и активные матчи
 const queue = [];
