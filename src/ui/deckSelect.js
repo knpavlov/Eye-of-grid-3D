@@ -147,7 +147,11 @@ export function open(opts = {}) {
     decks.forEach(deck => {
       const item = document.createElement('div');
       item.dataset.deckId = deck.id;
-      item.className = 'relative flex h-24 cursor-pointer rounded-md overflow-hidden border-2 border-slate-700 transition transform hover:bg-slate-700/30 hover:scale-[1.02] mx-1';
+      item.className = [
+        'relative flex h-24 cursor-pointer rounded-md overflow-hidden',
+        'border-2 border-slate-700 transition-transform hover:bg-slate-700/30',
+        'hover:scale-[1.02] mx-1',
+      ].join(' ');
       if (deck.id === selectedId) item.classList.add('border-yellow-400');
 
       const imgWrap = document.createElement('div');

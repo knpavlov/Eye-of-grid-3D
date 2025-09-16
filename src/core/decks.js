@@ -159,7 +159,19 @@ export function getDeckById(id) {
   return DECKS.find(d => d.id === id) || null;
 }
 
-const api = { DECKS, addDeck, updateDeck, removeDeck, saveDecks, hydrateDeck, serializeDeck, setDecks, upsertDeck, onDecksChanged };
+const api = {
+  DECKS,
+  addDeck,
+  updateDeck,
+  removeDeck,
+  saveDecks,
+  hydrateDeck,
+  serializeDeck,
+  setDecks,
+  upsertDeck,
+  onDecksChanged,
+};
+
 try {
   if (typeof window !== 'undefined') {
     window.DECKS = DECKS;

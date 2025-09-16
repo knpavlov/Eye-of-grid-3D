@@ -9,7 +9,11 @@ import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled,
 import { netState, NET_ON } from './core/netState.js';
 import { createStore, makeMiddleware } from './lib/store.js';
 // Scene modules (new)
-import { initThreeJS as sceneInitThreeJS, worldToScreen as sceneWorldToScreen, animate as sceneAnimate } from './scene/index.js';
+import {
+  initThreeJS as sceneInitThreeJS,
+  worldToScreen as sceneWorldToScreen,
+  animate as sceneAnimate,
+} from './scene/index.js';
 import * as Board from './scene/board.js';
 import * as Cards from './scene/cards.js';
 import * as Units from './scene/units.js';

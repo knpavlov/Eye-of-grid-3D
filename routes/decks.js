@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import { isDbReady, getDbError } from '../server/db.js';
-import { ensureDeckTable, seedDecks, listDecks, getDeckById, upsertDeckRecord } from '../server/repositories/decksRepository.js';
+import {
+  ensureDeckTable,
+  seedDecks,
+  listDecks,
+  getDeckById,
+  upsertDeckRecord,
+} from '../server/repositories/decksRepository.js';
 import { CARDS } from '../src/core/cards.js';
 import { DEFAULT_DECK_BLUEPRINTS } from '../src/core/defaultDecks.js';
 
