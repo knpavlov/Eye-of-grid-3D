@@ -37,6 +37,7 @@ import * as BattleSplash from './ui/battleSplash.js';
 import * as DeckSelect from './ui/deckSelect.js';
 import * as MainMenu from './ui/mainMenu.js';
 import * as DeckBuilder from './ui/deckBuilder.js';
+import * as DeckNetwork from './net/decks.js';
 import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
@@ -126,6 +127,10 @@ try { window.__store = store; } catch {}
 if (typeof window !== 'undefined' && !window.gameState) {
   const s = startGame(STARTER_FIRESET, STARTER_FIRESET);
   try { applyGameState(s); } catch {}
+}
+
+if (typeof window !== 'undefined') {
+  DeckNetwork.refreshDecks().catch(err => console.warn('[main] Не удалось синхронизировать колоды с сервером', err));
 }
 
 // Унифицированное применение нового состояния игры

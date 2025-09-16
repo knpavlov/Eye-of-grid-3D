@@ -2,7 +2,8 @@
 // Логика отделена от визуализации, чтобы упростить перенос на Unity
 
 import { CARDS } from '../core/cards.js';
-import { addDeck, updateDeck, saveDecks } from '../core/decks.js';
+import { upsertDeck } from '../core/decks.js';
+import { saveDeck as saveDeckRemote } from '../net/decks.js';
 import { show as showNotification } from './notifications.js';
 // Используем генератор карт из игрового рендера, чтобы показать карты целиком
 import { drawCardFace, preloadCardTextures } from '../scene/cards.js';
@@ -406,7 +407,10 @@ export function open(deck = null, onDone) {
     name: deck.name,
     description: deck.description || '',
     cards: [...deck.cards],
-  } : { id: makeId(), name: '', description: '', cards: [] };
+    version: typeof deck.version === 'number' ? deck.version : 1,
+    ownerId: deck.ownerId || null,
+    updatedAt: deck.updatedAt || null,
+  } : { id: makeId(), name: '', description: '', cards: [], version: 1, ownerId: null, updatedAt: null };
 
   // Группировка карт колоды по стоимости
   function renderDeck() {
@@ -553,12 +557,40 @@ export function open(deck = null, onDone) {
 
   searchInput.addEventListener('input', renderCatalog);
 
-  doneBtn.addEventListener('click', () => {
+  let saving = false;
+  doneBtn.addEventListener('click', async () => {
+    if (saving) return;
+    saving = true;
+    const prevText = doneBtn.textContent;
+    doneBtn.disabled = true;
+    doneBtn.textContent = 'Saving…';
+
     working.name = nameInput.value.trim() || 'Untitled';
-    if (deck) updateDeck(deck.id, working); else addDeck(working);
-    saveDecks();
-    cleanup();
-    onDone && onDone();
+
+    try {
+      const payload = {
+        ...working,
+        cards: [...working.cards],
+      };
+      const saved = await saveDeckRemote(payload);
+      if (saved) {
+        showNotification('Колода сохранена на сервере', 'success');
+      } else {
+        throw new Error('Пустой ответ сервера при сохранении');
+      }
+    } catch (err) {
+      console.warn('[deckBuilder] Ошибка сохранения на сервере', err);
+      upsertDeck({ ...working, cards: [...working.cards] }, { persistLocal: true });
+      showNotification('Сервер недоступен — колода сохранена локально', 'error');
+    } finally {
+      cleanup();
+      onDone && onDone();
+      saving = false;
+      try {
+        doneBtn.disabled = false;
+        doneBtn.textContent = prevText;
+      } catch {}
+    }
   });
 
   function cleanup() {
