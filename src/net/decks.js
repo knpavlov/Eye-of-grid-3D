@@ -1,17 +1,18 @@
 // Сетевые операции с колодами — чистые функции без привязки к DOM
 import { hydrateDeck, serializeDeck, setDecks, upsertDeck } from '../core/decks.js';
-
-const DEFAULT_BASE = '/decks';
-const API_BASE = (typeof window !== 'undefined' && window.__DECKS_API_BASE) || DEFAULT_BASE;
+import { getDecksApiBase } from './config.js';
 
 let lastError = null;
 
 function buildUrl(path = '') {
-  if (!path) return API_BASE;
+  const base = getDecksApiBase();
+  if (!path) return base;
   if (path.startsWith('http')) return path;
-  const base = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE;
+  const effectiveBase = base === '/'
+    ? ''
+    : base.endsWith('/') ? base.slice(0, -1) : base;
   const suffix = path.startsWith('/') ? path : `/${path}`;
-  return `${base}${suffix}`;
+  return `${effectiveBase}${suffix}` || suffix;
 }
 
 async function requestJson(url, options = {}) {
