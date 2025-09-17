@@ -1,5 +1,6 @@
 // Card meshes and textures
 import { getCtx } from './context.js';
+import { listAttackProfilesForDisplay } from '../core/attackProfiles.js';
 
 // Local caches; mirror to window for compatibility with legacy code
 const CARD_TEX = { front: null, back: null, deckSide: null };
@@ -240,9 +241,22 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     const gridW = cell * 3 + gap * 2;
     const spacing = Math.max(Math.round(ps(14)), 10);
     const startX = (width - (gridW * 2 + spacing)) / 2;
-    const gridY = diagramTop;
-    drawAttacksGrid(ctx, cardData, startX, gridY, cell, gap);
-    drawBlindspotGrid(ctx, cardData, startX + gridW + spacing, gridY, cell, gap);
+    const attackProfiles = listAttackProfilesForDisplay(cardData) || [];
+    const labelOffset = Math.max(ps(10), 8);
+    const sectionSpacing = Math.max(py(10), 8);
+    let currentY = diagramTop;
+    ctx.textAlign = 'center';
+    for (let i = 0; i < attackProfiles.length; i++) {
+      const profile = attackProfiles[i];
+      drawAttacksGrid(ctx, cardData, profile, startX, currentY, cell, gap);
+      if (profile?.label) {
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = `600 ${Math.max(ps(7.5), 8)}px "Noto Sans", "Helvetica", sans-serif`;
+        ctx.fillText(profile.label, startX + gridW / 2, currentY + (cell * 3 + gap * 2) + labelOffset);
+      }
+      currentY += (cell * 3 + gap * 2) + labelOffset + sectionSpacing;
+    }
+    drawBlindspotGrid(ctx, cardData, startX + gridW + spacing, diagramTop, cell, gap);
   }
 }
 
@@ -340,8 +354,9 @@ function drawLockIcon(ctx, x, y, size) {
   ctx.restore();
 }
 
-function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
-  const attacks = cardData.attacks || [];
+function drawAttacksGrid(ctx, cardData, profile, x, y, cell, gap) {
+  const attacks = (profile?.attacks && profile.attacks.length) ? profile.attacks : (cardData.attacks || []);
+  const attackType = profile?.attackType || cardData.attackType;
   const baseLine = Math.max(1, Math.round(cell * 0.18));
   const accentLine = Math.max(1, Math.round(cell * 0.2));
 
@@ -358,7 +373,7 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
     }
   }
 
-  if (cardData.attackType === 'MAGIC') {
+  if (attackType === 'MAGIC') {
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) {
         if (r === 1 && c === 1) continue;

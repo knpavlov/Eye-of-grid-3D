@@ -5,6 +5,7 @@ import { DECKS } from './core/decks.js';
 // Стартовая колода по умолчанию — первая из списка
 const STARTER_FIRESET = DECKS[0]?.cards || [];
 import * as Rules from './core/rules.js';
+import { resolveActiveAttackProfile, listAttackProfilesForDisplay } from './core/attackProfiles.js';
 import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled, countUnits } from './core/state.js';
 import { netState, NET_ON } from './core/netState.js';
 import { createStore, makeMiddleware } from './lib/store.js';
@@ -71,6 +72,8 @@ try {
   window.computeHits = Rules.computeHits;
   window.stagedAttack = Rules.stagedAttack;
   window.magicAttack = Rules.magicAttack;
+  window.resolveAttackProfile = resolveActiveAttackProfile;
+  window.listAttackProfilesForDisplay = listAttackProfilesForDisplay;
 
   window.shuffle = shuffle;
   window.drawOne = drawOne;

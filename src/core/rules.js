@@ -2,7 +2,8 @@
 import { DIR_VECTORS, inBounds, attackCost, OPPOSITE_ELEMENT, capMana } from './constants.js';
 import { CARDS } from './cards.js';
 import { hasFirstStrike, hasDoubleAttack, canAttack } from './abilities.js';
-import { countUnits } from './board.js';
+import { resolveActiveAttackProfile } from './attackProfiles.js';
+import { computeAttackModifiers, handleUnitDeathCleanup } from './abilityLogic.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -28,9 +29,9 @@ function rotateDir(facing, dir) {
 }
 
 // Возвращает все потенциальные клетки атаки без учёта препятствий
-function attackCellsForTpl(tpl, facing, opts = {}) {
+function attackCellsForTpl(tpl, facing, opts = {}, attacksOverride = null) {
   const res = [];
-  const attacks = tpl.attacks || [];
+  const attacks = attacksOverride && attacksOverride.length ? attacksOverride : (tpl.attacks || []);
   const { chosenDir, rangeChoices, union } = opts;
   for (const a of attacks) {
     if (!union && tpl.chooseDir) {
@@ -76,13 +77,16 @@ export function computeHits(state, r, c, opts = {}) {
   const attacker = state.board?.[r]?.[c]?.unit;
   if (!attacker) return [];
   const tplA = CARDS[attacker.tplId];
+  const profile = opts.profile || resolveActiveAttackProfile(state, r, c, opts);
+  const attackDefs = profile?.attacks && profile.attacks.length ? profile.attacks : (tplA.attacks || []);
   // tplA.friendlyFire — может ли атака задевать союзников
-  const cells = attackCellsForTpl(tplA, attacker.facing, opts);
+  const cells = attackCellsForTpl(tplA, attacker.facing, opts, attackDefs);
   const { atk } = effectiveStats(state.board[r][c], attacker);
   const hits = [];
   const aFlying = (tplA.keywords || []).includes('FLYING');
   const allowPierce = tplA.pierce;
   const allowFriendly = !!tplA.friendlyFire; // может ли существо задевать союзников
+  const attackType = profile?.attackType || tplA.attackType;
   for (const cell of cells) {
     const [dr, dc] = DIR_VECTORS[cell.dirAbs];
     const nr = r + dr * cell.range;
@@ -150,54 +154,31 @@ export function stagedAttack(state, r, c, opts = {}) {
   if (attacker.lastAttackTurn === base.turn) return null;
   const tplA = CARDS[attacker.tplId];
   if (!canAttack(tplA)) return null;
-  
+
   const baseStats = effectiveStats(base.board[r][c], attacker);
-  let atk = baseStats.atk;
   let logLines = [];
 
-  const hitsRaw = computeHits(base, r, c, opts);
+  const profile = resolveActiveAttackProfile(base, r, c, opts);
+  if ((profile?.attackType || tplA.attackType) === 'MAGIC') {
+    return null;
+  }
+  const attackType = profile?.attackType || tplA.attackType;
+
+  const hitsRaw = computeHits(base, r, c, { ...opts, profile });
   if (!hitsRaw.length) return { empty: true };
 
-  if (tplA.dynamicAtk === 'OTHERS_ON_BOARD') {
-    const others = countUnits(base) - 1;
-    atk += others;
-    logLines.push(`${tplA.name}: атака увеличена на ${others}`);
+  const modifiers = computeAttackModifiers(base, {
+    attacker,
+    tpl: tplA,
+    profile,
+    hits: hitsRaw,
+    baseAtk: baseStats.atk,
+  });
+  if (modifiers && typeof modifiers.delta === 'number' && modifiers.delta !== 0) {
+    for (const h of hitsRaw) { h.dmg = Math.max(0, h.dmg + modifiers.delta); }
   }
-  if (tplA.dynamicAtk === 'FIRE_CREATURES') {
-    let cnt = 0;
-    for (let rr = 0; rr < 3; rr++) {
-      for (let cc = 0; cc < 3; cc++) {
-        if (rr === r && cc === c) continue;
-        const u = base.board[rr][cc]?.unit;
-        if (u && CARDS[u.tplId]?.element === 'FIRE') cnt++;
-      }
-    }
-    atk += cnt;
-    logLines.push(`${tplA.name}: атака увеличена на ${cnt}`);
-  }
-  const plusCfg = tplA.plusAtkIfTargetOnElement || (tplA.plus1IfTargetOnElement ? { element: tplA.plus1IfTargetOnElement, amount: 1 } : null);
-  if (plusCfg) {
-    const { element: el, amount } = plusCfg;
-    const has = hitsRaw.some(h => base.board?.[h.r]?.[h.c]?.element === el);
-    if (has) {
-      atk += amount;
-      logLines.push(`${tplA.name}: +${amount} ATK по целям на поле ${el}`);
-    }
-  }
-  if (tplA.randomPlus2 && Math.random() < 0.5) {
-    atk += 2;
-    logLines.push(`${tplA.name}: случайный бонус +2 ATK`);
-  }
-  if (tplA.penaltyByTargets) {
-    const penalty = tplA.penaltyByTargets[String(hitsRaw.length)] || 0;
-    if (penalty) {
-      atk += penalty;
-      logLines.push(`${tplA.name}: штраф атаки ${penalty}`);
-    }
-  }
-  const deltaAtk = atk - baseStats.atk;
-  if (deltaAtk !== 0) {
-    for (const h of hitsRaw) { h.dmg = Math.max(0, h.dmg + deltaAtk); }
+  if (modifiers?.logs?.length) {
+    logLines = logLines.concat(modifiers.logs);
   }
 
   const attackerQuick = hasFirstStrike(tplA);
@@ -224,7 +205,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     const cell = base.board?.[h.r]?.[h.c];
     const B = cell?.unit;
     if (!B) return { ...h, dealt: 0 };
-    const isMagic = tplA.attackType === 'MAGIC';
+    const isMagic = attackType === 'MAGIC';
     const tplB = CARDS[B.tplId];
     const dodge = !isMagic && (tplB.perfectDodge || (tplB.dodge50 && Math.random() < 0.5));
     const dealt = dodge ? 0 : h.dmg;
@@ -304,7 +285,7 @@ export function stagedAttack(state, r, c, opts = {}) {
         retaliators.push({ r: h.r, c: h.c });
       }
     }
-    const preventRetaliation = tplA.attackType === 'MAGIC' || (tplA.avoidRetaliation50 && Math.random() < 0.5);
+    const preventRetaliation = attackType === 'MAGIC' || (tplA.avoidRetaliation50 && Math.random() < 0.5);
     const total = preventRetaliation ? 0 : totalRetaliation;
     return { total, retaliators };
   }
@@ -326,7 +307,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
       const u = nFinal.board?.[rr]?.[cc]?.unit;
       if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId });
+        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid });
         nFinal.board[rr][cc].unit = null;
       }
     }
@@ -358,6 +339,8 @@ export function stagedAttack(state, r, c, opts = {}) {
         logLines.push(`${tplD.name}: союзники получают +${tplD.onDeathAddHPAll} HP`);
       }
     }
+
+    handleUnitDeathCleanup(nFinal, deaths);
 
     if (A) {
       A.lastAttackTurn = nFinal.turn;
@@ -391,35 +374,57 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (attacker.lastAttackTurn === n1.turn) return null;
   const tplA = CARDS[attacker.tplId];
   if (!canAttack(tplA)) return null;
+  const profile = resolveActiveAttackProfile(n1, fr, fc);
   const allowFriendly = !!tplA.friendlyFire;
   const mainTarget = n1.board?.[tr]?.[tc]?.unit;
   if (!allowFriendly && (!mainTarget || mainTarget.owner === attacker.owner)) return null;
 
-  const atkStats = effectiveStats(n1.board[fr][fc], attacker);
-  let atk = atkStats.atk || 0;
-  const plusCfg2 = tplA.plusAtkIfTargetOnElement || (tplA.plus1IfTargetOnElement ? { element: tplA.plus1IfTargetOnElement, amount: 1 } : null);
-  if (plusCfg2) {
-    const { element: el, amount } = plusCfg2;
-    const cellEl = n1.board?.[tr]?.[tc]?.element;
-    if (cellEl === el) atk += amount;
+  if (profile?.restrictTargets) {
+    const attackDefs = profile.attacks && profile.attacks.length ? profile.attacks : (tplA.attacks || []);
+    const defs = attackCellsForTpl(tplA, attacker.facing, { union: true }, attackDefs);
+    let allowed = false;
+    for (const def of defs) {
+      const [dr, dc] = DIR_VECTORS[def.dirAbs];
+      const nr = fr + dr * def.range;
+      const nc = fc + dc * def.range;
+      if (nr === tr && nc === tc) { allowed = true; break; }
+    }
+    if (!allowed) return null;
   }
-  const dmg = Math.max(0, atk + (tplA.randomPlus2 && Math.random() < 0.5 ? 2 : 0));
 
   const cells = [{ r: tr, c: tc }];
+  if (profile?.area === 'TARGET_AND_ADJACENT') {
+    for (const [dr, dc] of Object.values(DIR_VECTORS)) {
+      const rr = tr + dr;
+      const cc = tc + dc;
+      if (!inBounds(rr, cc)) continue;
+      if (!cells.some(p => p.r === rr && p.c === cc)) cells.push({ r: rr, c: cc });
+    }
+  }
   const splash = tplA.splash || 0;
   if (splash > 0) {
-    const dirs = [ [-1,0], [1,0], [0,-1], [0,1] ];
-    for (const [dr, dc] of dirs) {
+    for (const [dr, dc] of Object.values(DIR_VECTORS)) {
       for (let dist = 1; dist <= splash; dist++) {
         const rr = tr + dr * dist;
         const cc = tc + dc * dist;
-        if (inBounds(rr, cc)) cells.push({ r: rr, c: cc });
+        if (!inBounds(rr, cc)) continue;
+        if (!cells.some(p => p.r === rr && p.c === cc)) cells.push({ r: rr, c: cc });
       }
     }
   }
 
   const targets = [];
   const logLines = [];
+  const atkStats = effectiveStats(n1.board[fr][fc], attacker);
+  const modifiers = computeAttackModifiers(n1, {
+    attacker,
+    tpl: tplA,
+    profile,
+    hits: cells,
+    baseAtk: atkStats.atk,
+  });
+  if (modifiers?.logs?.length) logLines.push(...modifiers.logs);
+  const dmg = Math.max(0, (modifiers?.attack ?? atkStats.atk));
   for (const cell of cells) {
     const u = n1.board?.[cell.r]?.[cell.c]?.unit;
     if (!u) continue;
@@ -447,7 +452,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
   for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
     const u = n1.board[rr][cc].unit;
     if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId });
+      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid });
       n1.board[rr][cc].unit = null;
     }
   }
@@ -458,6 +463,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
       }
     }
   } catch {}
+  handleUnitDeathCleanup(n1, deaths);
   attacker.lastAttackTurn = n1.turn;
   const cellEl = n1.board?.[fr]?.[fc]?.element;
   attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA, cellEl);

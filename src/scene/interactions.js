@@ -3,6 +3,9 @@ import { getCtx } from './context.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
 import { applyFreedonianAura } from '../core/abilities.js';
+import { DIR_VECTORS, inBounds } from '../core/constants.js';
+import { resolveActiveAttackProfile } from '../core/attackProfiles.js';
+import { applyOnSummonAbilities } from '../core/abilityLogic.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -24,6 +27,38 @@ export const interactionState = {
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
 };
+
+const ROTATION_TABLE = {
+  N: { N: 'N', E: 'E', S: 'S', W: 'W' },
+  E: { N: 'E', E: 'S', S: 'W', W: 'N' },
+  S: { N: 'S', E: 'W', S: 'N', W: 'E' },
+  W: { N: 'W', E: 'N', S: 'E', W: 'S' },
+};
+
+function rotateDir(facing, dir) {
+  return ROTATION_TABLE[facing]?.[dir] || dir;
+}
+
+function collectProfileTargets(gameState, row, col, profile) {
+  const unit = gameState.board?.[row]?.[col]?.unit;
+  if (!unit) return [];
+  const tpl = (typeof window !== 'undefined' && window.CARDS) ? window.CARDS[unit.tplId] : null;
+  const attackDefs = profile?.attacks && profile.attacks.length ? profile.attacks : (tpl?.attacks || []);
+  const result = [];
+  for (const def of attackDefs) {
+    const ranges = Array.isArray(def.ranges) ? def.ranges : [def.ranges != null ? def.ranges : 1];
+    const dirAbs = rotateDir(unit.facing, def.dir);
+    const vec = DIR_VECTORS[dirAbs];
+    if (!vec) continue;
+    for (const dist of ranges) {
+      const rr = row + vec[0] * dist;
+      const cc = col + vec[1] * dist;
+      if (!inBounds(rr, cc)) continue;
+      if (!result.some(p => p.r === rr && p.c === cc)) result.push({ r: rr, c: cc });
+    }
+  }
+  return result;
+}
 
 function isInputLocked() {
   if (typeof window !== 'undefined' && typeof window.isInputLocked === 'function') {
@@ -447,6 +482,11 @@ function performChosenAttack(from, targetMesh) {
     showNotification('Некорректная атака', 'error');
     return;
   }
+  const profile = resolveActiveAttackProfile(gameState, from.r, from.c);
+  const tpl = window.CARDS?.[attacker.tplId];
+  if ((profile?.attackType || tpl?.attackType) === 'MAGIC') {
+    return performMagicAttack(from, targetMesh);
+  }
   const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
   const dr = tr - from.r; const dc = tc - from.c;
   const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
@@ -587,6 +627,11 @@ export function placeUnitWithDirection(direction) {
     gameState.board[row][col].unit = null;
   }
   if (gameState.board[row][col].unit) {
+    const tplRef = (typeof window !== 'undefined' && window.CARDS) ? window.CARDS[gameState.board[row][col].unit.tplId] : cardData;
+    const abilityResult = applyOnSummonAbilities(gameState, { unit: gameState.board[row][col].unit, tpl: tplRef, row, col });
+    if (abilityResult?.logs?.length) {
+      for (const line of abilityResult.logs) { window.addLog(line); }
+    }
     const gained = applyFreedonianAura(gameState, gameState.active);
     if (gained > 0) {
       window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
@@ -616,25 +661,32 @@ export function placeUnitWithDirection(direction) {
       window.updateUnits();
       window.updateUI();
       const tpl = window.CARDS?.[cardData.id];
-      if (tpl?.attackType === 'MAGIC') {
-        const allowFriendly = !!tpl.friendlyFire;
+      const stateAfter = window.gameState;
+      const unitAfter = stateAfter?.board?.[row]?.[col]?.unit;
+      if (!unitAfter) {
+        if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
+        try { window.endTurn && window.endTurn(); } catch {}
+        return;
+      }
+      const profile = resolveActiveAttackProfile(stateAfter, row, col);
+      const activeAttackType = profile?.attackType || tpl?.attackType;
+      if (activeAttackType === 'MAGIC') {
+        const allowFriendly = !!tpl?.friendlyFire;
+        const potential = collectProfileTargets(stateAfter, row, col, profile);
         const cells = [];
         let hasEnemy = false;
-        for (let rr = 0; rr < 3; rr++) {
-          for (let cc = 0; cc < 3; cc++) {
-            if (rr === row && cc === col) continue;
-            const u = gameState.board?.[rr]?.[cc]?.unit;
-            if (allowFriendly || (u && u.owner !== unit.owner)) {
-              cells.push({ r: rr, c: cc });
-            }
-            if (u && u.owner !== unit.owner) hasEnemy = true;
-          }
+        for (const cell of potential) {
+          const u = stateAfter.board?.[cell.r]?.[cell.c]?.unit;
+          if (!u) continue;
+          if (!allowFriendly && u.owner === unitAfter.owner) continue;
+          cells.push(cell);
+          if (u.owner !== unitAfter.owner) hasEnemy = true;
         }
         if (cells.length && (allowFriendly || hasEnemy)) {
           interactionState.magicFrom = { r: row, c: col };
           interactionState.autoEndTurnAfterAttack = true;
           highlightTiles(cells);
-          window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
+          window.__ui?.log?.add?.(`${tpl?.name || 'Unit'}: выберите цель магической атаки.`);
           if (unlockTriggered) {
             const delay = 1200;
             setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, delay);
@@ -644,21 +696,20 @@ export function placeUnitWithDirection(direction) {
           try { window.endTurn && window.endTurn(); } catch {}
         }
       } else {
-        const attacks = tpl?.attacks || [];
+        const attacks = profile?.attacks && profile.attacks.length ? profile.attacks : (tpl?.attacks || []);
         const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
-        // если в шаблоне несколько дистанций без выбора, подсвечиваем и пустые клетки
         const includeEmpty = attacks.some(a => Array.isArray(a.ranges) && a.ranges.length > 1 && !a.mode);
-        const hitsAll = window.computeHits(gameState, row, col, { union: true, includeEmpty });
+        const hitsAll = window.computeHits(stateAfter, row, col, { union: true, includeEmpty, profile });
         const hasEnemy = hitsAll.some(h => {
-          const u2 = gameState.board?.[h.r]?.[h.c]?.unit;
-          return u2 && u2.owner !== unit.owner;
+          const u2 = stateAfter.board?.[h.r]?.[h.c]?.unit;
+          return u2 && u2.owner !== unitAfter.owner;
         });
         if (hitsAll.length && hasEnemy) {
           if (needsChoice && hitsAll.length > 1) {
             interactionState.pendingAttack = { r: row, c: col };
             interactionState.autoEndTurnAfterAttack = true;
             highlightTiles(hitsAll);
-            window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
+            window.__ui?.log?.add?.(`${tpl?.name || 'Unit'}: выберите цель для атаки.`);
             window.__ui?.notifications?.show('Выберите цель', 'info');
           } else {
             let opts = {};
@@ -667,7 +718,7 @@ export function placeUnitWithDirection(direction) {
               const dr = h.r - row, dc = h.c - col;
               const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
               const ORDER = ['N', 'E', 'S', 'W'];
-              const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(unit.facing) + 4) % 4];
+              const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(unitAfter.facing) + 4) % 4];
               const dist = Math.max(Math.abs(dr), Math.abs(dc));
               opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
             }

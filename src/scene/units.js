@@ -2,6 +2,7 @@
 import { getCtx } from './context.js';
 import { createCard3D } from './cards.js';
 import { renderFieldLocks } from './fieldlocks.js';
+import { applyStatusOverlays, disposeStatusOverlays } from './statusOverlays.js';
 
 function getTHREE() {
   const ctx = getCtx();
@@ -20,7 +21,12 @@ export function updateUnits(gameState) {
   const facingDeg = (typeof window !== 'undefined' && window.facingDeg) || { N:0, E:-90, S:180, W:90 };
 
   // Remove previous unit meshes
-  try { (ctx.unitMeshes || []).forEach(unit => { if (unit && unit.parent) unit.parent.remove(unit); }); } catch {}
+  try {
+    (ctx.unitMeshes || []).forEach(unit => {
+      if (unit) disposeStatusOverlays(unit);
+      if (unit && unit.parent) unit.parent.remove(unit);
+    });
+  } catch {}
   ctx.unitMeshes = [];
 
   const tileSize = 6.2; const spacing = 0.2; const boardZShift = -3.5;
@@ -57,6 +63,7 @@ export function updateUnits(gameState) {
       const glow = new THREE.Mesh(glowGeometry, glowMaterial); glow.position.set(0, -0.05, 0); unitMesh.add(glow);
 
       unitMesh.userData = { type: 'unit', row: r, col: c, unitData: unit, cardData };
+      try { applyStatusOverlays(unitMesh, unit); } catch {}
       try { cardGroup.add(unitMesh); } catch {}
       ctx.unitMeshes.push(unitMesh);
     }
