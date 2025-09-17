@@ -182,6 +182,69 @@ describe('особые способности', () => {
     expect(attacker.currentHP ?? tplA.hp).toBe(2);
     delete CARDS.TEST_DEFENDER;
   });
+
+  it('Firefly Ninja получает Perfect Dodge и невидимость с союзным Пауком', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[1][0].unit = { owner:0, tplId:'FIRE_FIREFLY_NINJA', facing:'E' };
+    state.board[1][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'W' };
+    const res = stagedAttack(state,1,1);
+    const fin = res.finish();
+    const ninja = fin.n1.board[1][0].unit;
+    const tplNinja = CARDS[ninja.tplId];
+    expect(ninja.currentHP ?? tplNinja.hp).toBe(tplNinja.hp);
+
+    const state2 = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state2.board[1][0].unit = { owner:0, tplId:'FIRE_FIREFLY_NINJA', facing:'E' };
+    state2.board[2][2].unit = { owner:0, tplId:'EARTH_SPIDER_NINJA', facing:'N' };
+    state2.board[1][2].unit = { owner:1, tplId:'FIRE_FLAME_MAGUS', facing:'W' };
+    const magicRes = magicAttack(state2,1,2,1,0);
+    const ninja2 = magicRes.n1.board[1][0].unit;
+    const tplNinja2 = CARDS[ninja2.tplId];
+    expect(ninja2.currentHP ?? tplNinja2.hp).toBe(tplNinja2.hp);
+    const dmgEntry = magicRes.targets.find(t => t.r === 1 && t.c === 0);
+    expect(dmgEntry?.dmg).toBe(0);
+  });
+
+  it('Spider Ninja меняется местами с врагом на земляном поле и отключает контратаку', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[2][1].element = 'EARTH';
+    state.board[1][1].element = 'EARTH';
+    state.board[2][1].unit = { owner:0, tplId:'EARTH_SPIDER_NINJA', facing:'N' };
+    state.board[1][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'S', currentHP:3 };
+    const res = magicAttack(state,2,1,1,1);
+    const board = res.n1.board;
+    expect(board[1][1].unit?.tplId).toBe('EARTH_SPIDER_NINJA');
+    expect(board[2][1].unit?.tplId).toBe('FIRE_PARTMOLE_FLAME_LIZARD');
+    expect(res.targets.find(t => t.r === 1 && t.c === 1)?.dmg).toBeGreaterThan(0);
+  });
+
+  it('Wolf Ninja меняется местами с целью на воде и не получает ответного удара', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[2][1].element = 'WATER';
+    state.board[1][1].element = 'WATER';
+    state.board[2][1].unit = { owner:0, tplId:'WATER_WOLF_NINJA', facing:'N' };
+    state.board[1][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'S', currentHP:3 };
+    const res = stagedAttack(state,2,1);
+    const fin = res.finish();
+    expect(fin.n1.board[1][1].unit?.tplId).toBe('WATER_WOLF_NINJA');
+    expect(fin.n1.board[2][1].unit?.tplId).toBe('FIRE_PARTMOLE_FLAME_LIZARD');
+    expect(fin.retaliators.length).toBe(0);
+  });
+
+  it('Swallow Ninja разворачивает цель и лишает её контратаки', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[2][1].element = 'FOREST';
+    state.board[2][1].unit = { owner:0, tplId:'FOREST_SWALLOW_NINJA', facing:'N' };
+    state.board[1][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'S', currentHP:3 };
+    const res = stagedAttack(state,2,1);
+    const fin = res.finish();
+    const enemy = fin.n1.board[1][1].unit;
+    expect(enemy.tplId).toBe('FIRE_PARTMOLE_FLAME_LIZARD');
+    expect(enemy.facing).toBe('N');
+    expect(fin.retaliators.length).toBe(0);
+    const dmgEntry = fin.targets.find(t => t.r === 1 && t.c === 1);
+    expect(dmgEntry?.dmg).toBe(1);
+  });
 });
 
 describe('magicAttack', () => {
@@ -354,6 +417,27 @@ describe('новые механики', () => {
     const fin = res.finish();
     const defender = fin.n1.board[0][1].unit;
     expect(defender.currentHP).toBe(5);
+  });
+
+  it('обмен позициями перерасчитывает бонусы от полей', () => {
+    const state = makeState();
+    state.board[2][1].element = 'WATER';
+    state.board[1][1].element = 'EARTH';
+    state.board[2][1].unit = { owner:0, tplId:'EARTH_SPIDER_NINJA', facing:'N', currentHP:1 };
+    state.board[1][1].unit = { owner:1, tplId:'WATER_WOLF_NINJA', facing:'S', currentHP:3 };
+    const res = stagedAttack(state,2,1);
+    expect(res).toBeTruthy();
+    const fin = res.finish();
+    const spiderCell = fin.n1.board[1][1];
+    const wolfCell = fin.n1.board[2][1];
+    expect(spiderCell.unit.tplId).toBe('EARTH_SPIDER_NINJA');
+    expect(spiderCell.unit.currentHP).toBe(3);
+    expect(wolfCell.unit.tplId).toBe('WATER_WOLF_NINJA');
+    expect(wolfCell.unit.currentHP).toBe(3);
+    const fieldLog = fin.logLines.find(line => line.includes('поле') && line.includes('Spider Ninja'));
+    expect(fieldLog).toBeTruthy();
+    expect(Array.isArray(fin.positionEvents)).toBe(true);
+    expect(fin.positionEvents.length).toBeGreaterThan(0);
   });
 
   it('fieldquake lock корректно рассчитывает защищённые клетки', () => {

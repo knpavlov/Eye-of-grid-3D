@@ -9,6 +9,10 @@ import {
   computeMagicAreaCells,
   computeDynamicMagicAttack,
   releasePossessionsAfterDeaths,
+  hasPerfectDodge,
+  hasInvisibility,
+  collectDamageInteractions,
+  applyDamageInteractionResults,
 } from './abilities.js';
 import { countUnits } from './board.js';
 
@@ -162,6 +166,7 @@ export function stagedAttack(state, r, c, opts = {}) {
   const baseStats = effectiveStats(base.board[r][c], attacker);
   let atk = baseStats.atk;
   let logLines = [];
+  const damageEffects = { preventRetaliation: new Set(), events: [] };
 
   const hitsRaw = computeHits(base, r, c, opts);
   if (!hitsRaw.length) return { empty: true };
@@ -239,9 +244,12 @@ export function stagedAttack(state, r, c, opts = {}) {
     if (!B) return { ...h, dealt: 0 };
     const isMagic = tplA.attackType === 'MAGIC';
     const tplB = CARDS[B.tplId];
-    const dodge = !isMagic && (tplB.perfectDodge || (tplB.dodge50 && Math.random() < 0.5));
-    const dealt = dodge ? 0 : h.dmg;
-    return { ...h, dealt, dodge };
+    const invisible = hasInvisibility(base, h.r, h.c, { unit: B, tpl: tplB });
+    const dodge = !isMagic && !invisible && (
+      hasPerfectDodge(base, h.r, h.c, { unit: B, tpl: tplB }) || (tplB.dodge50 && Math.random() < 0.5)
+    );
+    const dealt = (invisible || dodge) ? 0 : h.dmg;
+    return { ...h, dealt, dodge, invisible };
   });
 
   const n1 = JSON.parse(JSON.stringify(base));
@@ -277,6 +285,7 @@ export function stagedAttack(state, r, c, opts = {}) {
         const parts = [`${nameA} → ${nameB}: ${h.dealt || 0} dmg (HP ${before}→${afterHP})`];
         if (h.backstab) parts.push('(+1 backstab)');
         if (h.dodge) parts.push('(dodge)');
+        if (h.invisible) parts.push('(невидимость)');
         logLines.push(parts.join(' '));
       }
       if (hasDoubleAttack(tplA)) {
@@ -292,6 +301,23 @@ export function stagedAttack(state, r, c, opts = {}) {
           logLines.push(`${nameA} (2nd) → ${nameB}: ${h.dealt || 0} dmg (HP ${before2}→${after2})`);
         }
       }
+      const interactions = collectDamageInteractions(n1, {
+        attackerPos: { r, c },
+        attackerUnit: n1.board?.[r]?.[c]?.unit,
+        tpl: tplA,
+        hits: step1Damages.map(h => ({ r: h.r, c: h.c, dealt: h.dealt || 0 })),
+      });
+      if (interactions) {
+        const prevents = interactions.preventRetaliation;
+        if (prevents instanceof Set || Array.isArray(prevents)) {
+          for (const key of prevents) {
+            damageEffects.preventRetaliation.add(key);
+          }
+        }
+        if (Array.isArray(interactions.events) && interactions.events.length) {
+          damageEffects.events.push(...interactions.events);
+        }
+      }
     }
     step1Done = true;
   }
@@ -303,6 +329,8 @@ export function stagedAttack(state, r, c, opts = {}) {
     let totalRetaliation = 0;
     const retaliators = [];
     for (const h of step1Damages) {
+      const preventKey = `${h.r},${h.c}`;
+      if (damageEffects.preventRetaliation.has(preventKey)) continue;
       const B = n1.board?.[h.r]?.[h.c]?.unit;
       if (!B) continue;
       const tplB = CARDS[B.tplId];
@@ -326,6 +354,16 @@ export function stagedAttack(state, r, c, opts = {}) {
     ensureStep1();
     const nFinal = JSON.parse(JSON.stringify(n1));
     const ret = step2();
+
+    const applied = applyDamageInteractionResults(nFinal, damageEffects);
+    if (applied?.attackerPosUpdate) {
+      r = applied.attackerPosUpdate.r;
+      c = applied.attackerPosUpdate.c;
+    }
+    const positionEvents = Array.isArray(applied?.positionEvents) ? applied.positionEvents : [];
+    if (Array.isArray(applied?.logLines) && applied.logLines.length) {
+      logLines.push(...applied.logLines);
+    }
 
     const A = nFinal.board?.[r]?.[c]?.unit;
     if (A && (ret.total || 0) > 0) {
@@ -389,7 +427,15 @@ export function stagedAttack(state, r, c, opts = {}) {
     }
 
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
-    return { n1: nFinal, logLines, targets, deaths, retaliators: ret.retaliators, releases: releaseEvents.releases };
+    return {
+      n1: nFinal,
+      logLines,
+      targets,
+      deaths,
+      retaliators: ret.retaliators,
+      releases: releaseEvents.releases,
+      positionEvents,
+    };
   }
 
   return {
@@ -420,6 +466,16 @@ export function magicAttack(state, fr, fc, tr, tc) {
 
   const logLines = [];
   const targets = [];
+  const damageEffects = { preventRetaliation: new Set(), events: [] };
+  const hitsSummary = new Map();
+  const addSummary = (r, c, dealt, extra = {}) => {
+    const key = `${r},${c}`;
+    const entry = hitsSummary.get(key) || { r, c, dealt: 0, invisible: false };
+    entry.dealt += dealt;
+    entry.invisible = entry.invisible || !!extra.invisible;
+    hitsSummary.set(key, entry);
+  };
+
   const atkStats = effectiveStats(n1.board[fr][fc], attacker);
   let atk = atkStats.atk || 0;
   const dynMagic = computeDynamicMagicAttack(n1, tplA);
@@ -472,22 +528,60 @@ export function magicAttack(state, fr, fc, tr, tc) {
     const u = n1.board?.[cell.r]?.[cell.c]?.unit;
     if (!u) continue;
     if (!allowFriendly && u.owner === attacker.owner) continue;
-    const before = u.currentHP ?? u.hp;
-    u.currentHP = Math.max(0, before - dmg);
-    targets.push({ r: cell.r, c: cell.c, dmg });
-    logLines.push(`${CARDS[attacker.tplId].name} (Magic) → ${CARDS[u.tplId].name}: ${dmg} dmg (HP ${before}→${u.currentHP})`);
+    const tplB = CARDS[u.tplId];
+    const invisible = hasInvisibility(n1, cell.r, cell.c, { unit: u, tpl: tplB });
+    const before = u.currentHP ?? tplB.hp;
+    let dealt = 0;
+    if (!invisible) {
+      dealt = Math.max(0, dmg);
+      u.currentHP = Math.max(0, before - dealt);
+    }
+    addSummary(cell.r, cell.c, dealt, { invisible });
+    targets.push({ r: cell.r, c: cell.c, dmg: dealt });
+    const after = invisible ? before : (u.currentHP ?? tplB.hp);
+    const parts = [`${CARDS[attacker.tplId].name} (Magic) → ${CARDS[u.tplId].name}: ${dealt} dmg (HP ${before}→${after})`];
+    if (invisible) parts.push('(невидимость)');
+    logLines.push(parts.join(' '));
   }
 
   if (hasDoubleAttack(tplA)) {
     for (const cell of cells) {
       const u2 = n1.board?.[cell.r]?.[cell.c]?.unit;
       if (!u2) continue;
+      if (!allowFriendly && u2.owner === attacker.owner) continue;
       const tplB2 = CARDS[u2.tplId];
       if ((u2.currentHP ?? tplB2.hp) <= 0) continue;
+      const invisible = hasInvisibility(n1, cell.r, cell.c, { unit: u2, tpl: tplB2 });
       const before2 = u2.currentHP ?? tplB2.hp;
-      u2.currentHP = Math.max(0, before2 - dmg);
-      targets.push({ r: cell.r, c: cell.c, dmg });
-      logLines.push(`${CARDS[attacker.tplId].name} (Magic 2nd) → ${CARDS[u2.tplId].name}: ${dmg} dmg (HP ${before2}→${u2.currentHP})`);
+      let dealt2 = 0;
+      if (!invisible) {
+        dealt2 = Math.max(0, dmg);
+        u2.currentHP = Math.max(0, before2 - dealt2);
+      }
+      addSummary(cell.r, cell.c, dealt2, { invisible });
+      targets.push({ r: cell.r, c: cell.c, dmg: dealt2 });
+      const after2 = invisible ? before2 : (u2.currentHP ?? tplB2.hp);
+      const parts = [`${CARDS[attacker.tplId].name} (Magic 2nd) → ${CARDS[u2.tplId].name}: ${dealt2} dmg (HP ${before2}→${after2})`];
+      if (invisible) parts.push('(невидимость)');
+      logLines.push(parts.join(' '));
+    }
+  }
+
+  const interactions = collectDamageInteractions(n1, {
+    attackerPos: { r: fr, c: fc },
+    attackerUnit: attacker,
+    tpl: tplA,
+    hits: Array.from(hitsSummary.values()),
+  });
+  if (interactions) {
+    const prevents = interactions.preventRetaliation;
+    if (prevents instanceof Set || Array.isArray(prevents)) {
+      for (const key of prevents) {
+        damageEffects.preventRetaliation.add(key);
+      }
+    }
+    if (Array.isArray(interactions.events) && interactions.events.length) {
+      damageEffects.events.push(...interactions.events);
     }
   }
 
@@ -515,8 +609,17 @@ export function magicAttack(state, fr, fc, tr, tc) {
       logLines.push(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
     }
   }
+  const applied = applyDamageInteractionResults(n1, damageEffects);
+  if (applied?.attackerPosUpdate) {
+    fr = applied.attackerPosUpdate.r;
+    fc = applied.attackerPosUpdate.c;
+  }
+  const positionEvents = Array.isArray(applied?.positionEvents) ? applied.positionEvents : [];
+  if (Array.isArray(applied?.logLines) && applied.logLines.length) {
+    logLines.push(...applied.logLines);
+  }
   attacker.lastAttackTurn = n1.turn;
   const cellEl = n1.board?.[fr]?.[fc]?.element;
   attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA, cellEl);
-  return { n1, logLines, targets, deaths, releases: releaseEvents.releases };
+  return { n1, logLines, targets, deaths, releases: releaseEvents.releases, positionEvents };
 }

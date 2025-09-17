@@ -1,8 +1,111 @@
 // Анимация различий между предыдущим и новым состоянием
 
+function makeUnitKey(unit) {
+  if (!unit) return null;
+  if (unit.uid != null) return `UID:${unit.uid}`;
+  const owner = unit.owner != null ? unit.owner : '?';
+  const tpl = unit.tplId || 'UNKNOWN';
+  const facing = unit.facing || 'N';
+  const bonus = unit.bonusHP || 0;
+  const tempAtk = unit.tempAtkBuff || 0;
+  const possessed = unit.possessed ? `P${unit.possessed.by}` : '';
+  return `SIG:${owner}|${tpl}|${facing}|${bonus}|${tempAtk}|${possessed}`;
+}
+
+export function animateUnitMovements(prevState, nextState) {
+  try {
+    if (!prevState || !nextState) return;
+    const ctx = window.__scene?.getCtx?.() || {};
+    const tileMeshes = ctx.tileMeshes || [];
+    const unitMeshes = ctx.unitMeshes || [];
+    const gsap = window.gsap;
+    if (!Array.isArray(tileMeshes) || !tileMeshes.length || !Array.isArray(unitMeshes) || !unitMeshes.length) return;
+
+    const prevBoard = prevState.board || [];
+    const nextBoard = nextState.board || [];
+
+    const prevByUid = new Map();
+    const nextByUid = new Map();
+    const prevFallback = [];
+    const nextFallback = [];
+
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        const pu = prevBoard?.[r]?.[c]?.unit || null;
+        if (pu) {
+          const key = pu.uid != null ? `UID:${pu.uid}` : null;
+          if (key) prevByUid.set(key, { r, c, unit: pu });
+          else prevFallback.push({ r, c, unit: pu });
+        }
+        const nu = nextBoard?.[r]?.[c]?.unit || null;
+        if (nu) {
+          const key = nu.uid != null ? `UID:${nu.uid}` : null;
+          if (key) nextByUid.set(key, { r, c, unit: nu });
+          else nextFallback.push({ r, c, unit: nu });
+        }
+      }
+    }
+
+    const moves = [];
+    for (const [key, prevInfo] of prevByUid.entries()) {
+      const nextInfo = nextByUid.get(key);
+      if (!nextInfo) continue;
+      if (prevInfo.r !== nextInfo.r || prevInfo.c !== nextInfo.c) {
+        moves.push({ prev: prevInfo, next: nextInfo });
+      }
+      nextByUid.delete(key);
+    }
+
+    const usedNextFallback = new Set();
+    for (const prevInfo of prevFallback) {
+      const prevKey = makeUnitKey(prevInfo.unit);
+      let matchIndex = -1;
+      for (let i = 0; i < nextFallback.length; i++) {
+        if (usedNextFallback.has(i)) continue;
+        const nextInfo = nextFallback[i];
+        if (prevKey && prevKey === makeUnitKey(nextInfo.unit)) { matchIndex = i; break; }
+        if (!prevKey && nextInfo.unit.tplId === prevInfo.unit.tplId && nextInfo.unit.owner === prevInfo.unit.owner) {
+          matchIndex = i;
+          break;
+        }
+      }
+      if (matchIndex >= 0) {
+        usedNextFallback.add(matchIndex);
+        const nextInfo = nextFallback[matchIndex];
+        if (prevInfo.r !== nextInfo.r || prevInfo.c !== nextInfo.c) {
+          moves.push({ prev: prevInfo, next: nextInfo });
+        }
+      }
+    }
+
+    if (!moves.length) return;
+
+    for (const move of moves) {
+      const mesh = unitMeshes.find(m => m?.userData?.unitData === move.next.unit);
+      if (!mesh) continue;
+      const fromTile = tileMeshes?.[move.prev.r]?.[move.prev.c];
+      const finalTile = tileMeshes?.[move.next.r]?.[move.next.c];
+      if (!fromTile || !finalTile) continue;
+      const finalPos = mesh.position.clone();
+      const startPos = fromTile.position.clone();
+      startPos.y = finalPos.y;
+      if (!gsap) {
+        mesh.position.set(finalPos.x, finalPos.y, finalPos.z);
+        continue;
+      }
+      mesh.position.set(startPos.x, finalPos.y, startPos.z);
+      const tl = gsap.timeline();
+      tl.to(mesh.position, { x: finalPos.x, z: finalPos.z, duration: 0.38, ease: 'power2.inOut' }, 0);
+      tl.fromTo(mesh.position, { y: finalPos.y + 0.45 }, { y: finalPos.y, duration: 0.38, ease: 'sine.out' }, 0);
+    }
+  } catch {}
+}
+
 export function playDeltaAnimations(prevState, nextState) {
   try {
     if (!prevState || !nextState) return;
+
+    animateUnitMovements(prevState, nextState);
 
     const gameState = window.gameState;
     const ctx = window.__scene?.getCtx?.() || {};
@@ -112,8 +215,13 @@ export function playDeltaAnimations(prevState, nextState) {
   } catch {}
 }
 
-const api = { playDeltaAnimations };
-try { if (typeof window !== 'undefined') window.playDeltaAnimations = playDeltaAnimations; } catch {}
+const api = { playDeltaAnimations, animateUnitMovements };
+try {
+  if (typeof window !== 'undefined') {
+    window.playDeltaAnimations = playDeltaAnimations;
+    window.animateUnitMovements = animateUnitMovements;
+  }
+} catch {}
 
 export default api;
 

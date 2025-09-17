@@ -603,6 +603,7 @@
             }
           }
           // Финализация: анимация смерти и орбы перед применением состояния
+          const prevForFinish = JSON.parse(JSON.stringify(gameState));
           const res = staged.finish();
           gameState = res.n1;
           try { window.applyGameState(gameState); } catch {}
@@ -628,7 +629,9 @@
           }
           if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
             setTimeout(() => {
-              updateUnits(); updateUI();
+              updateUnits();
+              try { window.playDeltaAnimations?.(prevForFinish, gameState); } catch {}
+              updateUI();
               for (const l of res.logLines.reverse()) addLog(l);
               try { schedulePush('battle-finish', { force: true }); } catch {}
               if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
@@ -639,7 +642,9 @@
           } else {
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем обновим визуально
             setTimeout(() => {
-              updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish', { force: true }); } catch {}
+              updateUnits();
+              try { window.playDeltaAnimations?.(prevForFinish, gameState); } catch {}
+              updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish', { force: true }); } catch {}
               if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
                 window.__interactions.interactionState.autoEndTurnAfterAttack = false;
                 try { endTurn(); } catch {}
@@ -700,6 +705,7 @@
       const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
       const attacker = gameState.board?.[from.r]?.[from.c]?.unit;
       if (!attacker || attacker.lastAttackTurn === gameState.turn) { showNotification('Incorrect target', 'error'); return; }
+      const prevMagicState = JSON.parse(JSON.stringify(gameState));
       const res = magicAttack(gameState, from.r, from.c, tr, tc);
       if (!res) { showNotification('Incorrect target', 'error'); return; }
       for (const l of res.logLines.reverse()) addLog(l);
@@ -741,7 +747,9 @@
         try { window.applyGameState(gameState); } catch {}
         const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
         setTimeout(() => {
-          updateUnits(); updateUI();
+          updateUnits();
+          try { window.playDeltaAnimations?.(prevMagicState, gameState); } catch {}
+          updateUI();
           try { schedulePush('magic-battle-finish', { force: true }); } catch {}
           if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
             window.__interactions.interactionState.autoEndTurnAfterAttack = false;
@@ -751,7 +759,9 @@
       } else {
         // Если смертей нет — применяем состояние сразу
         gameState = res.n1; try { window.applyGameState(gameState); } catch {}
-        updateUnits(); updateUI();
+        updateUnits();
+        try { window.playDeltaAnimations?.(prevMagicState, gameState); } catch {}
+        updateUI();
         const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
         try { schedulePush('magic-battle-finish', { force: true }); } catch {}
         if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
