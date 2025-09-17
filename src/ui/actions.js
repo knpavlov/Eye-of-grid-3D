@@ -2,7 +2,7 @@
 // These functions rely on existing globals to minimize coupling.
 import { highlightTiles, clearHighlights } from '../scene/highlight.js';
 import { enforceHandLimit } from './handLimit.js';
-import { canAttack } from '../core/abilities.js';
+import { canAttack, getAttackContext, listMagicTargetCells } from '../core/abilities.js';
 
 export function rotateUnit(unitMesh, dir) {
   try {
@@ -47,6 +47,12 @@ export function performUnitAttack(unitMesh) {
     const unit = gameState.board?.[r]?.[c]?.unit; if (!unit) return;
     // запрет на повторную атаку и на атаку укреплений
     const tpl = window.CARDS?.[unit.tplId];
+    const attackCtx = getAttackContext(gameState, r, c) || {
+      attackType: tpl?.attackType,
+      attacks: tpl?.attacks || [],
+      chooseDir: tpl?.chooseDir,
+      friendlyFire: tpl?.friendlyFire,
+    };
     if (!canAttack(tpl)) {
       window.__ui?.notifications?.show('Это укрепление не может атаковать', 'error');
       return;
@@ -58,20 +64,13 @@ export function performUnitAttack(unitMesh) {
     }
     const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
     const iState = window.__interactions?.interactionState;
-    if (tpl?.attackType === 'MAGIC') {
-      const allowFriendly = !!tpl.friendlyFire;
-      const cells = [];
-      let hasEnemy = false;
-      for (let rr = 0; rr < 3; rr++) {
-        for (let cc = 0; cc < 3; cc++) {
-          if (rr === r && cc === c) continue; // нельзя бить себя
-          const u = gameState.board?.[rr]?.[cc]?.unit;
-          if (allowFriendly || (u && u.owner !== unit.owner)) {
-            cells.push({ r: rr, c: cc });
-          }
-          if (u && u.owner !== unit.owner) hasEnemy = true;
-        }
-      }
+    if (attackCtx.attackType === 'MAGIC') {
+      const allowFriendly = attackCtx.friendlyFire != null ? attackCtx.friendlyFire : !!tpl?.friendlyFire;
+      const cells = listMagicTargetCells(gameState, r, c, attackCtx);
+      const hasEnemy = cells.some(cell => {
+        const u = gameState.board?.[cell.r]?.[cell.c]?.unit;
+        return u && u.owner !== unit.owner;
+      });
       if (!cells.length || (!allowFriendly && !hasEnemy)) {
         window.__ui?.notifications?.show('No available targets for magic attack', 'error');
         return;
@@ -88,12 +87,13 @@ export function performUnitAttack(unitMesh) {
         highlightTiles(cells);
         try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
       }
-      window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
+      const attackName = tpl?.name || attackCtx.tpl?.name || 'Unit';
+      window.__ui?.log?.add?.(`${attackName}: select a target for the magical attack.`);
       return;
     }
     const computeHits = window.computeHits;
-    const attacks = tpl?.attacks || [];
-    const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
+    const attacks = attackCtx.attacks || [];
+    const needsChoice = attackCtx.chooseDir || attacks.some(a => a.mode === 'ANY');
     // если у карты несколько дистанций, показываем также пустые клетки зоны удара
     const includeEmpty = attacks.some(a => Array.isArray(a.ranges) && a.ranges.length > 1 && !a.mode);
     const hitsAll = typeof computeHits === 'function' ? computeHits(gameState, r, c, { union: true, includeEmpty }) : [];

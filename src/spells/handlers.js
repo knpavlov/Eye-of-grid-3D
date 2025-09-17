@@ -8,6 +8,7 @@ import { getCtx } from '../scene/context.js';
 import { interactionState, resetCardSelection } from '../scene/interactions.js';
 import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
+import { releasePossessionsBySource } from '../core/abilities.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -266,6 +267,7 @@ export const handlers = {
         } catch {}
         if (u.currentHP <= 0) {
           const owner = u.owner;
+          releasePossessionsBySource(gameState, u.uid);
           try { gameState.players[owner].graveyard.push(CARDS[u.tplId]); } catch {}
           const pos = getCtx().tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
           const slot = gameState.players?.[owner]?.mana || 0;
@@ -379,6 +381,7 @@ export const handlers = {
               deltaHp > 0 ? '#22c55e' : '#ef4444'
             );
           if (u.currentHP <= 0) {
+            releasePossessionsBySource(gameState, u.uid);
             try { gameState.players[u.owner].graveyard.push(CARDS[u.tplId]); } catch {}
             const deadMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
             if (deadMesh) {

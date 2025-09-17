@@ -2,7 +2,7 @@
 import { getCtx } from './context.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
-import { applyFreedonianAura } from '../core/abilities.js';
+import { applyFreedonianAura, applyOnSummonAbilities, listMagicTargetCells, getAttackContext } from '../core/abilities.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -587,6 +587,8 @@ export function placeUnitWithDirection(direction) {
     gameState.board[row][col].unit = null;
   }
   if (gameState.board[row][col].unit) {
+    const abilityLogs = applyOnSummonAbilities(gameState, row, col) || [];
+    for (const line of abilityLogs) window.addLog(line);
     const gained = applyFreedonianAura(gameState, gameState.active);
     if (gained > 0) {
       window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
@@ -616,25 +618,25 @@ export function placeUnitWithDirection(direction) {
       window.updateUnits();
       window.updateUI();
       const tpl = window.CARDS?.[cardData.id];
-      if (tpl?.attackType === 'MAGIC') {
-        const allowFriendly = !!tpl.friendlyFire;
-        const cells = [];
-        let hasEnemy = false;
-        for (let rr = 0; rr < 3; rr++) {
-          for (let cc = 0; cc < 3; cc++) {
-            if (rr === row && cc === col) continue;
-            const u = gameState.board?.[rr]?.[cc]?.unit;
-            if (allowFriendly || (u && u.owner !== unit.owner)) {
-              cells.push({ r: rr, c: cc });
-            }
-            if (u && u.owner !== unit.owner) hasEnemy = true;
-          }
-        }
+      const attackCtx = getAttackContext(gameState, row, col) || {
+        attackType: tpl?.attackType,
+        attacks: tpl?.attacks || [],
+        chooseDir: tpl?.chooseDir,
+        friendlyFire: tpl?.friendlyFire,
+      };
+      const attackName = tpl?.name || attackCtx.tpl?.name || cardData.name;
+      if (attackCtx.attackType === 'MAGIC') {
+        const allowFriendly = attackCtx.friendlyFire != null ? attackCtx.friendlyFire : !!tpl?.friendlyFire;
+        const cells = listMagicTargetCells(gameState, row, col, attackCtx);
+        const hasEnemy = cells.some(cell => {
+          const u = gameState.board?.[cell.r]?.[cell.c]?.unit;
+          return u && u.owner !== unit.owner;
+        });
         if (cells.length && (allowFriendly || hasEnemy)) {
           interactionState.magicFrom = { r: row, c: col };
           interactionState.autoEndTurnAfterAttack = true;
           highlightTiles(cells);
-          window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
+          window.__ui?.log?.add?.(`${attackName}: select a target for the magical attack.`);
           if (unlockTriggered) {
             const delay = 1200;
             setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, delay);
@@ -644,9 +646,8 @@ export function placeUnitWithDirection(direction) {
           try { window.endTurn && window.endTurn(); } catch {}
         }
       } else {
-        const attacks = tpl?.attacks || [];
-        const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
-        // если в шаблоне несколько дистанций без выбора, подсвечиваем и пустые клетки
+        const attacks = attackCtx.attacks || [];
+        const needsChoice = attackCtx.chooseDir || attacks.some(a => a.mode === 'ANY');
         const includeEmpty = attacks.some(a => Array.isArray(a.ranges) && a.ranges.length > 1 && !a.mode);
         const hitsAll = window.computeHits(gameState, row, col, { union: true, includeEmpty });
         const hasEnemy = hitsAll.some(h => {
@@ -658,7 +659,7 @@ export function placeUnitWithDirection(direction) {
             interactionState.pendingAttack = { r: row, c: col };
             interactionState.autoEndTurnAfterAttack = true;
             highlightTiles(hitsAll);
-            window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
+            window.__ui?.log?.add?.(`${attackName}: выберите цель для атаки.`);
             window.__ui?.notifications?.show('Выберите цель', 'info');
           } else {
             let opts = {};

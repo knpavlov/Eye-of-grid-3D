@@ -2,6 +2,7 @@
 import { getCtx } from './context.js';
 import { createCard3D } from './cards.js';
 import { renderFieldLocks } from './fieldlocks.js';
+import { attachPossessionOverlay, removePossessionOverlay } from './status/possession.js';
 
 function getTHREE() {
   const ctx = getCtx();
@@ -20,7 +21,13 @@ export function updateUnits(gameState) {
   const facingDeg = (typeof window !== 'undefined' && window.facingDeg) || { N:0, E:-90, S:180, W:90 };
 
   // Remove previous unit meshes
-  try { (ctx.unitMeshes || []).forEach(unit => { if (unit && unit.parent) unit.parent.remove(unit); }); } catch {}
+  try {
+    (ctx.unitMeshes || []).forEach(unit => {
+      if (!unit) return;
+      try { removePossessionOverlay(unit); } catch {}
+      if (unit.parent) unit.parent.remove(unit);
+    });
+  } catch {}
   ctx.unitMeshes = [];
 
   const tileSize = 6.2; const spacing = 0.2; const boardZShift = -3.5;
@@ -58,6 +65,9 @@ export function updateUnits(gameState) {
 
       unitMesh.userData = { type: 'unit', row: r, col: c, unitData: unit, cardData };
       try { cardGroup.add(unitMesh); } catch {}
+      if (unit.possession) {
+        try { attachPossessionOverlay(unitMesh); } catch {}
+      }
       ctx.unitMeshes.push(unitMesh);
     }
   }

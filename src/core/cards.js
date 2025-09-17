@@ -133,6 +133,35 @@ export const CARDS = {
     desc: 'Quickness. Attacks the same target twice (counterattack after second attack). Adds 1 to his Attack if the target creature is on a Fire field. While Didi is on the board, no Fire field can be field‑quaked or exchanged.'
   },
 
+  FIRE_WARDEN_HILDA: {
+    id: 'FIRE_WARDEN_HILDA', name: 'Warden Hilda', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FIRE', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    blindspots: ['S'],
+    plusAtkIfTargetCreatureElement: { element: 'FIRE', amount: 1 },
+    onSummonPossessEnemiesOnElement: { targetElement: 'FIRE', requireFieldNot: 'FIRE' },
+    desc: 'Adds 1 to her Attack if the target is a Fire creature. If summoned on a non‑Fire field, you gain possession of any enemies on a Fire field.'
+  },
+
+  FIRE_CRUCIBLE_KING_DIOS_IV: {
+    id: 'FIRE_CRUCIBLE_KING_DIOS_IV', name: 'Crucible King Dios IV', type: 'UNIT', cost: 6, activation: 4,
+    element: 'FIRE', atk: 3, hp: 6,
+    attackType: 'STANDARD', doubleAttack: true,
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    dynamicAtk: 'FIRE_FIELDS',
+    altMagic: {
+      element: 'FIRE', attackType: 'MAGIC', useAttacksPattern: true,
+      area: 'TARGET_ORTHOGONAL', label: 'Alt', dynamicAtk: 'FIRE_FIELDS'
+    },
+    attackSchemes: {
+      base: { label: 'Base', attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [1] } ] },
+      alt: { label: 'Alt', attackType: 'MAGIC', attacks: [ { dir: 'N', ranges: [1] } ], area: 'TARGET_ORTHOGONAL' }
+    },
+    desc: 'Attacks the same target twice (counterattack after second attack). While on a Fire field he must use his Magic Attack, which affects the target and all adjacent enemies. The Attack value is equal to the number of Fire fields.'
+  },
+
   // Spells (subset)
   RAISE_STONE: { id:'RAISE_STONE', name:'Raise Stone', type:'SPELL', cost:2, element:'EARTH', text:'+2 HP to a friendly unit.' },
   SPELL_FISSURES_OF_GOGHLIE: { id: 'SPELL_FISSURES_OF_GOGHLIE', name: 'Fissures of Goghlie', type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 2, text: 'Fieldquake any one field.' },

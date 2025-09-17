@@ -165,7 +165,9 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     diagramGap = Math.max(Math.round(ps(1.5)), 1);
     const diagramHeight = diagramCell * 3 + diagramGap * 2;
     const diagramSpacing = Math.max(py(10), 8);
-    diagramTop = footerBaseY - diagramSpacing - diagramHeight;
+    const hasAltScheme = !!(cardData.attackSchemes?.base && cardData.attackSchemes?.alt);
+    const labelReserve = hasAltScheme ? Math.max(py(16), 14) : Math.max(py(8), 6);
+    diagramTop = footerBaseY - diagramSpacing - diagramHeight - labelReserve;
     const minDiagramTop = illY + illH + Math.max(py(24), 20);
     if (diagramTop < minDiagramTop) diagramTop = minDiagramTop;
   }
@@ -239,10 +241,34 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     const gap = diagramGap ?? Math.max(Math.round(ps(1.5)), 1);
     const gridW = cell * 3 + gap * 2;
     const spacing = Math.max(Math.round(ps(14)), 10);
-    const startX = (width - (gridW * 2 + spacing)) / 2;
+    const hasAltScheme = !!(cardData.attackSchemes?.base && cardData.attackSchemes?.alt);
+    const diagrams = [];
+    if (hasAltScheme) {
+      diagrams.push({ kind: 'ATTACK', scheme: cardData.attackSchemes.base, label: cardData.attackSchemes.base.label || 'Base' });
+      diagrams.push({ kind: 'ATTACK', scheme: cardData.attackSchemes.alt, label: cardData.attackSchemes.alt.label || 'Alt' });
+      diagrams.push({ kind: 'BLIND', label: 'Blind' });
+    } else {
+      diagrams.push({ kind: 'ATTACK', scheme: { attackType: cardData.attackType, attacks: cardData.attacks || [], chooseDir: cardData.chooseDir }, label: null });
+      diagrams.push({ kind: 'BLIND', label: null });
+    }
+    const totalWidth = gridW * diagrams.length + spacing * (diagrams.length - 1);
+    const startX = (width - totalWidth) / 2;
     const gridY = diagramTop;
-    drawAttacksGrid(ctx, cardData, startX, gridY, cell, gap);
-    drawBlindspotGrid(ctx, cardData, startX + gridW + spacing, gridY, cell, gap);
+    ctx.textAlign = 'center';
+    for (let i = 0; i < diagrams.length; i++) {
+      const dx = startX + i * (gridW + spacing);
+      const item = diagrams[i];
+      if (item.kind === 'ATTACK') {
+        drawAttackSchemeGrid(ctx, item.scheme, dx, gridY, cell, gap);
+      } else {
+        drawBlindspotGrid(ctx, cardData, dx, gridY, cell, gap);
+      }
+      if (item.label) {
+        ctx.fillStyle = '#cbd5e1';
+        ctx.font = `600 ${Math.max(ps(7), 7)}px "Noto Sans", "Helvetica", sans-serif`;
+        ctx.fillText(item.label, dx + gridW / 2, gridY + gridW + Math.max(ps(12), 10));
+      }
+    }
   }
 }
 
@@ -340,8 +366,8 @@ function drawLockIcon(ctx, x, y, size) {
   ctx.restore();
 }
 
-function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
-  const attacks = cardData.attacks || [];
+function drawAttackSchemeGrid(ctx, scheme, x, y, cell, gap) {
+  const attacks = scheme?.attacks || [];
   const baseLine = Math.max(1, Math.round(cell * 0.18));
   const accentLine = Math.max(1, Math.round(cell * 0.2));
 
@@ -358,30 +384,64 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
     }
   }
 
-  if (cardData.attackType === 'MAGIC') {
-    for (let r = 0; r < 3; r++) {
-      for (let c = 0; c < 3; c++) {
-        if (r === 1 && c === 1) continue;
-        const cx = x + c * (cell + gap);
-        const cy = y + r * (cell + gap);
-        ctx.fillStyle = 'rgba(56,189,248,0.28)';
-        ctx.fillRect(cx, cy, cell, cell);
-        ctx.strokeStyle = 'rgba(56,189,248,0.65)';
-        ctx.lineWidth = accentLine;
-        ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+  if (scheme?.attackType === 'MAGIC') {
+    if (scheme?.area === 'TARGET_ORTHOGONAL' && attacks.length) {
+      const map = { N: [-1,0], E:[0,1], S:[1,0], W:[0,-1] };
+      for (const pattern of attacks) {
+        const ranges = Array.isArray(pattern.ranges) ? pattern.ranges : [1];
+        for (const dist of ranges) {
+          const vec = map[pattern.dir]; if (!vec) continue;
+          const rr = 1 + vec[0] * dist;
+          const cc = 1 + vec[1] * dist;
+          if (rr < 0 || rr > 2 || cc < 0 || cc > 2) continue;
+          const cx = x + cc * (cell + gap);
+          const cy = y + rr * (cell + gap);
+          ctx.fillStyle = 'rgba(192,132,252,0.32)';
+          ctx.fillRect(cx, cy, cell, cell);
+          ctx.strokeStyle = '#a855f7';
+          ctx.lineWidth = accentLine;
+          ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+          const extra = [ [-1,0], [1,0], [0,-1], [0,1] ];
+          for (const [dr, dc] of extra) {
+            const nr = rr + dr;
+            const nc = cc + dc;
+            if (nr < 0 || nr > 2 || nc < 0 || nc > 2) continue;
+            if (nr === 1 && nc === 1) continue;
+            const ex = x + nc * (cell + gap);
+            const ey = y + nr * (cell + gap);
+            ctx.fillStyle = 'rgba(168,85,247,0.22)';
+            ctx.fillRect(ex, ey, cell, cell);
+            ctx.strokeStyle = 'rgba(168,85,247,0.55)';
+            ctx.lineWidth = baseLine;
+            ctx.strokeRect(ex + 0.5, ey + 0.5, cell - 1, cell - 1);
+          }
+        }
       }
+    } else {
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          if (r === 1 && c === 1) continue;
+          const cx = x + c * (cell + gap);
+          const cy = y + r * (cell + gap);
+          ctx.fillStyle = 'rgba(56,189,248,0.28)';
+          ctx.fillRect(cx, cy, cell, cell);
+          ctx.strokeStyle = 'rgba(56,189,248,0.65)';
+          ctx.lineWidth = accentLine;
+          ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+        }
+      }
+      const frontX = x + 1 * (cell + gap);
+      const frontY = y + 0 * (cell + gap);
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = accentLine;
+      ctx.strokeRect(frontX + 0.5, frontY + 0.5, cell - 1, cell - 1);
     }
-    const frontX = x + 1 * (cell + gap);
-    const frontY = y + 0 * (cell + gap);
-    ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = accentLine;
-    ctx.strokeRect(frontX + 0.5, frontY + 0.5, cell - 1, cell - 1);
     return;
   }
 
   const map = { N: [-1,0], E:[0,1], S:[1,0], W:[0,-1] };
   for (const a of attacks) {
-    const isChoice = cardData.chooseDir || a.mode === 'ANY';
+    const isChoice = scheme?.chooseDir || a.mode === 'ANY';
     const minDist = Math.min(...(a.ranges || [1]));
     for (const dist of a.ranges || []) {
       const vec = map[a.dir];
@@ -400,12 +460,12 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
     }
   }
 
-  if (cardData.chooseDir || attacks.some(a => a.mode === 'ANY')) {
-    const cx = x + 1 * (cell + gap);
-    const cy = y + 0 * (cell + gap);
-    ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = accentLine;
-    ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+    if (scheme?.chooseDir || attacks.some(a => a.mode === 'ANY')) {
+      const cx = x + 1 * (cell + gap);
+      const cy = y + 0 * (cell + gap);
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = accentLine;
+      ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
   }
 }
 
