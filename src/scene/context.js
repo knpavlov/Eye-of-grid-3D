@@ -19,6 +19,7 @@ const ctx = {
   tileFrames: [],
   // Scene caches for units and hand cards
   unitMeshes: [],
+  unitMeshesByUid: new Map(),
   handCardMeshes: [],
   // Textures cache
   TILE_TEXTURES: {},
