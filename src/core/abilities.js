@@ -68,6 +68,132 @@ function ensureUniqueCells(cells) {
   return res;
 }
 
+const OPPOSITE_DIR = { N: 'S', S: 'N', E: 'W', W: 'E' };
+
+function directionFromDelta(dr, dc) {
+  if (dr === -1 && dc === 0) return 'N';
+  if (dr === 1 && dc === 0) return 'S';
+  if (dr === 0 && dc === 1) return 'E';
+  if (dr === 0 && dc === -1) return 'W';
+  return null;
+}
+
+function resolveCardMatchers(matchers) {
+  const result = new Set();
+  if (matchers == null) return result;
+  const arr = Array.isArray(matchers) ? matchers : [matchers];
+  for (const item of arr) {
+    if (!item) continue;
+    if (item instanceof Set) {
+      for (const v of item) { if (v) result.add(v); }
+      continue;
+    }
+    if (typeof item === 'string') {
+      const trimmed = item.trim();
+      if (!trimmed) continue;
+      if (CARDS[trimmed]) {
+        result.add(CARDS[trimmed].id || trimmed);
+        continue;
+      }
+      const byId = Object.values(CARDS).find(t => t.id === trimmed);
+      if (byId) {
+        result.add(byId.id);
+        continue;
+      }
+      const byName = Object.values(CARDS).filter(t => t.name === trimmed);
+      if (byName.length) {
+        for (const tpl of byName) result.add(tpl.id);
+        continue;
+      }
+      result.add(trimmed);
+      continue;
+    }
+    if (Array.isArray(item.ids)) {
+      for (const v of item.ids) {
+        if (!v) continue;
+        if (CARDS[v]) result.add(CARDS[v].id || v);
+        else result.add(v);
+      }
+      continue;
+    }
+    if (typeof item === 'object') {
+      if (item.id) {
+        const id = item.id;
+        if (CARDS[id]) result.add(CARDS[id].id || id);
+        else result.add(id);
+        continue;
+      }
+      if (item.name) {
+        const byName = Object.values(CARDS).filter(t => t.name === item.name);
+        if (byName.length) {
+          for (const tpl of byName) result.add(tpl.id);
+        }
+        continue;
+      }
+    }
+  }
+  return result;
+}
+
+function hasMatchingAlly(state, owner, matchers, excludeUid = null) {
+  const idSet = matchers instanceof Set ? matchers : resolveCardMatchers(matchers);
+  if (!state?.board || idSet.size === 0) return false;
+  for (let rr = 0; rr < 3; rr++) {
+    for (let cc = 0; cc < 3; cc++) {
+      const unit = state.board?.[rr]?.[cc]?.unit;
+      if (!unit || unit.owner !== owner) continue;
+      if (excludeUid != null && unit.uid === excludeUid) continue;
+      const tpl = getUnitTemplate(unit);
+      const id = tpl?.id || unit.tplId;
+      if (idSet.has(id) || idSet.has(unit.tplId)) return true;
+    }
+  }
+  return false;
+}
+
+function collectPerfectDodgeElements(tpl) {
+  const set = new Set();
+  if (!tpl) return set;
+  const direct = tpl.perfectDodgeOnElement;
+  if (typeof direct === 'string') set.add(direct);
+  if (Array.isArray(direct)) {
+    for (const el of direct) if (typeof el === 'string') set.add(el);
+  }
+  const map = {
+    perfectDodgeOnFire: 'FIRE',
+    perfectDodgeOnWater: 'WATER',
+    perfectDodgeOnEarth: 'EARTH',
+    perfectDodgeOnForest: 'FOREST',
+  };
+  for (const [key, value] of Object.entries(map)) {
+    if (tpl[key]) set.add(value);
+  }
+  return set;
+}
+
+function gatherInvisibilityMatchers(tpl) {
+  if (!tpl) return [];
+  const res = [];
+  const direct = tpl.invisibilityAllies || tpl.invisibilityWhileAllies || tpl.invisibilityWithAllies;
+  if (Array.isArray(direct)) res.push(...direct);
+  if (typeof tpl.invisibilityAllies === 'string') res.push(tpl.invisibilityAllies);
+  if (typeof tpl.invisibilityWhileAllies === 'string') res.push(tpl.invisibilityWhileAllies);
+  if (typeof tpl.invisibilityWithAllies === 'string') res.push(tpl.invisibilityWithAllies);
+  if (tpl.invisibilityWithAlly) res.push(tpl.invisibilityWithAlly);
+  if (tpl.invisibilityWithAllyIds) res.push(...[].concat(tpl.invisibilityWithAllyIds));
+
+  const map = {
+    invisibilityWithSpider: 'Spider Ninja',
+    invisibilityWithWolf: 'Wolf Ninja',
+    invisibilityWithFirefly: 'Firefly Ninja',
+    invisibilityWithSwallow: 'Swallow Ninja',
+  };
+  for (const [key, name] of Object.entries(map)) {
+    if (tpl[key]) res.push(name);
+  }
+  return res;
+}
+
 // базовая стоимость активации без каких‑либо скидок
 function baseActivationCost(tpl) {
   return tpl && tpl.activation != null
@@ -100,6 +226,30 @@ export const hasDoubleAttack = (tpl) => !!(tpl && tpl.doubleAttack);
 // Может ли существо атаковать (крепости не могут)
 export const canAttack = (tpl) => !(tpl && tpl.fortress);
 
+export function hasPerfectDodge(state, r, c, tplOverride = null) {
+  const cell = state?.board?.[r]?.[c];
+  const unit = cell?.unit;
+  const tpl = tplOverride || getUnitTemplate(unit);
+  if (!tpl) return false;
+  if (tpl.perfectDodge) return true;
+  const elements = collectPerfectDodgeElements(tpl);
+  if (!elements.size) return false;
+  const cellElement = cell?.element;
+  return cellElement ? elements.has(cellElement) : false;
+}
+
+export function hasInvisibility(state, r, c, unitOverride = null, tplOverride = null) {
+  const cell = state?.board?.[r]?.[c];
+  const unit = unitOverride || cell?.unit;
+  if (!unit) return false;
+  const tpl = tplOverride || getUnitTemplate(unit);
+  if (!tpl) return false;
+  if (unit.invisibility || tpl.invisibility) return true;
+  const matchers = gatherInvisibilityMatchers(tpl);
+  if (!matchers.length) return false;
+  return hasMatchingAlly(state, unit.owner, matchers, getUnitUid(unit));
+}
+
 // Реализация ауры Фридонийского Странника при призыве союзников
 // Возвращает количество полученных единиц маны
 export function applyFreedonianAura(state, owner) {
@@ -118,6 +268,80 @@ export function applyFreedonianAura(state, owner) {
     }
   }
   return gained;
+}
+
+export function applyPostDamageEffects(state, context = {}) {
+  const board = state?.board;
+  const attackerCtx = context?.attacker || {};
+  let attackerR = attackerCtx.position?.r;
+  let attackerC = attackerCtx.position?.c;
+  if (attackerR == null || attackerC == null || !board) {
+    const pos = attackerCtx.position;
+    return { attackerPos: pos && pos.r != null && pos.c != null ? { ...pos } : null };
+  }
+
+  let attackerUnit = board?.[attackerR]?.[attackerC]?.unit || null;
+  const tplAttacker = attackerCtx.tpl || getUnitTemplate(attackerUnit);
+  if (!tplAttacker) {
+    return { attackerPos: { r: attackerR, c: attackerC } };
+  }
+
+  const logLines = Array.isArray(context.logLines) ? context.logLines : null;
+  const hits = Array.isArray(context.hits) ? context.hits : [];
+
+  const attackerAlive = () => {
+    if (!attackerUnit) return false;
+    const tplA = getUnitTemplate(attackerUnit);
+    return (attackerUnit.currentHP ?? tplA?.hp ?? 0) > 0;
+  };
+
+  const swapCfg = normalizeElementConfig(tplAttacker.swapOnDamageIfTargetOnElement);
+  if (swapCfg?.element && attackerAlive()) {
+    for (const hit of hits) {
+      if (!hit || hit.dealt <= 0) continue;
+      const cellElement = hit.meta?.targetElement ?? board?.[hit.r]?.[hit.c]?.element;
+      if (cellElement !== swapCfg.element) continue;
+      const targetCell = board?.[hit.r]?.[hit.c];
+      const targetUnit = targetCell?.unit;
+      const tplTarget = getUnitTemplate(targetUnit);
+      const targetAlive = targetUnit && (targetUnit.currentHP ?? tplTarget?.hp ?? 0) > 0;
+      if (!targetAlive) continue;
+      if (!attackerAlive()) break;
+      const originalAttacker = attackerUnit;
+      board[attackerR][attackerC].unit = targetUnit;
+      board[hit.r][hit.c].unit = originalAttacker;
+      attackerR = hit.r;
+      attackerC = hit.c;
+      attackerUnit = originalAttacker;
+      if (logLines) {
+        const name = tplTarget?.name || 'цель';
+        logLines.push(`${tplAttacker.name}: меняется местами с ${name}.`);
+      }
+      break;
+    }
+  }
+
+  if (tplAttacker.rotateTargetBackOnDamage) {
+    for (const hit of hits) {
+      if (!hit || hit.dealt <= 0) continue;
+      const targetCell = board?.[hit.r]?.[hit.c];
+      const targetUnit = targetCell?.unit;
+      const tplTarget = getUnitTemplate(targetUnit);
+      const targetAlive = targetUnit && (targetUnit.currentHP ?? tplTarget?.hp ?? 0) > 0;
+      if (!targetAlive) continue;
+      const dir = directionFromDelta(attackerR - hit.r, attackerC - hit.c);
+      if (!dir) continue;
+      const newFacing = OPPOSITE_DIR[dir];
+      if (!newFacing) continue;
+      targetUnit.facing = newFacing;
+      if (logLines) {
+        const name = tplTarget?.name || 'цель';
+        logLines.push(`${tplAttacker.name}: поворачивает ${name} спиной к себе.`);
+      }
+    }
+  }
+
+  return { attackerPos: { r: attackerR, c: attackerC } };
 }
 
 export function applySummonAbilities(state, r, c) {

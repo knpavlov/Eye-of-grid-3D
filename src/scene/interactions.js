@@ -390,6 +390,9 @@ function performMagicAttack(from, targetMesh) {
   for (const l of res.logLines.reverse()) window.addLog(l);
   const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
   if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
+  const finalPos = (res.attackerPos && res.attackerPos.r != null && res.attackerPos.c != null)
+    ? { r: res.attackerPos.r, c: res.attackerPos.c }
+    : { r: from.r, c: from.c };
   for (const t of res.targets || []) {
     const tMesh = unitMeshes.find(m => m.userData.row === t.r && m.userData.col === t.c);
     if (tMesh) {
@@ -417,7 +420,8 @@ function performMagicAttack(from, targetMesh) {
     }
     // Обновляем состояние сразу, чтобы клетка считалась свободной
     try { window.applyGameState(res.n1); } catch {}
-    const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
+    const attackerFinal = window.gameState.board?.[finalPos.r]?.[finalPos.c]?.unit;
+    if (attackerFinal) attackerFinal.lastAttackTurn = window.gameState.turn;
     setTimeout(() => {
       window.updateUnits(); window.updateUI();
       try { window.schedulePush && window.schedulePush('magic-battle-finish', { force: true }); } catch {}
@@ -429,7 +433,8 @@ function performMagicAttack(from, targetMesh) {
   } else {
     try { window.applyGameState(res.n1); } catch {}
     window.updateUnits(); window.updateUI();
-    const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
+    const attackerFinal = window.gameState.board?.[finalPos.r]?.[finalPos.c]?.unit;
+    if (attackerFinal) attackerFinal.lastAttackTurn = window.gameState.turn;
     try { window.schedulePush && window.schedulePush('magic-battle-finish', { force: true }); } catch {}
     if (interactionState.autoEndTurnAfterAttack) {
       interactionState.autoEndTurnAfterAttack = false;

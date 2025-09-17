@@ -9,6 +9,9 @@ import {
   computeMagicAreaCells,
   computeDynamicMagicAttack,
   releasePossessionsAfterDeaths,
+  hasPerfectDodge,
+  hasInvisibility,
+  applyPostDamageEffects,
 } from './abilities.js';
 import { countUnits } from './board.js';
 
@@ -158,7 +161,8 @@ export function stagedAttack(state, r, c, opts = {}) {
   if (attacker.lastAttackTurn === base.turn) return null;
   const tplA = CARDS[attacker.tplId];
   if (!canAttack(tplA)) return null;
-  
+
+  let attackerPos = { r, c };
   const baseStats = effectiveStats(base.board[r][c], attacker);
   let atk = baseStats.atk;
   let logLines = [];
@@ -233,15 +237,45 @@ export function stagedAttack(state, r, c, opts = {}) {
     }
   }
 
+  const isMagicAttack = tplA.attackType === 'MAGIC';
   const step1Damages = hitsRaw.map(h => {
     const cell = base.board?.[h.r]?.[h.c];
-    const B = cell?.unit;
-    if (!B) return { ...h, dealt: 0 };
-    const isMagic = tplA.attackType === 'MAGIC';
-    const tplB = CARDS[B.tplId];
-    const dodge = !isMagic && (tplB.perfectDodge || (tplB.dodge50 && Math.random() < 0.5));
-    const dealt = dodge ? 0 : h.dmg;
-    return { ...h, dealt, dodge };
+    const defender = cell?.unit;
+    const tplB = defender ? CARDS[defender.tplId] : null;
+    if (!defender || !tplB) {
+      return {
+        ...h,
+        dealt: 0,
+        block: {},
+        meta: {
+          beforeHP: 0,
+          targetTplId: defender?.tplId ?? null,
+          targetOwner: defender?.owner ?? null,
+          targetElement: cell?.element ?? null,
+        },
+      };
+    }
+    const beforeHP = defender.currentHP ?? tplB.hp ?? 0;
+    const invis = hasInvisibility(base, h.r, h.c, defender, tplB);
+    const perfect = !isMagicAttack && hasPerfectDodge(base, h.r, h.c, tplB);
+    const dodge50 = !isMagicAttack && !invis && !perfect && tplB.dodge50 && Math.random() < 0.5;
+    const prevented = invis || (!isMagicAttack && (perfect || dodge50));
+    const dealt = prevented ? 0 : h.dmg;
+    return {
+      ...h,
+      dealt,
+      block: {
+        invisibility: invis,
+        perfectDodge: perfect,
+        dodge50: (!invis && !perfect) ? dodge50 : false,
+      },
+      meta: {
+        beforeHP,
+        targetTplId: defender.tplId,
+        targetOwner: defender.owner,
+        targetElement: cell?.element ?? null,
+      },
+    };
   });
 
   const n1 = JSON.parse(JSON.stringify(base));
@@ -263,7 +297,7 @@ export function stagedAttack(state, r, c, opts = {}) {
   function doStep1() {
     if (step1Done) return;
     stepQuick();
-    const A = n1.board?.[r]?.[c]?.unit;
+    const A = n1.board?.[attackerPos.r]?.[attackerPos.c]?.unit;
     if (A && ((A.currentHP ?? tplA.hp) > 0 || attackerQuick)) {
       for (const h of step1Damages) {
         const cell = n1.board?.[h.r]?.[h.c];
@@ -276,7 +310,10 @@ export function stagedAttack(state, r, c, opts = {}) {
         const nameB = CARDS[B.tplId]?.name || 'Target';
         const parts = [`${nameA} → ${nameB}: ${h.dealt || 0} dmg (HP ${before}→${afterHP})`];
         if (h.backstab) parts.push('(+1 backstab)');
-        if (h.dodge) parts.push('(dodge)');
+        const block = h.block || {};
+        if (block.invisibility) parts.push('(невидимость)');
+        else if (block.perfectDodge) parts.push('(perfect dodge)');
+        else if (block.dodge50) parts.push('(dodge)');
         logLines.push(parts.join(' '));
       }
       if (hasDoubleAttack(tplA)) {
@@ -291,6 +328,14 @@ export function stagedAttack(state, r, c, opts = {}) {
           const nameB = CARDS[B2.tplId]?.name || 'Target';
           logLines.push(`${nameA} (2nd) → ${nameB}: ${h.dealt || 0} dmg (HP ${before2}→${after2})`);
         }
+      }
+      const effects = applyPostDamageEffects(n1, {
+        attacker: { position: { r: attackerPos.r, c: attackerPos.c }, tpl: tplA },
+        hits: step1Damages,
+        logLines,
+      });
+      if (effects?.attackerPos && effects.attackerPos.r != null && effects.attackerPos.c != null) {
+        attackerPos = { r: effects.attackerPos.r, c: effects.attackerPos.c };
       }
     }
     step1Done = true;
@@ -310,14 +355,16 @@ export function stagedAttack(state, r, c, opts = {}) {
       if (!alive) continue;
       // быстрота защитника уже сработала на stepQuick, если атакующий не был быстрым
       if (!attackerQuick && hasFirstStrike(tplB)) continue;
-      const hitsB = computeHits(n1, h.r, h.c, { target: { r, c }, union: true });
+      const hitsB = computeHits(n1, h.r, h.c, { target: { r: attackerPos.r, c: attackerPos.c }, union: true });
       if (hitsB.length) {
         const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B);
         totalRetaliation += Math.max(0, batk);
         retaliators.push({ r: h.r, c: h.c });
       }
     }
-    const preventRetaliation = tplA.attackType === 'MAGIC' || (tplA.avoidRetaliation50 && Math.random() < 0.5);
+    const preventRetaliation = tplA.attackType === 'MAGIC'
+      || tplA.preventCounterattack
+      || (tplA.avoidRetaliation50 && Math.random() < 0.5);
     const total = preventRetaliation ? 0 : totalRetaliation;
     return { total, retaliators };
   }
@@ -327,7 +374,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     const nFinal = JSON.parse(JSON.stringify(n1));
     const ret = step2();
 
-    const A = nFinal.board?.[r]?.[c]?.unit;
+    const A = nFinal.board?.[attackerPos.r]?.[attackerPos.c]?.unit;
     if (A && (ret.total || 0) > 0) {
       const tplA2 = CARDS[A.tplId];
       const before = A.currentHP ?? tplA2.hp;
@@ -384,12 +431,20 @@ export function stagedAttack(state, r, c, opts = {}) {
 
     if (A) {
       A.lastAttackTurn = nFinal.turn;
-      const cellEl = nFinal.board?.[r]?.[c]?.element;
+      const cellEl = nFinal.board?.[attackerPos.r]?.[attackerPos.c]?.element;
       A.apSpent = (A.apSpent || 0) + attackCost(tplA, cellEl);
     }
 
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
-    return { n1: nFinal, logLines, targets, deaths, retaliators: ret.retaliators, releases: releaseEvents.releases };
+    return {
+      n1: nFinal,
+      logLines,
+      targets,
+      deaths,
+      retaliators: ret.retaliators,
+      releases: releaseEvents.releases,
+      attackerPos: { r: attackerPos.r, c: attackerPos.c },
+    };
   }
 
   return {
@@ -403,23 +458,26 @@ export function stagedAttack(state, r, c, opts = {}) {
     get nQuick() { stepQuick(); return n1; },
     get n1() { ensureStep1(); return n1; },
     get targetsPreview() { return step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 })); },
+    get attackerPosition() { ensureStep1(); return { r: attackerPos.r, c: attackerPos.c }; },
   };
 }
 
 export function magicAttack(state, fr, fc, tr, tc) {
   const n1 = JSON.parse(JSON.stringify(state));
-  const attacker = n1.board?.[fr]?.[fc]?.unit;
+  let attacker = n1.board?.[fr]?.[fc]?.unit;
   if (!attacker) return null;
   // не позволяем магам бить дважды в одном ходу
   if (attacker.lastAttackTurn === n1.turn) return null;
   const tplA = CARDS[attacker.tplId];
   if (!canAttack(tplA)) return null;
+  let attackerPos = { r: fr, c: fc };
   const allowFriendly = !!tplA.friendlyFire;
   const mainTarget = n1.board?.[tr]?.[tc]?.unit;
   if (!allowFriendly && (!mainTarget || mainTarget.owner === attacker.owner)) return null;
 
   const logLines = [];
   const targets = [];
+  const hitsDetailed = [];
   const atkStats = effectiveStats(n1.board[fr][fc], attacker);
   let atk = atkStats.atk || 0;
   const dynMagic = computeDynamicMagicAttack(n1, tplA);
@@ -472,11 +530,43 @@ export function magicAttack(state, fr, fc, tr, tc) {
     const u = n1.board?.[cell.r]?.[cell.c]?.unit;
     if (!u) continue;
     if (!allowFriendly && u.owner === attacker.owner) continue;
-    const before = u.currentHP ?? u.hp;
-    u.currentHP = Math.max(0, before - dmg);
-    targets.push({ r: cell.r, c: cell.c, dmg });
-    logLines.push(`${CARDS[attacker.tplId].name} (Magic) → ${CARDS[u.tplId].name}: ${dmg} dmg (HP ${before}→${u.currentHP})`);
+    const tplTarget = CARDS[u.tplId];
+    const before = u.currentHP ?? tplTarget.hp;
+    const blockedByInvis = hasInvisibility(n1, cell.r, cell.c, u, tplTarget);
+    const dealt = blockedByInvis ? 0 : dmg;
+    if (!blockedByInvis) {
+      u.currentHP = Math.max(0, before - dealt);
+    }
+    targets.push({ r: cell.r, c: cell.c, dmg: dealt });
+    const logBase = `${CARDS[attacker.tplId].name} (Magic) → ${tplTarget.name}`;
+    if (blockedByInvis) {
+      logLines.push(`${logBase}: урон предотвращён (невидимость).`);
+    } else {
+      logLines.push(`${logBase}: ${dealt} dmg (HP ${before}→${u.currentHP})`);
+    }
+    hitsDetailed.push({
+      r: cell.r,
+      c: cell.c,
+      dmg,
+      dealt,
+      block: { invisibility: blockedByInvis },
+      meta: {
+        targetElement: n1.board?.[cell.r]?.[cell.c]?.element ?? null,
+        targetTplId: u.tplId,
+        targetOwner: u.owner,
+      },
+    });
   }
+
+  const postMagic = applyPostDamageEffects(n1, {
+    attacker: { position: { r: attackerPos.r, c: attackerPos.c }, tpl: tplA },
+    hits: hitsDetailed,
+    logLines,
+  });
+  if (postMagic?.attackerPos && postMagic.attackerPos.r != null && postMagic.attackerPos.c != null) {
+    attackerPos = { r: postMagic.attackerPos.r, c: postMagic.attackerPos.c };
+  }
+  attacker = n1.board?.[attackerPos.r]?.[attackerPos.c]?.unit;
 
   if (hasDoubleAttack(tplA)) {
     for (const cell of cells) {
@@ -515,8 +605,10 @@ export function magicAttack(state, fr, fc, tr, tc) {
       logLines.push(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
     }
   }
-  attacker.lastAttackTurn = n1.turn;
-  const cellEl = n1.board?.[fr]?.[fc]?.element;
-  attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA, cellEl);
-  return { n1, logLines, targets, deaths, releases: releaseEvents.releases };
+  if (attacker) {
+    attacker.lastAttackTurn = n1.turn;
+    const cellEl = n1.board?.[attackerPos.r]?.[attackerPos.c]?.element;
+    attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA, cellEl);
+  }
+  return { n1, logLines, targets, deaths, releases: releaseEvents.releases, attackerPos };
 }

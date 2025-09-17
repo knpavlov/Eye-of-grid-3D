@@ -473,6 +473,8 @@
       // flashy заставка BATTLE (сокращённая)
       await showBattleSplash();
 
+      const startCoords = { r, c };
+      let attackerCoords = { r, c };
       let aMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
       if (staged.quickRetaliation > 0) {
         const quickers = staged.quickRetaliators || [];
@@ -530,6 +532,11 @@
         gameState = staged.n1;
         try { window.applyGameState(gameState); } catch {}
         updateUnits();
+        const newPos = staged.attackerPosition;
+        if (newPos && newPos.r != null && newPos.c != null) {
+          attackerCoords = { r: newPos.r, c: newPos.c };
+          aMesh = unitMeshes.find(m => m.userData.row === attackerCoords.r && m.userData.col === attackerCoords.c) || aMesh;
+        }
         // Тряска и всплывающий урон — уже по актуальным мешам после обновления
         for (const h of hitsPrev) {
           const tMesh = unitMeshes.find(m => m.userData.row === h.r && m.userData.col === h.c);
@@ -568,12 +575,12 @@
               }
             }
             // После лунжей контратаки — тряска и числа урона по атакующему
-            setTimeout(() => { 
-              const aLive = unitMeshes.find(m => m.userData.row === r && m.userData.col === c) || aMesh; 
-              if (aLive) { 
-                window.__fx.shakeMesh(aLive, 6, 0.14); 
+            setTimeout(() => {
+              const aLive = unitMeshes.find(m => m.userData.row === attackerCoords.r && m.userData.col === attackerCoords.c) || aMesh;
+              if (aLive) {
+                window.__fx.shakeMesh(aLive, 6, 0.14);
                 window.__fx.spawnDamageText(aLive, `-${retaliation}`, '#ffd166');
-              } 
+              }
             }, Math.max(0, maxDur * 1000 - 10));
             animDelayMs = Math.max(animDelayMs, Math.floor(maxDur * 1000) + 160);
             // Синхронизация контратаки для наблюдателя
@@ -606,6 +613,10 @@
           const res = staged.finish();
           gameState = res.n1;
           try { window.applyGameState(gameState); } catch {}
+          if (res.attackerPos && res.attackerPos.r != null && res.attackerPos.c != null) {
+            attackerCoords = { r: res.attackerPos.r, c: res.attackerPos.c };
+            aMesh = unitMeshes.find(m => m.userData.row === attackerCoords.r && m.userData.col === attackerCoords.c) || aMesh;
+          }
           if (res.deaths && res.deaths.length) {
             for (const d of res.deaths) {
               try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
@@ -626,7 +637,9 @@
               window.__interactions?.showOracleDeathBuff?.(d.owner, tplDead.onDeathAddHPAll);
             }
           }
-          if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
+          if (markAttackTurn && gameState.board[attackerCoords.r][attackerCoords.c]?.unit) {
+            gameState.board[attackerCoords.r][attackerCoords.c].unit.lastAttackTurn = gameState.turn;
+          }
             setTimeout(() => {
               updateUnits(); updateUI();
               for (const l of res.logLines.reverse()) addLog(l);
@@ -639,7 +652,7 @@
           } else {
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем обновим визуально
             setTimeout(() => {
-              updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish', { force: true }); } catch {}
+              updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[attackerCoords.r][attackerCoords.c]?.unit) gameState.board[attackerCoords.r][attackerCoords.c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish', { force: true }); } catch {}
               if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
                 window.__interactions.interactionState.autoEndTurnAfterAttack = false;
                 try { endTurn(); } catch {}
