@@ -4,9 +4,9 @@ import { getCtx } from './context.js';
 
 // Константы позволяют быстро подстраивать размер и непрозрачность эффекта при повторном использовании
 const BASE_RADIUS = 1.25;
-const RADIUS_MULTIPLIER = 1.5; // Увеличиваем радиус на 50%
+const RADIUS_MULTIPLIER = 1.7; // Увеличиваем радиус на 70%
 const BASE_OPACITY = 0.35;
-const OPACITY_MULTIPLIER = 1.3; // Делаем эффект на 30% менее прозрачным
+const OPACITY_MULTIPLIER = 1.5; // Делаем эффект на 50% менее прозрачным
 
 function getTHREE() {
   const ctx = getCtx();
