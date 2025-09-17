@@ -1,9 +1,10 @@
 // Units rendering on the board
 import { getCtx } from './context.js';
-import { createCard3D } from './cards.js';
+import { createCard3D, drawCardFace } from './cards.js';
 import { renderFieldLocks } from './fieldlocks.js';
-import { isUnitPossessed } from '../core/abilities.js';
-import { attachPossessionOverlay } from './possessionOverlay.js';
+import { isUnitPossessed, hasInvisibility } from '../core/abilities.js';
+import { attachPossessionOverlay, disposePossessionOverlay } from './possessionOverlay.js';
+import { setInvisibilityFx } from './unitFx.js';
 
 function getTHREE() {
   const ctx = getCtx();
@@ -12,63 +13,221 @@ function getTHREE() {
   return THREE;
 }
 
+function updateCardTexture(mesh, cardData, hpValue, atkValue) {
+  try {
+    const material = Array.isArray(mesh.material) ? mesh.material[2] : mesh.material;
+    const texture = material?.map;
+    const canvas = texture?.image;
+    const ctx2d = canvas?.getContext?.('2d');
+    if (!ctx2d || !canvas) return;
+    drawCardFace(ctx2d, cardData, canvas.width, canvas.height, hpValue, atkValue);
+    texture.needsUpdate = true;
+    const overlay = mesh.children?.find(ch => ch.userData?.kind === 'faceOverlay');
+    if (overlay?.material?.map) overlay.material.map.needsUpdate = true;
+  } catch {}
+}
+
+function ensureGlow(mesh, owner, THREE) {
+  if (!mesh) return;
+  const colorValue = owner === 0 ? 0x22c55e : 0xef4444;
+  const color = new THREE.Color(colorValue);
+  let glow = mesh.userData?.ownerGlow;
+  if (!glow) {
+    const glowMaterial = new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.2,
+      transparent: true,
+      opacity: 0.3,
+    });
+    const glowGeometry = new THREE.BoxGeometry(1.8, 0.02, 2.4);
+    glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    glow.position.set(0, -0.05, 0);
+    mesh.add(glow);
+    mesh.userData = mesh.userData || {};
+    mesh.userData.ownerGlow = glow;
+  } else {
+    const mat = glow.material;
+    if (mat) {
+      mat.color = color.clone();
+      mat.emissive = color.clone();
+      mat.needsUpdate = true;
+    }
+  }
+}
+
+function updateFrameHighlight(frame, unit, viewerSeat, THREE) {
+  if (!frame) return;
+  const setFrame = (opacity, colorValue) => {
+    frame.traverse(child => {
+      if (child.isMesh && child.material) {
+        child.material.opacity = opacity;
+        child.material.color = new THREE.Color(colorValue);
+      }
+    });
+  };
+  if (unit) {
+    const isMine = unit.owner === viewerSeat;
+    const col = isMine ? 0x22c55e : 0xef4444;
+    setFrame(0.95, col);
+  } else {
+    setFrame(0.0, 0x000000);
+  }
+}
+
+function animateToPosition(mesh, target, isNew) {
+  if (!mesh) return;
+  mesh.userData = mesh.userData || {};
+  const gsap = (typeof window !== 'undefined') ? window.gsap : null;
+  const prevTarget = mesh.userData.__targetPosition;
+  const sameTarget = prevTarget && Math.abs(prevTarget.x - target.x) < 1e-3 && Math.abs(prevTarget.y - target.y) < 1e-3 && Math.abs(prevTarget.z - target.z) < 1e-3;
+  if (isNew) {
+    mesh.position.copy(target);
+    mesh.userData.__targetPosition = target.clone();
+    return;
+  }
+  if (sameTarget && mesh.userData.__moveTween) {
+    return;
+  }
+  if (mesh.userData.__moveTween && typeof mesh.userData.__moveTween.kill === 'function') {
+    mesh.userData.__moveTween.kill();
+    mesh.userData.__moveTween = null;
+  }
+  if (gsap && !sameTarget) {
+    mesh.userData.__moveTween = gsap.to(mesh.position, {
+      x: target.x,
+      y: target.y,
+      z: target.z,
+      duration: 0.38,
+      ease: 'power2.out',
+      onUpdate: () => { mesh.userData.__targetPosition = target.clone(); },
+      onComplete: () => {
+        mesh.userData.__moveTween = null;
+        mesh.position.set(target.x, target.y, target.z);
+        mesh.userData.__targetPosition = target.clone();
+      },
+    });
+  } else {
+    mesh.position.copy(target);
+    mesh.userData.__targetPosition = target.clone();
+  }
+}
+
 export function updateUnits(gameState) {
   if (!gameState) return;
   const ctx = getCtx();
   const THREE = getTHREE();
   const { cardGroup } = ctx;
   const CARDS = (typeof window !== 'undefined' && window.CARDS) || {};
-  const effectiveStats = (typeof window !== 'undefined' && window.effectiveStats) || (()=>({ atk:0, hp:0 }));
-  const facingDeg = (typeof window !== 'undefined' && window.facingDeg) || { N:0, E:-90, S:180, W:90 };
+  const effectiveStats = (typeof window !== 'undefined' && window.effectiveStats) || (() => ({ atk: 0, hp: 0 }));
+  const facingDeg = (typeof window !== 'undefined' && window.facingDeg) || { N: 0, E: -90, S: 180, W: 90 };
+  const viewerSeat = (() => {
+    try {
+      if (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') {
+        return window.MY_SEAT;
+      }
+    } catch {}
+    return gameState.active;
+  })();
 
-  // Remove previous unit meshes
-  try { (ctx.unitMeshes || []).forEach(unit => { if (unit && unit.parent) unit.parent.remove(unit); }); } catch {}
-  ctx.unitMeshes = [];
+  const tileSize = 6.2;
+  const spacing = 0.2;
+  const boardZShift = -3.5;
 
-  const tileSize = 6.2; const spacing = 0.2; const boardZShift = -3.5;
+  const oldMap = ctx.unitMeshesByUid instanceof Map ? ctx.unitMeshesByUid : new Map();
+  const nextMap = new Map();
+  const usedUids = new Set();
+  const newList = [];
 
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 3; c++) {
-      const unit = gameState.board?.[r]?.[c]?.unit;
-      // Update frame highlight
-      try {
-        const frame = ctx.tileFrames?.[r]?.[c];
-        if (frame) {
-          const setFrame = (opacity, color) => { frame.traverse(child => { if (child.isMesh && child.material) { child.material.opacity = opacity; child.material.color = new THREE.Color(color); } }); };
-          if (unit) {
-            let viewerSeat = null; try { viewerSeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : gameState.active; } catch { viewerSeat = gameState.active; }
-            const isMine = (unit.owner === viewerSeat); const col = isMine ? 0x22c55e : 0xef4444; setFrame(0.95, col);
-          } else { setFrame(0.0, 0x000000); }
-        }
-      } catch {}
+      const cell = gameState.board?.[r]?.[c];
+      const unit = cell?.unit;
+      try { updateFrameHighlight(ctx.tileFrames?.[r]?.[c], unit, viewerSeat, THREE); } catch {}
       if (!unit) continue;
 
       const cardData = CARDS[unit.tplId];
-      const stats = effectiveStats(gameState.board[r][c], unit);
-      const unitMesh = createCard3D(cardData, false, unit.currentHP, stats.atk);
+      const stats = effectiveStats(cell, unit);
+      const hpValue = typeof unit.currentHP === 'number' ? unit.currentHP : (cardData?.hp || 0);
+      const atkValue = stats.atk ?? 0;
+      const uid = unit.uid != null ? String(unit.uid) : `${unit.owner}:${unit.tplId}:${r}:${c}`;
+      usedUids.add(uid);
+
+      let mesh = oldMap.get(uid);
+      const existedBefore = !!mesh;
+      if (!mesh) {
+        mesh = createCard3D(cardData, false, hpValue, atkValue);
+        ensureGlow(mesh, unit.owner, THREE);
+        if (isUnitPossessed(unit)) {
+          try { attachPossessionOverlay(mesh); } catch {}
+        }
+        if (cardGroup && mesh.parent !== cardGroup) {
+          try { cardGroup.add(mesh); } catch {}
+        }
+      } else {
+        ensureGlow(mesh, unit.owner, THREE);
+        const lastHp = mesh.userData?.lastHp;
+        const lastAtk = mesh.userData?.lastAtk;
+        if (lastHp !== hpValue || lastAtk !== atkValue) {
+          updateCardTexture(mesh, cardData, hpValue, atkValue);
+        }
+        if (mesh.parent == null && cardGroup) {
+          try { cardGroup.add(mesh); } catch {}
+        }
+      }
+
+      mesh.userData = mesh.userData || {};
+      mesh.userData.type = 'unit';
+      mesh.userData.row = r;
+      mesh.userData.col = c;
+      mesh.userData.unitData = unit;
+      mesh.userData.cardData = cardData;
+      mesh.userData.unitUid = uid;
+      mesh.userData.lastHp = hpValue;
+      mesh.userData.lastAtk = atkValue;
+
+      const targetRotation = (facingDeg[unit.facing] || 0) * Math.PI / 180;
+      mesh.rotation.y = targetRotation;
 
       const x = (c - 1) * (tileSize + spacing);
       const z = (r - 1) * (tileSize + spacing) + boardZShift + 0.0;
       const yBase = (ctx.tileFrames?.[r]?.[c]?.children?.[0]?.position?.y) || (0.5 + 0.5);
-      unitMesh.position.set(x, yBase + 0.28, z);
-      unitMesh.rotation.y = (facingDeg[unit.facing] || 0) * Math.PI / 180;
-
-      const ownerColor = unit.owner === 0 ? 0x22c55e : 0xef4444;
-      const glowMaterial = new THREE.MeshStandardMaterial({ color: ownerColor, emissive: ownerColor, emissiveIntensity: 0.2, transparent: true, opacity: 0.3 });
-      const glowGeometry = new THREE.BoxGeometry(1.8, 0.02, 2.4);
-      const glow = new THREE.Mesh(glowGeometry, glowMaterial); glow.position.set(0, -0.05, 0); unitMesh.add(glow);
+      const targetPos = new THREE.Vector3(x, yBase + 0.28, z);
+      animateToPosition(mesh, targetPos, !existedBefore);
 
       if (isUnitPossessed(unit)) {
-        try { attachPossessionOverlay(unitMesh); } catch {}
+        try { attachPossessionOverlay(mesh); } catch {}
+      } else {
+        try { disposePossessionOverlay(mesh); } catch {}
       }
 
-      unitMesh.userData = { type: 'unit', row: r, col: c, unitData: unit, cardData };
-      try { cardGroup.add(unitMesh); } catch {}
-      ctx.unitMeshes.push(unitMesh);
+      const invisible = !!hasInvisibility(gameState, r, c, { unit, tpl: cardData });
+      try { setInvisibilityFx(mesh, invisible); } catch {}
+      mesh.userData.__invisibilityState = invisible;
+
+      newList.push(mesh);
+      nextMap.set(uid, mesh);
     }
   }
 
-  // Mirror for legacy code
+  if (oldMap instanceof Map) {
+    for (const [uid, mesh] of oldMap.entries()) {
+      if (usedUids.has(uid)) continue;
+      try { setInvisibilityFx(mesh, false); } catch {}
+      try { disposePossessionOverlay(mesh); } catch {}
+      try {
+        if (mesh.userData?.__moveTween && typeof mesh.userData.__moveTween.kill === 'function') {
+          mesh.userData.__moveTween.kill();
+          mesh.userData.__moveTween = null;
+        }
+      } catch {}
+      try { if (mesh.parent) mesh.parent.remove(mesh); } catch {}
+    }
+  }
+
+  ctx.unitMeshes = newList;
+  ctx.unitMeshesByUid = nextMap;
+
   try { if (typeof window !== 'undefined') window.unitMeshes = ctx.unitMeshes; } catch {}
 
   try { renderFieldLocks(gameState); } catch {}
