@@ -241,17 +241,43 @@ function onMouseUp(event) {
       if (interactionState.hoveredTile) {
         const row = interactionState.hoveredTile.userData.row;
         const col = interactionState.hoveredTile.userData.col;
-        if (gameState.board[row][col].unit) {
-          showNotification('Cell is already occupied!', 'error');
-          returnCardToHand(interactionState.draggedCard);
+        const existing = gameState.board[row][col].unit;
+        if (existing) {
+          const abilityApi = window.__abilities?.incarnation;
+          const evaluate = abilityApi?.evaluateIncarnationPlacement;
+          const evalResult = typeof evaluate === 'function'
+            ? evaluate(gameState, cardData, gameState.active, row, col)
+            : null;
+          if (!evalResult?.allowed) {
+            const reason = evalResult?.reason || 'Cell is already occupied!';
+            showNotification(reason, 'error');
+            returnCardToHand(interactionState.draggedCard);
+          } else {
+            interactionState.pendingPlacement = {
+              card: interactionState.draggedCard,
+              row,
+              col,
+              handIndex: interactionState.draggedCard.userData.handIndex,
+              mode: 'INCARNATION',
+              incarnation: evalResult,
+            };
+            try {
+              const baseY = (tileFrames?.[row]?.[col]?.children?.[0]?.position?.y ?? 1.0) + 0.28;
+              const pos = tileMeshes[row][col].position.clone();
+              pos.y = baseY;
+              gsap.to(interactionState.draggedCard.position, { x: pos.x, y: pos.y, z: pos.z, duration: 0.15 });
+            } catch {}
+            try { window.__ui.panels.showOrientationPanel(); } catch {}
+            try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+          }
         } else {
           interactionState.pendingPlacement = {
             card: interactionState.draggedCard,
             row,
             col,
             handIndex: interactionState.draggedCard.userData.handIndex,
+            mode: 'STANDARD',
           };
-          // Сразу опускаем карту на высоту клетки, чтобы убрать резкий подъём
           try {
             const baseY = (tileFrames?.[row]?.[col]?.children?.[0]?.position?.y ?? 1.0) + 0.28;
             const pos = tileMeshes[row][col].position.clone();
@@ -511,16 +537,56 @@ function castSpellByDrag(cardMesh, unitMesh, tileMesh) {
 export function placeUnitWithDirection(direction) {
   const gameState = window.gameState;
   if (!interactionState.pendingPlacement) return;
-  const { card, row, col, handIndex } = interactionState.pendingPlacement;
+  const { card, row, col, handIndex, mode, incarnation: storedIncarnation } = interactionState.pendingPlacement;
   const cardData = card.userData.cardData;
   const player = gameState.players[gameState.active];
-  if (cardData.cost > player.mana) {
+  const abilityApi = window.__abilities?.incarnation || {};
+  let incarnationEval = null;
+  if ((mode === 'INCARNATION') && cardData) {
+    const evaluate = abilityApi.evaluateIncarnationPlacement;
+    incarnationEval = typeof evaluate === 'function'
+      ? evaluate(gameState, cardData, gameState.active, row, col)
+      : null;
+    if (!incarnationEval?.allowed) {
+      const reason = incarnationEval?.reason || 'Инкарнация недоступна.';
+      showNotification(reason, 'error');
+      returnCardToHand(card);
+      try { window.__ui.panels.hideOrientationPanel(); } catch {}
+      interactionState.pendingPlacement = null;
+      return;
+    }
+  }
+
+  const costToPay = incarnationEval ? incarnationEval.cost : cardData.cost;
+  if (costToPay > player.mana) {
     showNotification('Insufficient mana!', 'error');
     returnCardToHand(card);
     try { window.__ui.panels.hideOrientationPanel(); } catch {}
     interactionState.pendingPlacement = null;
     return;
   }
+
+  let sacrificeResult = null;
+  if (incarnationEval) {
+    const applySacrifice = abilityApi.applyIncarnationSacrifice;
+    sacrificeResult = typeof applySacrifice === 'function'
+      ? applySacrifice(gameState, incarnationEval)
+      : null;
+    if (!sacrificeResult?.ok) {
+      const reason = sacrificeResult?.reason || 'Не удалось завершить инкарнацию.';
+      showNotification(reason, 'error');
+      returnCardToHand(card);
+      try { window.__ui.panels.hideOrientationPanel(); } catch {}
+      interactionState.pendingPlacement = null;
+      return;
+    }
+    if (Array.isArray(sacrificeResult.logs)) {
+      for (const line of sacrificeResult.logs) {
+        try { window.addLog(line); } catch {}
+      }
+    }
+  }
+
   const unit = {
     uid: window.uid(),
     owner: gameState.active,
@@ -528,10 +594,35 @@ export function placeUnitWithDirection(direction) {
     currentHP: cardData.hp,
     facing: direction,
   };
+
   gameState.board[row][col].unit = unit;
-  player.mana -= cardData.cost;
+  player.mana -= costToPay;
   player.discard.push(cardData);
   player.hand.splice(handIndex, 1);
+  if (incarnationEval) {
+    const mark = abilityApi.markIncarnationSummon;
+    if (typeof mark === 'function') {
+      try { mark(unit, gameState, incarnationEval.config || storedIncarnation?.config || null); } catch {}
+    }
+    if (sacrificeResult) {
+      const ctx = getCtx();
+      const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+      if (sacrificeResult.manaGain?.owner != null) {
+        try {
+          const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
+          const slot = gameState.players?.[sacrificeResult.manaGain.owner]?.mana || 0;
+          window.animateManaGainFromWorld(pos, sacrificeResult.manaGain.owner, true, slot);
+        } catch {}
+      }
+      if (Array.isArray(sacrificeResult.buffs)) {
+        for (const buff of sacrificeResult.buffs) {
+          if (buff?.owner != null && buff?.amount) {
+            try { showOracleDeathBuff(buff.owner, buff.amount); } catch {}
+          }
+        }
+      }
+    }
+  }
   // проверяем состояние Summoning Lock до начала действий
   const totalUnits = (typeof window.countUnits === 'function') ? window.countUnits(gameState) : 0;
   const unlockTriggered = !gameState.summoningUnlocked && totalUnits >= 4;

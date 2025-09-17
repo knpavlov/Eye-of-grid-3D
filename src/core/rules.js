@@ -14,6 +14,7 @@ import {
   collectDamageInteractions,
   applyDamageInteractionResults,
 } from './abilities.js';
+import { computeMagicPatternCells } from './abilities/magicPattern.js';
 import { countUnits } from './board.js';
 import { computeCellBuff } from './fieldEffects.js';
 
@@ -484,15 +485,23 @@ export function magicAttack(state, fr, fc, tr, tc) {
     cells.push({ r: rr, c: cc });
   };
 
-  const baseArea = computeMagicAreaCells(tplA, tr, tc) || [];
-  for (const cell of baseArea) { addCell(cell.r, cell.c); }
+  const patternCells = computeMagicPatternCells(n1, tplA, {
+    attacker: { r: fr, c: fc },
+    target: { r: tr, c: tc },
+  });
+  if (Array.isArray(patternCells) && patternCells.length) {
+    for (const cell of patternCells) { addCell(cell.r, cell.c); }
+  } else {
+    const baseArea = computeMagicAreaCells(tplA, tr, tc) || [];
+    for (const cell of baseArea) { addCell(cell.r, cell.c); }
 
-  const splash = tplA.splash || 0;
-  if (splash > 0) {
-    const dirs = [ [-1,0], [1,0], [0,-1], [0,1] ];
-    for (const [dr, dc] of dirs) {
-      for (let dist = 1; dist <= splash; dist++) {
-        addCell(tr + dr * dist, tc + dc * dist);
+    const splash = tplA.splash || 0;
+    if (splash > 0) {
+      const dirs = [ [-1,0], [1,0], [0,-1], [0,1] ];
+      for (const [dr, dc] of dirs) {
+        for (let dist = 1; dist <= splash; dist++) {
+          addCell(tr + dr * dist, tc + dc * dist);
+        }
       }
     }
   }

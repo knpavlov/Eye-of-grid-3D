@@ -8,6 +8,9 @@ import * as Rules from './core/rules.js';
 import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled, countUnits } from './core/state.js';
 import { netState, NET_ON } from './core/netState.js';
 import { createStore, makeMiddleware } from './lib/store.js';
+import * as AbilityRegistry from './core/abilityRegistry.js';
+import * as IncarnationAbility from './core/abilities/incarnation.js';
+import * as MagicPatternAbility from './core/abilities/magicPattern.js';
 // Scene modules (new)
 import {
   initThreeJS as sceneInitThreeJS,
@@ -64,6 +67,12 @@ try {
   window.CARDS = CARDS;
   window.STARTER_FIRESET = STARTER_FIRESET;
   window.DECKS = DECKS;
+
+  window.__abilities = {
+    registry: AbilityRegistry,
+    incarnation: IncarnationAbility,
+    magicPattern: MagicPatternAbility,
+  };
 
   window.hasAdjacentGuard = Rules.hasAdjacentGuard;
   window.computeCellBuff = Rules.computeCellBuff;
