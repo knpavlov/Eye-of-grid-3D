@@ -6,7 +6,7 @@ import {
   hasDoubleAttack,
   canAttack,
   getTargetElementBonus,
-  computeMagicAreaCells,
+  collectMagicTargetCells,
   computeDynamicMagicAttack,
   releasePossessionsAfterDeaths,
   hasPerfectDodge,
@@ -484,15 +484,22 @@ export function magicAttack(state, fr, fc, tr, tc) {
     cells.push({ r: rr, c: cc });
   };
 
-  const baseArea = computeMagicAreaCells(tplA, tr, tc) || [];
-  for (const cell of baseArea) { addCell(cell.r, cell.c); }
+  const primaryTarget = (typeof tr === 'number' && typeof tc === 'number')
+    ? { r: tr, c: tc }
+    : null;
+  const baseCells = collectMagicTargetCells(n1, tplA, { r: fr, c: fc }, primaryTarget) || [];
+  for (const cell of baseCells) { addCell(cell.r, cell.c); }
 
   const splash = tplA.splash || 0;
-  if (splash > 0) {
-    const dirs = [ [-1,0], [1,0], [0,-1], [0,1] ];
-    for (const [dr, dc] of dirs) {
-      for (let dist = 1; dist <= splash; dist++) {
-        addCell(tr + dr * dist, tc + dc * dist);
+  if (splash > 0 && !tplA.targetAllEnemies && !tplA.targetAllNonElement) {
+    const refR = (primaryTarget && typeof primaryTarget.r === 'number') ? primaryTarget.r : tr;
+    const refC = (primaryTarget && typeof primaryTarget.c === 'number') ? primaryTarget.c : tc;
+    if (typeof refR === 'number' && typeof refC === 'number') {
+      const dirs = [ [-1,0], [1,0], [0,-1], [0,1] ];
+      for (const [dr, dc] of dirs) {
+        for (let dist = 1; dist <= splash; dist++) {
+          addCell(refR + dr * dist, refC + dc * dist);
+        }
       }
     }
   }

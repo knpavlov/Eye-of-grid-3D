@@ -1,6 +1,12 @@
 // Общие функции для обработки особых свойств карт
 import { CARDS } from './cards.js';
 import { applyFieldTransitionToUnit } from './fieldEffects.js';
+import {
+  isIncarnationCard,
+  evaluateIncarnationSummon as evaluateIncarnationSummonInternal,
+  applyIncarnationSummon as applyIncarnationSummonInternal,
+} from './abilityHandlers/incarnation.js';
+import { collectMagicTargets as collectMagicTargetsInternal } from './abilityHandlers/magicTargeting.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -482,6 +488,10 @@ export function computeMagicAreaCells(tpl, tr, tc) {
   return ensureUniqueCells(cells);
 }
 
+export function collectMagicTargetCells(state, tpl, attackerRef, primaryTarget) {
+  return collectMagicTargetsInternal(state, tpl, attackerRef, primaryTarget, computeMagicAreaCells);
+}
+
 export function computeDynamicMagicAttack(state, tpl) {
   if (!tpl) return null;
   if (tpl.dynamicMagicAtk === 'FIRE_FIELDS') {
@@ -510,3 +520,7 @@ export function getTargetElementBonus(tpl, state, hits) {
   if (!has) return null;
   return { amount, element: cfg.element };
 }
+
+export { isIncarnationCard };
+export const evaluateIncarnationSummon = evaluateIncarnationSummonInternal;
+export const applyIncarnationSummon = applyIncarnationSummonInternal;

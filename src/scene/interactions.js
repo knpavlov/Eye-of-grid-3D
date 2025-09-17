@@ -2,7 +2,14 @@
 import { getCtx } from './context.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
-import { applyFreedonianAura, applySummonAbilities, shouldUseMagicAttack } from '../core/abilities.js';
+import {
+  applyFreedonianAura,
+  applySummonAbilities,
+  shouldUseMagicAttack,
+  evaluateIncarnationSummon,
+  applyIncarnationSummon,
+  isIncarnationCard,
+} from '../core/abilities.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -241,26 +248,60 @@ function onMouseUp(event) {
       if (interactionState.hoveredTile) {
         const row = interactionState.hoveredTile.userData.row;
         const col = interactionState.hoveredTile.userData.col;
-        if (gameState.board[row][col].unit) {
-          showNotification('Cell is already occupied!', 'error');
-          returnCardToHand(interactionState.draggedCard);
-        } else {
+        const existingUnit = gameState.board[row][col].unit;
+        const playerIndex = gameState.active;
+        if (existingUnit) {
+          if (!isIncarnationCard(cardData)) {
+            showNotification('Клетка занята: требуется свободное поле.', 'error');
+            returnCardToHand(interactionState.draggedCard);
+            endCardDrag();
+            return;
+          }
+          const check = evaluateIncarnationSummon(gameState, { r: row, c: col, tpl: cardData, owner: playerIndex });
+          if (!check?.ok) {
+            showNotification('Инкарнация невозможна на этой клетке.', 'error');
+            returnCardToHand(interactionState.draggedCard);
+            endCardDrag();
+            return;
+          }
+          const player = gameState.players[playerIndex];
+          if (check.cost > player.mana) {
+            showNotification(`Нужно ${check.cost} маны для инкарнации.`, 'error');
+            returnCardToHand(interactionState.draggedCard);
+            endCardDrag();
+            return;
+          }
           interactionState.pendingPlacement = {
             card: interactionState.draggedCard,
             row,
             col,
             handIndex: interactionState.draggedCard.userData.handIndex,
+            incarnation: { ...check, active: true },
           };
-          // Сразу опускаем карту на высоту клетки, чтобы убрать резкий подъём
-          try {
-            const baseY = (tileFrames?.[row]?.[col]?.children?.[0]?.position?.y ?? 1.0) + 0.28;
-            const pos = tileMeshes[row][col].position.clone();
-            pos.y = baseY;
-            gsap.to(interactionState.draggedCard.position, { x: pos.x, y: pos.y, z: pos.z, duration: 0.15 });
-          } catch {}
-          try { window.__ui.panels.showOrientationPanel(); } catch {}
-          try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+        } else {
+          if (isIncarnationCard(cardData)) {
+            showNotification('Инкарнация требует союзную карту на поле.', 'error');
+            returnCardToHand(interactionState.draggedCard);
+            endCardDrag();
+            return;
+          }
+          interactionState.pendingPlacement = {
+            card: interactionState.draggedCard,
+            row,
+            col,
+            handIndex: interactionState.draggedCard.userData.handIndex,
+            incarnation: null,
+          };
         }
+        // Сразу опускаем карту на высоту клетки, чтобы убрать резкий подъём
+        try {
+          const baseY = (tileFrames?.[row]?.[col]?.children?.[0]?.position?.y ?? 1.0) + 0.28;
+          const pos = tileMeshes[row][col].position.clone();
+          pos.y = baseY;
+          gsap.to(interactionState.draggedCard.position, { x: pos.x, y: pos.y, z: pos.z, duration: 0.15 });
+        } catch {}
+        try { window.__ui.panels.showOrientationPanel(); } catch {}
+        try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
       } else {
         returnCardToHand(interactionState.draggedCard);
       }
@@ -511,15 +552,28 @@ function castSpellByDrag(cardMesh, unitMesh, tileMesh) {
 export function placeUnitWithDirection(direction) {
   const gameState = window.gameState;
   if (!interactionState.pendingPlacement) return;
-  const { card, row, col, handIndex } = interactionState.pendingPlacement;
+  const { card, row, col, handIndex, incarnation } = interactionState.pendingPlacement;
   const cardData = card.userData.cardData;
   const player = gameState.players[gameState.active];
-  if (cardData.cost > player.mana) {
-    showNotification('Insufficient mana!', 'error');
+  const summonCost = (incarnation?.active ? (incarnation.cost ?? cardData.cost ?? 0) : cardData.cost) ?? 0;
+  if (summonCost > player.mana) {
+    showNotification('Недостаточно маны!', 'error');
     returnCardToHand(card);
     try { window.__ui.panels.hideOrientationPanel(); } catch {}
     interactionState.pendingPlacement = null;
     return;
+  }
+  let incarnationResult = null;
+  if (incarnation?.active) {
+    const applied = applyIncarnationSummon(gameState, { r: row, c: col, tpl: cardData, owner: gameState.active });
+    if (!applied?.ok) {
+      showNotification('Инкарнация прервана.', 'error');
+      returnCardToHand(card);
+      try { window.__ui.panels.hideOrientationPanel(); } catch {}
+      interactionState.pendingPlacement = null;
+      return;
+    }
+    incarnationResult = applied;
   }
   const unit = {
     uid: window.uid(),
@@ -529,9 +583,24 @@ export function placeUnitWithDirection(direction) {
     facing: direction,
   };
   gameState.board[row][col].unit = unit;
-  player.mana -= cardData.cost;
+  player.mana -= summonCost;
   player.discard.push(cardData);
   player.hand.splice(handIndex, 1);
+  const wasIncarnation = !!incarnation?.active;
+  if (wasIncarnation && incarnationResult?.sacrifice) {
+    try {
+      const info = incarnationResult.sacrifice;
+      const ownerSac = typeof info.owner === 'number' ? info.owner : gameState.active;
+      const tplSac = window.CARDS?.[info.tplId];
+      if (tplSac && gameState.players?.[ownerSac]?.graveyard) {
+        gameState.players[ownerSac].graveyard.push(tplSac);
+      }
+      if (info.tplName) {
+        window.addLog(`${info.tplName} приносится в жертву ради ${cardData.name}.`);
+      }
+    } catch {}
+    unit.lastAttackTurn = gameState.turn;
+  }
   // проверяем состояние Summoning Lock до начала действий
   const totalUnits = (typeof window.countUnits === 'function') ? window.countUnits(gameState) : 0;
   const unlockTriggered = !gameState.summoningUnlocked && totalUnits >= 4;
@@ -629,6 +698,11 @@ export function placeUnitWithDirection(direction) {
       window.updateUI();
       const tpl = window.CARDS?.[cardData.id];
       const forcedMagic = shouldUseMagicAttack(gameState, row, col, tpl);
+      if (wasIncarnation) {
+        interactionState.autoEndTurnAfterAttack = false;
+        if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
+        return;
+      }
       if (tpl?.attackType === 'MAGIC' || forcedMagic) {
         const allowFriendly = !!tpl.friendlyFire;
         const cells = [];
