@@ -2,7 +2,7 @@
 import { getCtx } from './context.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
-import { applyFreedonianAura } from '../core/abilities.js';
+import { applyFreedonianAura, applySummonAbilities, shouldUseMagicAttack } from '../core/abilities.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -587,6 +587,18 @@ export function placeUnitWithDirection(direction) {
     gameState.board[row][col].unit = null;
   }
   if (gameState.board[row][col].unit) {
+    const summonEvents = applySummonAbilities(gameState, row, col);
+    if (summonEvents?.possessions?.length) {
+      try {
+        const cards = window.CARDS || {};
+        for (const ev of summonEvents.possessions) {
+          const unitTaken = gameState.board?.[ev.r]?.[ev.c]?.unit;
+          const tplTaken = unitTaken ? cards[unitTaken.tplId] : null;
+          const name = tplTaken?.name || 'Существо';
+          window.addLog?.(`${name}: контроль переходит к игроку ${gameState.active + 1}.`);
+        }
+      } catch {}
+    }
     const gained = applyFreedonianAura(gameState, gameState.active);
     if (gained > 0) {
       window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
@@ -616,7 +628,8 @@ export function placeUnitWithDirection(direction) {
       window.updateUnits();
       window.updateUI();
       const tpl = window.CARDS?.[cardData.id];
-      if (tpl?.attackType === 'MAGIC') {
+      const forcedMagic = shouldUseMagicAttack(gameState, row, col, tpl);
+      if (tpl?.attackType === 'MAGIC' || forcedMagic) {
         const allowFriendly = !!tpl.friendlyFire;
         const cells = [];
         let hasEnemy = false;

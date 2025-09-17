@@ -239,10 +239,26 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     const gap = diagramGap ?? Math.max(Math.round(ps(1.5)), 1);
     const gridW = cell * 3 + gap * 2;
     const spacing = Math.max(Math.round(ps(14)), 10);
-    const startX = (width - (gridW * 2 + spacing)) / 2;
+    const schemes = getAttackSchemes(cardData);
+    const schemeCount = schemes.length;
+    const columns = schemeCount + 1;
+    const totalWidth = gridW * columns + spacing * (columns - 1);
+    const startX = (width - totalWidth) / 2;
     const gridY = diagramTop;
-    drawAttacksGrid(ctx, cardData, startX, gridY, cell, gap);
-    drawBlindspotGrid(ctx, cardData, startX + gridW + spacing, gridY, cell, gap);
+    const gridHeight = cell * 3 + gap * 2;
+    schemes.forEach((scheme, idx) => {
+      const gridX = startX + idx * (gridW + spacing);
+      drawAttackScheme(ctx, scheme, cardData, gridX, gridY, cell, gap);
+      const labelRaw = scheme.label ?? (schemeCount > 1 ? (idx === 0 ? 'Base' : (idx === 1 ? 'Alt' : `Alt ${idx}`)) : '');
+      if (labelRaw) {
+        ctx.font = `600 ${Math.max(ps(7), 7)}px "Noto Sans", "Helvetica", sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillText(labelRaw, gridX + gridW / 2, gridY + gridHeight + Math.max(ps(10), 8));
+      }
+    });
+    const blindspotX = startX + schemeCount * (gridW + spacing);
+    drawBlindspotGrid(ctx, cardData, blindspotX, gridY, cell, gap);
   }
 }
 
@@ -340,8 +356,10 @@ function drawLockIcon(ctx, x, y, size) {
   ctx.restore();
 }
 
-function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
-  const attacks = cardData.attacks || [];
+function drawAttackScheme(ctx, scheme, cardData, x, y, cell, gap) {
+  const attacks = scheme.attacks || [];
+  const attackType = scheme.attackType || cardData.attackType || 'STANDARD';
+  const chooseDir = scheme.chooseDir ?? cardData.chooseDir ?? false;
   const baseLine = Math.max(1, Math.round(cell * 0.18));
   const accentLine = Math.max(1, Math.round(cell * 0.2));
 
@@ -358,41 +376,60 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
     }
   }
 
-  if (cardData.attackType === 'MAGIC') {
-    for (let r = 0; r < 3; r++) {
-      for (let c = 0; c < 3; c++) {
-        if (r === 1 && c === 1) continue;
-        const cx = x + c * (cell + gap);
-        const cy = y + r * (cell + gap);
-        ctx.fillStyle = 'rgba(56,189,248,0.28)';
+  if (attackType === 'MAGIC') {
+    const area = scheme.magicArea || scheme.magicAttackArea || cardData.magicAttackArea;
+    if (area === 'CROSS') {
+      const dirs = [ [0,0], [-1,0], [1,0], [0,-1], [0,1] ];
+      for (const [dr, dc] of dirs) {
+        const rr = 1 + dr;
+        const cc = 1 + dc;
+        if (rr < 0 || rr > 2 || cc < 0 || cc > 2) continue;
+        const cx = x + cc * (cell + gap);
+        const cy = y + rr * (cell + gap);
+        ctx.fillStyle = 'rgba(147,197,253,0.28)';
         ctx.fillRect(cx, cy, cell, cell);
-        ctx.strokeStyle = 'rgba(56,189,248,0.65)';
+        ctx.strokeStyle = '#60a5fa';
         ctx.lineWidth = accentLine;
         ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
       }
+    } else {
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          if (r === 1 && c === 1) continue;
+          const cx = x + c * (cell + gap);
+          const cy = y + r * (cell + gap);
+          ctx.fillStyle = 'rgba(56,189,248,0.28)';
+          ctx.fillRect(cx, cy, cell, cell);
+          ctx.strokeStyle = 'rgba(56,189,248,0.65)';
+          ctx.lineWidth = accentLine;
+          ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+        }
+      }
+      const frontX = x + 1 * (cell + gap);
+      const frontY = y + 0 * (cell + gap);
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = accentLine;
+      ctx.strokeRect(frontX + 0.5, frontY + 0.5, cell - 1, cell - 1);
     }
-    const frontX = x + 1 * (cell + gap);
-    const frontY = y + 0 * (cell + gap);
-    ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = accentLine;
-    ctx.strokeRect(frontX + 0.5, frontY + 0.5, cell - 1, cell - 1);
     return;
   }
 
   const map = { N: [-1,0], E:[0,1], S:[1,0], W:[0,-1] };
   for (const a of attacks) {
-    const isChoice = cardData.chooseDir || a.mode === 'ANY';
-    const minDist = Math.min(...(a.ranges || [1]));
-    for (const dist of a.ranges || []) {
+    const isChoice = chooseDir || a.mode === 'ANY';
+    const ranges = Array.isArray(a.ranges) && a.ranges.length ? a.ranges : [1];
+    const minDist = Math.min(...ranges);
+    for (const dist of ranges) {
       const vec = map[a.dir];
       if (!vec) continue;
       const rr = 1 + vec[0] * dist;
       const cc = 1 + vec[1] * dist;
+      if (rr < 0 || rr > 2 || cc < 0 || cc > 2) continue;
       const cx = x + cc * (cell + gap);
       const cy = y + rr * (cell + gap);
       ctx.fillStyle = 'rgba(56,189,248,0.28)';
       ctx.fillRect(cx, cy, cell, cell);
-      const multi = (!a.mode || a.mode !== 'ANY') && (a.ranges && a.ranges.length > 1);
+      const multi = (!a.mode || a.mode !== 'ANY') && ranges.length > 1;
       const mustHit = (!isChoice) && (multi || dist === minDist);
       ctx.strokeStyle = mustHit ? '#ef4444' : 'rgba(56,189,248,0.65)';
       ctx.lineWidth = accentLine;
@@ -400,13 +437,35 @@ function drawAttacksGrid(ctx, cardData, x, y, cell, gap) {
     }
   }
 
-  if (cardData.chooseDir || attacks.some(a => a.mode === 'ANY')) {
+  if (chooseDir || attacks.some(a => a.mode === 'ANY')) {
     const cx = x + 1 * (cell + gap);
     const cy = y + 0 * (cell + gap);
     ctx.strokeStyle = '#ef4444';
     ctx.lineWidth = accentLine;
     ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
   }
+}
+
+function getAttackSchemes(cardData) {
+  if (!cardData || cardData.type !== 'UNIT') return [];
+  if (Array.isArray(cardData.attackSchemes) && cardData.attackSchemes.length) {
+    return cardData.attackSchemes.map((scheme, idx) => ({
+      key: scheme.key || `scheme-${idx}`,
+      label: scheme.label,
+      attackType: scheme.attackType || cardData.attackType,
+      attacks: scheme.attacks || [],
+      chooseDir: scheme.chooseDir,
+      magicArea: scheme.magicArea || scheme.magicAttackArea,
+    }));
+  }
+  return [{
+    key: 'default',
+    label: null,
+    attackType: cardData.attackType,
+    attacks: cardData.attacks || [],
+    chooseDir: cardData.chooseDir,
+    magicArea: cardData.magicAttackArea,
+  }];
 }
 
 function drawBlindspotGrid(ctx, cardData, x, y, cell, gap) {
