@@ -2,8 +2,9 @@
 import { getCtx } from './context.js';
 import { createCard3D } from './cards.js';
 import { renderFieldLocks } from './fieldlocks.js';
-import { isUnitPossessed } from '../core/abilities.js';
+import { isUnitPossessed, hasInvisibility } from '../core/abilities.js';
 import { attachPossessionOverlay } from './possessionOverlay.js';
+import { applyInvisibilityEffect } from './invisibilityEffect.js';
 
 function getTHREE() {
   const ctx = getCtx();
@@ -61,6 +62,12 @@ export function updateUnits(gameState) {
       if (isUnitPossessed(unit)) {
         try { attachPossessionOverlay(unitMesh); } catch {}
       }
+
+      try {
+        if (hasInvisibility && hasInvisibility(gameState, r, c, { unit, tpl: cardData })) {
+          applyInvisibilityEffect(unitMesh);
+        }
+      } catch {}
 
       unitMesh.userData = { type: 'unit', row: r, col: c, unitData: unit, cardData };
       try { cardGroup.add(unitMesh); } catch {}

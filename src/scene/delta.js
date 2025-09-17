@@ -22,6 +22,50 @@ export function playDeltaAnimations(prevState, nextState) {
     const prevB = prevState.board || [];
     const nextB = nextState.board || [];
 
+    const prevPositions = new Map();
+    const nextPositions = new Map();
+
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        const pu = prevB?.[r]?.[c]?.unit;
+        if (pu && pu.uid != null) {
+          prevPositions.set(pu.uid, { r, c, unit: pu });
+        }
+        const nu = nextB?.[r]?.[c]?.unit;
+        if (nu && nu.uid != null) {
+          nextPositions.set(nu.uid, { r, c, unit: nu });
+        }
+      }
+    }
+
+    if (prevPositions.size && nextPositions.size && unitMeshes && tileMeshes && window.gsap) {
+      const moved = [];
+      nextPositions.forEach((toPos, uid) => {
+        const fromPos = prevPositions.get(uid);
+        if (!fromPos) return;
+        if (fromPos.r === toPos.r && fromPos.c === toPos.c) return;
+        moved.push({ uid, from: fromPos, to: toPos });
+      });
+      if (moved.length) {
+        for (const move of moved) {
+          const mesh = unitMeshes.find(m => m?.userData?.unitData?.uid === move.uid);
+          if (!mesh) continue;
+          const targetTile = tileMeshes?.[move.to.r]?.[move.to.c];
+          const fromTile = tileMeshes?.[move.from.r]?.[move.from.c];
+          if (!targetTile || !fromTile) continue;
+          const finalPos = mesh.position.clone();
+          const startPos = fromTile.position.clone();
+          startPos.y = finalPos.y;
+          mesh.position.copy(startPos);
+          const arcHeight = finalPos.y + 0.35;
+          const tl = window.gsap.timeline();
+          tl.to(mesh.position, { x: finalPos.x, z: finalPos.z, duration: 0.42, ease: 'power2.inOut' }, 0);
+          tl.to(mesh.position, { y: arcHeight, duration: 0.21, ease: 'power1.out' }, 0);
+          tl.to(mesh.position, { y: finalPos.y, duration: 0.21, ease: 'power1.in' }, 0.21);
+        }
+      }
+    }
+
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) {
         const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
