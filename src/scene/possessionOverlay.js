@@ -2,6 +2,12 @@
 // Логика эффекта отделена от игровой логики, чтобы можно было переиспользовать в других движках
 import { getCtx } from './context.js';
 
+// Константы позволяют быстро подстраивать размер и непрозрачность эффекта при повторном использовании
+const BASE_RADIUS = 1.25;
+const RADIUS_MULTIPLIER = 1.5; // Увеличиваем радиус на 50%
+const BASE_OPACITY = 0.35;
+const OPACITY_MULTIPLIER = 1.3; // Делаем эффект на 30% менее прозрачным
+
 function getTHREE() {
   const ctx = getCtx();
   const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
@@ -11,14 +17,14 @@ function getTHREE() {
 
 function createOverlayMesh() {
   const THREE = getTHREE();
-  const geometry = new THREE.CircleGeometry(1.25, 48);
+  const geometry = new THREE.CircleGeometry(BASE_RADIUS * RADIUS_MULTIPLIER, 48);
   const material = new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
     uniforms: {
       uTime: { value: 0 },
       uColor: { value: new THREE.Color(0x8b5cf6) },
-      uOpacity: { value: 0.35 },
+      uOpacity: { value: BASE_OPACITY * OPACITY_MULTIPLIER },
     },
     vertexShader: `
       varying vec2 vUv;
