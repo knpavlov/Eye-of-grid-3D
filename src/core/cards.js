@@ -32,6 +32,15 @@ export const CARDS = {
     blindspots: ['S'], auraGainManaOnSummon: true,
     desc: 'While Freedonian Wanderer is on a non‑Fire field, you gain 1 mana each time you summon an allied creature.'
   },
+  FIRE_FIREFLY_NINJA: {
+    id: 'FIRE_FIREFLY_NINJA', name: 'Firefly Ninja', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FIRE', atk: 1, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'], tribes: ['NINJA', 'FIREFLY'],
+    perfectDodgeOnElement: 'FIRE', invisibilityWithTribe: 'SPIDER',
+    desc: 'While on a Fire field it gains Perfect Dodge. Gains Invisibility while at least one allied Spider Ninja is on the board.'
+  },
   FIRE_PARTMOLE_FLAME_LIZARD: {
     id: 'FIRE_PARTMOLE_FLAME_LIZARD', name: 'Partmole Flame Lizard', type: 'UNIT', cost: 2, activation: 2,
     element: 'FIRE', atk: 2, hp: 2,
@@ -156,6 +165,41 @@ export const CARDS = {
       { key: 'ALT', label: 'Alt', attackType: 'MAGIC', magicArea: 'CROSS' },
     ],
     desc: 'Attacks the same target twice (counterattack after second attack). While on a Fire field he must use his Magic Attack, which affects the target and all adjacent enemies. The Attack value is equal to the number of Fire fields.'
+  },
+
+  EARTH_SPIDER_NINJA: {
+    id: 'EARTH_SPIDER_NINJA', name: 'Spider Ninja', type: 'UNIT', cost: 3, activation: 2,
+    element: 'EARTH', atk: 2, hp: 1,
+    attackType: 'MAGIC',
+    attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
+    blindspots: ['S'], tribes: ['NINJA', 'SPIDER'],
+    invisibilityWithTribe: 'WOLF', swapOnDamageIfTargetOnElement: 'EARTH',
+    desc: 'Magic attack. Gains Invisibility while at least one allied Wolf Ninja is on the board. If it damages a creature on Earth field, it switches location with that creature (who cannot counterattack).'
+  },
+
+  WATER_WOLF_NINJA: {
+    id: 'WATER_WOLF_NINJA', name: 'Wolf Ninja', type: 'UNIT', cost: 3, activation: 2,
+    element: 'WATER', atk: 1, hp: 3,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1, 2], mode: 'ANY' },
+      { dir: 'E', ranges: [1, 2], mode: 'ANY' },
+      { dir: 'W', ranges: [1, 2], mode: 'ANY' }
+    ],
+    blindspots: ['S'], tribes: ['NINJA', 'WOLF'],
+    invisibilityWithTribe: 'SWALLOW', swapOnDamageIfTargetOnElement: 'WATER',
+    desc: 'Gains Invisibility while at least one allied Swallow Ninja is on the board. If Wolf Ninja damages a creature on a Water field, it changes places with that creature (who cannot counterattack).'
+  },
+
+  AIR_SWALLOW_NINJA: {
+    id: 'AIR_SWALLOW_NINJA', name: 'Swallow Ninja', type: 'UNIT', cost: 3, activation: 2,
+    element: 'AIR', atk: 1, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    blindspots: ['S'], tribes: ['NINJA', 'SWALLOW'],
+    friendlyFire: true, pierce: true,
+    invisibilityWithTribe: 'FIREFLY', rotateTargetOnDamage: true,
+    desc: 'Swallow Ninja gains Invisibility while at least one allied Firefly Ninja is on the board. When Swallow Ninja damages (but does not destroy) a creature, that creature is rotated so that its back faces Swallow Ninja. The target creature cannot counterattack.'
   },
 
   // Spells (subset)

@@ -68,6 +68,195 @@ function ensureUniqueCells(cells) {
   return res;
 }
 
+function unitTribes(tpl) {
+  if (!tpl) return [];
+  if (Array.isArray(tpl.tribes)) return tpl.tribes;
+  return [];
+}
+
+function hasAllyWithTribe(state, owner, tribe, excludeUid = null) {
+  if (!state || !state.board || tribe == null) return false;
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const unit = state.board?.[r]?.[c]?.unit;
+      if (!unit || unit.owner !== owner) continue;
+      if (excludeUid != null && unit.uid === excludeUid) continue;
+      const tpl = getUnitTemplate(unit);
+      if (unitTribes(tpl).includes(tribe)) return true;
+    }
+  }
+  return false;
+}
+
+function findUnitByUid(state, uid) {
+  if (!state || uid == null) return null;
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const unit = state.board?.[r]?.[c]?.unit;
+      if (unit && unit.uid === uid) {
+        return { r, c, unit };
+      }
+    }
+  }
+  return null;
+}
+
+function directionFromTo(sr, sc, tr, tc) {
+  const dr = tr - sr;
+  const dc = tc - sc;
+  if (dr < 0 && dc === 0) return 'N';
+  if (dr > 0 && dc === 0) return 'S';
+  if (dc > 0 && dr === 0) return 'E';
+  if (dc < 0 && dr === 0) return 'W';
+  return null;
+}
+
+function oppositeDirection(dir) {
+  const map = { N: 'S', S: 'N', E: 'W', W: 'E' };
+  return map[dir] || null;
+}
+
+function clonePos(pos) {
+  if (!pos) return null;
+  return { r: pos.r, c: pos.c };
+}
+
+export function hasPerfectDodge(state, r, c, unitOverride = null) {
+  const unit = unitOverride || state?.board?.[r]?.[c]?.unit;
+  if (!unit) return false;
+  const tpl = getUnitTemplate(unit);
+  if (!tpl) return false;
+  if (tpl.perfectDodge) return true;
+  const cellElement = state?.board?.[r]?.[c]?.element;
+  const cond = tpl.perfectDodgeOnElement;
+  if (typeof cond === 'string') {
+    return cellElement === cond;
+  }
+  if (Array.isArray(cond)) {
+    return cond.includes(cellElement);
+  }
+  return false;
+}
+
+export function hasInvisibility(state, r, c, unitOverride = null) {
+  const unit = unitOverride || state?.board?.[r]?.[c]?.unit;
+  if (!unit) return false;
+  if (unit.invisible) return true; // резерв под возможные временные эффекты
+  const tpl = getUnitTemplate(unit);
+  if (!tpl) return false;
+  const uid = getUnitUid(unit);
+  const owner = unit.owner;
+
+  const cfg = tpl.invisibilityWithTribe;
+  if (typeof cfg === 'string') {
+    if (hasAllyWithTribe(state, owner, cfg, uid)) return true;
+  } else if (Array.isArray(cfg)) {
+    for (const tribe of cfg) {
+      if (hasAllyWithTribe(state, owner, tribe, uid)) return true;
+    }
+  }
+  return false;
+}
+
+export function applyOnDamageAbilities({
+  state,
+  attackerPos,
+  attackerTpl,
+  attackerUnit,
+  damages,
+}) {
+  if (!state || !attackerTpl || !Array.isArray(damages) || !damages.length) {
+    return { attackerPos: clonePos(attackerPos), blockedRetaliation: [], retaliationPositions: [], logLines: [] };
+  }
+
+  const logs = [];
+  const blocked = [];
+  const retaliationPos = [];
+  let currentPos = clonePos(attackerPos);
+  const attackerUid = getUnitUid(attackerUnit);
+  const attackerOwner = attackerUnit?.owner ?? null;
+  const handledTargets = new Set();
+
+  const requireAlive = (unit) => {
+    if (!unit) return false;
+    const tpl = getUnitTemplate(unit);
+    if (!tpl) return false;
+    const hp = unit.currentHP != null ? unit.currentHP : tpl.hp;
+    return hp > 0;
+  };
+
+  const markBlocked = (pos) => {
+    if (!pos) return;
+    blocked.push({ r: pos.r, c: pos.c });
+  };
+
+  const rememberRetPos = (index, pos) => {
+    if (!pos) return;
+    retaliationPos.push({ index, r: pos.r, c: pos.c });
+  };
+
+  for (let i = 0; i < damages.length; i++) {
+    const dmg = damages[i];
+    if (!dmg || dmg.dealt <= 0) continue;
+    const tgtUid = dmg.targetUid;
+    if (tgtUid == null) continue;
+    if (handledTargets.has(tgtUid)) continue;
+
+    let targetInfo = findUnitByUid(state, tgtUid);
+    if (!targetInfo || !requireAlive(targetInfo.unit)) continue;
+
+    const swapElement = attackerTpl.swapOnDamageIfTargetOnElement;
+    if (swapElement && dmg.targetElement === swapElement) {
+      if (attackerOwner != null && dmg.targetOwner === attackerOwner) {
+        // союзников не трогаем для таких навыков
+      } else {
+        const attackerInfo = findUnitByUid(state, attackerUid);
+        if (attackerInfo && attackerInfo.unit && targetInfo.unit) {
+          const attackerCell = state.board?.[attackerInfo.r]?.[attackerInfo.c];
+          const targetCell = state.board?.[targetInfo.r]?.[targetInfo.c];
+          if (attackerCell && targetCell) {
+            const attackerRef = attackerCell.unit;
+            const targetRef = targetCell.unit;
+            attackerCell.unit = targetRef;
+            targetCell.unit = attackerRef;
+            const newAttackerPos = { r: targetInfo.r, c: targetInfo.c };
+            const newTargetPos = { r: attackerInfo.r, c: attackerInfo.c };
+            currentPos = newAttackerPos;
+            logs.push(`${attackerTpl.name} меняется местами с ${CARDS[targetRef.tplId]?.name || 'целью'} на поле ${swapElement}.`);
+            markBlocked(newTargetPos);
+            rememberRetPos(i, newTargetPos);
+            // после обмена найдём цель по uid заново, чтобы обработать дальнейшие эффекты
+            targetInfo = { r: newTargetPos.r, c: newTargetPos.c, unit: targetRef };
+          }
+        }
+      }
+    }
+
+    // актуальные позиции после обменов
+    const attackerInfoAfter = findUnitByUid(state, attackerUid);
+    const targetInfoAfter = findUnitByUid(state, tgtUid);
+    if (!attackerInfoAfter || !targetInfoAfter || !requireAlive(targetInfoAfter.unit)) {
+      handledTargets.add(tgtUid);
+      continue;
+    }
+
+    if (attackerTpl.rotateTargetOnDamage) {
+      const dirToAttacker = directionFromTo(targetInfoAfter.r, targetInfoAfter.c, attackerInfoAfter.r, attackerInfoAfter.c);
+      if (dirToAttacker) {
+        const newFacing = oppositeDirection(dirToAttacker) || targetInfoAfter.unit.facing;
+        targetInfoAfter.unit.facing = newFacing;
+        logs.push(`${attackerTpl.name} разворачивает ${CARDS[targetInfoAfter.unit.tplId]?.name || 'цель'} спиной к себе.`);
+      }
+      markBlocked({ r: targetInfoAfter.r, c: targetInfoAfter.c });
+      rememberRetPos(i, { r: targetInfoAfter.r, c: targetInfoAfter.c });
+    }
+
+    handledTargets.add(tgtUid);
+  }
+
+  return { attackerPos: currentPos, blockedRetaliation: blocked, retaliationPositions: retaliationPos, logLines: logs };
+}
+
 // базовая стоимость активации без каких‑либо скидок
 function baseActivationCost(tpl) {
   return tpl && tpl.activation != null

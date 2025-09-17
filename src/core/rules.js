@@ -9,6 +9,9 @@ import {
   computeMagicAreaCells,
   computeDynamicMagicAttack,
   releasePossessionsAfterDeaths,
+  hasPerfectDodge,
+  hasInvisibility,
+  applyOnDamageAbilities,
 } from './abilities.js';
 import { countUnits } from './board.js';
 
@@ -154,14 +157,17 @@ export function stagedAttack(state, r, c, opts = {}) {
   const base = JSON.parse(JSON.stringify(state));
   const attacker = base.board?.[r]?.[c]?.unit;
   if (!attacker) return null;
+  const attackerUid = attacker?.uid ?? null;
   // не позволяем атаковать более одного раза за ход
   if (attacker.lastAttackTurn === base.turn) return null;
   const tplA = CARDS[attacker.tplId];
   if (!canAttack(tplA)) return null;
-  
+
   const baseStats = effectiveStats(base.board[r][c], attacker);
   let atk = baseStats.atk;
   let logLines = [];
+  let attackerPosCurrent = { r, c };
+  const blockedRetaliationKeys = new Set();
 
   const hitsRaw = computeHits(base, r, c, opts);
   if (!hitsRaw.length) return { empty: true };
@@ -226,22 +232,36 @@ export function stagedAttack(state, r, c, opts = {}) {
       if (hitsB.length) {
         const { atk: batk } = effectiveStats(base.board[h.r][h.c], B);
         const dmg = Math.max(0, batk);
-        quickRetaliation += dmg;
         quickSources.push(CARDS[B.tplId].name);
-        quickRetaliators.push({ r: h.r, c: h.c, dmg });
+        quickRetaliators.push({ r: h.r, c: h.c, dmg, attackType: tplB.attackType || 'STANDARD' });
       }
     }
   }
+  quickRetaliation = quickRetaliators.reduce((sum, item) => sum + item.dmg, 0);
 
   const step1Damages = hitsRaw.map(h => {
     const cell = base.board?.[h.r]?.[h.c];
     const B = cell?.unit;
-    if (!B) return { ...h, dealt: 0 };
+    if (!B) {
+      return { ...h, dealt: 0, targetOwner: null, targetTplId: null, targetUid: null, targetElement: cell?.element ?? null };
+    }
     const isMagic = tplA.attackType === 'MAGIC';
     const tplB = CARDS[B.tplId];
-    const dodge = !isMagic && (tplB.perfectDodge || (tplB.dodge50 && Math.random() < 0.5));
-    const dealt = dodge ? 0 : h.dmg;
-    return { ...h, dealt, dodge };
+    const invisible = hasInvisibility(base, h.r, h.c, B);
+    const perfect = !isMagic && hasPerfectDodge(base, h.r, h.c, B);
+    const dodge50 = !isMagic && tplB?.dodge50 && Math.random() < 0.5;
+    const prevented = invisible || perfect || dodge50;
+    const dealt = prevented ? 0 : h.dmg;
+    return {
+      ...h,
+      dealt,
+      dodge: (perfect || dodge50),
+      invisible,
+      targetOwner: B.owner,
+      targetTplId: B.tplId,
+      targetUid: B.uid ?? null,
+      targetElement: cell?.element ?? null,
+    };
   });
 
   const n1 = JSON.parse(JSON.stringify(base));
@@ -251,11 +271,26 @@ export function stagedAttack(state, r, c, opts = {}) {
   function stepQuick() {
     if (quickDone) return;
     const A = n1.board?.[r]?.[c]?.unit;
-    if (quickRetaliation > 0 && A) {
-      const before = A.currentHP ?? tplA.hp;
-      A.currentHP = Math.max(0, before - quickRetaliation);
-      const afterHP = A.currentHP;
-      logLines.push(`${quickSources.join(', ')} → ${CARDS[attacker.tplId].name}: ${quickRetaliation} dmg (HP ${before}→${afterHP})`);
+    if (quickRetaliators.length && A) {
+      const invisible = hasInvisibility(n1, r, c, A);
+      let applied = 0;
+      for (const ret of quickRetaliators) {
+        if (invisible) continue;
+        applied += ret.dmg;
+      }
+      quickRetaliation = applied;
+      if (applied > 0) {
+        const before = A.currentHP ?? tplA.hp;
+        A.currentHP = Math.max(0, before - applied);
+        const afterHP = A.currentHP;
+        logLines.push(`${quickSources.join(', ')} → ${CARDS[attacker.tplId].name}: ${applied} dmg (HP ${before}→${afterHP})`);
+      } else if (quickSources.length) {
+        if (invisible) {
+          logLines.push(`${CARDS[attacker.tplId].name}: невидимость нейтрализует быструю контратаку.`);
+        }
+      }
+    } else {
+      quickRetaliation = 0;
     }
     quickDone = true;
   }
@@ -276,6 +311,7 @@ export function stagedAttack(state, r, c, opts = {}) {
         const nameB = CARDS[B.tplId]?.name || 'Target';
         const parts = [`${nameA} → ${nameB}: ${h.dealt || 0} dmg (HP ${before}→${afterHP})`];
         if (h.backstab) parts.push('(+1 backstab)');
+        if (h.invisible) parts.push('(невидимость)');
         if (h.dodge) parts.push('(dodge)');
         logLines.push(parts.join(' '));
       }
@@ -292,6 +328,36 @@ export function stagedAttack(state, r, c, opts = {}) {
           logLines.push(`${nameA} (2nd) → ${nameB}: ${h.dealt || 0} dmg (HP ${before2}→${after2})`);
         }
       }
+
+      const abilityEffects = applyOnDamageAbilities({
+        state: n1,
+        attackerPos: attackerPosCurrent,
+        attackerTpl: tplA,
+        attackerUnit: attacker,
+        damages: step1Damages,
+      });
+      if (abilityEffects) {
+        if (abilityEffects.logLines?.length) {
+          logLines.push(...abilityEffects.logLines);
+        }
+        if (abilityEffects.attackerPos) {
+          attackerPosCurrent = abilityEffects.attackerPos;
+        }
+        if (Array.isArray(abilityEffects.blockedRetaliation)) {
+          for (const pos of abilityEffects.blockedRetaliation) {
+            if (!pos) continue;
+            blockedRetaliationKeys.add(`${pos.r},${pos.c}`);
+          }
+        }
+        if (Array.isArray(abilityEffects.retaliationPositions)) {
+          for (const item of abilityEffects.retaliationPositions) {
+            if (!item) continue;
+            const idx = item.index;
+            if (idx == null || !step1Damages[idx]) continue;
+            step1Damages[idx].retaliationPos = { r: item.r, c: item.c };
+          }
+        }
+      }
     }
     step1Done = true;
   }
@@ -300,26 +366,59 @@ export function stagedAttack(state, r, c, opts = {}) {
 
   function step2() {
     ensureStep1();
-    let totalRetaliation = 0;
     const retaliators = [];
+    const entries = [];
+    let blockedFlag = false;
     for (const h of step1Damages) {
-      const B = n1.board?.[h.r]?.[h.c]?.unit;
+      const pos = h.retaliationPos || { r: h.r, c: h.c };
+      const cell = n1.board?.[pos.r]?.[pos.c];
+      const B = cell?.unit;
       if (!B) continue;
       const tplB = CARDS[B.tplId];
-      const alive = (B.currentHP ?? B.hp) > 0;
+      const alive = (B.currentHP ?? tplB.hp) > 0;
       if (!alive) continue;
-      // быстрота защитника уже сработала на stepQuick, если атакующий не был быстрым
       if (!attackerQuick && hasFirstStrike(tplB)) continue;
-      const hitsB = computeHits(n1, h.r, h.c, { target: { r, c }, union: true });
-      if (hitsB.length) {
-        const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B);
-        totalRetaliation += Math.max(0, batk);
-        retaliators.push({ r: h.r, c: h.c });
+      const key = `${pos.r},${pos.c}`;
+      if (blockedRetaliationKeys.has(key)) {
+        blockedFlag = true;
+        continue;
       }
+      const hitsB = computeHits(n1, pos.r, pos.c, { target: attackerPosCurrent, union: true });
+      if (!hitsB.length) continue;
+      const { atk: batk } = effectiveStats(n1.board[pos.r][pos.c], B);
+      entries.push({ r: pos.r, c: pos.c, dmg: Math.max(0, batk), attackType: tplB.attackType || 'STANDARD' });
+      retaliators.push({ r: pos.r, c: pos.c });
     }
+
     const preventRetaliation = tplA.attackType === 'MAGIC' || (tplA.avoidRetaliation50 && Math.random() < 0.5);
-    const total = preventRetaliation ? 0 : totalRetaliation;
-    return { total, retaliators };
+    const attackerCell = attackerPosCurrent ? n1.board?.[attackerPosCurrent.r]?.[attackerPosCurrent.c] : null;
+    const attackerUnitAfter = attackerCell?.unit;
+    const attackerInvisible = attackerUnitAfter ? hasInvisibility(n1, attackerPosCurrent.r, attackerPosCurrent.c, attackerUnitAfter) : false;
+
+    if (preventRetaliation) {
+      return { total: 0, retaliators, preventedReason: entries.length ? 'ATTACK_RULE' : null };
+    }
+
+    let total = 0;
+    for (const entry of entries) {
+      if (attackerInvisible) {
+        continue;
+      }
+      total += entry.dmg;
+    }
+
+    let preventedReason = null;
+    if (entries.length > 0 && total === 0) {
+      if (attackerInvisible) {
+        preventedReason = 'INVISIBILITY';
+      } else if (blockedFlag) {
+        preventedReason = 'BLOCKED';
+      }
+    } else if (entries.length === 0 && blockedFlag) {
+      preventedReason = 'BLOCKED';
+    }
+
+    return { total, retaliators, preventedReason };
   }
 
   function finish() {
@@ -327,12 +426,22 @@ export function stagedAttack(state, r, c, opts = {}) {
     const nFinal = JSON.parse(JSON.stringify(n1));
     const ret = step2();
 
-    const A = nFinal.board?.[r]?.[c]?.unit;
+    const attackerCellFinal = attackerPosCurrent ? nFinal.board?.[attackerPosCurrent.r]?.[attackerPosCurrent.c] : null;
+    const A = attackerCellFinal?.unit;
     if (A && (ret.total || 0) > 0) {
       const tplA2 = CARDS[A.tplId];
       const before = A.currentHP ?? tplA2.hp;
       A.currentHP = Math.max(0, before - (ret.total || 0));
       logLines.push(`Retaliation to ${CARDS[A.tplId]?.name || 'Attacker'}: ${ret.total || 0} (HP ${before}→${A.currentHP})`);
+    } else if ((ret.total || 0) === 0 && ret.preventedReason && A) {
+      const reasonText = {
+        ATTACK_RULE: 'контратака невозможна из-за типа атаки.',
+        INVISIBILITY: 'невидимость предотвращает контратаку.',
+        BLOCKED: 'цель не может контратаковать.',
+      }[ret.preventedReason] || null;
+      if (reasonText) {
+        logLines.push(`${CARDS[A.tplId]?.name || 'Attacker'}: ${reasonText}`);
+      }
     }
 
     const deaths = [];
@@ -384,7 +493,7 @@ export function stagedAttack(state, r, c, opts = {}) {
 
     if (A) {
       A.lastAttackTurn = nFinal.turn;
-      const cellEl = nFinal.board?.[r]?.[c]?.element;
+      const cellEl = attackerPosCurrent ? nFinal.board?.[attackerPosCurrent.r]?.[attackerPosCurrent.c]?.element : null;
       A.apSpent = (A.apSpent || 0) + attackCost(tplA, cellEl);
     }
 
@@ -420,6 +529,8 @@ export function magicAttack(state, fr, fc, tr, tc) {
 
   const logLines = [];
   const targets = [];
+  let attackerPosCurrent = { r: fr, c: fc };
+  const damageRecords = [];
   const atkStats = effectiveStats(n1.board[fr][fc], attacker);
   let atk = atkStats.atk || 0;
   const dynMagic = computeDynamicMagicAttack(n1, tplA);
@@ -472,10 +583,23 @@ export function magicAttack(state, fr, fc, tr, tc) {
     const u = n1.board?.[cell.r]?.[cell.c]?.unit;
     if (!u) continue;
     if (!allowFriendly && u.owner === attacker.owner) continue;
+    const invisible = hasInvisibility(n1, cell.r, cell.c, u);
+    const dealt = invisible ? 0 : dmg;
     const before = u.currentHP ?? u.hp;
-    u.currentHP = Math.max(0, before - dmg);
-    targets.push({ r: cell.r, c: cell.c, dmg });
-    logLines.push(`${CARDS[attacker.tplId].name} (Magic) → ${CARDS[u.tplId].name}: ${dmg} dmg (HP ${before}→${u.currentHP})`);
+    u.currentHP = Math.max(0, before - dealt);
+    targets.push({ r: cell.r, c: cell.c, dmg: dealt });
+    const parts = [`${CARDS[attacker.tplId].name} (Magic) → ${CARDS[u.tplId].name}: ${dealt} dmg (HP ${before}→${u.currentHP})`];
+    if (invisible) parts.push('(невидимость)');
+    logLines.push(parts.join(' '));
+    damageRecords.push({
+      r: cell.r,
+      c: cell.c,
+      dealt,
+      targetOwner: u.owner,
+      targetTplId: u.tplId,
+      targetUid: u.uid ?? null,
+      targetElement: n1.board?.[cell.r]?.[cell.c]?.element ?? null,
+    });
   }
 
   if (hasDoubleAttack(tplA)) {
@@ -484,10 +608,39 @@ export function magicAttack(state, fr, fc, tr, tc) {
       if (!u2) continue;
       const tplB2 = CARDS[u2.tplId];
       if ((u2.currentHP ?? tplB2.hp) <= 0) continue;
+      const invisible2 = hasInvisibility(n1, cell.r, cell.c, u2);
+      const dealt2 = invisible2 ? 0 : dmg;
       const before2 = u2.currentHP ?? tplB2.hp;
-      u2.currentHP = Math.max(0, before2 - dmg);
-      targets.push({ r: cell.r, c: cell.c, dmg });
-      logLines.push(`${CARDS[attacker.tplId].name} (Magic 2nd) → ${CARDS[u2.tplId].name}: ${dmg} dmg (HP ${before2}→${u2.currentHP})`);
+      u2.currentHP = Math.max(0, before2 - dealt2);
+      targets.push({ r: cell.r, c: cell.c, dmg: dealt2 });
+      const parts2 = [`${CARDS[attacker.tplId].name} (Magic 2nd) → ${CARDS[u2.tplId].name}: ${dealt2} dmg (HP ${before2}→${u2.currentHP})`];
+      if (invisible2) parts2.push('(невидимость)');
+      logLines.push(parts2.join(' '));
+      damageRecords.push({
+        r: cell.r,
+        c: cell.c,
+        dealt: dealt2,
+        targetOwner: u2.owner,
+        targetTplId: u2.tplId,
+        targetUid: u2.uid ?? null,
+        targetElement: n1.board?.[cell.r]?.[cell.c]?.element ?? null,
+      });
+    }
+  }
+
+  const abilityEffects = applyOnDamageAbilities({
+    state: n1,
+    attackerPos: attackerPosCurrent,
+    attackerTpl: tplA,
+    attackerUnit: attacker,
+    damages: damageRecords,
+  });
+  if (abilityEffects) {
+    if (abilityEffects.logLines?.length) {
+      logLines.push(...abilityEffects.logLines);
+    }
+    if (abilityEffects.attackerPos) {
+      attackerPosCurrent = abilityEffects.attackerPos;
     }
   }
 
@@ -516,7 +669,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     }
   }
   attacker.lastAttackTurn = n1.turn;
-  const cellEl = n1.board?.[fr]?.[fc]?.element;
+  const cellEl = attackerPosCurrent ? n1.board?.[attackerPosCurrent.r]?.[attackerPosCurrent.c]?.element : null;
   attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA, cellEl);
   return { n1, logLines, targets, deaths, releases: releaseEvents.releases };
 }
