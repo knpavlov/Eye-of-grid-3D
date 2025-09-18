@@ -1,6 +1,5 @@
 // Общие функции для обработки особых свойств карт
 import { CARDS } from './cards.js';
-import { applyFieldTransitionToUnit } from './fieldEffects.js';
 import {
   isIncarnationCard,
   evaluateIncarnationSummon as evaluateIncarnationSummonInternal,
@@ -16,6 +15,10 @@ import {
   attemptDodge as attemptDodgeInternal,
 } from './abilityHandlers/dodge.js';
 import { computeTargetCostBonus as computeTargetCostBonusInternal } from './abilityHandlers/attackModifiers.js';
+import {
+  collectDamagePositioningEffects,
+  applyPositioningEvents,
+} from './abilityHandlers/positioning.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -114,6 +117,12 @@ export function hasInvisibility(state, r, c, opts = {}) {
 }
 
 const OPPOSITE_DIR = { N: 'S', S: 'N', E: 'W', W: 'E' };
+const DIR_OFFSETS = {
+  N: { dr: -1, dc: 0 },
+  E: { dr: 0, dc: 1 },
+  S: { dr: 1, dc: 0 },
+  W: { dr: 0, dc: -1 },
+};
 
 function directionBetween(from, to) {
   if (!from || !to) return null;
@@ -152,6 +161,48 @@ function findUnitRef(state, ref = {}) {
   return { unit: null, r: null, c: null };
 }
 
+function normalizeActivationTaxConfig(value) {
+  if (value == null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return { amount: Math.max(0, Math.floor(Math.abs(value))), scope: 'ALL' };
+  }
+  if (typeof value === 'object') {
+    const amountRaw = Number(value.amount ?? value.value ?? 0);
+    const amount = Math.max(0, Math.floor(Math.abs(amountRaw)));
+    if (!amount) return null;
+    const scopeRaw = String(value.scope ?? value.target ?? value.affects ?? 'ALL').toUpperCase();
+    let scope = 'ALL';
+    if (scopeRaw.startsWith('ENEM')) scope = 'ENEMY';
+    else if (scopeRaw.startsWith('ALLY')) scope = 'ALLY';
+    return { amount, scope };
+  }
+  return null;
+}
+
+function collectAdjacentActivationTax(state, r, c, unit) {
+  if (!state?.board || typeof r !== 'number' || typeof c !== 'number' || !unit) return 0;
+  let total = 0;
+  for (const dir of ['N', 'E', 'S', 'W']) {
+    const offset = DIR_OFFSETS[dir];
+    const nr = r + (offset?.dr ?? 0);
+    const nc = c + (offset?.dc ?? 0);
+    if (!inBounds(nr, nc)) continue;
+    const neighbor = state.board?.[nr]?.[nc]?.unit;
+    if (!neighbor) continue;
+    const tplNeighbor = getUnitTemplate(neighbor);
+    if (!tplNeighbor) continue;
+    const aliveNeighbor = (neighbor.currentHP ?? tplNeighbor.hp ?? 0) > 0;
+    if (!aliveNeighbor) continue;
+    const aura = normalizeActivationTaxConfig(tplNeighbor.adjacentActivationTax);
+    if (!aura || !aura.amount) continue;
+    const sameOwner = neighbor.owner === unit.owner;
+    if (aura.scope === 'ENEMY' && sameOwner) continue;
+    if (aura.scope === 'ALLY' && !sameOwner) continue;
+    total += aura.amount;
+  }
+  return total;
+}
+
 export function collectDamageInteractions(state, context = {}) {
   const result = { preventRetaliation: new Set(), events: [] };
   if (!state?.board) return result;
@@ -165,10 +216,19 @@ export function collectDamageInteractions(state, context = {}) {
     tplId: tpl.id,
   };
 
-  let swapHandled = false;
-  const swapElements = normalizeElements(
-    tpl.swapWithTargetOnElement || (tpl.switchOnDamage ? tpl.element : null)
+  const positioning = collectDamagePositioningEffects(
+    state,
+    { hits, tpl, attackerRef, attackerPos, attackerUnit },
+    { normalizeElements, getUnitTemplate, getUnitUid }
   );
+  if (positioning?.events?.length) {
+    result.events.push(...positioning.events);
+  }
+  if (positioning?.preventRetaliation instanceof Set) {
+    for (const key of positioning.preventRetaliation) {
+      result.preventRetaliation.add(key);
+    }
+  }
 
   for (const h of hits) {
     if (!h) continue;
@@ -178,31 +238,6 @@ export function collectDamageInteractions(state, context = {}) {
     }
     const dealt = h.dealt ?? h.dmg ?? 0;
     if (dealt <= 0) continue;
-    const cell = state.board?.[h.r]?.[h.c];
-    const target = cell?.unit;
-    if (!target) continue;
-    const tplTarget = getUnitTemplate(target);
-    const alive = (target.currentHP ?? tplTarget?.hp ?? 0) > 0;
-
-    if (!swapHandled && swapElements.size && alive && cell?.element && swapElements.has(cell.element)) {
-      result.events.push({
-        type: 'SWAP_POSITIONS',
-        attacker: attackerRef,
-        target: { uid: getUnitUid(target), r: h.r, c: h.c, tplId: tplTarget?.id },
-      });
-      swapHandled = true;
-      result.preventRetaliation.add(key);
-    }
-
-    if (tpl.rotateTargetOnDamage && alive) {
-      result.events.push({
-        type: 'ROTATE_TARGET',
-        target: { uid: getUnitUid(target), r: h.r, c: h.c, tplId: tplTarget?.id },
-        faceAwayFrom: attackerRef,
-      });
-      result.preventRetaliation.add(key);
-    }
-
     if (tpl.preventRetaliationOnDamage) {
       result.preventRetaliation.add(key);
     }
@@ -216,65 +251,21 @@ export function applyDamageInteractionResults(state, effects = {}) {
   let attackerPosUpdate = null;
   const events = Array.isArray(effects?.events) ? effects.events : [];
 
-  for (const ev of events) {
-    if (ev?.type === 'SWAP_POSITIONS') {
-      const attacker = findUnitRef(state, ev.attacker);
-      const target = findUnitRef(state, ev.target);
-      if (!attacker.unit || !target.unit) continue;
-      const aliveAttacker = (attacker.unit.currentHP ?? CARDS[attacker.unit.tplId]?.hp ?? 0) > 0;
-      const aliveTarget = (target.unit.currentHP ?? CARDS[target.unit.tplId]?.hp ?? 0) > 0;
-      if (!aliveAttacker || !aliveTarget) continue;
-      const attackerUnit = attacker.unit;
-      const targetUnit = target.unit;
-      const tplAttacker = CARDS[attackerUnit.tplId];
-      const tplTarget = CARDS[targetUnit.tplId];
-      const attackerPrevElement = state.board?.[attacker.r]?.[attacker.c]?.element || null;
-      const targetPrevElement = state.board?.[target.r]?.[target.c]?.element || null;
-      state.board[attacker.r][attacker.c].unit = targetUnit;
-      state.board[target.r][target.c].unit = attackerUnit;
-      attackerPosUpdate = { r: target.r, c: target.c };
-      const attackerName = tplAttacker?.name || 'Атакующий';
-      const targetName = tplTarget?.name || 'Цель';
-      logs.push(`${attackerName} меняется местами с ${targetName}.`);
-      const shiftAttacker = applyFieldTransitionToUnit(
-        attackerUnit,
-        tplAttacker,
-        attackerPrevElement,
-        targetPrevElement,
-      );
-      const shiftTarget = applyFieldTransitionToUnit(
-        targetUnit,
-        tplTarget,
-        targetPrevElement,
-        attackerPrevElement,
-      );
-      const describeShift = (shift, name) => {
-        if (!shift) return null;
-        const fieldLabel = shift.nextElement ? `поле ${shift.nextElement}` : 'нейтральном поле';
-        const prev = shift.beforeHp;
-        const next = shift.afterHp;
-        if (shift.deltaHp > 0) {
-          return `${name} усиливается на ${fieldLabel}: HP ${prev}→${next}.`;
-        }
-        return `${name} теряет силу на ${fieldLabel}: HP ${prev}→${next}.`;
-      };
-      const attackerLog = describeShift(shiftAttacker, attackerName);
-      if (attackerLog) logs.push(attackerLog);
-      const targetLog = describeShift(shiftTarget, targetName);
-      if (targetLog) logs.push(targetLog);
-    } else if (ev?.type === 'ROTATE_TARGET') {
-      const target = findUnitRef(state, ev.target);
-      if (!target.unit) continue;
-      const aliveTarget = (target.unit.currentHP ?? CARDS[target.unit.tplId]?.hp ?? 0) > 0;
-      if (!aliveTarget) continue;
-      const attacker = findUnitRef(state, ev.faceAwayFrom);
-      const facing = computeFacingAway(target, attacker);
-      if (facing) {
-        target.unit.facing = facing;
-        const name = CARDS[target.unit.tplId]?.name || 'Цель';
-        logs.push(`${name} поворачивается спиной к атакующему.`);
-      }
-    }
+  const positioning = applyPositioningEvents(
+    state,
+    events,
+    {
+      findUnitRef: (ref) => findUnitRef(state, ref),
+      getUnitTemplate,
+      computeFacingAway,
+    },
+  );
+
+  if (positioning?.attackerPosUpdate) {
+    attackerPosUpdate = positioning.attackerPosUpdate;
+  }
+  if (Array.isArray(positioning?.logLines) && positioning.logLines.length) {
+    logs.push(...positioning.logLines);
   }
 
   return { attackerPosUpdate, logLines: logs };
@@ -342,7 +333,7 @@ function baseActivationCost(tpl) {
 }
 
 // фактическая стоимость атаки с учётом скидок (например, "активация на X меньше")
-export function activationCost(tpl, fieldElement) {
+export function activationCost(tpl, fieldElement, context = {}) {
   let cost = baseActivationCost(tpl);
   if (tpl && tpl.activationReduction) {
     cost = Math.max(0, cost - tpl.activationReduction);
@@ -351,11 +342,34 @@ export function activationCost(tpl, fieldElement) {
   if (onElem && fieldElement === onElem.element) {
     cost = Math.max(0, cost - onElem.reduction);
   }
+  if (context?.state) {
+    const r = typeof context.r === 'number' ? context.r : context.position?.r;
+    const c = typeof context.c === 'number' ? context.c : context.position?.c;
+    const unit = context.unit || (typeof r === 'number' && typeof c === 'number'
+      ? context.state.board?.[r]?.[c]?.unit
+      : null);
+    if (unit) {
+      cost += collectAdjacentActivationTax(context.state, r, c, unit);
+    }
+  }
   return cost;
 }
 
-// стоимость поворота/обычной активации — без скидок
-export const rotateCost = (tpl) => baseActivationCost(tpl);
+// стоимость поворота/обычной активации — без скидок, но с учётом штрафов от аур
+export const rotateCost = (tpl, context = {}) => {
+  let cost = baseActivationCost(tpl);
+  if (context?.state) {
+    const r = typeof context.r === 'number' ? context.r : context.position?.r;
+    const c = typeof context.c === 'number' ? context.c : context.position?.c;
+    const unit = context.unit || (typeof r === 'number' && typeof c === 'number'
+      ? context.state.board?.[r]?.[c]?.unit
+      : null);
+    if (unit) {
+      cost += collectAdjacentActivationTax(context.state, r, c, unit);
+    }
+  }
+  return cost;
+};
 
 // Проверка наличия способности "быстрота"
 export const hasFirstStrike = (tpl) => !!(tpl && tpl.firstStrike);

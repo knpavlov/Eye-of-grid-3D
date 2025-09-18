@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack, stagedAttack } from '../src/core/rules.js';
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
-import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack } from '../src/core/abilities.js';
+import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, activationCost } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -593,6 +593,71 @@ describe('новые механики', () => {
     state.board[1][1].unit = { owner:0, tplId:'FIRE_DIDI_THE_ENLIGHTENED', facing:'N' };
     const cells = computeFieldquakeLockedCells(state);
     expect(cells.length).toBe(8);
+  });
+});
+
+describe('позиционные эффекты и ауры новых карт', () => {
+  const makeState = () => ({ board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 });
+
+  it('Elven Death Dancer увеличивает стоимость активации врагов по соседству', () => {
+    const tplEnemy = CARDS.FIRE_PARTMOLE_FLAME_LIZARD;
+
+    const baseState = makeState();
+    const baseUnit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'E', currentHP: 2 };
+    baseState.board[1][0].unit = baseUnit;
+    const baseCost = activationCost(tplEnemy, baseState.board[1][0].element, { state: baseState, r: 1, c: 0, unit: baseUnit });
+
+    const enemyState = makeState();
+    enemyState.board[1][1].unit = { owner: 0, tplId: 'FOREST_ELVEN_DEATH_DANCER', facing: 'N', currentHP: 3 };
+    const enemyUnit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'E', currentHP: 2 };
+    enemyState.board[1][0].unit = enemyUnit;
+    const enemyCost = activationCost(tplEnemy, enemyState.board[1][0].element, { state: enemyState, r: 1, c: 0, unit: enemyUnit });
+    expect(enemyCost).toBe(baseCost + 3);
+
+    const allyState = makeState();
+    allyState.board[1][1].unit = { owner: 0, tplId: 'FOREST_ELVEN_DEATH_DANCER', facing: 'N', currentHP: 3 };
+    const allyUnit = { owner: 0, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'E', currentHP: 2 };
+    allyState.board[1][0].unit = allyUnit;
+    const allyCost = activationCost(tplEnemy, allyState.board[1][0].element, { state: allyState, r: 1, c: 0, unit: allyUnit });
+    expect(allyCost).toBe(baseCost);
+  });
+
+  it('Dark Yokozuna Sekimaru отбрасывает цель и лишает её контратаки', () => {
+    const state = makeState();
+    state.board[2][1].unit = { owner: 0, tplId: 'BIOLITH_DARK_YOKOZUNA_SEKIMARU', facing: 'N', currentHP: CARDS.BIOLITH_DARK_YOKOZUNA_SEKIMARU.hp };
+    state.board[1][1].unit = { owner: 1, tplId: 'FIRE_TRICEPTAUR_BEHEMOTH', facing: 'S', currentHP: CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp };
+
+    const res = stagedAttack(state, 2, 1);
+    expect(res).toBeTruthy();
+    const fin = res.finish();
+    const pushed = fin.n1.board[0][1].unit;
+    expect(pushed).toBeTruthy();
+    expect(pushed?.tplId).toBe('FIRE_TRICEPTAUR_BEHEMOTH');
+    expect(pushed.currentHP).toBe(4);
+    expect(fin.n1.board[1][1].unit).toBeNull();
+    expect(fin.retaliators.length).toBe(0);
+    const dmgEntry = fin.targets.find(t => t.r === 1 && t.c === 1);
+    expect(dmgEntry?.dmg).toBeGreaterThan(0);
+  });
+
+  it('Taurus Monolith подсвечивает две клетки перед собой и отбрасывает выжившую цель', () => {
+    const state = makeState();
+    state.board[2][1].unit = { owner: 0, tplId: 'BIOLITH_TAURUS_MONOLITH', facing: 'N', currentHP: CARDS.BIOLITH_TAURUS_MONOLITH.hp };
+    state.board[1][1].unit = { owner: 1, tplId: 'FIRE_TRICEPTAUR_BEHEMOTH', facing: 'S', currentHP: CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp };
+
+    const preview = computeHits(state, 2, 1, { union: true, includeEmpty: true });
+    const coords = preview.map(h => `${h.r},${h.c}`).sort();
+    expect(coords).toEqual(['0,1', '1,1']);
+
+    const res = stagedAttack(state, 2, 1);
+    expect(res).toBeTruthy();
+    const fin = res.finish();
+    const pushed = fin.n1.board[0][1].unit;
+    expect(pushed).toBeTruthy();
+    expect(pushed?.tplId).toBe('FIRE_TRICEPTAUR_BEHEMOTH');
+    expect(pushed.currentHP).toBe(3);
+    expect(fin.n1.board[1][1].unit).toBeNull();
+    expect(fin.retaliators.length).toBe(0);
   });
 });
 

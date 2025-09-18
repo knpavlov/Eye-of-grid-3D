@@ -299,6 +299,16 @@ export const CARDS = {
     rotateTargetOnDamage: true,
     desc: 'Gains Invisibility while at least one allied Firefly Ninja is on the board. When Swallow Ninja damages (but does not destroy) a creature, rotate that creature so its back faces Swallow Ninja. The target creature cannot counterattack.'
   },
+  FOREST_ELVEN_DEATH_DANCER: {
+    id: 'FOREST_ELVEN_DEATH_DANCER', name: 'Elven Death Dancer', type: 'UNIT', cost: 5, activation: 4,
+    element: 'FOREST', atk: 3, hp: 3,
+    attackType: 'MAGIC',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['N', 'E', 'S', 'W'],
+    swapWithTargetOnDamage: true,
+    adjacentActivationTax: { amount: 3, scope: 'ENEMY' },
+    desc: 'Magic Attack. If Elven Death Dancer damages (but does not destroy) a creature, she switches places with that creature (which cannot counterattack). Enemy creatures on adjacent fields add 3 to their Activation Cost.'
+  },
   FOREST_GREEN_CUBIC: {
     id: 'FOREST_GREEN_CUBIC', name: 'Green Cubic', type: 'UNIT', cost: 1, activation: 1,
     element: 'FOREST', atk: 1, hp: 1,
@@ -375,6 +385,25 @@ export const CARDS = {
     ],
     blindspots: ['S'],
     desc: 'Magic Attack: choose one highlighted cell in front, back, left or right to target.'
+  },
+  BIOLITH_DARK_YOKOZUNA_SEKIMARU: {
+    id: 'BIOLITH_DARK_YOKOZUNA_SEKIMARU', name: 'Dark Yokozuna Sekimaru', type: 'UNIT', cost: 3, activation: 2,
+    element: 'BIOLITH', atk: 2, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    pushTargetOnDamage: true,
+    desc: 'If Dark Yokozuna Sekimaru damages (but does not destroy) a creature, push that creature one field forward in the direction of the attack if the destination is empty. The target cannot counterattack.'
+  },
+  BIOLITH_TAURUS_MONOLITH: {
+    id: 'BIOLITH_TAURUS_MONOLITH', name: 'Taurus Monolith', type: 'UNIT', cost: 5, activation: 3,
+    element: 'BIOLITH', atk: 3, hp: 6,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], group: 0 } ],
+    blindspots: ['S'],
+    pierce: true,
+    pushTargetOnDamage: true,
+    desc: 'Attacks both spaces in front of it. If Taurus Monolith damages (but does not destroy) a creature, push that creature one field forward in the direction of the attack if the destination is empty. The target cannot counterattack.'
   },
 
   FOREST_TWIN_GOBLINS: {
