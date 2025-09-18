@@ -47,7 +47,15 @@ export function attachUIEvents() {
 
   document.getElementById('cancel-action-btn')?.addEventListener('click', () => {
     w.__interactions?.clearSelectedUnit?.();
+    w.__interactions?.clearPendingUnitAbility?.();
+    w.__interactions?.clearPendingAbilityOrientation?.();
+    if (w.__interactions?.interactionState) {
+      w.__interactions.interactionState.pendingDiscardSelection = null;
+    }
+    w.__ui?.panels?.hidePrompt?.();
+    w.__ui?.panels?.hideOrientationPanel?.();
     w.__ui?.panels?.hideUnitActionPanel?.();
+    w.__ui?.cancelButton?.refreshCancelButton?.();
   });
 
   document.getElementById('rotate-cw-btn')?.addEventListener('click', () => {
@@ -66,6 +74,11 @@ export function attachUIEvents() {
   document.querySelectorAll('[data-dir]').forEach(btn => {
     btn.addEventListener('click', () => {
       const direction = btn.getAttribute('data-dir');
+      const abilityOrientation = w.__interactions?.getPendingAbilityOrientation?.();
+      if (abilityOrientation) {
+        w.__ui?.actions?.confirmUnitAbilityOrientation?.(abilityOrientation, direction);
+        return;
+      }
       const pso = w.__interactions?.getPendingSpellOrientation?.();
       const gameState = w.gameState;
       if (pso) {

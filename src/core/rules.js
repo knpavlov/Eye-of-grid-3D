@@ -11,6 +11,7 @@ import {
   releasePossessionsAfterDeaths,
   hasPerfectDodge,
   hasInvisibility,
+  attemptUnitDodge,
   collectDamageInteractions,
   applyDamageInteractionResults,
 } from './abilities.js';
@@ -159,11 +160,12 @@ export function stagedAttack(state, r, c, opts = {}) {
   if (attacker.lastAttackTurn === base.turn) return null;
   const tplA = CARDS[attacker.tplId];
   if (!canAttack(tplA)) return null;
-  
+
   const baseStats = effectiveStats(base.board[r][c], attacker);
   let atk = baseStats.atk;
   let logLines = [];
   const damageEffects = { preventRetaliation: new Set(), events: [] };
+  const randomFn = typeof opts?.rng === 'function' ? opts.rng : Math.random;
 
   const hitsRaw = computeHits(base, r, c, opts);
   if (!hitsRaw.length) return { empty: true };
@@ -242,11 +244,14 @@ export function stagedAttack(state, r, c, opts = {}) {
     const isMagic = tplA.attackType === 'MAGIC';
     const tplB = CARDS[B.tplId];
     const invisible = hasInvisibility(base, h.r, h.c, { unit: B, tpl: tplB });
-    const dodge = !isMagic && !invisible && (
-      hasPerfectDodge(base, h.r, h.c, { unit: B, tpl: tplB }) || (tplB.dodge50 && Math.random() < 0.5)
-    );
-    const dealt = (invisible || dodge) ? 0 : h.dmg;
-    return { ...h, dealt, dodge, invisible };
+    const perfect = !isMagic && !invisible && hasPerfectDodge(base, h.r, h.c, { unit: B, tpl: tplB });
+    let dodgeInfo = null;
+    if (!isMagic && !invisible && !perfect) {
+      dodgeInfo = attemptUnitDodge(base, h.r, h.c, { rng: randomFn });
+    }
+    const dodgeSuccess = !isMagic && !invisible && (perfect || (dodgeInfo?.success === true));
+    const dealt = (invisible || dodgeSuccess) ? 0 : h.dmg;
+    return { ...h, dealt, dodge: dodgeSuccess, invisible, dodgeInfo };
   });
 
   const n1 = JSON.parse(JSON.stringify(base));
@@ -284,6 +289,9 @@ export function stagedAttack(state, r, c, opts = {}) {
         if (h.dodge) parts.push('(dodge)');
         if (h.invisible) parts.push('(невидимость)');
         logLines.push(parts.join(' '));
+        if (h.dodgeInfo?.consumed && h.dodgeInfo.limited && (h.dodgeInfo.attemptsLeft ?? 0) <= 0) {
+          logLines.push(`${nameB} исчерпывает попытки Dodge.`);
+        }
       }
       if (hasDoubleAttack(tplA)) {
         for (const h of step1Damages) {
