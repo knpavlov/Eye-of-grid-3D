@@ -1,6 +1,5 @@
 // Общие функции для обработки особых свойств карт
 import { CARDS } from './cards.js';
-import { applyFieldTransitionToUnit } from './fieldEffects.js';
 import {
   isIncarnationCard,
   evaluateIncarnationSummon as evaluateIncarnationSummonInternal,
@@ -16,6 +15,13 @@ import {
   attemptDodge as attemptDodgeInternal,
 } from './abilityHandlers/dodge.js';
 import { computeTargetCostBonus as computeTargetCostBonusInternal } from './abilityHandlers/attackModifiers.js';
+import {
+  getUnitUid,
+  findUnitRef,
+  evaluateSwapOnDamage,
+  evaluatePushOnDamage,
+  applyRepositionEvent,
+} from './abilityHandlers/reposition.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -24,10 +30,6 @@ const inBounds = (r, c) => r >= 0 && r < 3 && c >= 0 && c < 3;
 function getUnitTemplate(unit) {
   if (!unit) return null;
   return CARDS[unit.tplId] || null;
-}
-
-function getUnitUid(unit) {
-  return (unit && unit.uid != null) ? unit.uid : null;
 }
 
 function toArray(value) {
@@ -132,26 +134,6 @@ function computeFacingAway(targetRef, attackerRef) {
   return OPPOSITE_DIR[dirToAttacker] || null;
 }
 
-function findUnitRef(state, ref = {}) {
-  if (!state?.board) return { unit: null, r: null, c: null };
-  const { uid, r, c } = ref || {};
-  if (uid != null) {
-    for (let rr = 0; rr < 3; rr++) {
-      for (let cc = 0; cc < 3; cc++) {
-        const unit = state.board?.[rr]?.[cc]?.unit;
-        if (unit && getUnitUid(unit) === uid) {
-          return { unit, r: rr, c: cc };
-        }
-      }
-    }
-  }
-  if (typeof r === 'number' && typeof c === 'number') {
-    const unit = state.board?.[r]?.[c]?.unit || null;
-    return { unit, r, c };
-  }
-  return { unit: null, r: null, c: null };
-}
-
 export function collectDamageInteractions(state, context = {}) {
   const result = { preventRetaliation: new Set(), events: [] };
   if (!state?.board) return result;
@@ -166,9 +148,6 @@ export function collectDamageInteractions(state, context = {}) {
   };
 
   let swapHandled = false;
-  const swapElements = normalizeElements(
-    tpl.swapWithTargetOnElement || (tpl.switchOnDamage ? tpl.element : null)
-  );
 
   for (const h of hits) {
     if (!h) continue;
@@ -184,14 +163,38 @@ export function collectDamageInteractions(state, context = {}) {
     const tplTarget = getUnitTemplate(target);
     const alive = (target.currentHP ?? tplTarget?.hp ?? 0) > 0;
 
-    if (!swapHandled && swapElements.size && alive && cell?.element && swapElements.has(cell.element)) {
-      result.events.push({
-        type: 'SWAP_POSITIONS',
-        attacker: attackerRef,
-        target: { uid: getUnitUid(target), r: h.r, c: h.c, tplId: tplTarget?.id },
+    const targetCell = { r: h.r, c: h.c, element: cell?.element };
+
+    if (!swapHandled && alive) {
+      const swapCheck = evaluateSwapOnDamage({
+        tpl,
+        attackerRef,
+        targetUnit: target,
+        targetTpl: tplTarget,
+        targetCell,
+        alreadySwapped: swapHandled,
       });
-      swapHandled = true;
-      result.preventRetaliation.add(key);
+      if (swapCheck?.event) {
+        result.events.push(swapCheck.event);
+        swapHandled = swapCheck.triggered;
+        result.preventRetaliation.add(key);
+      }
+    }
+
+    if (alive) {
+      const pushEvent = evaluatePushOnDamage({
+        state,
+        tpl,
+        attackerPos,
+        attackerRef,
+        targetUnit: target,
+        targetTpl: tplTarget,
+        targetCell,
+      });
+      if (pushEvent) {
+        result.events.push(pushEvent);
+        result.preventRetaliation.add(key);
+      }
     }
 
     if (tpl.rotateTargetOnDamage && alive) {
@@ -217,52 +220,18 @@ export function applyDamageInteractionResults(state, effects = {}) {
   const events = Array.isArray(effects?.events) ? effects.events : [];
 
   for (const ev of events) {
-    if (ev?.type === 'SWAP_POSITIONS') {
-      const attacker = findUnitRef(state, ev.attacker);
-      const target = findUnitRef(state, ev.target);
-      if (!attacker.unit || !target.unit) continue;
-      const aliveAttacker = (attacker.unit.currentHP ?? CARDS[attacker.unit.tplId]?.hp ?? 0) > 0;
-      const aliveTarget = (target.unit.currentHP ?? CARDS[target.unit.tplId]?.hp ?? 0) > 0;
-      if (!aliveAttacker || !aliveTarget) continue;
-      const attackerUnit = attacker.unit;
-      const targetUnit = target.unit;
-      const tplAttacker = CARDS[attackerUnit.tplId];
-      const tplTarget = CARDS[targetUnit.tplId];
-      const attackerPrevElement = state.board?.[attacker.r]?.[attacker.c]?.element || null;
-      const targetPrevElement = state.board?.[target.r]?.[target.c]?.element || null;
-      state.board[attacker.r][attacker.c].unit = targetUnit;
-      state.board[target.r][target.c].unit = attackerUnit;
-      attackerPosUpdate = { r: target.r, c: target.c };
-      const attackerName = tplAttacker?.name || 'Атакующий';
-      const targetName = tplTarget?.name || 'Цель';
-      logs.push(`${attackerName} меняется местами с ${targetName}.`);
-      const shiftAttacker = applyFieldTransitionToUnit(
-        attackerUnit,
-        tplAttacker,
-        attackerPrevElement,
-        targetPrevElement,
-      );
-      const shiftTarget = applyFieldTransitionToUnit(
-        targetUnit,
-        tplTarget,
-        targetPrevElement,
-        attackerPrevElement,
-      );
-      const describeShift = (shift, name) => {
-        if (!shift) return null;
-        const fieldLabel = shift.nextElement ? `поле ${shift.nextElement}` : 'нейтральном поле';
-        const prev = shift.beforeHp;
-        const next = shift.afterHp;
-        if (shift.deltaHp > 0) {
-          return `${name} усиливается на ${fieldLabel}: HP ${prev}→${next}.`;
-        }
-        return `${name} теряет силу на ${fieldLabel}: HP ${prev}→${next}.`;
-      };
-      const attackerLog = describeShift(shiftAttacker, attackerName);
-      if (attackerLog) logs.push(attackerLog);
-      const targetLog = describeShift(shiftTarget, targetName);
-      if (targetLog) logs.push(targetLog);
-    } else if (ev?.type === 'ROTATE_TARGET') {
+    const reposition = applyRepositionEvent(state, ev);
+    if (reposition) {
+      if (reposition.attackerPosUpdate) {
+        attackerPosUpdate = reposition.attackerPosUpdate;
+      }
+      if (Array.isArray(reposition.logLines) && reposition.logLines.length) {
+        logs.push(...reposition.logLines);
+      }
+      continue;
+    }
+
+    if (ev?.type === 'ROTATE_TARGET') {
       const target = findUnitRef(state, ev.target);
       if (!target.unit) continue;
       const aliveTarget = (target.unit.currentHP ?? CARDS[target.unit.tplId]?.hp ?? 0) > 0;

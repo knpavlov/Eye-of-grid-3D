@@ -18,6 +18,7 @@ import {
 } from './abilities.js';
 import { countUnits } from './board.js';
 import { computeCellBuff } from './fieldEffects.js';
+import { collectActivationTax } from './abilityHandlers/costModifiers.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -459,7 +460,18 @@ export function stagedAttack(state, r, c, opts = {}) {
     if (A) {
       A.lastAttackTurn = nFinal.turn;
       const cellEl = nFinal.board?.[r]?.[c]?.element;
-      A.apSpent = (A.apSpent || 0) + attackCost(tplA, cellEl);
+      const auraInfo = collectActivationTax(nFinal, r, c, A);
+      const baseCost = attackCost(tplA, cellEl);
+      const extraCost = auraInfo.total || 0;
+      A.apSpent = (A.apSpent || 0) + baseCost + extraCost;
+      if (extraCost > 0) {
+        const sources = auraInfo.breakdown.map(item => {
+          const tplSrc = item?.source?.tplId ? CARDS[item.source.tplId] : null;
+          return tplSrc?.name || item?.source?.name || 'вражеской ауры';
+        }).filter(Boolean);
+        const label = sources.length ? sources.join(', ') : 'вражеских аур';
+        logLines.push(`${tplA.name}: +${extraCost} к стоимости атаки из-за ${label}.`);
+      }
     }
 
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
@@ -661,7 +673,18 @@ export function magicAttack(state, fr, fc, tr, tc) {
   }
   attacker.lastAttackTurn = n1.turn;
   const cellEl = n1.board?.[fr]?.[fc]?.element;
-  attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA, cellEl);
+  const auraInfo = collectActivationTax(n1, fr, fc, attacker);
+  const baseCost = attackCost(tplA, cellEl);
+  const extraCost = auraInfo.total || 0;
+  attacker.apSpent = (attacker.apSpent || 0) + baseCost + extraCost;
+  if (extraCost > 0) {
+    const sources = auraInfo.breakdown.map(item => {
+      const tplSrc = item?.source?.tplId ? CARDS[item.source.tplId] : null;
+      return tplSrc?.name || item?.source?.name || 'вражеской ауры';
+    }).filter(Boolean);
+    const label = sources.length ? sources.join(', ') : 'вражеских аур';
+    logLines.push(`${tplA.name}: +${extraCost} к стоимости атаки из-за ${label}.`);
+  }
   return { n1, logLines, targets, deaths, releases: releaseEvents.releases };
 }
 

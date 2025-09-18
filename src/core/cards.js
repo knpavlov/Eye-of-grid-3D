@@ -203,6 +203,16 @@ export const CARDS = {
     desc: 'Incarnation. Novogus Gravekeeper’s Magic Attack targets all enemies on non-Earth fields. Destroy Novogus Gravekeeper if it is on a Biolith field.'
   },
 
+  EARTH_DARK_YOKOZUNA_SEKIMARU: {
+    id: 'EARTH_DARK_YOKOZUNA_SEKIMARU', name: 'Dark Yokozuna Sekimaru', type: 'UNIT', cost: 3, activation: 2,
+    element: 'EARTH', atk: 2, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    pushTargetOnDamage: { distance: 1, requireEmpty: true },
+    desc: 'When he damages (but does not destroy) a creature, push it one field back in the direction of the attack if the destination is empty. The target cannot counterattack.'
+  },
+
   FOREST_EXALTED_ELVEN_DEITY: {
     id: 'FOREST_EXALTED_ELVEN_DEITY', name: 'Exalted Elven Deity', type: 'UNIT', cost: 9, activation: 5,
     element: 'FOREST', atk: 3, hp: 9,
@@ -299,6 +309,19 @@ export const CARDS = {
     rotateTargetOnDamage: true,
     desc: 'Gains Invisibility while at least one allied Firefly Ninja is on the board. When Swallow Ninja damages (but does not destroy) a creature, rotate that creature so its back faces Swallow Ninja. The target creature cannot counterattack.'
   },
+  FOREST_ELVEN_DEATH_DANCER: {
+    id: 'FOREST_ELVEN_DEATH_DANCER', name: 'Elven Death Dancer', type: 'UNIT', cost: 5, activation: 4,
+    element: 'FOREST', atk: 1, hp: 3,
+    attackType: 'MAGIC', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1], mode: 'ANY' },
+      { dir: 'E', ranges: [1], mode: 'ANY' },
+    ],
+    blindspots: ['S'],
+    swapOnDamage: true,
+    activationTaxAura: { amount: 3, vs: 'ENEMY', radius: 1 },
+    desc: 'Magic Attack. If she damages (but does not destroy) a creature, switch places with it; that creature cannot counterattack. Enemies on adjacent fields add 3 to their Activation Cost.'
+  },
   FOREST_GREEN_CUBIC: {
     id: 'FOREST_GREEN_CUBIC', name: 'Green Cubic', type: 'UNIT', cost: 1, activation: 1,
     element: 'FOREST', atk: 1, hp: 1,
@@ -322,6 +345,17 @@ export const CARDS = {
       { key: 'SACRIFICE_TRANSFORM', label: 'Sacrifice', allowAnyElement: true, requireNonCubic: false },
     ],
     desc: 'White Cubic does not belong to any element. Sacrifice White Cubic to summon any creature in its place (facing any direction) without paying the Summoning Cost. The summoned creature cannot attack this turn. Dodge attempt.'
+  },
+
+  BIOLITH_TAURUS_MONOLITH: {
+    id: 'BIOLITH_TAURUS_MONOLITH', name: 'Taurus Monolith', type: 'UNIT', cost: 5, activation: 3,
+    element: 'BIOLITH', atk: 3, hp: 6,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    pierce: true,
+    blindspots: ['S'],
+    pushTargetOnDamage: { distance: 1, requireEmpty: true },
+    desc: 'Attacks both fields straight ahead. If it damages (but does not destroy) a creature, push it one field back in the direction of the attack if the destination is empty. The target cannot counterattack.'
   },
 
   BIOLITH_NINJA: {
