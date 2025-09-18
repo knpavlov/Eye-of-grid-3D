@@ -118,6 +118,24 @@ describe('guards and hits', () => {
     const hits = computeHits(state, 1, 1);
     expect(hits.some(h => h.r === 0 && h.c === 1)).toBe(true);
   });
+
+  it('backAttack: ассасины всегда получают бонус за удар в спину', () => {
+    const state = { board: makeBoard() };
+    state.board[1][1].unit = { owner: 0, tplId: 'WATER_VENOAN_ASSASSIN', facing: 'E' };
+    state.board[1][2].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'W' };
+    const hits = computeHits(state, 1, 1);
+    expect(hits).toHaveLength(1);
+    const hit = hits[0];
+    expect(hit.backstab).toBe(true);
+    expect(hit.dmg).toBe((CARDS.WATER_VENOAN_ASSASSIN.atk || 0) + 1);
+
+    state.board[1][1].unit = { owner: 0, tplId: 'MECH_BIOLITH_NINJA', facing: 'E' };
+    const hitsNinja = computeHits(state, 1, 1);
+    expect(hitsNinja).toHaveLength(1);
+    const backHit = hitsNinja[0];
+    expect(backHit.backstab).toBe(true);
+    expect(backHit.dmg).toBe((CARDS.MECH_BIOLITH_NINJA.atk || 0) + 1);
+  });
 });
 
 describe('особые способности', () => {

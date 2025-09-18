@@ -123,13 +123,22 @@ export function computeHits(state, r, c, opts = {}) {
     }
     const backDir = { N: 'S', S: 'N', E: 'W', W: 'E' }[B.facing];
     const [bdr, bdc] = DIR_VECTORS[backDir] || [0, 0];
-    const isBack = (nr + bdr === r && nc + bdc === c);
-    const dirAbsFromB = (() => {
+    const forcedBack = !!tplA.backAttack;
+    let isBack = (!forcedBack && (nr + bdr === r && nc + bdc === c));
+    let dirAbsFromB = (() => {
       if (r === nr - 1 && c === nc) return 'N';
       if (r === nr + 1 && c === nc) return 'S';
       if (r === nr && c === nc - 1) return 'W';
       return 'E';
     })();
+    if (forcedBack) {
+      // Ниндзя с backAttack всегда считаются атакующими со спины,
+      // чтобы корректно добавлять бонус урона и помечать удар как backstab.
+      isBack = true;
+      if (backDir) {
+        dirAbsFromB = backDir;
+      }
+    }
     const ORDER = ['N', 'E', 'S', 'W'];
     const absIdx = ORDER.indexOf(dirAbsFromB);
     const faceIdx = ORDER.indexOf(B.facing);
