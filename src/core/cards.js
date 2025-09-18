@@ -158,6 +158,61 @@ export const CARDS = {
     desc: 'Attacks the same target twice (counterattack after second attack). While on a Fire field he must use his Magic Attack, which affects the target and all adjacent enemies. The Attack value is equal to the number of Fire fields.'
   },
 
+  FIRE_SCIONDAR_FIRE_GOD: {
+    id: 'FIRE_SCIONDAR_FIRE_GOD', name: 'Sciondar Fire God', type: 'UNIT', cost: 9, activation: 5,
+    element: 'FIRE', atk: 3, hp: 9,
+    attackType: 'MAGIC',
+    attacks: [], blindspots: [],
+    incarnation: true,
+    targetAllNonElement: 'FIRE',
+    diesOnElement: 'MECH',
+    desc: 'Incarnation. Its Magic Attack targets all enemies on non-Fire fields. Destroy Sciondar Fire God if he is on a Biolith field.'
+  },
+
+  WATER_GODDESS_TRITONA: {
+    id: 'WATER_GODDESS_TRITONA', name: 'Goddess Tritona', type: 'UNIT', cost: 9, activation: 5,
+    element: 'WATER', atk: 3, hp: 9,
+    attackType: 'MAGIC',
+    attacks: [], blindspots: [],
+    incarnation: true,
+    targetAllNonElement: 'WATER',
+    diesOnElement: 'MECH',
+    desc: 'Incarnation. Goddess Tritona’s Magic Attack targets all enemies on non-Water fields. Destroy Goddess Tritona if she is on a Biolith field.'
+  },
+
+  EARTH_NOVOGUS_GRAVEKEEPER: {
+    id: 'EARTH_NOVOGUS_GRAVEKEEPER', name: 'Novogus Gravekeeper', type: 'UNIT', cost: 9, activation: 5,
+    element: 'EARTH', atk: 3, hp: 9,
+    attackType: 'MAGIC',
+    attacks: [], blindspots: [],
+    incarnation: true,
+    targetAllNonElement: 'EARTH',
+    diesOnElement: 'MECH',
+    desc: 'Incarnation. Novogus Gravekeeper’s Magic Attack targets all enemies on non-Earth fields. Destroy Novogus Gravekeeper if it is on a Biolith field.'
+  },
+
+  FOREST_EXALTED_ELVEN_DEITY: {
+    id: 'FOREST_EXALTED_ELVEN_DEITY', name: 'Exalted Elven Deity', type: 'UNIT', cost: 9, activation: 5,
+    element: 'FOREST', atk: 3, hp: 9,
+    attackType: 'MAGIC',
+    attacks: [], blindspots: [],
+    incarnation: true,
+    targetAllNonElement: 'FOREST',
+    diesOnElement: 'MECH',
+    desc: 'Incarnation. Exalted Elven Deity’s Magic Attack targets all enemies on non-Wood fields. Destroy Exalted Elven Deity if it is on a Biolith field.'
+  },
+
+  MECH_PHASEUS: {
+    id: 'MECH_PHASEUS', name: 'Phaseus, Biolith God', type: 'UNIT', cost: 9, activation: 5,
+    element: 'MECH', atk: 3, hp: 9,
+    attackType: 'MAGIC',
+    attacks: [], blindspots: [],
+    incarnation: true,
+    targetAllEnemies: true,
+    diesOffElement: 'MECH',
+    desc: 'Incarnation. Phaseus’s Magic Attack targets all enemies. Destroy Phaseus if he is on a non-Biolith field.'
+  },
+
   // Ninja cycle
   FIRE_FIREFLY_NINJA: {
     id: 'FIRE_FIREFLY_NINJA', name: 'Firefly Ninja', type: 'UNIT', cost: 3, activation: 2,
