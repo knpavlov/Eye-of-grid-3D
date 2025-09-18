@@ -316,7 +316,8 @@ export const CARDS = {
     attackType: 'STANDARD',
     attacks: [ { dir: 'N', ranges: [1] } ],
     blindspots: ['E', 'S', 'W'],
-    dodge50: true,
+    keywords: ['DODGE_ATTEMPT'],
+    dodge: { chance: 0.5, attempts: 1 },
     unitActions: [
       { key: 'SACRIFICE_TRANSFORM', label: 'Sacrifice', allowAnyElement: true, requireNonCubic: false },
     ],

@@ -11,6 +11,10 @@ import {
   collectSacrificeActions,
   executeSacrificeAction,
 } from './abilityHandlers/sacrifice.js';
+import {
+  ensureDodgeState,
+  attemptDodge as attemptDodgeInternal,
+} from './abilityHandlers/dodge.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -389,6 +393,8 @@ export function applySummonAbilities(state, r, c) {
   const tpl = getUnitTemplate(unit);
   if (!tpl) return events;
 
+  ensureDodgeState(unit, tpl);
+
   const possessionCfg = normalizeElementConfig(
     tpl.gainPossessionEnemiesOnElement,
     { requireDifferentField: true }
@@ -531,6 +537,8 @@ export function getTargetElementBonus(tpl, state, hits) {
 export { isIncarnationCard };
 export const evaluateIncarnationSummon = evaluateIncarnationSummonInternal;
 export const applyIncarnationSummon = applyIncarnationSummonInternal;
+export const ensureUnitDodgeState = ensureDodgeState;
+export const attemptUnitDodge = attemptDodgeInternal;
 
 export function collectUnitActions(state, r, c) {
   const actions = [];

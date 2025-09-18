@@ -144,6 +144,35 @@ describe('особые способности', () => {
     expect(res.n1.board[1][1].unit).toBeNull();
   });
 
+  it('dodge attempt спасает один раз', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'E' };
+    state.board[1][2].unit = { owner:1, tplId:'NEUTRAL_WHITE_CUBIC', facing:'W', currentHP:1 };
+    const res1 = stagedAttack(state,1,1,{ rng: () => 0 });
+    const fin1 = res1.finish();
+    const cubicAfterFirst = fin1.n1.board[1][2].unit;
+    expect(cubicAfterFirst).toBeTruthy();
+    const tplCubic = CARDS[cubicAfterFirst.tplId];
+    expect(cubicAfterFirst.currentHP ?? tplCubic.hp).toBe(tplCubic.hp);
+    expect(cubicAfterFirst.dodgeState?.remaining ?? 0).toBe(0);
+
+    const state2 = fin1.n1;
+    state2.board[1][1].unit.lastAttackTurn = 0;
+    state2.turn += 1;
+
+    const res2 = stagedAttack(state2,1,1,{ rng: () => 0 });
+    const fin2 = res2.finish();
+    expect(fin2.n1.board[1][2].unit).toBeNull();
+  });
+
+  it('dodge не защищает от магии', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[1][0].unit = { owner:0, tplId:'FIRE_FLAME_MAGUS', facing:'E' };
+    state.board[1][1].unit = { owner:1, tplId:'NEUTRAL_WHITE_CUBIC', facing:'W', currentHP:1 };
+    const res = magicAttack(state,1,0,1,1);
+    expect(res.n1.board[1][1].unit).toBeNull();
+  });
+
   it('quickness позволяет контратаковать первым', () => {
     const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
     state.board[1][0].unit = { owner:0, tplId:'FIRE_FREEDONIAN_WANDERER', facing:'E', currentHP:1 };
