@@ -459,7 +459,12 @@ export function stagedAttack(state, r, c, opts = {}) {
     if (A) {
       A.lastAttackTurn = nFinal.turn;
       const cellEl = nFinal.board?.[r]?.[c]?.element;
-      A.apSpent = (A.apSpent || 0) + attackCost(tplA, cellEl);
+      const cost = attackCost(tplA, cellEl, {
+        state: nFinal,
+        position: { r, c },
+        unit: A,
+      });
+      A.apSpent = (A.apSpent || 0) + cost;
     }
 
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
@@ -661,7 +666,12 @@ export function magicAttack(state, fr, fc, tr, tc) {
   }
   attacker.lastAttackTurn = n1.turn;
   const cellEl = n1.board?.[fr]?.[fc]?.element;
-  attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA, cellEl);
+  const finalCost = attackCost(tplA, cellEl, {
+    state: n1,
+    position: { r: fr, c: fc },
+    unit: attacker,
+  });
+  attacker.apSpent = (attacker.apSpent || 0) + finalCost;
   return { n1, logLines, targets, deaths, releases: releaseEvents.releases };
 }
 

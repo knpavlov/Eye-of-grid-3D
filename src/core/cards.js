@@ -246,6 +246,15 @@ export const CARDS = {
     swapWithTargetOnElement: 'EARTH',
     desc: 'Magic attack. Gains Invisibility while at least one allied Wolf Ninja is on the board. If it damages a creature on an Earth field, it switches places with that creature (which cannot counterattack).'
   },
+  EARTH_DARK_YOKOZUNA_SEKIMARU: {
+    id: 'EARTH_DARK_YOKOZUNA_SEKIMARU', name: 'Dark Yokozuna Sekimaru', type: 'UNIT', cost: 3, activation: 2,
+    element: 'EARTH', atk: 2, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    pushTargetOnDamage: true,
+    desc: 'If Dark Yokozuna Sekimaru attacks (but does not destroy) a creature, that creature is pushed back one field in the direction of the attack (if the destination is empty) and cannot counterattack.'
+  },
   EARTH_YELLOW_CUBIC: {
     id: 'EARTH_YELLOW_CUBIC', name: 'Yellow Cubic', type: 'UNIT', cost: 1, activation: 1,
     element: 'EARTH', atk: 1, hp: 1,
@@ -299,6 +308,16 @@ export const CARDS = {
     rotateTargetOnDamage: true,
     desc: 'Gains Invisibility while at least one allied Firefly Ninja is on the board. When Swallow Ninja damages (but does not destroy) a creature, rotate that creature so its back faces Swallow Ninja. The target creature cannot counterattack.'
   },
+  FOREST_ELVEN_DEATH_DANCER: {
+    id: 'FOREST_ELVEN_DEATH_DANCER', name: 'Elven Death Dancer', type: 'UNIT', cost: 5, activation: 4,
+    element: 'FOREST', atk: 3, hp: 4,
+    attackType: 'MAGIC',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY' } ],
+    blindspots: ['S'],
+    swapWithTargetOnDamage: true,
+    increaseEnemyActivationAdjacent: 3,
+    desc: 'Magic Attack. If Elven Death Dancer damages (but does not destroy) a creature, she switches locations with that creature (which cannot counterattack). Enemies on adjacent fields add 3 to their Activation Cost.'
+  },
   FOREST_GREEN_CUBIC: {
     id: 'FOREST_GREEN_CUBIC', name: 'Green Cubic', type: 'UNIT', cost: 1, activation: 1,
     element: 'FOREST', atk: 1, hp: 1,
@@ -333,6 +352,15 @@ export const CARDS = {
     backAttack: true,
     gainPerfectDodgeOnElement: 'BIOLITH',
     desc: 'While on a Biolith field it gains Perfect Dodge. Always attacks the back of its target.'
+  },
+  BIOLITH_TAURUS_MONOLITH: {
+    id: 'BIOLITH_TAURUS_MONOLITH', name: 'Taurus Monolith', type: 'UNIT', cost: 5, activation: 3,
+    element: 'BIOLITH', atk: 3, hp: 6,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    pushTargetOnDamage: true,
+    desc: 'If Taurus Monolith attacks (but does not destroy) a creature, that creature is pushed back one field in the direction of the attack (if the destination is empty) and cannot counterattack.'
   },
 
   BIOLITH_BOMBER: {

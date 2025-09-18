@@ -33,8 +33,8 @@ export const capMana = (m) => Math.min(10, m);
 
 import { activationCost, rotateCost as rawRotateCost } from './abilities.js';
 
-// Стоимость атаки с учётом скидок
-export const attackCost = (tpl, fieldElement) => activationCost(tpl, fieldElement);
+// Стоимость атаки с учётом скидок и штрафов
+export const attackCost = (tpl, fieldElement, context) => activationCost(tpl, fieldElement, context);
 
 // Стоимость поворота без скидок
 export const rotateCost = (tpl) => rawRotateCost(tpl);

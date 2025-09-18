@@ -15,7 +15,13 @@ export function showUnitActionPanel(unitMesh){
     const attackBtn = document.getElementById('attack-btn'); if (attackBtn) {
       const cannot = !canAttack(cardData);
       attackBtn.disabled = !!alreadyAttacked || cannot;
-      const cost = (typeof window !== 'undefined' && typeof window.attackCost === 'function') ? window.attackCost(cardData) : 1;
+      const r = unitMesh.userData?.row;
+      const c = unitMesh.userData?.col;
+      const cellEl = (typeof r === 'number' && typeof c === 'number') ? (gs.board?.[r]?.[c]?.element || null) : null;
+      const unitFromBoard = (typeof r === 'number' && typeof c === 'number') ? gs.board?.[r]?.[c]?.unit : null;
+      const cost = (typeof window !== 'undefined' && typeof window.attackCost === 'function')
+        ? window.attackCost(cardData, cellEl, { state: gs, position: { r, c }, unit: unitFromBoard || unitData })
+        : 1;
       attackBtn.textContent = cannot ? 'Cannot attack' : alreadyAttacked ? 'Already attacked' : `Attack (-${cost})`;
     }
     const extraActions = collectUnitActions(gs, unitMesh.userData.row, unitMesh.userData.col);

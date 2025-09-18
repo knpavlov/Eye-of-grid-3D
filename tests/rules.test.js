@@ -3,6 +3,7 @@ import { computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAt
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
 import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
+import { attackCost } from '../src/core/constants.js';
 
 function makeBoard() {
   const b = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE', unit: null })));
@@ -413,6 +414,109 @@ describe('особые способности', () => {
     expect(defender).toBeTruthy();
     expect(defender.currentHP).toBe(CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp - strike.dmg);
     expect(fin.retaliators.length).toBe(0);
+  });
+
+  it('Dark Yokozuna Sekimaru отбрасывает цель на свободное поле и блокирует ответный удар', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[2][1].unit = { owner:0, tplId:'EARTH_DARK_YOKOZUNA_SEKIMARU', facing:'N' };
+    state.board[1][1].unit = {
+      owner:1,
+      tplId:'FIRE_TRICEPTAUR_BEHEMOTH',
+      facing:'S',
+      currentHP:CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp,
+    };
+
+    const res = stagedAttack(state,2,1);
+    const fin = res.finish();
+
+    expect(fin.n1.board[0][1].unit?.tplId).toBe('FIRE_TRICEPTAUR_BEHEMOTH');
+    expect(fin.n1.board[1][1].unit).toBeNull();
+    expect(fin.retaliators.length).toBe(0);
+  });
+
+  it('Taurus Monolith не может отбросить цель, если направление заблокировано', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[2][1].unit = { owner:0, tplId:'BIOLITH_TAURUS_MONOLITH', facing:'N' };
+    state.board[1][1].unit = {
+      owner:1,
+      tplId:'FIRE_TRICEPTAUR_BEHEMOTH',
+      facing:'S',
+      currentHP:CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp,
+    };
+    state.board[0][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'S', currentHP:CARDS.FIRE_PARTMOLE_FLAME_LIZARD.hp };
+
+    const res = stagedAttack(state,2,1);
+    const fin = res.finish();
+
+    expect(fin.n1.board[1][1].unit?.tplId).toBe('FIRE_TRICEPTAUR_BEHEMOTH');
+    expect(fin.n1.board[0][1].unit?.tplId).toBe('FIRE_PARTMOLE_FLAME_LIZARD');
+    expect(fin.retaliators.length).toBe(0);
+  });
+
+  it('Elven Death Dancer меняется местами с выжившей целью после магической атаки', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[2][1].unit = { owner:0, tplId:'FOREST_ELVEN_DEATH_DANCER', facing:'N', currentHP:CARDS.FOREST_ELVEN_DEATH_DANCER.hp };
+    state.board[0][1].unit = {
+      owner:1,
+      tplId:'FIRE_TRICEPTAUR_BEHEMOTH',
+      facing:'S',
+      currentHP:CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp,
+    };
+
+    const res = stagedAttack(state,2,1,{ chosenDir:'N', rangeChoices:{ N:2 } });
+    const fin = res.finish();
+
+    expect(fin.n1.board[0][1].unit?.tplId).toBe('FOREST_ELVEN_DEATH_DANCER');
+    expect(fin.n1.board[2][1].unit?.tplId).toBe('FIRE_TRICEPTAUR_BEHEMOTH');
+    expect(fin.n1.board[1][1].unit).toBeNull();
+  });
+
+  it('Elven Death Dancer увеличивает стоимость активации соседей-врагов', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    const targetUnit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'E' };
+    state.board[1][0].unit = targetUnit;
+    const tplTarget = CARDS.FIRE_PARTMOLE_FLAME_LIZARD;
+    const fieldElement = state.board[1][0].element;
+
+    const baseCost = attackCost(tplTarget, fieldElement, {
+      state,
+      position: { r:1, c:0 },
+      unit: targetUnit,
+    });
+
+    state.board[1][1].unit = {
+      owner:0,
+      tplId:'FOREST_ELVEN_DEATH_DANCER',
+      facing:'W',
+      currentHP:CARDS.FOREST_ELVEN_DEATH_DANCER.hp,
+    };
+    const withAura = attackCost(tplTarget, fieldElement, {
+      state,
+      position: { r:1, c:0 },
+      unit: targetUnit,
+    });
+    expect(withAura).toBe(baseCost + 3);
+
+    state.board[0][0].unit = {
+      owner:0,
+      tplId:'FOREST_ELVEN_DEATH_DANCER',
+      facing:'S',
+      currentHP:CARDS.FOREST_ELVEN_DEATH_DANCER.hp,
+    };
+    const stackedAura = attackCost(tplTarget, fieldElement, {
+      state,
+      position: { r:1, c:0 },
+      unit: targetUnit,
+    });
+    expect(stackedAura).toBe(baseCost + 6);
+
+    state.board[0][0].unit.currentHP = 0;
+    const afterDeath = attackCost(tplTarget, fieldElement, {
+      state,
+      position: { r:1, c:0 },
+      unit: targetUnit,
+    });
+    expect(afterDeath).toBe(baseCost + 3);
   });
 });
 

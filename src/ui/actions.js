@@ -71,7 +71,10 @@ export function performUnitAttack(unitMesh) {
       window.__ui?.notifications?.show('This unit has already attacked this turn', 'error');
       return;
     }
-    const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
+    const cellEl = gameState.board?.[r]?.[c]?.element || null;
+    const cost = typeof window.attackCost === 'function'
+      ? window.attackCost(tpl, cellEl, { state: gameState, position: { r, c }, unit })
+      : 0;
     const iState = window.__interactions?.interactionState;
     const mustUseMagic = shouldUseMagicAttack(gameState, r, c, tpl);
     if (tpl?.attackType === 'MAGIC' || mustUseMagic) {
