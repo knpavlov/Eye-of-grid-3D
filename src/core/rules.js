@@ -188,6 +188,15 @@ export function stagedAttack(state, r, c, opts = {}) {
   const tplA = CARDS[attacker.tplId];
   if (!canAttack(tplA)) return null;
 
+  const startElement = base.board?.[r]?.[c]?.element;
+  const attackCostValue = attackCost(tplA, startElement, {
+    state: base,
+    r,
+    c,
+    unit: attacker,
+    owner: attacker?.owner,
+  });
+
   const baseStats = effectiveStats(base.board[r][c], attacker);
   let atk = baseStats.atk;
   let logLines = [];
@@ -458,8 +467,7 @@ export function stagedAttack(state, r, c, opts = {}) {
 
     if (A) {
       A.lastAttackTurn = nFinal.turn;
-      const cellEl = nFinal.board?.[r]?.[c]?.element;
-      A.apSpent = (A.apSpent || 0) + attackCost(tplA, cellEl);
+      A.apSpent = (A.apSpent || 0) + attackCostValue;
     }
 
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
@@ -488,6 +496,15 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (attacker.lastAttackTurn === n1.turn) return null;
   const tplA = CARDS[attacker.tplId];
   if (!canAttack(tplA)) return null;
+
+  const startElement = n1.board?.[fr]?.[fc]?.element;
+  const attackCostValue = attackCost(tplA, startElement, {
+    state: n1,
+    r: fr,
+    c: fc,
+    unit: attacker,
+    owner: attacker?.owner,
+  });
   const allowFriendly = !!tplA.friendlyFire;
   const mainTarget = n1.board?.[tr]?.[tc]?.unit;
   if (!allowFriendly && (!mainTarget || mainTarget.owner === attacker.owner)) return null;
@@ -660,8 +677,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     logLines.push(...applied.logLines);
   }
   attacker.lastAttackTurn = n1.turn;
-  const cellEl = n1.board?.[fr]?.[fc]?.element;
-  attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA, cellEl);
+  attacker.apSpent = (attacker.apSpent || 0) + attackCostValue;
   return { n1, logLines, targets, deaths, releases: releaseEvents.releases };
 }
 

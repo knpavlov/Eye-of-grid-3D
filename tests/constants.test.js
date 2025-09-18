@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { inBounds, capMana, attackCost, rotateCost } from '../src/core/constants.js';
+import { CARDS } from '../src/core/cards.js';
 
 describe('constants helpers', () => {
   it('inBounds: within 3x3 grid', () => {
@@ -30,6 +31,23 @@ describe('constants helpers', () => {
     const tpl = { activation: 3, activationReduction: 2 };
     expect(attackCost(tpl)).toBe(1);
     expect(rotateCost(tpl)).toBe(3);
+  });
+
+  it('attackCost: учитывает ауры, повышающие стоимость соседей', () => {
+    const state = {
+      board: Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'NEUTRAL', unit: null }))),
+    };
+    state.board[1][1].unit = { owner: 1, tplId: 'FOREST_ELVEN_DEATH_DANCER', currentHP: CARDS.FOREST_ELVEN_DEATH_DANCER.hp };
+    state.board[1][0].unit = { owner: 0, tplId: 'FIRE_HELLFIRE_SPITTER', currentHP: CARDS.FIRE_HELLFIRE_SPITTER.hp };
+    const cellEl = state.board[1][0].element;
+    const cost = attackCost(CARDS.FIRE_HELLFIRE_SPITTER, cellEl, {
+      state,
+      r: 1,
+      c: 0,
+      unit: state.board[1][0].unit,
+      owner: 0,
+    });
+    expect(cost).toBe(4); // базовая стоимость 1 + налог ауры 3
   });
 });
 
