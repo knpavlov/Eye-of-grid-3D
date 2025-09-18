@@ -72,7 +72,7 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   ctx.strokeRect(border / 2, border / 2, width - border, height - border);
 
   // Верхний блок: имя и короткая подпись
-  const elementLabels = { FIRE: 'Fire', WATER: 'Water', EARTH: 'Earth', FOREST: 'Forest', BIOLITH: 'Biolith', NEUTRAL: 'Neutral' };
+  const elementLabels = { FIRE: 'Fire', WATER: 'Water', EARTH: 'Earth', FOREST: 'Forest', MECH: 'Biolith', BIOLITH: 'Biolith', NEUTRAL: 'Neutral' };
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f8fafc';
   const nameMaxWidth = width - px(64);
@@ -283,7 +283,7 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxY = Infinity) {
 }
 
 function getElementColor(element) {
-  const colors = { FIRE: '#dc2626', WATER: '#0369a1', EARTH: '#525252', FOREST: '#166534' };
+  const colors = { FIRE: '#dc2626', WATER: '#0369a1', EARTH: '#525252', FOREST: '#166534', MECH: '#64748b', BIOLITH: '#64748b' };
   return colors[element] || '#64748b';
 }
 

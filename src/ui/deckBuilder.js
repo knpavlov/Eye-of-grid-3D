@@ -25,6 +25,14 @@ const ELEMENTS = [
   { id: 'NEUTRAL', label: 'Neutral', icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23aaa"/></svg>' },
 ];
 
+// Соответствие «внутренних» идентификаторов элементов (MECH) и их UI-представления (Biolith)
+const ELEMENT_ALIAS = { MECH: 'BIOLITH' };
+
+function normalizeElementId(element) {
+  if (!element) return 'NEUTRAL';
+  return ELEMENT_ALIAS[element] || element;
+}
+
 // Настройки полоски иллюстрации в левой панели
 // Высота строки и вертикальное смещение (0-100%) можно менять при необходимости
 const STRIP_HEIGHT = 48;
@@ -528,7 +536,7 @@ export function open(deck = null, onDone) {
     catalog.innerHTML = '';
     const query = searchInput.value.toLowerCase();
     const cards = Object.values(CARDS).filter(c => {
-      const elem = c.element || 'NEUTRAL';
+      const elem = normalizeElementId(c.element);
       if (!selectedElements.has(elem)) return false;
       if (!filterState.types.has(c.type)) return false;
       const costVal = Math.min(c.cost ?? 0, 7);
