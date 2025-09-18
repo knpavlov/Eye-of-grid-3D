@@ -335,6 +335,61 @@ export const CARDS = {
     desc: 'While on a Biolith field it gains Perfect Dodge. Always attacks the back of its target.'
   },
 
+  BIOLITH_BOMBER: {
+    id: 'BIOLITH_BOMBER', name: 'Biolith Bomber', type: 'UNIT', cost: 3, activation: 2,
+    element: 'BIOLITH', atk: 1, hp: 3,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1, 2] },
+      { dir: 'E', ranges: [1, 2] },
+      { dir: 'S', ranges: [1, 2] },
+      { dir: 'W', ranges: [1, 2] },
+    ],
+    blindspots: ['S'],
+    plusAtkVsSummonCostAtMost: { limit: 2, amount: 2 },
+    desc: 'Adds 2 to its Attack if the target creature has a Summoning Cost of 2 or lower.'
+  },
+
+  BIOLITH_BATTLE_CHARIOT: {
+    id: 'BIOLITH_BATTLE_CHARIOT', name: 'Biolith Battle Chariot', type: 'UNIT', cost: 4, activation: 4,
+    element: 'BIOLITH', atk: 3, hp: 5,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'N', ranges: [1], group: 'FRONT_RIGHT' },
+      { dir: 'E', ranges: [1], group: 'FRONT_RIGHT' },
+    ],
+    friendlyFire: true,
+    blindspots: ['S'],
+    desc: ''
+  },
+
+  BIOLITH_ARC_SATELLITE_CANNON: {
+    id: 'BIOLITH_ARC_SATELLITE_CANNON', name: 'Arc Satellite Cannon', type: 'UNIT', cost: 5, activation: 4,
+    element: 'BIOLITH', atk: 4, hp: 5,
+    attackType: 'MAGIC', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1, 2], mode: 'ANY' },
+      { dir: 'E', ranges: [1, 2], mode: 'ANY' },
+      { dir: 'S', ranges: [1, 2], mode: 'ANY' },
+      { dir: 'W', ranges: [1, 2], mode: 'ANY' },
+    ],
+    blindspots: ['S'],
+    desc: 'Magic Attack: choose one highlighted cell in front, back, left or right to target.'
+  },
+
+  FOREST_TWIN_GOBLINS: {
+    id: 'FOREST_TWIN_GOBLINS', name: 'Twin Goblins', type: 'UNIT', cost: 2, activation: 1,
+    element: 'FOREST', atk: 1, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'N', ranges: [1] },
+      { dir: 'S', ranges: [1] },
+    ],
+    blindspots: [],
+    friendlyFire: true,
+    desc: ''
+  },
+
   // Spells (subset)
   RAISE_STONE: { id:'RAISE_STONE', name:'Raise Stone', type:'SPELL', cost:2, element:'EARTH', text:'+2 HP to a friendly unit.' },
   SPELL_FISSURES_OF_GOGHLIE: { id: 'SPELL_FISSURES_OF_GOGHLIE', name: 'Fissures of Goghlie', type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 2, text: 'Fieldquake any one field.' },

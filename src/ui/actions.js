@@ -113,10 +113,11 @@ export function performUnitAttack(unitMesh) {
     // если у карты несколько дистанций, показываем также пустые клетки зоны удара
     const includeEmpty = attacks.some(a => Array.isArray(a.ranges) && a.ranges.length > 1 && !a.mode);
     const hitsAll = typeof computeHits === 'function' ? computeHits(gameState, r, c, { union: true, includeEmpty }) : [];
-    const hasEnemy = hitsAll.some(h => {
+    const enemyTargets = hitsAll.filter(h => {
       const u2 = gameState.board?.[h.r]?.[h.c]?.unit;
       return u2 && u2.owner !== unit.owner;
     });
+    const hasEnemy = enemyTargets.length > 0;
     if (!hitsAll.length || !hasEnemy) {
       window.__ui?.notifications?.show('No available targets for attack', 'error');
       return;
@@ -128,26 +129,32 @@ export function performUnitAttack(unitMesh) {
     gameState.players[gameState.active].mana -= cost;
     window.__ui?.updateUI?.(gameState);
     try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
-    if (needsChoice && hitsAll.length > 1) {
-      if (iState) {
-        iState.pendingAttack = { r, c };
-        highlightTiles(hitsAll);
-        try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
-      }
-      window.__ui?.log?.add?.(`${tpl.name}: choose a target for the attack.`);
-      window.__ui?.notifications?.show('Select a target', 'info');
-      return;
-    }
-    // если выбор не нужен или доступна единственная цель, атакуем сразу
     let opts = {};
-    if (needsChoice && hitsAll.length === 1) {
-      const h = hitsAll[0];
-      const dr = h.r - r, dc = h.c - c;
-      const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
-      const ORDER = ['N', 'E', 'S', 'W'];
-      const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(unit.facing) + 4) % 4];
-      const dist = Math.max(Math.abs(dr), Math.abs(dc));
-      opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
+    if (needsChoice) {
+      let autoTarget = null;
+      if (enemyTargets.length === 1) {
+        autoTarget = enemyTargets[0];
+      } else if (hitsAll.length === 1) {
+        autoTarget = hitsAll[0];
+      }
+      if (!autoTarget && hitsAll.length > 1) {
+        if (iState) {
+          iState.pendingAttack = { r, c };
+          highlightTiles(hitsAll);
+          try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+        }
+        window.__ui?.log?.add?.(`${tpl.name}: choose a target for the attack.`);
+        window.__ui?.notifications?.show('Select a target', 'info');
+        return;
+      }
+      if (autoTarget) {
+        const dr = autoTarget.r - r, dc = autoTarget.c - c;
+        const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
+        const ORDER = ['N', 'E', 'S', 'W'];
+        const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(unit.facing) + 4) % 4];
+        const dist = Math.max(Math.abs(dr), Math.abs(dc));
+        opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
+      }
     }
     if (typeof window.performBattleSequence === 'function') {
       window.performBattleSequence(r, c, true, opts);

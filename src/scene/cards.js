@@ -159,15 +159,29 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   let diagramTop = footerBaseY;
   let diagramCell = null;
   let diagramGap = null;
+  let schemeLayout = null;
 
   if (cardData.type === 'UNIT') {
-    diagramCell = Math.max(Math.round(ps(8)), 6);
-    diagramGap = Math.max(Math.round(ps(1.5)), 1);
-    const diagramHeight = diagramCell * 3 + diagramGap * 2;
+    const cellBase = Math.max(Math.round(ps(8)), 6);
+    const gapBase = Math.max(Math.round(ps(1.5)), 1);
+    const schemes = getAttackSchemes(cardData);
+    const metrics = schemes.map((scheme) => computeSchemeMetrics(scheme, cardData));
+    const rowRadius = metrics.reduce((acc, m) => Math.max(acc, m?.rowRadius ?? 1), 1);
+    const colRadius = metrics.reduce((acc, m) => Math.max(acc, m?.colRadius ?? 1), 1);
+    const rows = rowRadius * 2 + 1;
+    const cols = colRadius * 2 + 1;
+    const gridHeight = cellBase * rows + gapBase * (rows - 1);
     const diagramSpacing = Math.max(py(10), 8);
-    diagramTop = footerBaseY - diagramSpacing - diagramHeight;
+    diagramTop = footerBaseY - diagramSpacing - gridHeight;
     const minDiagramTop = illY + illH + Math.max(py(24), 20);
     if (diagramTop < minDiagramTop) diagramTop = minDiagramTop;
+    diagramCell = cellBase;
+    diagramGap = gapBase;
+    schemeLayout = {
+      schemes,
+      metrics,
+      layout: { rowRadius, colRadius, rows, cols, gridHeight },
+    };
   }
 
   const textMaxY = (cardData.type === 'UNIT')
@@ -237,18 +251,27 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
 
     const cell = diagramCell ?? Math.max(Math.round(ps(8)), 6);
     const gap = diagramGap ?? Math.max(Math.round(ps(1.5)), 1);
-    const gridW = cell * 3 + gap * 2;
+    const layout = schemeLayout?.layout || {
+      rowRadius: 1,
+      colRadius: 1,
+      rows: 3,
+      cols: 3,
+      gridHeight: cell * 3 + gap * 2,
+    };
+    const schemes = schemeLayout?.schemes || getAttackSchemes(cardData);
+    const metrics = schemeLayout?.metrics || schemes.map((scheme) => computeSchemeMetrics(scheme, cardData));
+    const gridW = cell * layout.cols + gap * (layout.cols - 1);
     const spacing = Math.max(Math.round(ps(14)), 10);
-    const schemes = getAttackSchemes(cardData);
     const schemeCount = schemes.length;
     const columns = schemeCount + 1;
     const totalWidth = gridW * columns + spacing * (columns - 1);
     const startX = (width - totalWidth) / 2;
     const gridY = diagramTop;
-    const gridHeight = cell * 3 + gap * 2;
+    const gridHeight = layout.gridHeight ?? (cell * layout.rows + gap * (layout.rows - 1));
     schemes.forEach((scheme, idx) => {
       const gridX = startX + idx * (gridW + spacing);
-      drawAttackScheme(ctx, scheme, cardData, gridX, gridY, cell, gap);
+      const metric = metrics[idx] || { rowRadius: layout.rowRadius, colRadius: layout.colRadius };
+      drawAttackScheme(ctx, scheme, cardData, gridX, gridY, cell, gap, layout, metric);
       const labelRaw = scheme.label ?? (schemeCount > 1 ? (idx === 0 ? 'Base' : (idx === 1 ? 'Alt' : `Alt ${idx}`)) : '');
       if (labelRaw) {
         ctx.font = `600 ${Math.max(ps(7), 7)}px "Noto Sans", "Helvetica", sans-serif`;
@@ -258,7 +281,11 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
       }
     });
     const blindspotX = startX + schemeCount * (gridW + spacing);
-    drawBlindspotGrid(ctx, cardData, blindspotX, gridY, cell, gap);
+    const blindspotWidth = cell * 3 + gap * 2;
+    const blindspotHeight = cell * 3 + gap * 2;
+    const blindspotOffsetX = blindspotX + (gridW - blindspotWidth) / 2;
+    const blindspotOffsetY = gridY + (gridHeight - blindspotHeight) / 2;
+    drawBlindspotGrid(ctx, cardData, blindspotOffsetX, blindspotOffsetY, cell, gap);
   }
 }
 
@@ -356,19 +383,25 @@ function drawLockIcon(ctx, x, y, size) {
   ctx.restore();
 }
 
-function drawAttackScheme(ctx, scheme, cardData, x, y, cell, gap) {
+function drawAttackScheme(ctx, scheme, cardData, x, y, cell, gap, layout = null, metrics = null) {
   const attacks = scheme.attacks || [];
   const attackType = scheme.attackType || cardData.attackType || 'STANDARD';
   const chooseDir = scheme.chooseDir ?? cardData.chooseDir ?? false;
   const baseLine = Math.max(1, Math.round(cell * 0.18));
   const accentLine = Math.max(1, Math.round(cell * 0.2));
+  const totalRowRadius = layout?.rowRadius ?? 1;
+  const totalColRadius = layout?.colRadius ?? 1;
+  const rows = totalRowRadius * 2 + 1;
+  const cols = totalColRadius * 2 + 1;
 
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 3; c++) {
-      const cx = x + c * (cell + gap);
-      const cy = y + r * (cell + gap);
+  for (let relR = -totalRowRadius; relR <= totalRowRadius; relR++) {
+    for (let relC = -totalColRadius; relC <= totalColRadius; relC++) {
+      const idxR = relR + totalRowRadius;
+      const idxC = relC + totalColRadius;
+      const cx = x + idxC * (cell + gap);
+      const cy = y + idxR * (cell + gap);
       ctx.fillStyle = 'rgba(30,41,59,0.62)';
-      if (r === 1 && c === 1) ctx.fillStyle = 'rgba(15,23,42,0.92)';
+      if (relR === 0 && relC === 0) ctx.fillStyle = 'rgba(15,23,42,0.92)';
       ctx.fillRect(cx, cy, cell, cell);
       ctx.strokeStyle = 'rgba(148,163,184,0.35)';
       ctx.lineWidth = baseLine;
@@ -379,13 +412,13 @@ function drawAttackScheme(ctx, scheme, cardData, x, y, cell, gap) {
   if (attackType === 'MAGIC') {
     const area = scheme.magicArea || scheme.magicAttackArea || cardData.magicAttackArea;
     if (area === 'CROSS') {
-      const dirs = [ [0,0], [-1,0], [1,0], [0,-1], [0,1] ];
+      const dirs = [ [0, 0], [-1, 0], [1, 0], [0, -1], [0, 1] ];
       for (const [dr, dc] of dirs) {
-        const rr = 1 + dr;
-        const cc = 1 + dc;
-        if (rr < 0 || rr > 2 || cc < 0 || cc > 2) continue;
-        const cx = x + cc * (cell + gap);
-        const cy = y + rr * (cell + gap);
+        if (Math.abs(dr) > totalRowRadius || Math.abs(dc) > totalColRadius) continue;
+        const idxR = dr + totalRowRadius;
+        const idxC = dc + totalColRadius;
+        const cx = x + idxC * (cell + gap);
+        const cy = y + idxR * (cell + gap);
         ctx.fillStyle = 'rgba(147,197,253,0.28)';
         ctx.fillRect(cx, cy, cell, cell);
         ctx.strokeStyle = '#60a5fa';
@@ -393,11 +426,16 @@ function drawAttackScheme(ctx, scheme, cardData, x, y, cell, gap) {
         ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
       }
     } else {
-      for (let r = 0; r < 3; r++) {
-        for (let c = 0; c < 3; c++) {
-          if (r === 1 && c === 1) continue;
-          const cx = x + c * (cell + gap);
-          const cy = y + r * (cell + gap);
+      const maxR = Math.min(totalRowRadius, metrics?.rowRadius ?? 1);
+      const maxC = Math.min(totalColRadius, metrics?.colRadius ?? 1);
+      for (let relR = -maxR; relR <= maxR; relR++) {
+        for (let relC = -maxC; relC <= maxC; relC++) {
+          if (relR === 0 && relC === 0) continue;
+          const idxR = relR + totalRowRadius;
+          const idxC = relC + totalColRadius;
+          if (idxR < 0 || idxR >= rows || idxC < 0 || idxC >= cols) continue;
+          const cx = x + idxC * (cell + gap);
+          const cy = y + idxR * (cell + gap);
           ctx.fillStyle = 'rgba(56,189,248,0.28)';
           ctx.fillRect(cx, cy, cell, cell);
           ctx.strokeStyle = 'rgba(56,189,248,0.65)';
@@ -405,16 +443,20 @@ function drawAttackScheme(ctx, scheme, cardData, x, y, cell, gap) {
           ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
         }
       }
-      const frontX = x + 1 * (cell + gap);
-      const frontY = y + 0 * (cell + gap);
-      ctx.strokeStyle = '#ef4444';
-      ctx.lineWidth = accentLine;
-      ctx.strokeRect(frontX + 0.5, frontY + 0.5, cell - 1, cell - 1);
+      if (totalRowRadius >= 1) {
+        const idxR = totalRowRadius - 1;
+        const idxC = totalColRadius;
+        const cx = x + idxC * (cell + gap);
+        const cy = y + idxR * (cell + gap);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = accentLine;
+        ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+      }
     }
     return;
   }
 
-  const map = { N: [-1,0], E:[0,1], S:[1,0], W:[0,-1] };
+  const map = { N: [-1, 0], E: [0, 1], S: [1, 0], W: [0, -1] };
   for (const a of attacks) {
     const isChoice = chooseDir || a.mode === 'ANY';
     const ranges = Array.isArray(a.ranges) && a.ranges.length ? a.ranges : [1];
@@ -422,11 +464,13 @@ function drawAttackScheme(ctx, scheme, cardData, x, y, cell, gap) {
     for (const dist of ranges) {
       const vec = map[a.dir];
       if (!vec) continue;
-      const rr = 1 + vec[0] * dist;
-      const cc = 1 + vec[1] * dist;
-      if (rr < 0 || rr > 2 || cc < 0 || cc > 2) continue;
-      const cx = x + cc * (cell + gap);
-      const cy = y + rr * (cell + gap);
+      const relR = vec[0] * dist;
+      const relC = vec[1] * dist;
+      if (Math.abs(relR) > totalRowRadius || Math.abs(relC) > totalColRadius) continue;
+      const idxR = relR + totalRowRadius;
+      const idxC = relC + totalColRadius;
+      const cx = x + idxC * (cell + gap);
+      const cy = y + idxR * (cell + gap);
       ctx.fillStyle = 'rgba(56,189,248,0.28)';
       ctx.fillRect(cx, cy, cell, cell);
       const multi = (!a.mode || a.mode !== 'ANY') && ranges.length > 1;
@@ -438,12 +482,65 @@ function drawAttackScheme(ctx, scheme, cardData, x, y, cell, gap) {
   }
 
   if (chooseDir || attacks.some(a => a.mode === 'ANY')) {
-    const cx = x + 1 * (cell + gap);
-    const cy = y + 0 * (cell + gap);
-    ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = accentLine;
-    ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+    if (totalRowRadius >= 1) {
+      const idxR = totalRowRadius - 1;
+      const idxC = totalColRadius;
+      const cx = x + idxC * (cell + gap);
+      const cy = y + idxR * (cell + gap);
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = accentLine;
+      ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+    }
   }
+}
+
+// Вычисляем радиусы сетки для схемы атаки, чтобы автоматически расширять диаграмму
+function computeSchemeMetrics(scheme, cardData) {
+  const attackType = scheme?.attackType || cardData?.attackType || 'STANDARD';
+  let minRow = 0;
+  let maxRow = 0;
+  let minCol = 0;
+  let maxCol = 0;
+
+  if (attackType === 'MAGIC') {
+    const area = scheme?.magicArea || scheme?.magicAttackArea || cardData?.magicAttackArea;
+    if (area === 'CROSS') {
+      const offsets = [ [0, 0], [-1, 0], [1, 0], [0, -1], [0, 1] ];
+      for (const [dr, dc] of offsets) {
+        minRow = Math.min(minRow, dr);
+        maxRow = Math.max(maxRow, dr);
+        minCol = Math.min(minCol, dc);
+        maxCol = Math.max(maxCol, dc);
+      }
+    } else {
+      minRow = Math.min(minRow, -1);
+      maxRow = Math.max(maxRow, 1);
+      minCol = Math.min(minCol, -1);
+      maxCol = Math.max(maxCol, 1);
+    }
+  } else {
+    const attacks = (scheme?.attacks && scheme.attacks.length)
+      ? scheme.attacks
+      : (cardData?.attacks || []);
+    const map = { N: [-1, 0], E: [0, 1], S: [1, 0], W: [0, -1] };
+    for (const a of attacks) {
+      const vec = map[a.dir];
+      if (!vec) continue;
+      const ranges = Array.isArray(a.ranges) && a.ranges.length ? a.ranges : [1];
+      for (const dist of ranges) {
+        const dr = vec[0] * dist;
+        const dc = vec[1] * dist;
+        minRow = Math.min(minRow, dr);
+        maxRow = Math.max(maxRow, dr);
+        minCol = Math.min(minCol, dc);
+        maxCol = Math.max(maxCol, dc);
+      }
+    }
+  }
+
+  const rowRadius = Math.max(1, Math.max(-minRow, maxRow));
+  const colRadius = Math.max(1, Math.max(-minCol, maxCol));
+  return { rowRadius, colRadius };
 }
 
 function getAttackSchemes(cardData) {
@@ -469,7 +566,11 @@ function getAttackSchemes(cardData) {
 }
 
 function drawBlindspotGrid(ctx, cardData, x, y, cell, gap) {
-  const blind = (cardData.blindspots && cardData.blindspots.length) ? cardData.blindspots : ['S'];
+  const hasExplicitBlind = Object.prototype.hasOwnProperty.call(cardData, 'blindspots');
+  // Если массив задан явно, даже пустой, то у карты нет слепых зон
+  const blind = hasExplicitBlind
+    ? (Array.isArray(cardData.blindspots) ? cardData.blindspots : [])
+    : ['S'];
   const baseLine = Math.max(1, Math.round(cell * 0.18));
   const accentLine = Math.max(1, Math.round(cell * 0.2));
   for (let r = 0; r < 3; r++) {
