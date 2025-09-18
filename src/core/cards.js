@@ -310,6 +310,18 @@ export const CARDS = {
     ],
     desc: 'Sacrifice Green Cubic to summon a non‑cubic Wood creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
   },
+  NEUTRAL_WHITE_CUBIC: {
+    id: 'NEUTRAL_WHITE_CUBIC', name: 'White Cubic', type: 'UNIT', cost: 1, activation: 1,
+    element: 'NEUTRAL', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['E', 'S', 'W'],
+    dodge50: true,
+    unitActions: [
+      { key: 'SACRIFICE_TRANSFORM', label: 'Sacrifice', allowAnyElement: true, requireNonCubic: false },
+    ],
+    desc: 'White Cubic does not belong to any element. Sacrifice White Cubic to summon any creature in its place (facing any direction) without paying the Summoning Cost. The summoned creature cannot attack this turn. Dodge attempt.'
+  },
 
   BIOLITH_NINJA: {
     id: 'BIOLITH_NINJA', name: 'Biolith Ninja', type: 'UNIT', cost: 4, activation: 2,

@@ -34,13 +34,15 @@ function normalizeElements(entry, tpl) {
 
 function normalizeSacrificeEntry(entry, tpl) {
   if (!entry) return null;
-  const elements = normalizeElements(entry, tpl);
-  if (!elements.size) return null;
+  const allowAnyElement = entry.allowAnyElement === true;
+  const elements = allowAnyElement ? null : normalizeElements(entry, tpl);
+  if (!allowAnyElement && (!elements || !elements.size)) return null;
   return {
     key: 'SACRIFICE_TRANSFORM',
     label: entry.label || 'Sacrifice',
     prompt: entry.prompt || 'Select a unit card in hand for the sacrifice',
     elements,
+    allowAnyElement,
     requireNonCubic: entry.requireNonCubic !== false,
   };
 }
@@ -48,13 +50,17 @@ function normalizeSacrificeEntry(entry, tpl) {
 function collectCandidates(hand, config) {
   if (!Array.isArray(hand)) return [];
   const result = [];
+  const allowAnyElement = config.allowAnyElement || !config.elements || config.elements.size === 0;
   for (let i = 0; i < hand.length; i += 1) {
     const card = hand[i];
     if (!card || card.type !== 'UNIT') continue;
     const tpl = CARDS[card.id] || card;
     if (!tpl) continue;
     if (config.requireNonCubic && isCubicTemplate(tpl)) continue;
-    if (!config.elements.has(String(tpl.element || '').toUpperCase())) continue;
+    if (!allowAnyElement) {
+      const el = String(tpl.element || '').toUpperCase();
+      if (!config.elements.has(el)) continue;
+    }
     result.push({ handIdx: i, tplId: tpl.id, name: tpl.name || tpl.id });
   }
   return result;
@@ -148,7 +154,7 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
   if (config && config.requireNonCubic && isCubicTemplate(summonTpl)) {
     return { ok: false, reason: 'TARGET_IS_CUBIC' };
   }
-  if (config) {
+  if (config && !config.allowAnyElement) {
     const el = String(summonTpl.element || '').toUpperCase();
     if (!config.elements.has(el)) {
       return { ok: false, reason: 'INVALID_ELEMENT' };
