@@ -1,7 +1,7 @@
-    // Стартер: только Fire Set + несколько спеллов
-    let STARTER_FIRESET;
-    
-    // Функции игровой логики
+      if (cellElement === 'BIOLITH') return { atk: 0, hp: 0 };
+      // 5 : FIRE, WATER, EARTH, FOREST, BIOLITH
+      //  (1,1) = BIOLITH.  8 :  FIRE/WATER/EARTH/FOREST  2  
+    // Г”ГіГ­ГЄГ¶ГЁГЁ ГЁГЈГ°Г®ГўГ®Г© Г«Г®ГЈГЁГЄГЁ
     let dirsForPattern;
     
     const computeCellBuff = (cellElement, unitElement) => {
@@ -15,7 +15,7 @@
     let effectiveStats;
     
     const randomBoard = () => {
-      // 5 элементов: FIRE, WATER, EARTH, FOREST, MECH
-      // Центр (1,1) = MECH. Остальные 8 клеток: из FIRE/WATER/EARTH/FOREST по 2 штуки каждого
+      // 5 ГЅГ«ГҐГ¬ГҐГ­ГІГ®Гў: FIRE, WATER, EARTH, FOREST, MECH
+      // Г–ГҐГ­ГІГ° (1,1) = MECH. ГЋГ±ГІГ Г«ГјГ­Г»ГҐ 8 ГЄГ«ГҐГІГ®ГЄ: ГЁГ§ FIRE/WATER/EARTH/FOREST ГЇГ® 2 ГёГІГіГЄГЁ ГЄГ Г¦Г¤Г®ГЈГ®
       const picks = ['FIRE','FIRE','WATER','WATER','EARTH','EARTH','FOREST','FOREST'];
-      // Перемешаем и разложим по клеткам, пропуская центр
+      // ГЏГҐГ°ГҐГ¬ГҐГёГ ГҐГ¬ ГЁ Г°Г Г§Г«Г®Г¦ГЁГ¬ ГЇГ® ГЄГ«ГҐГІГЄГ Г¬, ГЇГ°Г®ГЇГіГ±ГЄГ Гї Г¶ГҐГ­ГІГ°

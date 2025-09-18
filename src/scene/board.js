@@ -6,7 +6,7 @@ const BASE_MAP = {
   WATER: './textures/tile_water.png',
   EARTH: './textures/tile_earth.png',
   FOREST: './textures/tile_forest.png',
-  MECH: './textures/tile_mech.png',
+  BIOLITH: './textures/tile_biolith.png',
 };
 
 function loadBaseTileTextures() {
@@ -59,7 +59,7 @@ export function createProceduralTileTexture(element) {
   } else if (element === 'FOREST') {
     d.fillStyle = '#16a34a'; for (let i=0;i<180;i++){ const x=Math.random()*256, y=Math.random()*256, r=Math.random()*3+1; d.beginPath(); d.arc(x,y,r,0,Math.PI*2); d.fill(); }
     d.strokeStyle='#22c55e'; d.globalAlpha = 0.35; for (let i=0;i<40;i++){ d.beginPath(); d.moveTo(Math.random()*256, Math.random()*256); d.lineTo(Math.random()*256, Math.random()*256); d.stroke(); }
-  } else if (element === 'MECH') {
+  } else if (element === 'BIOLITH') {
     d.globalAlpha = 0.6; d.strokeStyle = '#9ca3af'; d.lineWidth = 1.5;
     for (let y=16; y<256; y+=16) { d.beginPath(); d.moveTo(0,y); d.lineTo(256,y); d.stroke(); }
     for (let x=16; x<256; x+=16) { d.beginPath(); d.moveTo(x,0); d.lineTo(x,256); d.stroke(); }
@@ -77,7 +77,7 @@ const ELEMENT_BASE_COLORS = {
   WATER: 0x0369a1,
   EARTH: 0x525252,
   FOREST: 0x166534,
-  MECH: 0x334155,
+  BIOLITH: 0x334155,
 };
 
 export function getTileMaterial(element) {

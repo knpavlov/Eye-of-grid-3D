@@ -6,7 +6,7 @@ import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
   const b = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE', unit: null })));
-  b[1][1].element = 'MECH';
+  b[1][1].element = 'BIOLITH';
   return b;
 }
 
@@ -17,8 +17,8 @@ describe('buffs and stats', () => {
     expect(computeCellBuff('FIRE', 'FIRE')).toEqual({ atk: 0, hp: 2 });
     // Opposite (FIRE vs WATER) => -2 HP
     expect(computeCellBuff('WATER', 'FIRE')).toEqual({ atk: 0, hp: -2 });
-    // Mech => no effect
-    expect(computeCellBuff('MECH', 'FIRE')).toEqual({ atk: 0, hp: 0 });
+    // Biolith => no effect
+    expect(computeCellBuff('BIOLITH', 'FIRE')).toEqual({ atk: 0, hp: 0 });
 
     const cell = { element: 'FIRE' };
     const unit = { tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', tempAtkBuff: 1 };
@@ -258,6 +258,28 @@ describe('особые способности', () => {
     expect(fin.retaliators.length).toBe(0);
     const dmgEntry = fin.targets.find(t => t.r === 1 && t.c === 1);
     expect(dmgEntry?.dmg).toBe(1);
+  });
+
+  it('способность backAttack наносит удар в спину и блокирует ответный урон', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[0][1].element = 'BIOLITH';
+    state.board[1][1].unit = { owner:0, tplId:'WATER_VENOAN_ASSASSIN', facing:'N', currentHP:CARDS.WATER_VENOAN_ASSASSIN.hp };
+    state.board[0][1].unit = { owner:1, tplId:'FIRE_TRICEPTAUR_BEHEMOTH', facing:'S', currentHP:CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp };
+    const hits = computeHits(state,1,1);
+    expect(hits.length).toBeGreaterThan(0);
+    const strike = hits[0];
+    expect(strike.backstab).toBe(true);
+    expect(strike.dmg).toBe(CARDS.WATER_VENOAN_ASSASSIN.atk + 1);
+
+    const res = stagedAttack(state,1,1);
+    const fin = res.finish();
+    const attacker = fin.n1.board[1][1].unit;
+    expect(attacker).toBeTruthy();
+    expect(attacker.currentHP ?? CARDS.WATER_VENOAN_ASSASSIN.hp).toBe(CARDS.WATER_VENOAN_ASSASSIN.hp);
+    const defender = fin.n1.board[0][1].unit;
+    expect(defender).toBeTruthy();
+    expect(defender.currentHP).toBe(CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp - strike.dmg);
+    expect(fin.retaliators.length).toBe(0);
   });
 });
 

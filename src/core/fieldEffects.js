@@ -15,7 +15,7 @@ const OPPOSITES = {
 export function computeCellBuff(cellElement, unitElement) {
   if (!cellElement || !unitElement) return { atk: 0, hp: 0 };
   if (cellElement === unitElement) return { atk: 0, hp: 2 };
-  if (cellElement === 'MECH') return { atk: 0, hp: 0 };
+  if (cellElement === 'BIOLITH') return { atk: 0, hp: 0 };
   const opposite = OPPOSITES[unitElement];
   if (opposite && cellElement === opposite) return { atk: 0, hp: -2 };
   return { atk: 0, hp: 0 };

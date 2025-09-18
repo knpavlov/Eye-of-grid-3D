@@ -165,7 +165,7 @@ export const CARDS = {
     attacks: [], blindspots: [],
     incarnation: true,
     targetAllNonElement: 'FIRE',
-    diesOnElement: 'MECH',
+    diesOnElement: 'BIOLITH',
     desc: 'Incarnation. Its Magic Attack targets all enemies on non-Fire fields. Destroy Sciondar Fire God if he is on a Biolith field.'
   },
 
@@ -176,7 +176,7 @@ export const CARDS = {
     attacks: [], blindspots: [],
     incarnation: true,
     targetAllNonElement: 'WATER',
-    diesOnElement: 'MECH',
+    diesOnElement: 'BIOLITH',
     desc: 'Incarnation. Goddess Tritona’s Magic Attack targets all enemies on non-Water fields. Destroy Goddess Tritona if she is on a Biolith field.'
   },
 
@@ -187,7 +187,7 @@ export const CARDS = {
     attacks: [], blindspots: [],
     incarnation: true,
     targetAllNonElement: 'EARTH',
-    diesOnElement: 'MECH',
+    diesOnElement: 'BIOLITH',
     desc: 'Incarnation. Novogus Gravekeeper’s Magic Attack targets all enemies on non-Earth fields. Destroy Novogus Gravekeeper if it is on a Biolith field.'
   },
 
@@ -198,18 +198,18 @@ export const CARDS = {
     attacks: [], blindspots: [],
     incarnation: true,
     targetAllNonElement: 'FOREST',
-    diesOnElement: 'MECH',
+    diesOnElement: 'BIOLITH',
     desc: 'Incarnation. Exalted Elven Deity’s Magic Attack targets all enemies on non-Wood fields. Destroy Exalted Elven Deity if it is on a Biolith field.'
   },
 
-  MECH_PHASEUS: {
-    id: 'MECH_PHASEUS', name: 'Phaseus, Biolith God', type: 'UNIT', cost: 9, activation: 5,
-    element: 'MECH', atk: 3, hp: 9,
+  BIOLITH_PHASEUS: {
+    id: 'BIOLITH_PHASEUS', name: 'Phaseus, Biolith God', type: 'UNIT', cost: 9, activation: 5,
+    element: 'BIOLITH', atk: 3, hp: 9,
     attackType: 'MAGIC',
     attacks: [], blindspots: [],
     incarnation: true,
     targetAllEnemies: true,
-    diesOffElement: 'MECH',
+    diesOffElement: 'BIOLITH',
     desc: 'Incarnation. Phaseus’s Magic Attack targets all enemies. Destroy Phaseus if he is on a non-Biolith field.'
   },
 
@@ -244,6 +244,15 @@ export const CARDS = {
     swapWithTargetOnElement: 'WATER',
     desc: 'Gains Invisibility while at least one allied Swallow Ninja is on the board. If Wolf Ninja damages a creature on a Water field, it switches places with that creature (which cannot counterattack).'
   },
+  WATER_VENOAN_ASSASSIN: {
+    id: 'WATER_VENOAN_ASSASSIN', name: 'Venoan Assassin', type: 'UNIT', cost: 3, activation: 2,
+    element: 'WATER', atk: 2, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    backAttack: true,
+    desc: 'Always attacks the back of its target.'
+  },
   FOREST_SWALLOW_NINJA: {
     id: 'FOREST_SWALLOW_NINJA', name: 'Swallow Ninja', type: 'UNIT', cost: 3, activation: 2,
     element: 'FOREST', atk: 1, hp: 3,
@@ -255,6 +264,17 @@ export const CARDS = {
     invisibilityAllies: ['FIRE_FIREFLY_NINJA'],
     rotateTargetOnDamage: true,
     desc: 'Gains Invisibility while at least one allied Firefly Ninja is on the board. When Swallow Ninja damages (but does not destroy) a creature, rotate that creature so its back faces Swallow Ninja. The target creature cannot counterattack.'
+  },
+
+  BIOLITH_NINJA: {
+    id: 'BIOLITH_NINJA', name: 'Biolith Ninja', type: 'UNIT', cost: 4, activation: 2,
+    element: 'BIOLITH', atk: 4, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    backAttack: true,
+    gainPerfectDodgeOnElement: 'BIOLITH',
+    desc: 'While on a Biolith field it gains Perfect Dodge. Always attacks the back of its target.'
   },
 
   // Spells (subset)

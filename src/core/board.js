@@ -52,7 +52,7 @@ export function countUnits(state) {
 
 export function randomBoard() {
   // 3x3 board with element constraints:
-  // - Center (1,1) is always MECH
+  // - Center (1,1) is always BIOLITH
   // - Remaining 8 tiles: exactly two of each FIRE, WATER, EARTH, FOREST placed randomly
   const picks = ['FIRE','FIRE','WATER','WATER','EARTH','EARTH','FOREST','FOREST'];
   // Fisher–Yates shuffle
@@ -64,7 +64,7 @@ export function randomBoard() {
   const board = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE', unit: null })));
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 3; c++) {
-      if (r === 1 && c === 1) { board[r][c].element = 'MECH'; continue; }
+      if (r === 1 && c === 1) { board[r][c].element = 'BIOLITH'; continue; }
       board[r][c].element = picks[k++];
     }
   }

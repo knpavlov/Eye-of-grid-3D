@@ -20,7 +20,7 @@ export const elementEmoji = {
   WATER: '💧',
   EARTH: '⛰️',
   FOREST: '🌿',
-  MECH: '⚙️'
+  BIOLITH: '⚙️'
 };
 
 // Facing angles (game-space) — UI can map to THREE Yaw separately

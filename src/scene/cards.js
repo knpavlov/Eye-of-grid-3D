@@ -283,7 +283,7 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxY = Infinity) {
 }
 
 function getElementColor(element) {
-  const colors = { FIRE: '#dc2626', WATER: '#0369a1', EARTH: '#525252', FOREST: '#166534' };
+  const colors = { FIRE: '#dc2626', WATER: '#0369a1', EARTH: '#525252', FOREST: '#166534', BIOLITH: '#64748b' };
   return colors[element] || '#64748b';
 }
 

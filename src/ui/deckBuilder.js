@@ -20,10 +20,16 @@ const ELEMENTS = [
   { id: 'WATER', label: 'Water', icon: 'textures/tile_water.png' },
   { id: 'EARTH', label: 'Earth', icon: 'textures/tile_earth.png' },
   { id: 'FOREST', label: 'Forest', icon: 'textures/tile_forest.png' },
-  { id: 'BIOLITH', label: 'Biolith', icon: 'textures/tile_mech.png' },
+  { id: 'BIOLITH', label: 'Biolith', icon: 'textures/tile_biolith.png' },
   // Простая серая сфера в виде SVG для нейтральных карт
   { id: 'NEUTRAL', label: 'Neutral', icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23aaa"/></svg>' },
 ];
+
+function normalizeElementId(element) {
+  if (!element) return 'NEUTRAL';
+  const upper = String(element).toUpperCase();
+  return ELEMENTS.some(e => e.id === upper) ? upper : 'NEUTRAL';
+}
 
 // Настройки полоски иллюстрации в левой панели
 // Высота строки и вертикальное смещение (0-100%) можно менять при необходимости
@@ -528,7 +534,7 @@ export function open(deck = null, onDone) {
     catalog.innerHTML = '';
     const query = searchInput.value.toLowerCase();
     const cards = Object.values(CARDS).filter(c => {
-      const elem = c.element || 'NEUTRAL';
+      const elem = normalizeElementId(c.element);
       if (!selectedElements.has(elem)) return false;
       if (!filterState.types.has(c.type)) return false;
       const costVal = Math.min(c.cost ?? 0, 7);

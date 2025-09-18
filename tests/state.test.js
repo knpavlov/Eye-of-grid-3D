@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { shuffle, drawOne, drawOneNoAdd, countControlled, randomBoard, reducer, A } from '../src/core/state.js';
 
 function makeEmptyBoard() {
-  // 3x3 with MECH in center and FIRE elsewhere by default
+  // 3x3 с BIOLITH в центре и FIRE по краям по умолчанию
   const b = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE', unit: null })));
-  b[1][1].element = 'MECH';
+  b[1][1].element = 'BIOLITH';
   return b;
 }
 
@@ -46,14 +46,14 @@ describe('state helpers', () => {
     expect(countControlled(state, 1)).toBe(1);
   });
 
-  it('randomBoard: center is MECH and other elements appear exactly twice', () => {
+  it('randomBoard: центр — BIOLITH, остальные элементы встречаются по два раза', () => {
     const b = randomBoard();
     expect(b).toHaveLength(3);
     expect(b[0]).toHaveLength(3);
-    expect(b[1][1].element).toBe('MECH');
-    const counts = { FIRE: 0, WATER: 0, EARTH: 0, FOREST: 0, MECH: 0 };
+    expect(b[1][1].element).toBe('BIOLITH');
+    const counts = { FIRE: 0, WATER: 0, EARTH: 0, FOREST: 0, BIOLITH: 0 };
     for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) counts[b[r][c].element] = (counts[b[r][c].element] || 0) + 1;
-    expect(counts.MECH).toBe(1);
+    expect(counts.BIOLITH).toBe(1);
     expect(counts.FIRE).toBe(2);
     expect(counts.WATER).toBe(2);
     expect(counts.EARTH).toBe(2);
