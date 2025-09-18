@@ -87,6 +87,7 @@ export function computeHits(state, r, c, opts = {}) {
   const aFlying = (tplA.keywords || []).includes('FLYING');
   const allowPierce = tplA.pierce;
   const allowFriendly = !!tplA.friendlyFire; // может ли существо задевать союзников
+  const forceBackAttack = !!tplA.backAttack;
   for (const cell of cells) {
     const [dr, dc] = DIR_VECTORS[cell.dirAbs];
     const nr = r + dr * cell.range;
@@ -123,7 +124,7 @@ export function computeHits(state, r, c, opts = {}) {
     }
     const backDir = { N: 'S', S: 'N', E: 'W', W: 'E' }[B.facing];
     const [bdr, bdc] = DIR_VECTORS[backDir] || [0, 0];
-    const isBack = (nr + bdr === r && nc + bdc === c);
+    let isBack = (nr + bdr === r && nc + bdc === c);
     const dirAbsFromB = (() => {
       if (r === nr - 1 && c === nc) return 'N';
       if (r === nr + 1 && c === nc) return 'S';
@@ -134,7 +135,11 @@ export function computeHits(state, r, c, opts = {}) {
     const absIdx = ORDER.indexOf(dirAbsFromB);
     const faceIdx = ORDER.indexOf(B.facing);
     const relIdx = (absIdx - faceIdx + 4) % 4;
-    const dirRel = ORDER[relIdx];
+    let dirRel = ORDER[relIdx];
+    if (forceBackAttack) {
+      isBack = true;
+      dirRel = 'S';
+    }
     const blind = CARDS[B.tplId].blindspots || ['S'];
     const inBlind = blind.includes(dirRel);
     const extraTotal = isBack ? 1 : (inBlind ? 1 : 0);

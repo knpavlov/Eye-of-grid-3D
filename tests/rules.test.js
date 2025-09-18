@@ -259,6 +259,28 @@ describe('особые способности', () => {
     const dmgEntry = fin.targets.find(t => t.r === 1 && t.c === 1);
     expect(dmgEntry?.dmg).toBe(1);
   });
+
+  it('способность backAttack наносит удар в спину и блокирует ответный урон', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[0][1].element = 'MECH';
+    state.board[1][1].unit = { owner:0, tplId:'WATER_VENOAN_ASSASSIN', facing:'N', currentHP:CARDS.WATER_VENOAN_ASSASSIN.hp };
+    state.board[0][1].unit = { owner:1, tplId:'FIRE_TRICEPTAUR_BEHEMOTH', facing:'S', currentHP:CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp };
+    const hits = computeHits(state,1,1);
+    expect(hits.length).toBeGreaterThan(0);
+    const strike = hits[0];
+    expect(strike.backstab).toBe(true);
+    expect(strike.dmg).toBe(CARDS.WATER_VENOAN_ASSASSIN.atk + 1);
+
+    const res = stagedAttack(state,1,1);
+    const fin = res.finish();
+    const attacker = fin.n1.board[1][1].unit;
+    expect(attacker).toBeTruthy();
+    expect(attacker.currentHP ?? CARDS.WATER_VENOAN_ASSASSIN.hp).toBe(CARDS.WATER_VENOAN_ASSASSIN.hp);
+    const defender = fin.n1.board[0][1].unit;
+    expect(defender).toBeTruthy();
+    expect(defender.currentHP).toBe(CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp - strike.dmg);
+    expect(fin.retaliators.length).toBe(0);
+  });
 });
 
 describe('magicAttack', () => {

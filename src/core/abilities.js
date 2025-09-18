@@ -163,6 +163,10 @@ export function collectDamageInteractions(state, context = {}) {
 
   for (const h of hits) {
     if (!h) continue;
+    const key = `${h.r},${h.c}`;
+    if (tpl.backAttack) {
+      result.preventRetaliation.add(key);
+    }
     const dealt = h.dealt ?? h.dmg ?? 0;
     if (dealt <= 0) continue;
     const cell = state.board?.[h.r]?.[h.c];
@@ -170,7 +174,6 @@ export function collectDamageInteractions(state, context = {}) {
     if (!target) continue;
     const tplTarget = getUnitTemplate(target);
     const alive = (target.currentHP ?? tplTarget?.hp ?? 0) > 0;
-    const key = `${h.r},${h.c}`;
 
     if (!swapHandled && swapElements.size && alive && cell?.element && swapElements.has(cell.element)) {
       result.events.push({
