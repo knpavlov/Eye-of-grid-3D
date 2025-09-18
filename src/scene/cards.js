@@ -469,7 +469,7 @@ function getAttackSchemes(cardData) {
 }
 
 function drawBlindspotGrid(ctx, cardData, x, y, cell, gap) {
-  const blind = (cardData.blindspots && cardData.blindspots.length) ? cardData.blindspots : ['S'];
+  const blind = Array.isArray(cardData.blindspots) ? cardData.blindspots : ['S'];
   const baseLine = Math.max(1, Math.round(cell * 0.18));
   const accentLine = Math.max(1, Math.round(cell * 0.2));
   for (let r = 0; r < 3; r++) {

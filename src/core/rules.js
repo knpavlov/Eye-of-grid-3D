@@ -6,6 +6,7 @@ import {
   hasDoubleAttack,
   canAttack,
   getTargetElementBonus,
+  getTargetCostBonus,
   collectMagicTargetCells,
   computeDynamicMagicAttack,
   releasePossessionsAfterDeaths,
@@ -196,6 +197,11 @@ export function stagedAttack(state, r, c, opts = {}) {
       atk += amount;
       logLines.push(`${tplA.name}: +${amount} ATK по целям на поле ${el}`);
     }
+  }
+  const costBonus = getTargetCostBonus(base, tplA, hitsRaw);
+  if (costBonus) {
+    atk += costBonus.amount;
+    logLines.push(`${tplA.name}: +${costBonus.amount} ATK против существ с ценой призыва <= ${costBonus.limit}`);
   }
   if (targetBonus) {
     atk += targetBonus.amount;
@@ -485,6 +491,13 @@ export function magicAttack(state, fr, fc, tr, tc) {
     const { element: el, amount } = plusCfg2;
     const cellEl = n1.board?.[tr]?.[tc]?.element;
     if (cellEl === el) atk += amount;
+  }
+  if (mainTarget) {
+    const costBonus2 = getTargetCostBonus(n1, tplA, [ { r: tr, c: tc } ]);
+    if (costBonus2) {
+      atk += costBonus2.amount;
+      logLines.push(`${tplA.name}: +${costBonus2.amount} ATK против существ с ценой призыва <= ${costBonus2.limit}`);
+    }
   }
 
   const seenCells = new Set();

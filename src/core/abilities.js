@@ -15,6 +15,7 @@ import {
   ensureDodgeState,
   attemptDodge as attemptDodgeInternal,
 } from './abilityHandlers/dodge.js';
+import { computeTargetCostBonus as computeTargetCostBonusInternal } from './abilityHandlers/attackModifiers.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -532,6 +533,10 @@ export function getTargetElementBonus(tpl, state, hits) {
   });
   if (!has) return null;
   return { amount, element: cfg.element };
+}
+
+export function getTargetCostBonus(state, tpl, hits) {
+  return computeTargetCostBonusInternal(state, tpl, hits);
 }
 
 export { isIncarnationCard };

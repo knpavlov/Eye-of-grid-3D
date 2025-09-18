@@ -118,11 +118,65 @@ describe('guards and hits', () => {
     const hits = computeHits(state, 1, 1);
     expect(hits.some(h => h.r === 0 && h.c === 1)).toBe(true);
   });
+
+  it('Twin Goblins бьют вперёд и назад, включая союзников', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].unit = { owner: 0, tplId: 'FOREST_TWIN_GOBLINS', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'S', currentHP: 1 };
+    state.board[2][1].unit = { owner: 0, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'N', currentHP: 1 };
+    const res = stagedAttack(state, 1, 1);
+    const fin = res.finish();
+    expect(fin.n1.board[0][1].unit).toBeNull();
+    expect(fin.n1.board[2][1].unit).toBeNull();
+  });
+
+  it('Biolith Battle Chariot поражает клетки впереди и справа одновременно', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_BATTLE_CHARIOT', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'S', currentHP: 1 };
+    state.board[1][2].unit = { owner: 0, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'W', currentHP: 1 };
+    state.board[0][2].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'S', currentHP: 1 };
+    const res = stagedAttack(state, 1, 1);
+    const fin = res.finish();
+    expect(fin.n1.board[0][1].unit).toBeNull();
+    expect(fin.n1.board[1][2].unit).toBeNull();
+    // соседняя по диагонали клетка не получает урона
+    expect(fin.n1.board[0][2].unit).not.toBeNull();
+  });
 });
 
 describe('особые способности', () => {
   it('Hellfire Spitter имеет способность quickness', () => {
     expect(hasFirstStrike(CARDS.FIRE_HELLFIRE_SPITTER)).toBe(true);
+  });
+
+  it('Biolith Bomber получает бонус атаки против дешёвой цели', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_BOMBER', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 2 };
+    const res = stagedAttack(state, 1, 1, { chosenDir: 'N' });
+    const fin = res.finish();
+    expect(fin.n1.board[0][1].unit).toBeNull();
+  });
+
+  it('Biolith Bomber может целиться на расстоянии двух клеток', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].unit = { owner: 0, tplId: 'BIOLITH_BOMBER', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'S', currentHP: 1 };
+    const res = stagedAttack(state, 2, 1, { chosenDir: 'N', rangeChoices: { N: 2 } });
+    const fin = res.finish();
+    expect(fin.n1.board[0][1].unit).toBeNull();
+  });
+
+  it('Arc Satellite Cannon поражает только одну выбранную цель', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_ARC_SATELLITE_CANNON', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 1 };
+    state.board[1][2].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'W', currentHP: 1 };
+    const res = stagedAttack(state, 1, 1, { chosenDir: 'N', rangeChoices: { N: 1 } });
+    const fin = res.finish();
+    expect(fin.n1.board[0][1].unit).toBeNull();
+    expect(fin.n1.board[1][2].unit).not.toBeNull();
   });
 
   it('perfect dodge защищает от обычных атак', () => {
