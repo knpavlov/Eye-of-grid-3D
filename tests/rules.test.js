@@ -87,7 +87,7 @@ describe('guards and hits', () => {
     state.board[2][1].unit = { owner: 0, tplId: 'FIRE_GREAT_MINOS', facing: 'N' };
     state.board[1][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S' };
     state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S' };
-    const hits = computeHits(state, 2, 1);
+    const hits = computeHits(state, 2, 1, { chosenDir: 'N' });
     const coords = hits.map(h => `${h.r},${h.c}`).sort();
     expect(coords).toEqual(['0,1', '1,1']);
   });
@@ -128,6 +128,28 @@ describe('guards and hits', () => {
     const fin = res.finish();
     expect(fin.n1.board[0][1].unit).toBeNull();
     expect(fin.n1.board[2][1].unit).toBeNull();
+  });
+
+  it('Twin Goblins не получают бонусный урон от атаки сзади', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].unit = { owner: 1, tplId: 'FOREST_TWIN_GOBLINS', facing: 'N', currentHP: 3 };
+    state.board[2][1].unit = { owner: 0, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'N' };
+    const hits = computeHits(state, 2, 1, { chosenDir: 'N' });
+    const goblinHit = hits.find(h => h.r === 1 && h.c === 1);
+    expect(goblinHit).toBeTruthy();
+    expect(goblinHit.backstab).toBe(true);
+    expect(goblinHit.dmg).toBe(CARDS.FIRE_HELLFIRE_SPITTER.atk);
+  });
+
+  it('существо со стандартным blind spot получает +1 урона со спины', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'N', currentHP: 2 };
+    state.board[2][1].unit = { owner: 0, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'N' };
+    const hits = computeHits(state, 2, 1, { chosenDir: 'N' });
+    const targetHit = hits.find(h => h.r === 1 && h.c === 1);
+    expect(targetHit).toBeTruthy();
+    expect(targetHit.backstab).toBe(true);
+    expect(targetHit.dmg).toBe(CARDS.FIRE_HELLFIRE_SPITTER.atk + 1);
   });
 
   it('Biolith Battle Chariot поражает клетки впереди и справа одновременно', () => {

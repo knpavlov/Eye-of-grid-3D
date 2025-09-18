@@ -415,6 +415,7 @@ function drawAttackScheme(ctx, scheme, cardData, x, y, cell, gap) {
   }
 
   const map = { N: [-1,0], E:[0,1], S:[1,0], W:[0,-1] };
+  const outerMarks = [];
   for (const a of attacks) {
     const isChoice = chooseDir || a.mode === 'ANY';
     const ranges = Array.isArray(a.ranges) && a.ranges.length ? a.ranges : [1];
@@ -424,17 +425,30 @@ function drawAttackScheme(ctx, scheme, cardData, x, y, cell, gap) {
       if (!vec) continue;
       const rr = 1 + vec[0] * dist;
       const cc = 1 + vec[1] * dist;
-      if (rr < 0 || rr > 2 || cc < 0 || cc > 2) continue;
+      const multi = (!a.mode || a.mode !== 'ANY') && ranges.length > 1;
+      const mustHit = (!isChoice) && (multi || dist === minDist);
+      if (rr < 0 || rr > 2 || cc < 0 || cc > 2) {
+        outerMarks.push({ rr, cc, mustHit });
+        continue;
+      }
       const cx = x + cc * (cell + gap);
       const cy = y + rr * (cell + gap);
       ctx.fillStyle = 'rgba(56,189,248,0.28)';
       ctx.fillRect(cx, cy, cell, cell);
-      const multi = (!a.mode || a.mode !== 'ANY') && ranges.length > 1;
-      const mustHit = (!isChoice) && (multi || dist === minDist);
       ctx.strokeStyle = mustHit ? '#ef4444' : 'rgba(56,189,248,0.65)';
       ctx.lineWidth = accentLine;
       ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
     }
+  }
+
+  for (const mark of outerMarks) {
+    const cx = x + mark.cc * (cell + gap);
+    const cy = y + mark.rr * (cell + gap);
+    ctx.fillStyle = 'rgba(56,189,248,0.16)';
+    ctx.fillRect(cx, cy, cell, cell);
+    ctx.strokeStyle = mark.mustHit ? '#ef4444' : 'rgba(56,189,248,0.75)';
+    ctx.lineWidth = accentLine;
+    ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
   }
 
   if (chooseDir || attacks.some(a => a.mode === 'ANY')) {

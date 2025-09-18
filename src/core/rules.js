@@ -162,9 +162,12 @@ export function computeHits(state, r, c, opts = {}) {
         isBack = true;
         dirRel = 'S';
       }
-      const blind = CARDS[B.tplId].blindspots || ['S'];
+      const tplB = CARDS[B.tplId] || {};
+      const hasExplicitBlind = Object.prototype.hasOwnProperty.call(tplB, 'blindspots');
+      const blindRaw = hasExplicitBlind ? tplB.blindspots : ['S'];
+      const blind = Array.isArray(blindRaw) ? blindRaw : ['S'];
       const inBlind = blind.includes(dirRel);
-      const extraTotal = isBack ? 1 : (inBlind ? 1 : 0);
+      const extraTotal = inBlind ? 1 : 0;
       const dmg = Math.max(0, atk + extraTotal);
       hits.push({ r: nr, c: nc, dmg, backstab: isBack });
     }
