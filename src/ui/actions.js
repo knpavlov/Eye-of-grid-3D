@@ -110,14 +110,16 @@ export function performUnitAttack(unitMesh) {
     const computeHits = window.computeHits;
     const attacks = tpl?.attacks || [];
     const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
-    // если у карты несколько дистанций, показываем также пустые клетки зоны удара
     const includeEmpty = attacks.some(a => Array.isArray(a.ranges) && a.ranges.length > 1 && !a.mode);
     const hitsAll = typeof computeHits === 'function' ? computeHits(gameState, r, c, { union: true, includeEmpty }) : [];
-    const hasEnemy = hitsAll.some(h => {
+    const allowFriendly = !!tpl?.friendlyFire;
+    const targets = hitsAll.filter(h => {
       const u2 = gameState.board?.[h.r]?.[h.c]?.unit;
-      return u2 && u2.owner !== unit.owner;
+      if (!u2) return false;
+      if (u2.owner === unit.owner && !allowFriendly) return false;
+      return true;
     });
-    if (!hitsAll.length || !hasEnemy) {
+    if (!targets.length) {
       window.__ui?.notifications?.show('No available targets for attack', 'error');
       return;
     }
@@ -128,10 +130,10 @@ export function performUnitAttack(unitMesh) {
     gameState.players[gameState.active].mana -= cost;
     window.__ui?.updateUI?.(gameState);
     try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
-    if (needsChoice && hitsAll.length > 1) {
+    if (needsChoice && targets.length > 1) {
       if (iState) {
         iState.pendingAttack = { r, c };
-        highlightTiles(hitsAll);
+        highlightTiles(targets);
         try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
       }
       window.__ui?.log?.add?.(`${tpl.name}: choose a target for the attack.`);
@@ -140,8 +142,8 @@ export function performUnitAttack(unitMesh) {
     }
     // если выбор не нужен или доступна единственная цель, атакуем сразу
     let opts = {};
-    if (needsChoice && hitsAll.length === 1) {
-      const h = hitsAll[0];
+    if (needsChoice && targets.length === 1) {
+      const h = targets[0];
       const dr = h.r - r, dc = h.c - c;
       const absDir = dr < 0 ? 'N' : dr > 0 ? 'S' : dc > 0 ? 'E' : 'W';
       const ORDER = ['N', 'E', 'S', 'W'];
