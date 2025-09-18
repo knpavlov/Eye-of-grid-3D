@@ -195,6 +195,26 @@ describe('особые способности', () => {
     expect(fin.n1.board[0][1].unit).toBeNull();
   });
 
+  it('Biolith Bomber может выбрать дальнюю цель, даже если ближняя занята', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].unit = { owner: 0, tplId: 'BIOLITH_BOMBER', facing: 'N' };
+    state.board[1][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 2 };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 2 };
+
+    const preview = computeHits(state, 2, 1, { union: true });
+    const coords = preview.map(h => `${h.r},${h.c}`).sort();
+    expect(coords).toEqual(['0,1', '1,1']);
+
+    const res = stagedAttack(state, 2, 1, { chosenDir: 'N', rangeChoices: { N: 2 } });
+    const fin = res.finish();
+
+    const near = fin.n1.board[1][1].unit;
+    expect(near).toBeTruthy();
+    const tpl = CARDS[near.tplId];
+    expect(near.currentHP ?? tpl.hp).toBe(2);
+    expect(fin.n1.board[0][1].unit).toBeNull();
+  });
+
   it('Arc Satellite Cannon поражает только одну выбранную цель', () => {
     const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
     state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_ARC_SATELLITE_CANNON', facing: 'N' };

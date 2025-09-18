@@ -62,9 +62,10 @@ function attackCellsForTpl(tpl, facing, opts = {}) {
       used = [chosen ?? ranges[0]];
     }
     const baseGroup = (a.group != null) ? `combo-${String(a.group)}` : null;
+    const ignoreBlocking = !!a.ignoreBlocking;
     for (const r of used) {
       const groupId = baseGroup ?? `g-${seq++}`;
-      res.push({ dirAbs, range: r, dirRel: a.dir, groupId });
+      res.push({ dirAbs, range: r, dirRel: a.dir, groupId, ignoreBlocking });
     }
   }
   return res;
@@ -90,7 +91,7 @@ export function computeHits(state, r, c, opts = {}) {
   const { atk } = effectiveStats(state.board[r][c], attacker);
   const hits = [];
   const aFlying = (tplA.keywords || []).includes('FLYING');
-  const allowPierce = tplA.pierce;
+  const basePierce = !!tplA.pierce;
   const allowFriendly = !!tplA.friendlyFire; // может ли существо задевать союзников
   const forceBackAttack = !!tplA.backAttack;
   const grouped = new Map();
@@ -118,6 +119,7 @@ export function computeHits(state, r, c, opts = {}) {
     }
     for (const pos of evaluated) {
       const { cell, dr, dc, nr, nc } = pos;
+      const allowPierce = basePierce || cell.ignoreBlocking;
 
       if (!allowPierce) {
         let blocked = false;
