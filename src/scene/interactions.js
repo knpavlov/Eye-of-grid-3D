@@ -28,6 +28,8 @@ export const interactionState = {
   pendingRitualBoardMesh: null,
   pendingRitualSpellHandIndex: null,
   pendingRitualSpellCard: null,
+  pendingUnitAbility: null,
+  pendingAbilityOrientation: null,
   spellDragHandled: false,
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
@@ -159,11 +161,17 @@ function onMouseDown(event) {
       showNotification('Summoning Lock: This card cannot be played until there are at least 4 units on the board at the same time', 'error');
       return;
     }
-    if (interactionState.pendingDiscardSelection && cardData && cardData.type === (interactionState.pendingDiscardSelection.requiredType || cardData.type)) {
-      const owner = gameState.players[gameState.active];
+    const selector = interactionState.pendingDiscardSelection;
+    if (selector && cardData) {
       const handIdx = card.userData.handIndex;
-      try { interactionState.pendingDiscardSelection.onPicked(handIdx); } catch {}
-      interactionState.pendingDiscardSelection = null;
+      const matchesType = !selector.requiredType || cardData.type === selector.requiredType;
+      const matchesFilter = typeof selector.filter !== 'function' || selector.filter(cardData, handIdx, selector);
+      if (matchesType && matchesFilter) {
+        try { selector.onPicked?.(handIdx); } catch {}
+        if (!selector.keepAfterPick) interactionState.pendingDiscardSelection = null;
+      } else if (selector.invalidMessage) {
+        showNotification(selector.invalidMessage, 'error');
+      }
       return;
     }
     if (cardData.type === 'UNIT' || cardData.type === 'SPELL') {
@@ -806,9 +814,18 @@ export function clearSelectedUnit() {
   interactionState.selectedUnit = null;
   interactionState.pendingAttack = null;
   interactionState.magicFrom = null;
+  interactionState.pendingUnitAbility = null;
+  interactionState.pendingAbilityOrientation = null;
+  interactionState.pendingDiscardSelection = null;
   clearHighlights();
 }
 export function getPendingPlacement() { return interactionState.pendingPlacement; }
 export function clearPendingPlacement() { interactionState.pendingPlacement = null; }
 export function getPendingSpellOrientation() { return interactionState.pendingSpellOrientation; }
 export function clearPendingSpellOrientation() { interactionState.pendingSpellOrientation = null; }
+export function setPendingUnitAbility(value) { interactionState.pendingUnitAbility = value || null; }
+export function getPendingUnitAbility() { return interactionState.pendingUnitAbility; }
+export function clearPendingUnitAbility() { interactionState.pendingUnitAbility = null; }
+export function setPendingAbilityOrientation(value) { interactionState.pendingAbilityOrientation = value || null; }
+export function getPendingAbilityOrientation() { return interactionState.pendingAbilityOrientation; }
+export function clearPendingAbilityOrientation() { interactionState.pendingAbilityOrientation = null; }

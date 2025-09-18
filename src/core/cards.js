@@ -158,6 +158,18 @@ export const CARDS = {
     desc: 'Attacks the same target twice (counterattack after second attack). While on a Fire field he must use his Magic Attack, which affects the target and all adjacent enemies. The Attack value is equal to the number of Fire fields.'
   },
 
+  FIRE_RED_CUBIC: {
+    id: 'FIRE_RED_CUBIC', name: 'Red Cubic', type: 'UNIT', cost: 1, activation: 1,
+    element: 'FIRE', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['E', 'S', 'W'],
+    unitActions: [
+      { key: 'SACRIFICE_TRANSFORM', element: 'FIRE', label: 'Sacrifice', requireNonCubic: true },
+    ],
+    desc: 'Sacrifice Red Cubic to summon a non‑cubic Fire creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
+  },
+
   FIRE_SCIONDAR_FIRE_GOD: {
     id: 'FIRE_SCIONDAR_FIRE_GOD', name: 'Sciondar Fire God', type: 'UNIT', cost: 9, activation: 5,
     element: 'FIRE', atk: 3, hp: 9,
@@ -234,6 +246,17 @@ export const CARDS = {
     swapWithTargetOnElement: 'EARTH',
     desc: 'Magic attack. Gains Invisibility while at least one allied Wolf Ninja is on the board. If it damages a creature on an Earth field, it switches places with that creature (which cannot counterattack).'
   },
+  EARTH_YELLOW_CUBIC: {
+    id: 'EARTH_YELLOW_CUBIC', name: 'Yellow Cubic', type: 'UNIT', cost: 1, activation: 1,
+    element: 'EARTH', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['E', 'S', 'W'],
+    unitActions: [
+      { key: 'SACRIFICE_TRANSFORM', element: 'EARTH', label: 'Sacrifice', requireNonCubic: true },
+    ],
+    desc: 'Sacrifice Yellow Cubic to summon a non‑cubic Earth creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
+  },
   WATER_WOLF_NINJA: {
     id: 'WATER_WOLF_NINJA', name: 'Wolf Ninja', type: 'UNIT', cost: 3, activation: 2,
     element: 'WATER', atk: 1, hp: 3,
@@ -243,6 +266,17 @@ export const CARDS = {
     invisibilityAllies: ['FOREST_SWALLOW_NINJA'],
     swapWithTargetOnElement: 'WATER',
     desc: 'Gains Invisibility while at least one allied Swallow Ninja is on the board. If Wolf Ninja damages a creature on a Water field, it switches places with that creature (which cannot counterattack).'
+  },
+  WATER_BLUE_CUBIC: {
+    id: 'WATER_BLUE_CUBIC', name: 'Blue Cubic', type: 'UNIT', cost: 1, activation: 1,
+    element: 'WATER', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['E', 'S', 'W'],
+    unitActions: [
+      { key: 'SACRIFICE_TRANSFORM', element: 'WATER', label: 'Sacrifice', requireNonCubic: true },
+    ],
+    desc: 'Sacrifice Blue Cubic to summon a non‑cubic Water creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
   },
   WATER_VENOAN_ASSASSIN: {
     id: 'WATER_VENOAN_ASSASSIN', name: 'Venoan Assassin', type: 'UNIT', cost: 3, activation: 2,
@@ -264,6 +298,17 @@ export const CARDS = {
     invisibilityAllies: ['FIRE_FIREFLY_NINJA'],
     rotateTargetOnDamage: true,
     desc: 'Gains Invisibility while at least one allied Firefly Ninja is on the board. When Swallow Ninja damages (but does not destroy) a creature, rotate that creature so its back faces Swallow Ninja. The target creature cannot counterattack.'
+  },
+  FOREST_GREEN_CUBIC: {
+    id: 'FOREST_GREEN_CUBIC', name: 'Green Cubic', type: 'UNIT', cost: 1, activation: 1,
+    element: 'FOREST', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['E', 'S', 'W'],
+    unitActions: [
+      { key: 'SACRIFICE_TRANSFORM', element: 'FOREST', label: 'Sacrifice', requireNonCubic: true },
+    ],
+    desc: 'Sacrifice Green Cubic to summon a non‑cubic Wood creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
   },
 
   BIOLITH_NINJA: {

@@ -2,7 +2,22 @@
 // These functions rely on existing globals to minimize coupling.
 import { highlightTiles, clearHighlights } from '../scene/highlight.js';
 import { enforceHandLimit } from './handLimit.js';
-import { canAttack, shouldUseMagicAttack } from '../core/abilities.js';
+import {
+  canAttack,
+  shouldUseMagicAttack,
+  collectUnitActions,
+  executeUnitAction,
+} from '../core/abilities.js';
+import {
+  interactionState,
+  setPendingUnitAbility,
+  getPendingUnitAbility,
+  clearPendingUnitAbility,
+  setPendingAbilityOrientation,
+  getPendingAbilityOrientation,
+  clearPendingAbilityOrientation,
+  showOracleDeathBuff,
+} from '../scene/interactions.js';
 
 export function rotateUnit(unitMesh, dir) {
   try {
@@ -138,6 +153,212 @@ export function performUnitAttack(unitMesh) {
       window.performBattleSequence(r, c, true, opts);
     }
   } catch {}
+}
+
+export function performUnitAbility(unitMesh, actionId) {
+  try {
+    if (!unitMesh || typeof window === 'undefined') return;
+    const w = window;
+    const isInputLocked = w.isInputLocked || (() => false);
+    if (isInputLocked()) return;
+    const gameState = w.gameState;
+    if (!gameState) return;
+    const r = unitMesh.userData?.row;
+    const c = unitMesh.userData?.col;
+    if (r == null || c == null) return;
+
+    clearPendingUnitAbility();
+    clearPendingAbilityOrientation();
+    interactionState.pendingDiscardSelection = null;
+    w.__ui?.panels?.hidePrompt?.();
+    w.__ui?.panels?.hideOrientationPanel?.();
+    w.__ui?.cancelButton?.refreshCancelButton?.();
+
+    const actions = collectUnitActions(gameState, r, c);
+    unitMesh.userData = unitMesh.userData || {};
+    unitMesh.userData.availableActions = actions;
+
+    const action = actions.find(a => a.actionId === actionId);
+    if (!action) return;
+
+    const owner = typeof action.owner === 'number'
+      ? action.owner
+      : unitMesh.userData?.unitData?.owner ?? gameState.active;
+    if (owner !== gameState.active) {
+      w.showNotification?.('This action can be used only during your turn', 'error');
+      return;
+    }
+
+    if (!action.available) {
+      if (action.unavailableReason) w.showNotification?.(action.unavailableReason, 'error');
+      return;
+    }
+
+    const player = gameState.players?.[owner];
+    if (!player) {
+      w.showNotification?.('Player context is unavailable for this action', 'error');
+      return;
+    }
+
+    if (action.requiresHandSelection) {
+      const candidates = action.candidates || [];
+      if (!candidates.length) {
+        if (action.unavailableReason) w.showNotification?.(action.unavailableReason, 'error');
+        return;
+      }
+      setPendingUnitAbility({ unitMesh, action, owner, r, c, playerRef: player });
+      interactionState.pendingDiscardSelection = {
+        requiredType: 'UNIT',
+        filter: (_, idx) => candidates.some(c => c.handIdx === idx),
+        invalidMessage: 'This card cannot be used for the sacrifice',
+        onPicked: (handIdx) => {
+          const ctx = getPendingUnitAbility();
+          if (!ctx) return;
+          const currentPlayer = ctx.playerRef || gameState.players?.[ctx.owner];
+          const cardTpl = currentPlayer?.hand?.[handIdx];
+          if (!cardTpl) {
+            w.showNotification?.('Card is no longer available', 'error');
+            return;
+          }
+          ctx.selectedHandIdx = handIdx;
+          ctx.selectedTpl = cardTpl;
+          setPendingUnitAbility(ctx);
+          setPendingAbilityOrientation({
+            unitMesh: ctx.unitMesh,
+            action: ctx.action,
+            handIdx,
+            tpl: cardTpl,
+            owner: ctx.owner,
+            r: ctx.r,
+            c: ctx.c,
+          });
+          interactionState.pendingDiscardSelection = null;
+          w.__ui?.panels?.hidePrompt?.();
+          w.__ui?.panels?.showOrientationPanel?.();
+          w.__ui?.cancelButton?.refreshCancelButton?.();
+          w.addLog?.(`${ctx.action.label}: выберите направление для ${cardTpl.name}.`);
+        },
+      };
+      w.__ui?.panels?.showPrompt?.(
+        action.prompt || 'Select a card for this action',
+        () => {
+          interactionState.pendingDiscardSelection = null;
+          clearPendingUnitAbility();
+          clearPendingAbilityOrientation();
+          w.__ui?.panels?.hideOrientationPanel?.();
+          w.__ui?.cancelButton?.refreshCancelButton?.();
+        },
+        true,
+      );
+      w.addLog?.(`${action.label}: выберите подходящую карту в руке.`);
+      w.__ui?.panels?.hideUnitActionPanel?.();
+      w.__ui?.cancelButton?.refreshCancelButton?.();
+      return;
+    }
+
+    const result = executeUnitAction(gameState, action, { uidFn: w.uid });
+    if (!result?.ok) {
+      const reason = result?.reason || 'Action failed';
+      w.showNotification?.(`Ability failed: ${reason}`, 'error');
+      return;
+    }
+
+    if (unitMesh?.userData) delete unitMesh.userData.availableActions;
+    w.__ui?.panels?.hideUnitActionPanel?.();
+    w.__ui?.cancelButton?.refreshCancelButton?.();
+    clearPendingUnitAbility();
+    clearPendingAbilityOrientation();
+    interactionState.pendingDiscardSelection = null;
+    w.updateHand?.(gameState);
+    w.updateUnits?.(gameState);
+    w.updateUI?.(gameState);
+  } catch (err) {
+    console.error('[performUnitAbility]', err);
+  }
+}
+
+export function confirmUnitAbilityOrientation(context, direction) {
+  try {
+    if (typeof window === 'undefined') return;
+    const w = window;
+    const gameState = w.gameState;
+    if (!gameState) return;
+    const info = context || getPendingAbilityOrientation();
+    if (!info || !info.action) return;
+    const payload = {
+      handIdx: info.handIdx,
+      facing: direction,
+      uidFn: typeof w.uid === 'function' ? () => w.uid() : undefined,
+    };
+    const result = executeUnitAction(gameState, info.action, payload);
+    if (!result?.ok) {
+      const reason = result?.reason || 'Action failed';
+      w.showNotification?.(`Ability failed: ${reason}`, 'error');
+      clearPendingAbilityOrientation();
+      clearPendingUnitAbility();
+      interactionState.pendingDiscardSelection = null;
+      w.__ui?.cancelButton?.refreshCancelButton?.();
+      return;
+    }
+
+    const sacrificedName = result.sacrifice?.tplName || 'Существо';
+    const replacementName = result.replacement?.tplName || 'существо';
+    w.addLog?.(`${sacrificedName} приносится в жертву ради ${replacementName}.`);
+
+    const buffInfo = result.replacement?.buff;
+    if (buffInfo && typeof buffInfo.amount === 'number' && buffInfo.amount !== 0) {
+      if (buffInfo.amount > 0) {
+        w.addLog?.(`${replacementName}: поле усиливает юнита: HP ${buffInfo.before}→${buffInfo.after}.`);
+      } else {
+        w.addLog?.(`${replacementName}: поле ослабляет юнита: HP ${buffInfo.before}→${buffInfo.after}.`);
+      }
+    }
+
+    if (result.replacement?.alive === false) {
+      const deathReason = result.replacement.deathReason;
+      const label = deathReason === 'OFF_ELEMENT'
+        ? 'не выдерживает чужой стихии'
+        : deathReason === 'ON_ELEMENT'
+          ? 'погибает на враждебном поле'
+          : 'не выжил при призыве';
+      w.addLog?.(`${replacementName} ${label}.`);
+    }
+
+    if (result.events?.oracleBuff) {
+      const { owner, amount } = result.events.oracleBuff;
+      showOracleDeathBuff(owner, amount);
+      w.addLog?.(`${replacementName}: союзники получают +${amount} HP.`);
+    }
+
+    if (result.summonEvents?.possessions?.length) {
+      for (const ev of result.summonEvents.possessions) {
+        const unitTaken = gameState.board?.[ev.r]?.[ev.c]?.unit;
+        const tplTaken = unitTaken ? w.CARDS?.[unitTaken.tplId] : null;
+        const name = tplTaken?.name || 'Существо';
+        w.addLog?.(`${name}: контроль переходит к игроку ${gameState.active + 1}.`);
+      }
+    }
+
+    if (result.freedonianMana > 0) {
+      w.addLog?.(`Фридонийский Странник приносит ${result.freedonianMana} маны.`);
+    }
+
+    if (info.unitMesh?.userData) delete info.unitMesh.userData.availableActions;
+    clearPendingAbilityOrientation();
+    clearPendingUnitAbility();
+    interactionState.pendingDiscardSelection = null;
+    w.__ui?.panels?.hideOrientationPanel?.();
+    w.__ui?.panels?.hidePrompt?.();
+    w.__interactions?.clearSelectedUnit?.();
+    w.__ui?.panels?.hideUnitActionPanel?.();
+    w.__ui?.cancelButton?.refreshCancelButton?.();
+
+    w.updateHand?.(gameState);
+    w.updateUnits?.(gameState);
+    w.updateUI?.(gameState);
+  } catch (err) {
+    console.error('[confirmUnitAbilityOrientation]', err);
+  }
 }
 
 // Полная обработка завершения хода
@@ -347,7 +568,13 @@ export async function endTurn() {
   } catch {}
 }
 
-const api = { rotateUnit, performUnitAttack, endTurn };
+const api = {
+  rotateUnit,
+  performUnitAttack,
+  performUnitAbility,
+  confirmUnitAbilityOrientation,
+  endTurn,
+};
 try {
   if (typeof window !== 'undefined') {
     window.__ui = window.__ui || {};

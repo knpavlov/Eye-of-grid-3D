@@ -7,6 +7,10 @@ import {
   applyIncarnationSummon as applyIncarnationSummonInternal,
 } from './abilityHandlers/incarnation.js';
 import { collectMagicTargets as collectMagicTargetsInternal } from './abilityHandlers/magicTargeting.js';
+import {
+  collectSacrificeActions,
+  executeSacrificeAction,
+} from './abilityHandlers/sacrifice.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -527,3 +531,44 @@ export function getTargetElementBonus(tpl, state, hits) {
 export { isIncarnationCard };
 export const evaluateIncarnationSummon = evaluateIncarnationSummonInternal;
 export const applyIncarnationSummon = applyIncarnationSummonInternal;
+
+export function collectUnitActions(state, r, c) {
+  const actions = [];
+  const cell = state?.board?.[r]?.[c];
+  const unit = cell?.unit;
+  const tpl = getUnitTemplate(unit);
+  if (!unit || !tpl) return actions;
+  let index = 0;
+  const append = (list) => {
+    for (const item of list || []) {
+      if (!item) continue;
+      const actionId = item.actionId || `${item.type}:${index}`;
+      actions.push({ ...item, actionId });
+      index += 1;
+    }
+  };
+  append(collectSacrificeActions(state, { state, unit, tpl, r, c }));
+  return actions;
+}
+
+export function executeUnitAction(state, action, payload = {}) {
+  if (!state || !action || !action.type) {
+    return { ok: false, reason: 'INVALID_ACTION' };
+  }
+  if (action.type === 'SACRIFICE_TRANSFORM') {
+    const result = executeSacrificeAction(state, action, payload);
+    if (!result?.ok) {
+      return result;
+    }
+    const cell = state.board?.[action.r]?.[action.c];
+    if (cell?.unit) {
+      result.summonEvents = applySummonAbilities(state, action.r, action.c);
+      result.freedonianMana = applyFreedonianAura(state, action.owner);
+    } else {
+      result.summonEvents = result.summonEvents || { possessions: [] };
+      result.freedonianMana = 0;
+    }
+    return result;
+  }
+  return { ok: false, reason: 'UNKNOWN_ACTION' };
+}

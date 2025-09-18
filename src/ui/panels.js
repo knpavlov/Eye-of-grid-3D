@@ -1,5 +1,5 @@
 // Panels: log/help/orientation/unit actions/prompt
-import { canAttack } from '../core/abilities.js';
+import { canAttack, collectUnitActions } from '../core/abilities.js';
 
 export function showOrientationPanel(){ try { document.getElementById('orientation-panel')?.classList.remove('hidden'); } catch {} }
 export function hideOrientationPanel(){ try { document.getElementById('orientation-panel')?.classList.add('hidden'); if (typeof window !== 'undefined') window.pendingPlacement = null; } catch {} }
@@ -17,6 +17,39 @@ export function showUnitActionPanel(unitMesh){
       attackBtn.disabled = !!alreadyAttacked || cannot;
       const cost = (typeof window !== 'undefined' && typeof window.attackCost === 'function') ? window.attackCost(cardData) : 1;
       attackBtn.textContent = cannot ? 'Cannot attack' : alreadyAttacked ? 'Already attacked' : `Attack (-${cost})`;
+    }
+    const extraActions = collectUnitActions(gs, unitMesh.userData.row, unitMesh.userData.col);
+    unitMesh.userData = unitMesh.userData || {};
+    unitMesh.userData.availableActions = extraActions;
+    const extraContainer = document.getElementById('unit-extra-actions');
+    if (extraContainer) {
+      // Перед каждым показом панели очищаем кнопки и создаём их заново
+      extraContainer.textContent = '';
+      if (!extraActions.length) {
+        extraContainer.classList.add('hidden');
+      } else {
+        extraContainer.classList.remove('hidden');
+        for (const action of extraActions) {
+          if (!action) continue;
+          const btn = document.createElement('button');
+          btn.className = 'w-full overlay-panel px-4 py-2 bg-amber-600 hover:bg-amber-700';
+          btn.textContent = action.label || 'Ability';
+          const owner = (typeof action.owner === 'number') ? action.owner : unitData.owner;
+          const isOwnerTurn = owner === gs.active;
+          const available = !!action.available && isOwnerTurn;
+          btn.disabled = !available;
+          if (!isOwnerTurn) {
+            btn.title = 'Action is available only during the owner\'s turn';
+          } else if (action.unavailableReason) {
+            btn.title = action.unavailableReason;
+          }
+          btn.dataset.actionId = action.actionId;
+          btn.addEventListener('click', () => {
+            try { window.__ui?.actions?.performUnitAbility?.(unitMesh, action.actionId); } catch {}
+          });
+          extraContainer.appendChild(btn);
+        }
+      }
     }
     const rotateCost = (typeof window !== 'undefined' && typeof window.rotateCost === 'function') ? window.rotateCost(cardData) : 1;
     const alreadyRotated = unitData.lastRotateTurn === gs.turn;
