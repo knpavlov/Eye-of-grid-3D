@@ -335,7 +335,7 @@ export const handlers = {
         showNotification('This field is protected', 'error');
         return;
       }
-      if (cell.element === 'MECH') {
+      if (cell.element === 'BIOLITH') {
         showNotification("This cell can't be changed", 'error');
         return;
       }

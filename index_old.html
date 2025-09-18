@@ -150,7 +150,7 @@
     
     const DIR_VECTORS = { N: [-1, 0], E: [0, 1], S: [1, 0], W: [0, -1] };
     const OPPOSITE_ELEMENT = { FIRE: 'WATER', WATER: 'FIRE', EARTH: 'FOREST', FOREST: 'EARTH' };
-    const elementEmoji = { FIRE: '🔥', WATER: '💧', EARTH: '🪨', FOREST: '🌲', MECH: '⚙️' };
+    const elementEmoji = { FIRE: '🔥', WATER: '💧', EARTH: '🪨', FOREST: '🌲', BIOLITH: '⚙️' };
     const turnCW = { N: 'E', E: 'S', S: 'W', W: 'N' };
     const turnCCW = { N: 'W', W: 'S', S: 'E', E: 'N' };
     // Переопределяем ориентации: N должен смотреть к верхнему краю (−Z), S — к нижнему (+Z)
@@ -248,7 +248,7 @@
     
     const computeCellBuff = (cellElement, unitElement) => {
       if (cellElement === unitElement) return { atk: 0, hp: 2 };
-      if (cellElement === 'MECH') return { atk: 0, hp: 0 };
+      if (cellElement === 'BIOLITH') return { atk: 0, hp: 0 };
       const opp = OPPOSITE_ELEMENT[unitElement];
       if (cellElement === opp) return { atk: 0, hp: -2 };
       return { atk: 0, hp: 0 };
@@ -266,8 +266,8 @@
     };
     
     const randomBoard = () => {
-      // 5 элементов: FIRE, WATER, EARTH, FOREST, MECH
-      // Центр (1,1) = MECH. Остальные 8 клеток: из FIRE/WATER/EARTH/FOREST по 2 штуки каждого
+      // 5 элементов: FIRE, WATER, EARTH, FOREST, BIOLITH
+      // Центр (1,1) = BIOLITH. Остальные 8 клеток: из FIRE/WATER/EARTH/FOREST по 2 штуки каждого
       const picks = ['FIRE','FIRE','WATER','WATER','EARTH','EARTH','FOREST','FOREST'];
       // Перемешаем и разложим по клеткам, пропуская центр
       for (let i = picks.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [picks[i], picks[j]] = [picks[j], picks[i]]; }
@@ -275,7 +275,7 @@
       const board = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE' })));
       for (let r = 0; r < 3; r++) {
         for (let c = 0; c < 3; c++) {
-          if (r === 1 && c === 1) { board[r][c].element = 'MECH'; continue; }
+          if (r === 1 && c === 1) { board[r][c].element = 'BIOLITH'; continue; }
           board[r][c].element = picks[k++];
         }
       }
@@ -878,7 +878,7 @@
       // Загрузка текстур тайлов поля из папки textures/
       const loader = new THREE.TextureLoader();
       const ASSET_VERSION = '2';
-      const baseMap = { FIRE: './textures/tile_fire.png', WATER: './textures/tile_water.png', EARTH: './textures/tile_earth.png', FOREST: './textures/tile_forest.png', MECH: './textures/tile_mech.png' };
+      const baseMap = { FIRE: './textures/tile_fire.png', WATER: './textures/tile_water.png', EARTH: './textures/tile_earth.png', FOREST: './textures/tile_forest.png', BIOLITH: './textures/tile_biolith.png' };
       for (const k in baseMap) {
         const path = `${baseMap[k]}?v=${ASSET_VERSION}`;
         loader.load(
@@ -1084,7 +1084,7 @@
       c.width = 256; c.height = 256; const ctx = c.getContext('2d');
       // фон
       const base = {
-        FIRE: '#3b0d0d', WATER: '#0d243b', EARTH: '#2f2b24', FOREST: '#0f2b1a', MECH: '#1f2937'
+        FIRE: '#3b0d0d', WATER: '#0d243b', EARTH: '#2f2b24', FOREST: '#0f2b1a', BIOLITH: '#1f2937'
       }[element] || '#2a2a2a';
       ctx.fillStyle = base; ctx.fillRect(0,0,256,256);
       ctx.globalAlpha = 0.5;
@@ -1113,7 +1113,7 @@
         }
         ctx.strokeStyle = '#22c55e'; ctx.globalAlpha = 0.35;
         for (let i=0; i<40; i++) { ctx.beginPath(); ctx.moveTo(Math.random()*256, Math.random()*256); ctx.lineTo(Math.random()*256, Math.random()*256); ctx.stroke(); }
-      } else if (element === 'MECH') {
+      } else if (element === 'BIOLITH') {
         // простая техно-сетка
         ctx.globalAlpha = 0.6; ctx.strokeStyle = '#9ca3af'; ctx.lineWidth = 1.5;
         for (let y=16; y<256; y+=16) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(256,y); ctx.stroke(); }
@@ -1132,7 +1132,7 @@
       WATER: 0x0369a1,
       EARTH: 0x525252,
       FOREST: 0x166534,
-      MECH: 0x334155
+      BIOLITH: 0x334155
     };
 
     function getTileMaterial(element) {
@@ -3717,7 +3717,7 @@
         const r = tileMesh.userData.row, c = tileMesh.userData.col;
         const cell = gameState.board[r][c];
         if (!cell) return;
-        if (cell.element === 'MECH') { showNotification('This cell can\'t be changed', 'error'); return; }
+        if (cell.element === 'BIOLITH') { showNotification('This cell can\'t be changed', 'error'); return; }
         const oppMap = { FIRE:'WATER', WATER:'FIRE', EARTH:'FOREST', FOREST:'EARTH' };
         const prevEl = cell.element; const nextEl = oppMap[prevEl] || prevEl;
         cell.element = nextEl;

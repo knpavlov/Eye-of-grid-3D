@@ -20,17 +20,15 @@ const ELEMENTS = [
   { id: 'WATER', label: 'Water', icon: 'textures/tile_water.png' },
   { id: 'EARTH', label: 'Earth', icon: 'textures/tile_earth.png' },
   { id: 'FOREST', label: 'Forest', icon: 'textures/tile_forest.png' },
-  { id: 'BIOLITH', label: 'Biolith', icon: 'textures/tile_mech.png' },
+  { id: 'BIOLITH', label: 'Biolith', icon: 'textures/tile_biolith.png' },
   // Простая серая сфера в виде SVG для нейтральных карт
   { id: 'NEUTRAL', label: 'Neutral', icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23aaa"/></svg>' },
 ];
 
-// Соответствие «внутренних» идентификаторов элементов (MECH) и их UI-представления (Biolith)
-const ELEMENT_ALIAS = { MECH: 'BIOLITH' };
-
 function normalizeElementId(element) {
   if (!element) return 'NEUTRAL';
-  return ELEMENT_ALIAS[element] || element;
+  const upper = String(element).toUpperCase();
+  return ELEMENTS.some(e => e.id === upper) ? upper : 'NEUTRAL';
 }
 
 // Настройки полоски иллюстрации в левой панели

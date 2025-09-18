@@ -11,73 +11,73 @@ const CARDS = {
   // --- SET 2 BIOLITH UNITS ---
   BIOLITH_ATHENIX_CITADEL: {
     id: 'BIOLITH_ATHENIX_CITADEL', name: 'Athenix Citadel', type: 'UNIT',
-    cost: 3, activation: 2, element: 'MECH', atk: 1, hp: 4,
+    cost: 3, activation: 2, element: 'BIOLITH', atk: 1, hp: 4,
     pattern: 'FRONT', range: 3, attackType: 'MAGIC', blindspots: [],
     desc: 'Magic attack. Grants +1 Magic Protection to other allied creatures of the same element as the field it occupies.'
   },
   BIOLITH_FLAILMONGER: {
     id: 'BIOLITH_FLAILMONGER', name: 'Flailmonger', type: 'UNIT',
-    cost: 3, activation: 2, element: 'MECH', atk: 1, hp: 4,
+    cost: 3, activation: 2, element: 'BIOLITH', atk: 1, hp: 4,
     pattern: 'FRONT', range: 2, attackType: 'MELEE', blindspots: ['S'],
     desc: 'Attacks up to 2 spaces in front. Enemy creatures 1 or 2 spaces in front have +2 Summoning Cost.'
   },
   BIOLITH_BIOLITH_CENTURION: {
     id: 'BIOLITH_BIOLITH_CENTURION', name: 'Biolith Centurion', type: 'UNIT',
-    cost: 3, activation: 2, element: 'MECH', atk: 1, hp: 4,
+    cost: 3, activation: 2, element: 'BIOLITH', atk: 1, hp: 4,
     pattern: 'FRONT', range: 1, attackType: 'MELEE', blindspots: ['S'],
     desc: 'Attacks 1 space in front. Adjacent allied creatures pay 1 less activation/rotation cost while this unit is on a Biolith field.'
   },
   BIOLITH_BIOLITH_WAR_CHARIOT: {
     id: 'BIOLITH_BIOLITH_WAR_CHARIOT', name: 'Biolith War Chariot', type: 'UNIT',
-    cost: 4, activation: 4, element: 'MECH', atk: 2, hp: 4,
+    cost: 4, activation: 4, element: 'BIOLITH', atk: 2, hp: 4,
     pattern: 'FRONT_RIGHT', range: 1, attackType: 'MELEE', blindspots: ['S','W'],
     desc: 'Attacks front and right. Gains +2 Attack when attacking a creature with Summoning Cost 4 or higher.'
   },
   BIOLITH_BEHEMOTH_TERRORFORMER: {
     id: 'BIOLITH_BEHEMOTH_TERRORFORMER', name: 'Behemoth Terrorformer', type: 'UNIT',
-    cost: 4, activation: 2, element: 'MECH', atk: 1, hp: 4,
+    cost: 4, activation: 2, element: 'BIOLITH', atk: 1, hp: 4,
     pattern: 'FRONT_SIDES', range: 1, attackType: 'MELEE', blindspots: ['S'],
     desc: 'Attacks front and both sides. After it attacks, it exchanges its field with the target’s field.'
   },
   BIOLITH_BIOLITH_TRANSPORTER: {
     id: 'BIOLITH_BIOLITH_TRANSPORTER', name: 'Biolith Transporter', type: 'UNIT',
-    cost: 4, activation: 4, element: 'MECH', atk: 0, hp: 3,
+    cost: 4, activation: 4, element: 'BIOLITH', atk: 0, hp: 3,
     pattern: 'FRONT_RIGHT', range: 1, attackType: 'MELEE', blindspots: ['S'],
     desc: 'Has +1 Dodge Attempt. If it hits but does not destroy two creatures, those creatures switch places; if only one creature is hit it moves to the other targeted field. The target does not counterattack.'
   },
   BIOLITH_ARCHIVER: {
     id: 'BIOLITH_ARCHIVER', name: 'Archiver', type: 'UNIT',
-    cost: 5, activation: null, element: 'MECH', atk: 0, hp: 5,
+    cost: 5, activation: null, element: 'BIOLITH', atk: 0, hp: 5,
     pattern: 'NONE', range: 0, attackType: 'NONE', blindspots: [],
     desc: 'The field 1 space in front becomes a Biolith field. Each time an allied creature is summoned, other allied creatures of the same element gain 1 HP.'
   },
   BIOLITH_BATTLE_MASTER: {
     id: 'BIOLITH_BATTLE_MASTER', name: 'Battle Master', type: 'UNIT',
-    cost: 6, activation: 4, element: 'MECH', atk: 3, hp: 6,
+    cost: 6, activation: 4, element: 'BIOLITH', atk: 3, hp: 6,
     pattern: 'ALL', range: 2, attackType: 'MELEE', blindspots: [],
     desc: 'Attacks up to 2 spaces in all directions. Double Attack: strikes the same target twice (counterattack happens after the second strike). When summoned, you may search your library for #087 Scion, Biolith Lord and add it to your hand. Enemy creatures within range pay +2 activation/rotation cost and have Prayer applied. Only one Battle Master may be in a deck.'
   },
   BIOLITH_MAGIC_MASTER: {
     id: 'BIOLITH_MAGIC_MASTER', name: 'Magic Master', type: 'UNIT',
-    cost: 6, activation: 4, element: 'MECH', atk: 2, hp: 6,
+    cost: 6, activation: 4, element: 'BIOLITH', atk: 2, hp: 6,
     pattern: 'FRONT', range: 3, attackType: 'MAGIC', blindspots: ['S'],
     desc: 'Magic attack targets enemy creatures of the same element as the target. The opposing player cannot target their creatures adjacent to Magic Master with spells. Allied Church of Parmus creatures gain +1 Attack. Only one Magic Master per deck.'
   },
   BIOLITH_BIOLITH_BATTLESHIP: {
     id: 'BIOLITH_BIOLITH_BATTLESHIP', name: 'Biolith Battleship', type: 'UNIT',
-    cost: 7, activation: 4, element: 'MECH', atk: 2, hp: 8,
+    cost: 7, activation: 4, element: 'BIOLITH', atk: 2, hp: 8,
     pattern: 'FRONT', range: 3, attackType: 'MAGIC', blindspots: [],
     desc: 'Magic attack. While on a Biolith field it automatically attacks newly summoned enemy creatures half the time. While on a non‑Biolith field allied creatures have +2 Magic Protection. Only one Biolith Battleship per deck.'
   },
   BIOLITH_BIOLITH_TEMPLE: {
     id: 'BIOLITH_BIOLITH_TEMPLE', name: 'Biolith Temple', type: 'UNIT',
-    cost: 7, activation: 5, element: 'MECH', atk: 3, hp: 7,
+    cost: 7, activation: 5, element: 'BIOLITH', atk: 3, hp: 7,
     pattern: 'FRONT', range: 3, attackType: 'MAGIC', blindspots: [],
     desc: 'Magic attack targets enemy creatures of the same race as the target. Each time an enemy creature is summoned, you may take a non‑Ultra Rare creature from your graveyard and shuffle it into your library. Each time an allied Church of Parmus creature is summoned, you may return a non‑Ultra Rare Church of Parmus creature from your graveyard to your hand. If Scion, Biolith Lord (#087) is on the board, steal the exit mana of enemy creatures. Only one Biolith Temple per deck.'
   },
   BIOLITH_SCIONDAR_GATEWAY: {
     id: 'BIOLITH_SCIONDAR_GATEWAY', name: 'Sciondar Gateway', type: 'UNIT',
-    cost: 7, activation: null, element: 'MECH', atk: 0, hp: 6,
+    cost: 7, activation: null, element: 'BIOLITH', atk: 0, hp: 6,
     pattern: 'NONE', range: 0, attackType: 'NONE', blindspots: [],
     desc: 'When an enemy creature is summoned, reveal the top card of your library; if it is a Biolith creature you may summon it without paying its cost (cannot attack this turn), otherwise put it in your graveyard. Invocation: sacrifice an allied creature to summon any Biolith creature (except one of the same name) by paying the cost difference; the summoned creature cannot attack this turn. Other allied Biolith creatures cost 1 less to summon (minimum 1). Only one Ancient card may be in a deck.'
   },
@@ -191,7 +191,7 @@ const CARDS = {
   },
   SPELL_BIOLITH_ASCENSION: {
     id: 'SPELL_BIOLITH_ASCENSION', name: 'Biolith Ascension', type: 'SPELL',
-    element: 'MECH', spellType: 'DOMINION', cost: 0, ritualCost: 'sacrifice 1 creature',
+    element: 'BIOLITH', spellType: 'DOMINION', cost: 0, ritualCost: 'sacrifice 1 creature',
     text: 'Transform: sacrifice any allied creature to summon a Biolith creature in its place without paying its Summoning Cost (it cannot attack this turn). Only one Biolith Ascension per deck; if this card is in your deck you cannot include other Dominion spells.'
   },
   SPELL_SCIONS_REVELATION: {
