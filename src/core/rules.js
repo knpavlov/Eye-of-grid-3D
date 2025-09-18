@@ -14,6 +14,7 @@ import {
   collectDamageInteractions,
   applyDamageInteractionResults,
 } from './abilities.js';
+import { collectKeywordMagicTargets } from './abilityKeywords.js';
 import { countUnits } from './board.js';
 import { computeCellBuff } from './fieldEffects.js';
 
@@ -486,6 +487,9 @@ export function magicAttack(state, fr, fc, tr, tc) {
 
   const baseArea = computeMagicAreaCells(tplA, tr, tc) || [];
   for (const cell of baseArea) { addCell(cell.r, cell.c); }
+
+  const keywordCells = collectKeywordMagicTargets(n1, tplA, attacker, { playerIndex: attacker?.owner });
+  for (const cell of keywordCells) { addCell(cell.r, cell.c); }
 
   const splash = tplA.splash || 0;
   if (splash > 0) {

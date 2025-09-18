@@ -202,6 +202,68 @@ export const CARDS = {
     desc: 'Gains Invisibility while at least one allied Firefly Ninja is on the board. When Swallow Ninja damages (but does not destroy) a creature, rotate that creature so its back faces Swallow Ninja. The target creature cannot counterattack.'
   },
 
+  // Боги-инкарнации
+  FIRE_SCIONDAR_FIRE_GOD: {
+    id: 'FIRE_SCIONDAR_FIRE_GOD', name: 'Sciondar Fire God', type: 'UNIT', cost: 9, activation: 5,
+    element: 'FIRE', atk: 3, hp: 9,
+    attackType: 'MAGIC',
+    attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
+    blindspots: [],
+    incarnation: true,
+    magicTargetsEnemiesOnNonElement: 'FIRE',
+    diesOnElement: 'MECH',
+    keywords: ['GOD'],
+    desc: 'Incarnation. Its Magic Attack targets all enemies on non-Fire fields. Destroy Sciondar Fire God if he is on a Biolith field.'
+  },
+  WATER_GODDESS_TRITONA: {
+    id: 'WATER_GODDESS_TRITONA', name: 'Goddess Tritona', type: 'UNIT', cost: 9, activation: 3,
+    element: 'WATER', atk: 9, hp: 9,
+    attackType: 'MAGIC',
+    attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
+    blindspots: [],
+    incarnation: true,
+    magicTargetsEnemiesOnNonElement: 'WATER',
+    diesOnElement: 'MECH',
+    keywords: ['GOD'],
+    desc: 'Incarnation. Goddess Tritona’s Magic Attack targets all enemies on non-Water fields. Destroy Goddess Tritona if she is on a Biolith field.'
+  },
+  EARTH_NOVOGUS_GRAVEKEEPER: {
+    id: 'EARTH_NOVOGUS_GRAVEKEEPER', name: 'Novogus Gravekeeper', type: 'UNIT', cost: 9, activation: 3,
+    element: 'EARTH', atk: 9, hp: 9,
+    attackType: 'MAGIC',
+    attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
+    blindspots: [],
+    incarnation: true,
+    magicTargetsEnemiesOnNonElement: 'EARTH',
+    diesOnElement: 'MECH',
+    keywords: ['GOD'],
+    desc: 'Incarnation. Novogus Gravekeeper’s Magic Attack targets all enemies on non-Earth fields. Destroy Novogus Gravekeeper if it is on a Biolith field.'
+  },
+  FOREST_EXALTED_ELVEN_DEITY: {
+    id: 'FOREST_EXALTED_ELVEN_DEITY', name: 'Exalted Elven Deity', type: 'UNIT', cost: 9, activation: 3,
+    element: 'FOREST', atk: 9, hp: 9,
+    attackType: 'MAGIC',
+    attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
+    blindspots: [],
+    incarnation: true,
+    magicTargetsEnemiesOnNonElement: 'FOREST',
+    diesOnElement: 'MECH',
+    keywords: ['GOD'],
+    desc: 'Incarnation. Exalted Elven Deity’s Magic Attack targets all enemies on non-Wood fields. Destroy Exalted Elven Deity if it is on a Biolith field.'
+  },
+  MECH_PHASEUS_BIOLITH_GOD: {
+    id: 'MECH_PHASEUS_BIOLITH_GOD', name: 'Phaseus, Biolith God', type: 'UNIT', cost: 9, activation: 4,
+    element: 'MECH', atk: 12, hp: 9,
+    attackType: 'MAGIC',
+    attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
+    blindspots: [],
+    incarnation: true,
+    magicTargetsAllEnemies: true,
+    diesOffElement: 'MECH',
+    keywords: ['GOD'],
+    desc: 'Incarnation. Phaseus’s Magic Attack targets all enemies. Destroy Phaseus if he is on a non-Biolith field.'
+  },
+
   // Spells (subset)
   RAISE_STONE: { id:'RAISE_STONE', name:'Raise Stone', type:'SPELL', cost:2, element:'EARTH', text:'+2 HP to a friendly unit.' },
   SPELL_FISSURES_OF_GOGHLIE: { id: 'SPELL_FISSURES_OF_GOGHLIE', name: 'Fissures of Goghlie', type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 2, text: 'Fieldquake any one field.' },

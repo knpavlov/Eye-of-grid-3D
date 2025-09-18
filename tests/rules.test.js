@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack, stagedAttack } from '../src/core/rules.js';
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
 import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack } from '../src/core/abilities.js';
+import { evaluateIncarnationSummon, applyIncarnationReplacement } from '../src/core/abilityKeywords.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -438,6 +439,72 @@ describe('новые механики', () => {
     state.board[1][1].unit = { owner:0, tplId:'FIRE_DIDI_THE_ENLIGHTENED', facing:'N' };
     const cells = computeFieldquakeLockedCells(state);
     expect(cells.length).toBe(8);
+  });
+});
+
+describe('инкарнация и божественные карты', () => {
+  const makeIncarnationState = () => ({
+    board: makeBoard(),
+    players: [
+      { mana: 10, graveyard: [] },
+      { mana: 10, graveyard: [] },
+    ],
+    active: 0,
+    turn: 1,
+  });
+
+  it('инкарнация снижает стоимость и отправляет жертву в сброс', () => {
+    const state = makeIncarnationState();
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'N', uid: 101, currentHP: 2 };
+    const tpl = CARDS.FIRE_SCIONDAR_FIRE_GOD;
+    const evalRes = evaluateIncarnationSummon(state, tpl, 1, 1, { playerIndex: 0 });
+    expect(evalRes.allowed).toBe(true);
+    expect(evalRes.cost).toBe(tpl.cost - CARDS.FIRE_PARTMOLE_FLAME_LIZARD.cost);
+    const uid = state.board[1][1].unit.uid;
+    const applyRes = applyIncarnationReplacement(state, 1, 1, tpl, { playerIndex: 0, expectedUid: uid });
+    expect(applyRes.success).toBe(true);
+    expect(applyRes.cost).toBe(evalRes.cost);
+    expect(state.board[1][1].unit).toBeNull();
+    expect(state.players[0].graveyard.some(card => card.id === 'FIRE_PARTMOLE_FLAME_LIZARD')).toBe(true);
+  });
+
+  it('Sciondar Fire God поражает всех врагов вне огненных полей', () => {
+    const state = makeIncarnationState();
+    state.board[1][1].element = 'FIRE';
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_SCIONDAR_FIRE_GOD', facing: 'N', uid: 201 };
+    state.board[0][0].element = 'FIRE';
+    state.board[0][0].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 2, uid: 202 };
+    state.board[0][1].element = 'WATER';
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 2, uid: 203 };
+    state.board[2][2].element = 'EARTH';
+    state.board[2][2].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'N', currentHP: 2, uid: 204 };
+    const res = magicAttack(state, 1, 1, 0, 1);
+    expect(res).toBeTruthy();
+    const after = res.n1;
+    expect(after.board[0][1].unit).toBeNull();
+    expect(after.board[2][2].unit).toBeNull();
+    const survivor = after.board[0][0].unit;
+    expect(survivor).toBeTruthy();
+    const hp = survivor.currentHP ?? CARDS[survivor.tplId].hp;
+    expect(hp).toBeGreaterThan(0);
+  });
+
+  it('Phaseus поражает всех врагов и щадит союзников', () => {
+    const state = makeIncarnationState();
+    state.board[1][1].element = 'MECH';
+    state.board[1][1].unit = { owner: 0, tplId: 'MECH_PHASEUS_BIOLITH_GOD', facing: 'N', uid: 301 };
+    state.board[0][0].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 2, uid: 302 };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 2, uid: 303 };
+    state.board[2][2].unit = { owner: 0, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'N', currentHP: 2, uid: 304 };
+    const res = magicAttack(state, 1, 1, 0, 0);
+    expect(res).toBeTruthy();
+    const final = res.n1;
+    expect(final.board[0][0].unit).toBeNull();
+    expect(final.board[0][1].unit).toBeNull();
+    const ally = final.board[2][2].unit;
+    expect(ally).toBeTruthy();
+    const hp = ally.currentHP ?? CARDS[ally.tplId].hp;
+    expect(hp).toBeGreaterThan(0);
   });
 });
 

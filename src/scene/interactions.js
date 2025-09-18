@@ -3,6 +3,12 @@ import { getCtx } from './context.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
 import { applyFreedonianAura, applySummonAbilities, shouldUseMagicAttack } from '../core/abilities.js';
+import {
+  evaluateIncarnationSummon,
+  applyIncarnationReplacement,
+  isIncarnationUnit,
+  shouldPreventImmediateAttack,
+} from '../core/abilityKeywords.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -241,8 +247,42 @@ function onMouseUp(event) {
       if (interactionState.hoveredTile) {
         const row = interactionState.hoveredTile.userData.row;
         const col = interactionState.hoveredTile.userData.col;
-        if (gameState.board[row][col].unit) {
-          showNotification('Cell is already occupied!', 'error');
+        const player = gameState.players[gameState.active];
+        const occupant = gameState.board[row][col].unit;
+        let allowPlacement = false;
+        let incarnationData = null;
+        if (occupant) {
+          if (isIncarnationUnit(cardData)) {
+            const evalRes = evaluateIncarnationSummon(gameState, cardData, row, col, { playerIndex: gameState.active });
+            if (!evalRes.allowed) {
+              const reason = evalRes.reason;
+              let message = 'Cannot use Incarnation on this creature!';
+              if (reason === 'NOT_ALLY') message = 'Incarnation requires an allied creature!';
+              if (reason === 'NO_UNIT') message = 'Select an allied creature to sacrifice.';
+              showNotification(message, 'error');
+            } else {
+              const cost = typeof evalRes.cost === 'number' ? evalRes.cost : cardData.cost;
+              if (player.mana < cost) {
+                showNotification('Insufficient mana!', 'error');
+              } else {
+                allowPlacement = true;
+                incarnationData = {
+                  cost,
+                  expectedUid: evalRes.occupant?.uid ?? null,
+                  occupantTplId: evalRes.occupantTpl?.id ?? evalRes.occupant?.tplId ?? null,
+                  occupantName: evalRes.occupantTpl?.name ?? evalRes.occupant?.tplId ?? 'Существо',
+                  owner: evalRes.occupant?.owner ?? null,
+                };
+              }
+            }
+          } else {
+            showNotification('Cell is already occupied!', 'error');
+          }
+        } else {
+          allowPlacement = true;
+        }
+
+        if (!allowPlacement) {
           returnCardToHand(interactionState.draggedCard);
         } else {
           interactionState.pendingPlacement = {
@@ -250,6 +290,7 @@ function onMouseUp(event) {
             row,
             col,
             handIndex: interactionState.draggedCard.userData.handIndex,
+            incarnation: incarnationData,
           };
           // Сразу опускаем карту на высоту клетки, чтобы убрать резкий подъём
           try {
@@ -511,10 +552,12 @@ function castSpellByDrag(cardMesh, unitMesh, tileMesh) {
 export function placeUnitWithDirection(direction) {
   const gameState = window.gameState;
   if (!interactionState.pendingPlacement) return;
-  const { card, row, col, handIndex } = interactionState.pendingPlacement;
+  const { card, row, col, handIndex, incarnation } = interactionState.pendingPlacement;
   const cardData = card.userData.cardData;
   const player = gameState.players[gameState.active];
-  if (cardData.cost > player.mana) {
+  const playerName = player?.name || `Игрок ${gameState.active + 1}`;
+  let summonCost = typeof incarnation?.cost === 'number' ? incarnation.cost : cardData.cost;
+  if (summonCost > player.mana) {
     showNotification('Insufficient mana!', 'error');
     returnCardToHand(card);
     try { window.__ui.panels.hideOrientationPanel(); } catch {}
@@ -528,10 +571,48 @@ export function placeUnitWithDirection(direction) {
     currentHP: cardData.hp,
     facing: direction,
   };
+  const skipImmediateAttack = shouldPreventImmediateAttack(cardData);
+  let incarnationSacrifice = null;
+  if (incarnation) {
+    const result = applyIncarnationReplacement(gameState, row, col, cardData, {
+      playerIndex: gameState.active,
+      expectedUid: incarnation.expectedUid,
+    });
+    if (!result.success) {
+      const msg = result.reason === 'UNIT_CHANGED'
+        ? 'Incarnation target is no longer available!'
+        : 'Cannot complete Incarnation on this target.';
+      showNotification(msg, 'error');
+      returnCardToHand(card);
+      try { window.__ui.panels.hideOrientationPanel(); } catch {}
+      interactionState.pendingPlacement = null;
+      return;
+    }
+    incarnationSacrifice = result.sacrificed || null;
+    if (typeof result.cost === 'number') {
+      summonCost = result.cost;
+    }
+    if (summonCost > player.mana) {
+      showNotification('Insufficient mana!', 'error');
+      returnCardToHand(card);
+      try { window.__ui.panels.hideOrientationPanel(); } catch {}
+      interactionState.pendingPlacement = null;
+      return;
+    }
+  }
   gameState.board[row][col].unit = unit;
-  player.mana -= cardData.cost;
+  if (skipImmediateAttack) {
+    unit.lastAttackTurn = gameState.turn;
+  }
+  if (incarnation) {
+    unit.summonMethod = 'INCARNATION';
+  }
+  player.mana -= summonCost;
   player.discard.push(cardData);
   player.hand.splice(handIndex, 1);
+  if (incarnationSacrifice) {
+    window.addLog(`${playerName} приносит в жертву ${incarnationSacrifice.name}, чтобы призвать ${cardData.name}.`);
+  }
   // проверяем состояние Summoning Lock до начала действий
   const totalUnits = (typeof window.countUnits === 'function') ? window.countUnits(gameState) : 0;
   const unlockTriggered = !gameState.summoningUnlocked && totalUnits >= 4;
@@ -629,6 +710,14 @@ export function placeUnitWithDirection(direction) {
       window.updateUI();
       const tpl = window.CARDS?.[cardData.id];
       const forcedMagic = shouldUseMagicAttack(gameState, row, col, tpl);
+      if (skipImmediateAttack) {
+        if (unlockTriggered) {
+          setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0);
+        }
+        window.__ui?.log?.add?.(`${tpl?.name || cardData.name}: инкарнация не позволяет атаковать в этот ход.`);
+        try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+        return;
+      }
       if (tpl?.attackType === 'MAGIC' || forcedMagic) {
         const allowFriendly = !!tpl.friendlyFire;
         const cells = [];
@@ -700,7 +789,7 @@ export function placeUnitWithDirection(direction) {
     },
   });
   gsap.to(card.scale, { x: 1, y: 1, z: 1, duration: 0.5, ease: 'power2.inOut' });
-  window.addLog(`${player.name} призывает ${cardData.name} на (${row + 1},${col + 1})`);
+  window.addLog(`${playerName} призывает ${cardData.name} на (${row + 1},${col + 1})`);
   try { window.__ui.panels.hideOrientationPanel(); } catch {}
   interactionState.pendingPlacement = null;
   try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
