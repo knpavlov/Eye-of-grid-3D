@@ -59,6 +59,61 @@ function normalizeElements(value) {
   return set;
 }
 
+function pickNumber(...values) {
+  for (const v of values) {
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      return v;
+    }
+  }
+  return null;
+}
+
+function normalizeSummonCostCondition(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'number') {
+    return { max: raw, amount: 1, perTargetAmount: 0, onlyEnemy: true };
+  }
+  if (typeof raw !== 'object') return null;
+  const cfg = {};
+  cfg.max = pickNumber(raw.max, raw.maxCost, raw.atMost, raw.le, raw.lte);
+  cfg.min = pickNumber(raw.min, raw.minCost, raw.atLeast, raw.ge, raw.gte);
+  if (Array.isArray(raw.values)) {
+    cfg.values = raw.values.filter(v => typeof v === 'number' && Number.isFinite(v));
+  }
+  const baseAmount = pickNumber(raw.amount, raw.plus, raw.bonus, raw.value);
+  cfg.amount = typeof baseAmount === 'number' && Number.isFinite(baseAmount) ? baseAmount : 0;
+  const perTargetAmount = pickNumber(raw.perTargetAmount, raw.eachAmount);
+  cfg.perTargetAmount = typeof perTargetAmount === 'number' && Number.isFinite(perTargetAmount)
+    ? perTargetAmount
+    : 0;
+  if (raw.perTarget === true && cfg.perTargetAmount === 0) {
+    cfg.perTargetAmount = cfg.amount || 1;
+  }
+  const onlyAllies = raw.onlyAllies || raw.onlyAlly || raw.allyOnly || false;
+  const includeAllies = raw.includeAllies || raw.includeFriendly || false;
+  let onlyEnemy = raw.onlyEnemy;
+  if (onlyEnemy == null) onlyEnemy = raw.onlyEnemies;
+  if (onlyEnemy == null) onlyEnemy = raw.enemyOnly;
+  cfg.onlyAllies = !!onlyAllies;
+  cfg.onlyEnemy = cfg.onlyAllies ? false : (onlyEnemy !== false && !includeAllies);
+  return cfg;
+}
+
+function describeSummonCostCondition(cfg) {
+  if (!cfg) return '';
+  const parts = [];
+  if (Array.isArray(cfg.values) && cfg.values.length) {
+    const uniq = Array.from(new Set(cfg.values)).map(v => `${v}`).join('/');
+    if (uniq) parts.push(`= ${uniq}`);
+  } else {
+    if (typeof cfg.min === 'number') parts.push(`≥ ${cfg.min}`);
+    if (typeof cfg.max === 'number') parts.push(`≤ ${cfg.max}`);
+  }
+  if (!parts.length) return '';
+  if (parts.length === 1) return parts[0];
+  return parts.join(' и ');
+}
+
 function collectInvisibilitySources(tpl) {
   const sources = new Set();
   for (const id of normalizeTplIdList(tpl?.invisibilityAllies)) sources.add(id);
@@ -532,6 +587,34 @@ export function getTargetElementBonus(tpl, state, hits) {
   });
   if (!has) return null;
   return { amount, element: cfg.element };
+}
+
+export function getTargetSummonCostBonus(tpl, state, hits, context = {}) {
+  if (!tpl || !Array.isArray(hits) || !hits.length) return null;
+  const cfg = normalizeSummonCostCondition(tpl.plusAtkVsSummonCost);
+  if (!cfg) return null;
+  const attackerOwner = context.attackerOwner ?? context.attacker?.owner ?? null;
+  let matched = 0;
+  for (const h of hits) {
+    if (!state?.board?.[h.r]?.[h.c]) continue;
+    const unit = state.board[h.r][h.c].unit;
+    if (!unit) continue;
+    if (cfg.onlyAllies && attackerOwner != null && unit.owner !== attackerOwner) continue;
+    if (cfg.onlyEnemy && attackerOwner != null && unit.owner === attackerOwner) continue;
+    const tplTarget = getUnitTemplate(unit);
+    const cost = pickNumber(unit.cost, tplTarget?.cost);
+    if (cost == null) continue;
+    if (Array.isArray(cfg.values) && cfg.values.length && !cfg.values.includes(cost)) continue;
+    if (typeof cfg.min === 'number' && cost < cfg.min) continue;
+    if (typeof cfg.max === 'number' && cost > cfg.max) continue;
+    matched += 1;
+  }
+  if (!matched) return null;
+  const single = cfg.amount || 0;
+  const perTarget = cfg.perTargetAmount || 0;
+  const total = single + perTarget * matched;
+  if (!total) return null;
+  return { amount: total, condition: describeSummonCostCondition(cfg), matched };
 }
 
 export { isIncarnationCard };

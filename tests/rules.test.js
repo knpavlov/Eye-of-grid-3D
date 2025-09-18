@@ -118,6 +118,37 @@ describe('guards and hits', () => {
     const hits = computeHits(state, 1, 1);
     expect(hits.some(h => h.r === 0 && h.c === 1)).toBe(true);
   });
+
+  it('Twin Goblins атакуют вперед и назад одновременно', () => {
+    const state = { board: makeBoard() };
+    state.board[1][1].unit = { owner: 0, tplId: 'FOREST_TWIN_GOBLINS', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S' };
+    state.board[2][1].unit = { owner: 0, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'N' };
+    const hits = computeHits(state, 1, 1);
+    const coords = hits.map(h => `${h.r},${h.c}`).sort();
+    expect(coords).toEqual(['0,1', '2,1']);
+  });
+
+  it('Biolith Battle Chariot бьёт две клетки по выбранной линии', () => {
+    const state = { board: makeBoard() };
+    state.board[2][1].unit = { owner: 0, tplId: 'BIOLITH_BIOLITH_BATTLE_CHARIOT', facing: 'N' };
+    state.board[1][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'S' };
+    const allHits = computeHits(state, 2, 1, { union: true });
+    expect(allHits.length).toBeGreaterThanOrEqual(2);
+    const northHits = computeHits(state, 2, 1, { chosenDir: 'N' });
+    const coords = northHits.map(h => `${h.r},${h.c}`).sort();
+    expect(coords).toEqual(['0,1', '1,1']);
+  });
+
+  it('Arc Satellite Cannon выбирает дальнюю цель по направлению', () => {
+    const state = { board: makeBoard() };
+    state.board[2][1].unit = { owner: 0, tplId: 'BIOLITH_ARC_SATELLITE_CANNON', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S' };
+    const hits = computeHits(state, 2, 1, { chosenDir: 'N' });
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({ r: 0, c: 1 });
+  });
 });
 
 describe('особые способности', () => {
@@ -171,6 +202,38 @@ describe('особые способности', () => {
     state.board[1][1].unit = { owner:1, tplId:'NEUTRAL_WHITE_CUBIC', facing:'W', currentHP:1 };
     const res = magicAttack(state,1,0,1,1);
     expect(res.n1.board[1][1].unit).toBeNull();
+  });
+
+  it('Biolith Bomber получает бонус по дешёвым целям', () => {
+    const lowId = 'TEST_LOW_COST_TARGET';
+    const highId = 'TEST_HIGH_COST_TARGET';
+    const tplBase = {
+      type: 'UNIT', attackType: 'STANDARD', element: 'FIRE', atk: 0, hp: 5,
+      attacks: [ { dir: 'N', ranges: [1] } ], blindspots: [],
+    };
+    CARDS[lowId] = { id: lowId, name: 'Dummy Low', cost: 2, activation: 1, ...tplBase };
+    CARDS[highId] = { id: highId, name: 'Dummy High', cost: 3, activation: 1, ...tplBase };
+
+    const setup = (tplId) => {
+      const s = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+      s.board[1][1].unit = { owner:0, tplId:'BIOLITH_BIOLITH_BOMBER', facing:'E' };
+      s.board[1][2].unit = { owner:1, tplId, facing:'W', currentHP:5 };
+      return s;
+    };
+
+    try {
+      const lowState = setup(lowId);
+      const highState = setup(highId);
+      const lowPreview = stagedAttack(lowState,1,1)?.targetsPreview || [];
+      const highPreview = stagedAttack(highState,1,1)?.targetsPreview || [];
+      expect(lowPreview).toHaveLength(1);
+      expect(highPreview).toHaveLength(1);
+      const diff = lowPreview[0].dmg - highPreview[0].dmg;
+      expect(diff).toBe(2);
+    } finally {
+      delete CARDS[lowId];
+      delete CARDS[highId];
+    }
   });
 
   it('quickness позволяет контратаковать первым', () => {

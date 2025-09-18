@@ -324,6 +324,58 @@ export const CARDS = {
     desc: 'White Cubic does not belong to any element. Sacrifice White Cubic to summon any creature in its place (facing any direction) without paying the Summoning Cost. The summoned creature cannot attack this turn. Dodge attempt.'
   },
 
+  FOREST_TWIN_GOBLINS: {
+    id: 'FOREST_TWIN_GOBLINS', name: 'Twin Goblins', type: 'UNIT', cost: 2, activation: 1,
+    element: 'FOREST', atk: 1, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'N', ranges: [1] },
+      { dir: 'S', ranges: [1] },
+    ],
+    friendlyFire: true,
+    blindspots: [],
+    desc: 'Атакует одновременно клетки перед и позади себя. Может задевать союзников.'
+  },
+
+  BIOLITH_BIOLITH_BOMBER: {
+    id: 'BIOLITH_BIOLITH_BOMBER', name: 'Biolith Bomber', type: 'UNIT', cost: 3, activation: 2,
+    element: 'BIOLITH', atk: 1, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    plusAtkVsSummonCost: { max: 2, amount: 2 },
+    desc: 'Добавляет 2 к атаке, если цель имеет стоимость призыва 2 или меньше.'
+  },
+
+  BIOLITH_BIOLITH_BATTLE_CHARIOT: {
+    id: 'BIOLITH_BIOLITH_BATTLE_CHARIOT', name: 'Biolith Battle Chariot', type: 'UNIT', cost: 4, activation: 4,
+    element: 'BIOLITH', atk: 3, hp: 5,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1, 2] },
+      { dir: 'E', ranges: [1, 2] },
+    ],
+    blindspots: ['S'],
+    friendlyFire: true,
+    pierce: true,
+    desc: 'Выберите направление: телега поражает две клетки по выбранной линии (впереди или справа), задев и союзников, и врагов.'
+  },
+
+  BIOLITH_ARC_SATELLITE_CANNON: {
+    id: 'BIOLITH_ARC_SATELLITE_CANNON', name: 'Arc Satellite Cannon', type: 'UNIT', cost: 5, activation: 4,
+    element: 'BIOLITH', atk: 4, hp: 5,
+    attackType: 'MAGIC', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [2] },
+      { dir: 'E', ranges: [2] },
+      { dir: 'S', ranges: [2] },
+      { dir: 'W', ranges: [2] },
+    ],
+    blindspots: ['S'],
+    pierce: true,
+    desc: 'Магическая атака: выберите одну из подсвеченных клеток и нанесите урон цели на расстоянии.'
+  },
+
   BIOLITH_NINJA: {
     id: 'BIOLITH_NINJA', name: 'Biolith Ninja', type: 'UNIT', cost: 4, activation: 2,
     element: 'BIOLITH', atk: 4, hp: 2,

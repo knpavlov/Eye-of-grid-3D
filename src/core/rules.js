@@ -6,6 +6,7 @@ import {
   hasDoubleAttack,
   canAttack,
   getTargetElementBonus,
+  getTargetSummonCostBonus,
   collectMagicTargetCells,
   computeDynamicMagicAttack,
   releasePossessionsAfterDeaths,
@@ -196,6 +197,12 @@ export function stagedAttack(state, r, c, opts = {}) {
       atk += amount;
       logLines.push(`${tplA.name}: +${amount} ATK по целям на поле ${el}`);
     }
+  }
+  const costBonus = getTargetSummonCostBonus(tplA, base, hitsRaw, { attacker, attackerOwner: attacker?.owner });
+  if (costBonus) {
+    atk += costBonus.amount;
+    const cond = costBonus.condition ? ` (стоимость ${costBonus.condition})` : '';
+    logLines.push(`${tplA.name}: +${costBonus.amount} ATK по цели${cond}`);
   }
   if (targetBonus) {
     atk += targetBonus.amount;
@@ -518,9 +525,15 @@ export function magicAttack(state, fr, fc, tr, tc) {
   }
 
   const elementBonus = getTargetElementBonus(tplA, n1, cells);
+  const costBonusMagic = getTargetSummonCostBonus(tplA, n1, cells, { attacker, attackerOwner: attacker?.owner });
   if (elementBonus) {
     atk += elementBonus.amount;
     logLines.push(`${tplA.name}: +${elementBonus.amount} ATK против существ стихии ${elementBonus.element}`);
+  }
+  if (costBonusMagic) {
+    atk += costBonusMagic.amount;
+    const cond = costBonusMagic.condition ? ` (стоимость ${costBonusMagic.condition})` : '';
+    logLines.push(`${tplA.name}: +${costBonusMagic.amount} ATK по цели${cond}`);
   }
 
   const randomBonus = (tplA.randomPlus2 && Math.random() < 0.5) ? 2 : 0;
