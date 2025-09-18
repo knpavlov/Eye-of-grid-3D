@@ -340,10 +340,10 @@ export const CARDS = {
     element: 'BIOLITH', atk: 1, hp: 3,
     attackType: 'STANDARD', chooseDir: true,
     attacks: [
-      { dir: 'N', ranges: [1] },
-      { dir: 'E', ranges: [1] },
-      { dir: 'S', ranges: [1] },
-      { dir: 'W', ranges: [1] },
+      { dir: 'N', ranges: [1, 2] },
+      { dir: 'E', ranges: [1, 2] },
+      { dir: 'S', ranges: [1, 2] },
+      { dir: 'W', ranges: [1, 2] },
     ],
     blindspots: ['S'],
     plusAtkVsSummonCostAtMost: { limit: 2, amount: 2 },
@@ -353,15 +353,14 @@ export const CARDS = {
   BIOLITH_BATTLE_CHARIOT: {
     id: 'BIOLITH_BATTLE_CHARIOT', name: 'Biolith Battle Chariot', type: 'UNIT', cost: 4, activation: 4,
     element: 'BIOLITH', atk: 3, hp: 5,
-    attackType: 'STANDARD', chooseDir: true,
+    attackType: 'STANDARD',
     attacks: [
-      { dir: 'N', ranges: [1, 2] },
-      { dir: 'E', ranges: [1, 2] },
+      { dir: 'N', ranges: [1], group: 'FRONT_RIGHT' },
+      { dir: 'E', ranges: [1], group: 'FRONT_RIGHT' },
     ],
     friendlyFire: true,
-    pierce: true,
     blindspots: ['S'],
-    desc: 'Attacks both spaces in front or both spaces to its right at the same time (may hit allies).'
+    desc: ''
   },
 
   BIOLITH_ARC_SATELLITE_CANNON: {
@@ -388,7 +387,7 @@ export const CARDS = {
     ],
     blindspots: [],
     friendlyFire: true,
-    desc: 'Attacks both the space in front and the space behind simultaneously, damaging allies and enemies alike.'
+    desc: ''
   },
 
   // Spells (subset)

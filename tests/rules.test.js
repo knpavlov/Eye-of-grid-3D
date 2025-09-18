@@ -130,15 +130,23 @@ describe('guards and hits', () => {
     expect(fin.n1.board[2][1].unit).toBeNull();
   });
 
-  it('Biolith Battle Chariot поражает две клетки по выбранному направлению', () => {
+  it('Biolith Battle Chariot поражает клетки впереди и справа одновременно', () => {
     const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
-    state.board[2][1].unit = { owner: 0, tplId: 'BIOLITH_BATTLE_CHARIOT', facing: 'N' };
-    state.board[1][1].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'S', currentHP: 1 };
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_BATTLE_CHARIOT', facing: 'N' };
     state.board[0][1].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'S', currentHP: 1 };
-    const res = stagedAttack(state, 2, 1, { chosenDir: 'N' });
+    state.board[1][2].unit = { owner: 0, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'W', currentHP: 1 };
+    const res = stagedAttack(state, 1, 1);
     const fin = res.finish();
-    expect(fin.n1.board[1][1].unit).toBeNull();
     expect(fin.n1.board[0][1].unit).toBeNull();
+    expect(fin.n1.board[1][2].unit).toBeNull();
+  });
+
+  it('Biolith Battle Chariot подсвечивает только соседние клетки', () => {
+    const state = { board: makeBoard() };
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_BATTLE_CHARIOT', facing: 'N' };
+    const hits = computeHits(state, 1, 1, { union: true, includeEmpty: true });
+    const coords = hits.map(h => `${h.r},${h.c}`).sort();
+    expect(coords).toEqual(['0,1', '1,2']);
   });
 });
 
@@ -154,6 +162,29 @@ describe('особые способности', () => {
     const res = stagedAttack(state, 1, 1, { chosenDir: 'N' });
     const fin = res.finish();
     expect(fin.n1.board[0][1].unit).toBeNull();
+  });
+
+  it('Biolith Bomber может выбирать цель на дистанции две клетки', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].unit = { owner: 0, tplId: 'BIOLITH_BOMBER', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 2 };
+    const res = stagedAttack(state, 2, 1, { chosenDir: 'N', rangeChoices: { N: 2 } });
+    const fin = res.finish();
+    expect(fin.n1.board[0][1].unit).toBeNull();
+  });
+
+  it('Arc Satellite Cannon поражает только одну выбранную цель', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_ARC_SATELLITE_CANNON', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'S', currentHP: 3 };
+    state.board[1][2].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'W', currentHP: 3 };
+    const res = stagedAttack(state, 1, 1, { chosenDir: 'N' });
+    const fin = res.finish();
+    expect(fin.n1.board[0][1].unit).toBeNull();
+    const survivor = fin.n1.board[1][2].unit;
+    expect(survivor).toBeTruthy();
+    const tpl = CARDS[survivor.tplId];
+    expect(survivor.currentHP ?? tpl.hp).toBe(3);
   });
 
   it('perfect dodge защищает от обычных атак', () => {

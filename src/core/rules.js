@@ -47,6 +47,7 @@ function attackCellsForTpl(tpl, facing, opts = {}) {
   const res = [];
   const attacks = tpl.attacks || [];
   const { chosenDir, rangeChoices, union } = opts;
+  let seq = 0;
   for (const a of attacks) {
     if (!union && tpl.chooseDir) {
       if (!chosenDir) continue; // направление нужно выбрать явно
@@ -60,8 +61,10 @@ function attackCellsForTpl(tpl, facing, opts = {}) {
       const chosen = rangeChoices?.[a.dir];
       used = [chosen ?? ranges[0]];
     }
+    const baseGroup = (a.group != null) ? `combo-${String(a.group)}` : null;
     for (const r of used) {
-      res.push({ dirAbs, range: r, dirRel: a.dir });
+      const groupId = baseGroup ?? `g-${seq++}`;
+      res.push({ dirAbs, range: r, dirRel: a.dir, groupId });
     }
   }
   return res;
@@ -90,63 +93,81 @@ export function computeHits(state, r, c, opts = {}) {
   const allowPierce = tplA.pierce;
   const allowFriendly = !!tplA.friendlyFire; // может ли существо задевать союзников
   const forceBackAttack = !!tplA.backAttack;
+  const grouped = new Map();
+  let fallbackIdx = 0;
   for (const cell of cells) {
-    const [dr, dc] = DIR_VECTORS[cell.dirAbs];
-    const nr = r + dr * cell.range;
-    const nc = c + dc * cell.range;
-    if (!inBounds(nr, nc)) continue;
+    const key = cell.groupId ?? `single-${fallbackIdx++}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(cell);
+  }
+  for (const groupCells of grouped.values()) {
+    const evaluated = [];
+    for (const cell of groupCells) {
+      const vec = DIR_VECTORS[cell.dirAbs];
+      if (!vec) continue;
+      const [dr, dc] = vec;
+      const nr = r + dr * cell.range;
+      const nc = c + dc * cell.range;
+      if (!inBounds(nr, nc)) continue;
+      evaluated.push({ cell, dr, dc, nr, nc });
+    }
+    if (!evaluated.length) continue;
+    if (opts.target) {
+      const match = evaluated.some(pos => pos.nr === opts.target.r && pos.nc === opts.target.c);
+      if (!match) continue;
+    }
+    for (const pos of evaluated) {
+      const { cell, dr, dc, nr, nc } = pos;
 
-    // проверяем препятствия
-    if (!allowPierce) {
-      let blocked = false;
-      for (let step = 1; step < cell.range; step++) {
-        const tr = r + dr * step;
-        const tc = c + dc * step;
-        const uMid = state.board?.[tr]?.[tc]?.unit;
-        if (uMid && (uMid.currentHP ?? CARDS[uMid.tplId]?.hp) > 0) { blocked = true; break; }
+      if (!allowPierce) {
+        let blocked = false;
+        for (let step = 1; step < cell.range; step++) {
+          const tr = r + dr * step;
+          const tc = c + dc * step;
+          const uMid = state.board?.[tr]?.[tc]?.unit;
+          if (uMid && (uMid.currentHP ?? CARDS[uMid.tplId]?.hp) > 0) { blocked = true; break; }
+        }
+        if (blocked) continue;
       }
-      if (blocked) continue;
-    }
 
-    if (opts.target && (opts.target.r !== nr || opts.target.c !== nc)) continue;
-
-    let B = state.board?.[nr]?.[nc]?.unit;
-    if (B && (B.currentHP ?? CARDS[B.tplId]?.hp) <= 0) B = null;
-    if (!B) {
-      if (opts.includeEmpty) hits.push({ r: nr, c: nc, dmg: 0 });
-      continue;
+      let B = state.board?.[nr]?.[nc]?.unit;
+      if (B && (B.currentHP ?? CARDS[B.tplId]?.hp) <= 0) B = null;
+      if (!B) {
+        if (opts.includeEmpty) hits.push({ r: nr, c: nc, dmg: 0 });
+        continue;
+      }
+      if (B.owner === attacker.owner && !allowFriendly) {
+        if (opts.includeEmpty) hits.push({ r: nr, c: nc, dmg: 0 });
+        continue; // по умолчанию союзников не бьём
+      }
+      if (B.owner !== attacker.owner &&
+          !aFlying && hasAdjacentGuard(state, nr, nc) && !(CARDS[B.tplId].keywords || []).includes('GUARD')) {
+        continue; // охрана работает только против врагов
+      }
+      const backDir = { N: 'S', S: 'N', E: 'W', W: 'E' }[B.facing];
+      const [bdr, bdc] = DIR_VECTORS[backDir] || [0, 0];
+      let isBack = (nr + bdr === r && nc + bdc === c);
+      const dirAbsFromB = (() => {
+        if (r === nr - 1 && c === nc) return 'N';
+        if (r === nr + 1 && c === nc) return 'S';
+        if (r === nr && c === nc - 1) return 'W';
+        return 'E';
+      })();
+      const ORDER = ['N', 'E', 'S', 'W'];
+      const absIdx = ORDER.indexOf(dirAbsFromB);
+      const faceIdx = ORDER.indexOf(B.facing);
+      const relIdx = (absIdx - faceIdx + 4) % 4;
+      let dirRel = ORDER[relIdx];
+      if (forceBackAttack) {
+        isBack = true;
+        dirRel = 'S';
+      }
+      const blind = CARDS[B.tplId].blindspots || ['S'];
+      const inBlind = blind.includes(dirRel);
+      const extraTotal = isBack ? 1 : (inBlind ? 1 : 0);
+      const dmg = Math.max(0, atk + extraTotal);
+      hits.push({ r: nr, c: nc, dmg, backstab: isBack });
     }
-    if (B.owner === attacker.owner && !allowFriendly) {
-      if (opts.includeEmpty) hits.push({ r: nr, c: nc, dmg: 0 });
-      continue; // по умолчанию союзников не бьём
-    }
-    if (B.owner !== attacker.owner &&
-        !aFlying && hasAdjacentGuard(state, nr, nc) && !(CARDS[B.tplId].keywords || []).includes('GUARD')) {
-      continue; // охрана работает только против врагов
-    }
-    const backDir = { N: 'S', S: 'N', E: 'W', W: 'E' }[B.facing];
-    const [bdr, bdc] = DIR_VECTORS[backDir] || [0, 0];
-    let isBack = (nr + bdr === r && nc + bdc === c);
-    const dirAbsFromB = (() => {
-      if (r === nr - 1 && c === nc) return 'N';
-      if (r === nr + 1 && c === nc) return 'S';
-      if (r === nr && c === nc - 1) return 'W';
-      return 'E';
-    })();
-    const ORDER = ['N', 'E', 'S', 'W'];
-    const absIdx = ORDER.indexOf(dirAbsFromB);
-    const faceIdx = ORDER.indexOf(B.facing);
-    const relIdx = (absIdx - faceIdx + 4) % 4;
-    let dirRel = ORDER[relIdx];
-    if (forceBackAttack) {
-      isBack = true;
-      dirRel = 'S';
-    }
-    const blind = CARDS[B.tplId].blindspots || ['S'];
-    const inBlind = blind.includes(dirRel);
-    const extraTotal = isBack ? 1 : (inBlind ? 1 : 0);
-    const dmg = Math.max(0, atk + extraTotal);
-    hits.push({ r: nr, c: nc, dmg, backstab: isBack });
   }
   return hits;
 }
