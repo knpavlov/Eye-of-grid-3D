@@ -48,12 +48,12 @@ export function performUnitAttack(unitMesh) {
     // запрет на повторную атаку и на атаку укреплений
     const tpl = window.CARDS?.[unit.tplId];
     if (!canAttack(tpl)) {
-      window.__ui?.notifications?.show('Это укрепление не может атаковать', 'error');
+      window.__ui?.notifications?.show('This fortress cannot attack', 'error');
       return;
     }
     // запрет на повторную атаку в пределах одного хода
     if (unit.lastAttackTurn === gameState.turn) {
-      window.__ui?.notifications?.show('Это существо уже атаковало в этом ходу', 'error');
+      window.__ui?.notifications?.show('This unit has already attacked this turn', 'error');
       return;
     }
     const cost = typeof window.attackCost === 'function' ? window.attackCost(tpl) : 0;
@@ -119,8 +119,8 @@ export function performUnitAttack(unitMesh) {
         highlightTiles(hitsAll);
         try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
       }
-      window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
-      window.__ui?.notifications?.show('Выберите цель', 'info');
+      window.__ui?.log?.add?.(`${tpl.name}: choose a target for the attack.`);
+      window.__ui?.notifications?.show('Select a target', 'info');
       return;
     }
     // если выбор не нужен или доступна единственная цель, атакуем сразу
@@ -223,7 +223,7 @@ export async function endTurn() {
       : 0;
     if (controlledCells >= 5) {
       gameState.winner = gameState.active;
-      w.showNotification?.(`${gameState.players[gameState.active].name} побеждает!`, 'success');
+      w.showNotification?.(`${gameState.players[gameState.active].name} wins!`, 'success');
       return;
     }
 

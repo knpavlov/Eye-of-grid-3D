@@ -515,7 +515,7 @@ export function open(deck = null, onDone) {
   function addCard(card) {
     const copies = working.cards.filter(c => c.id === card.id).length;
     if (copies >= 3) {
-      showNotification('Лимит копий достигнут', 'error');
+      showNotification('Copy limit reached', 'error');
       return;
     }
     working.cards.push(card);
@@ -574,14 +574,14 @@ export function open(deck = null, onDone) {
       };
       const saved = await saveDeckRemote(payload);
       if (saved) {
-        showNotification('Колода сохранена на сервере', 'success');
+        showNotification('Deck saved on the server', 'success');
       } else {
         throw new Error('Пустой ответ сервера при сохранении');
       }
     } catch (err) {
       console.warn('[deckBuilder] Ошибка сохранения на сервере', err);
       upsertDeck({ ...working, cards: [...working.cards] }, { persistLocal: true });
-      showNotification('Сервер недоступен — колода сохранена локально', 'error');
+      showNotification('Server unavailable — deck saved locally', 'error');
     } finally {
       cleanup();
       onDone && onDone();

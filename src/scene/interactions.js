@@ -10,6 +10,7 @@ import {
   applyIncarnationSummon,
   isIncarnationCard,
 } from '../core/abilities.js';
+import { capMana } from '../core/constants.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -252,21 +253,21 @@ function onMouseUp(event) {
         const playerIndex = gameState.active;
         if (existingUnit) {
           if (!isIncarnationCard(cardData)) {
-            showNotification('Клетка занята: требуется свободное поле.', 'error');
+            showNotification('Cell is occupied: pick an empty field.', 'error');
             returnCardToHand(interactionState.draggedCard);
             endCardDrag();
             return;
           }
           const check = evaluateIncarnationSummon(gameState, { r: row, c: col, tpl: cardData, owner: playerIndex });
           if (!check?.ok) {
-            showNotification('Инкарнация невозможна на этой клетке.', 'error');
+            showNotification('Incarnation is not possible on this field.', 'error');
             returnCardToHand(interactionState.draggedCard);
             endCardDrag();
             return;
           }
           const player = gameState.players[playerIndex];
           if (check.cost > player.mana) {
-            showNotification(`Нужно ${check.cost} маны для инкарнации.`, 'error');
+            showNotification(`You need ${check.cost} mana for the incarnation.`, 'error');
             returnCardToHand(interactionState.draggedCard);
             endCardDrag();
             return;
@@ -280,7 +281,7 @@ function onMouseUp(event) {
           };
         } else {
           if (isIncarnationCard(cardData)) {
-            showNotification('Инкарнация требует союзную карту на поле.', 'error');
+            showNotification('Incarnation requires a friendly unit on the field.', 'error');
             returnCardToHand(interactionState.draggedCard);
             endCardDrag();
             return;
@@ -423,7 +424,7 @@ function performMagicAttack(from, targetMesh) {
   const gameState = window.gameState;
   const attacker = gameState.board?.[from.r]?.[from.c]?.unit;
   if (!attacker || attacker.lastAttackTurn === gameState.turn) {
-    showNotification('Некорректная атака', 'error');
+    showNotification('Invalid attack', 'error');
     return false;
   }
   const res = window.magicAttack(gameState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
@@ -485,7 +486,7 @@ function performChosenAttack(from, targetMesh) {
   const gameState = window.gameState;
   const attacker = gameState.board?.[from.r]?.[from.c]?.unit; if (!attacker) return;
   if (attacker.lastAttackTurn === gameState.turn) {
-    showNotification('Некорректная атака', 'error');
+    showNotification('Invalid attack', 'error');
     return;
   }
   const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
@@ -557,7 +558,7 @@ export function placeUnitWithDirection(direction) {
   const player = gameState.players[gameState.active];
   const summonCost = (incarnation?.active ? (incarnation.cost ?? cardData.cost ?? 0) : cardData.cost) ?? 0;
   if (summonCost > player.mana) {
-    showNotification('Недостаточно маны!', 'error');
+    showNotification('Not enough mana!', 'error');
     returnCardToHand(card);
     try { window.__ui.panels.hideOrientationPanel(); } catch {}
     interactionState.pendingPlacement = null;
@@ -567,7 +568,7 @@ export function placeUnitWithDirection(direction) {
   if (incarnation?.active) {
     const applied = applyIncarnationSummon(gameState, { r: row, c: col, tpl: cardData, owner: gameState.active });
     if (!applied?.ok) {
-      showNotification('Инкарнация прервана.', 'error');
+      showNotification('Incarnation cancelled.', 'error');
       returnCardToHand(card);
       try { window.__ui.panels.hideOrientationPanel(); } catch {}
       interactionState.pendingPlacement = null;
@@ -625,34 +626,38 @@ export function placeUnitWithDirection(direction) {
     window.addLog(`${cardData.name} не переносит стихию ${cardData.diesOnElement} и погибает!`);
     alive = false;
   }
-    if (!alive) {
-      // обработка эффектов при смерти (например, лечение союзников)
-      if (cardData.onDeathAddHPAll) {
-        const amount = cardData.onDeathAddHPAll;
-        for (let rr = 0; rr < 3; rr++) {
-          for (let cc = 0; cc < 3; cc++) {
-            if (rr === row && cc === col) continue; // пропускаем саму погибшую карту
-            const ally = gameState.board?.[rr]?.[cc]?.unit;
-            if (!ally || ally.owner !== unit.owner) continue;
-            const tplAlly = window.CARDS?.[ally.tplId];
-            const cellEl2 = gameState.board[rr][cc].element;
-            const buff2 = window.computeCellBuff(cellEl2, tplAlly.element);
-            ally.bonusHP = (ally.bonusHP || 0) + amount;
-            const maxHP = (tplAlly.hp || 0) + buff2.hp + (ally.bonusHP || 0);
-            const before = ally.currentHP ?? tplAlly.hp;
-            ally.currentHP = Math.min(maxHP, before + amount);
-          }
+  if (!alive) {
+    // обработка эффектов при смерти (например, лечение союзников)
+    if (cardData.onDeathAddHPAll) {
+      const amount = cardData.onDeathAddHPAll;
+      for (let rr = 0; rr < 3; rr++) {
+        for (let cc = 0; cc < 3; cc++) {
+          if (rr === row && cc === col) continue; // пропускаем саму погибшую карту
+          const ally = gameState.board?.[rr]?.[cc]?.unit;
+          if (!ally || ally.owner !== unit.owner) continue;
+          const tplAlly = window.CARDS?.[ally.tplId];
+          const cellEl2 = gameState.board[rr][cc].element;
+          const buff2 = window.computeCellBuff(cellEl2, tplAlly.element);
+          ally.bonusHP = (ally.bonusHP || 0) + amount;
+          const maxHP = (tplAlly.hp || 0) + buff2.hp + (ally.bonusHP || 0);
+          const before = ally.currentHP ?? tplAlly.hp;
+          ally.currentHP = Math.min(maxHP, before + amount);
         }
-        showOracleDeathBuff(unit.owner, amount);
-        window.addLog(`${cardData.name}: союзники получают +${amount} HP`);
       }
-      const owner = unit.owner;
-      try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
-      const ctx = getCtx();
+      showOracleDeathBuff(unit.owner, amount);
+      window.addLog(`${cardData.name}: союзники получают +${amount} HP`);
+    }
+    const owner = unit.owner;
+    const slotBeforeGain = gameState.players?.[owner]?.mana || 0;
+    try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
+    const ownerPlayer = gameState.players?.[owner];
+    if (ownerPlayer) {
+      ownerPlayer.mana = capMana((ownerPlayer.mana || 0) + 1);
+    }
+    const ctx = getCtx();
     const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
     const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-    const slot = gameState.players?.[owner]?.mana || 0;
-    window.animateManaGainFromWorld(pos, owner, true, slot);
+    window.animateManaGainFromWorld(pos, owner, true, slotBeforeGain);
     gameState.board[row][col].unit = null;
   }
   if (gameState.board[row][col].unit) {
@@ -745,8 +750,8 @@ export function placeUnitWithDirection(direction) {
             interactionState.pendingAttack = { r: row, c: col };
             interactionState.autoEndTurnAfterAttack = true;
             highlightTiles(hitsAll);
-            window.__ui?.log?.add?.(`${tpl.name}: выберите цель для атаки.`);
-            window.__ui?.notifications?.show('Выберите цель', 'info');
+            window.__ui?.log?.add?.(`${tpl.name}: choose a target for the attack.`);
+            window.__ui?.notifications?.show('Select a target', 'info');
           } else {
             let opts = {};
             if (needsChoice && hitsAll.length === 1) {
