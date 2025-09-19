@@ -350,6 +350,26 @@ export const CARDS = {
     desc: 'Adds 2 to its Attack if the target creature has a Summoning Cost of 2 or lower.'
   },
 
+  BIOLITH_DARK_YOKOZUNA_SEKIMARU: {
+    id: 'BIOLITH_DARK_YOKOZUNA_SEKIMARU', name: 'Dark Yokozuna Sekimaru', type: 'UNIT', cost: 3, activation: 2,
+    element: 'BIOLITH', atk: 2, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    pushTargetOnDamage: { distance: 1 },
+    desc: 'If Dark Yokozuna Sekimaru attacks (but does not destroy) a creature, that creature is pushed back one field in the direction of the attack (provided the field is empty) and cannot counterattack.'
+  },
+
+  BIOLITH_TAURUS_MONOLITH: {
+    id: 'BIOLITH_TAURUS_MONOLITH', name: 'Taurus Monolith', type: 'UNIT', cost: 5, activation: 3,
+    element: 'BIOLITH', atk: 3, hp: 6,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    blindspots: ['S'],
+    pushTargetOnDamage: { distance: 1 },
+    desc: 'If Taurus Monolith attacks (but does not destroy) a creature, that creature is pushed back one field in the direction of the attack (provided the field is empty) and cannot counterattack.'
+  },
+
   BIOLITH_BATTLE_CHARIOT: {
     id: 'BIOLITH_BATTLE_CHARIOT', name: 'Biolith Battle Chariot', type: 'UNIT', cost: 4, activation: 4,
     element: 'BIOLITH', atk: 3, hp: 5,
@@ -375,6 +395,17 @@ export const CARDS = {
     ],
     blindspots: ['S'],
     desc: 'Magic Attack: choose one highlighted cell in front, back, left or right to target.'
+  },
+
+  FOREST_ELVEN_DEATH_DANCER: {
+    id: 'FOREST_ELVEN_DEATH_DANCER', name: 'Elven Death Dancer', type: 'UNIT', cost: 5, activation: 4,
+    element: 'FOREST', atk: 3, hp: 1,
+    attackType: 'MAGIC',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    swapWithTargetOnDamage: true,
+    increaseEnemyActivationAdjacent: 3,
+    desc: 'Magic Attack. If Elven Death Dancer damages (but does not destroy) a creature, she switches locations with that creature (which cannot counterattack). Enemies on adjacent fields add 3 to their Activation Cost.'
   },
 
   FOREST_TWIN_GOBLINS: {

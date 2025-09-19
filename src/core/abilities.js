@@ -1,6 +1,5 @@
 // Общие функции для обработки особых свойств карт
 import { CARDS } from './cards.js';
-import { applyFieldTransitionToUnit } from './fieldEffects.js';
 import {
   isIncarnationCard,
   evaluateIncarnationSummon as evaluateIncarnationSummonInternal,
@@ -16,6 +15,13 @@ import {
   attemptDodge as attemptDodgeInternal,
 } from './abilityHandlers/dodge.js';
 import { computeTargetCostBonus as computeTargetCostBonusInternal } from './abilityHandlers/attackModifiers.js';
+import {
+  normalizeSwapConfig,
+  normalizePushConfig,
+  planSwapOnDamage,
+  planPushOnDamage,
+  applyRepositionEvent,
+} from './abilityHandlers/reposition.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -114,6 +120,12 @@ export function hasInvisibility(state, r, c, opts = {}) {
 }
 
 const OPPOSITE_DIR = { N: 'S', S: 'N', E: 'W', W: 'E' };
+const ADJACENT_OFFSETS = [
+  [-1, 0],
+  [1, 0],
+  [0, -1],
+  [0, 1],
+];
 
 function directionBetween(from, to) {
   if (!from || !to) return null;
@@ -165,10 +177,9 @@ export function collectDamageInteractions(state, context = {}) {
     tplId: tpl.id,
   };
 
-  let swapHandled = false;
-  const swapElements = normalizeElements(
-    tpl.swapWithTargetOnElement || (tpl.switchOnDamage ? tpl.element : null)
-  );
+  const swapConfig = normalizeSwapConfig(tpl);
+  const pushConfig = normalizePushConfig(tpl);
+  let swapConsumed = false;
 
   for (const h of hits) {
     if (!h) continue;
@@ -184,14 +195,42 @@ export function collectDamageInteractions(state, context = {}) {
     const tplTarget = getUnitTemplate(target);
     const alive = (target.currentHP ?? tplTarget?.hp ?? 0) > 0;
 
-    if (!swapHandled && swapElements.size && alive && cell?.element && swapElements.has(cell.element)) {
-      result.events.push({
-        type: 'SWAP_POSITIONS',
-        attacker: attackerRef,
-        target: { uid: getUnitUid(target), r: h.r, c: h.c, tplId: tplTarget?.id },
+    if (swapConfig && !swapConsumed && alive && target.owner !== attackerUnit.owner) {
+      const plan = planSwapOnDamage(state, {
+        attackerRef,
+        targetUnit: target,
+        targetPos: { r: h.r, c: h.c },
+        swapConfig,
       });
-      swapHandled = true;
-      result.preventRetaliation.add(key);
+      if (plan) {
+        if (plan.event) {
+          result.events.push(plan.event);
+        }
+        if (plan.preventRetaliation) {
+          result.preventRetaliation.add(key);
+        }
+        if (plan.consume) {
+          swapConsumed = true;
+        }
+      }
+    }
+
+    if (pushConfig && alive && target.owner !== attackerUnit.owner) {
+      const plan = planPushOnDamage(state, {
+        attackerRef,
+        attackerPos,
+        targetUnit: target,
+        targetPos: { r: h.r, c: h.c },
+        pushConfig,
+      });
+      if (plan) {
+        if (plan.event) {
+          result.events.push(plan.event);
+        }
+        if (plan.preventRetaliation) {
+          result.preventRetaliation.add(key);
+        }
+      }
     }
 
     if (tpl.rotateTargetOnDamage && alive) {
@@ -217,52 +256,17 @@ export function applyDamageInteractionResults(state, effects = {}) {
   const events = Array.isArray(effects?.events) ? effects.events : [];
 
   for (const ev of events) {
-    if (ev?.type === 'SWAP_POSITIONS') {
-      const attacker = findUnitRef(state, ev.attacker);
-      const target = findUnitRef(state, ev.target);
-      if (!attacker.unit || !target.unit) continue;
-      const aliveAttacker = (attacker.unit.currentHP ?? CARDS[attacker.unit.tplId]?.hp ?? 0) > 0;
-      const aliveTarget = (target.unit.currentHP ?? CARDS[target.unit.tplId]?.hp ?? 0) > 0;
-      if (!aliveAttacker || !aliveTarget) continue;
-      const attackerUnit = attacker.unit;
-      const targetUnit = target.unit;
-      const tplAttacker = CARDS[attackerUnit.tplId];
-      const tplTarget = CARDS[targetUnit.tplId];
-      const attackerPrevElement = state.board?.[attacker.r]?.[attacker.c]?.element || null;
-      const targetPrevElement = state.board?.[target.r]?.[target.c]?.element || null;
-      state.board[attacker.r][attacker.c].unit = targetUnit;
-      state.board[target.r][target.c].unit = attackerUnit;
-      attackerPosUpdate = { r: target.r, c: target.c };
-      const attackerName = tplAttacker?.name || 'Атакующий';
-      const targetName = tplTarget?.name || 'Цель';
-      logs.push(`${attackerName} меняется местами с ${targetName}.`);
-      const shiftAttacker = applyFieldTransitionToUnit(
-        attackerUnit,
-        tplAttacker,
-        attackerPrevElement,
-        targetPrevElement,
-      );
-      const shiftTarget = applyFieldTransitionToUnit(
-        targetUnit,
-        tplTarget,
-        targetPrevElement,
-        attackerPrevElement,
-      );
-      const describeShift = (shift, name) => {
-        if (!shift) return null;
-        const fieldLabel = shift.nextElement ? `поле ${shift.nextElement}` : 'нейтральном поле';
-        const prev = shift.beforeHp;
-        const next = shift.afterHp;
-        if (shift.deltaHp > 0) {
-          return `${name} усиливается на ${fieldLabel}: HP ${prev}→${next}.`;
-        }
-        return `${name} теряет силу на ${fieldLabel}: HP ${prev}→${next}.`;
-      };
-      const attackerLog = describeShift(shiftAttacker, attackerName);
-      if (attackerLog) logs.push(attackerLog);
-      const targetLog = describeShift(shiftTarget, targetName);
-      if (targetLog) logs.push(targetLog);
-    } else if (ev?.type === 'ROTATE_TARGET') {
+    const reposition = applyRepositionEvent(state, ev);
+    if (reposition) {
+      if (reposition.attackerPosUpdate) {
+        attackerPosUpdate = reposition.attackerPosUpdate;
+      }
+      if (Array.isArray(reposition.logLines) && reposition.logLines.length) {
+        logs.push(...reposition.logLines);
+      }
+      continue;
+    }
+    if (ev?.type === 'ROTATE_TARGET') {
       const target = findUnitRef(state, ev.target);
       if (!target.unit) continue;
       const aliveTarget = (target.unit.currentHP ?? CARDS[target.unit.tplId]?.hp ?? 0) > 0;
@@ -341,8 +345,38 @@ function baseActivationCost(tpl) {
     : Math.max(0, (tpl && tpl.cost ? tpl.cost - 1 : 0));
 }
 
+function collectActivationAuraPenalty(state, position, unit) {
+  if (!state || !position) return 0;
+  const { r, c } = position;
+  if (!inBounds(r, c)) return 0;
+  const actualUnit = unit || state.board?.[r]?.[c]?.unit;
+  const owner = actualUnit?.owner;
+  if (owner == null) return 0;
+  let penalty = 0;
+  for (const [dr, dc] of ADJACENT_OFFSETS) {
+    const nr = r + dr;
+    const nc = c + dc;
+    if (!inBounds(nr, nc)) continue;
+    const enemy = state.board?.[nr]?.[nc]?.unit;
+    if (!enemy || enemy.owner === owner) continue;
+    const tplEnemy = getUnitTemplate(enemy);
+    if (!tplEnemy) continue;
+    const alive = (enemy.currentHP ?? tplEnemy?.hp ?? 0) > 0;
+    if (!alive) continue;
+    const aura = tplEnemy.increaseEnemyActivationAdjacent;
+    if (!aura) continue;
+    let amount = 0;
+    if (typeof aura === 'number') amount = aura;
+    else if (typeof aura === 'object' && aura !== null && typeof aura.amount === 'number') {
+      amount = aura.amount;
+    }
+    if (amount > 0) penalty += amount;
+  }
+  return penalty;
+}
+
 // фактическая стоимость атаки с учётом скидок (например, "активация на X меньше")
-export function activationCost(tpl, fieldElement) {
+export function activationCost(tpl, fieldElement, opts = {}) {
   let cost = baseActivationCost(tpl);
   if (tpl && tpl.activationReduction) {
     cost = Math.max(0, cost - tpl.activationReduction);
@@ -351,7 +385,11 @@ export function activationCost(tpl, fieldElement) {
   if (onElem && fieldElement === onElem.element) {
     cost = Math.max(0, cost - onElem.reduction);
   }
-  return cost;
+  const penalty = collectActivationAuraPenalty(opts.state, opts.position, opts.unit);
+  if (penalty) {
+    cost += penalty;
+  }
+  return Math.max(0, cost);
 }
 
 // стоимость поворота/обычной активации — без скидок
