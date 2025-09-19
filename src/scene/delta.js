@@ -1,6 +1,6 @@
 // Анимация различий между предыдущим и новым состоянием
 
-export function playDeltaAnimations(prevState, nextState) {
+export function playDeltaAnimations(prevState, nextState, opts = {}) {
   try {
     if (!prevState || !nextState) return;
 
@@ -17,16 +17,88 @@ export function playDeltaAnimations(prevState, nextState) {
     const capMana = window.capMana || (x => x);
     const CARDS = window.CARDS || {};
 
+    const includeActive = !!opts.includeActive;
     const isActivePlayer = (typeof window.MY_SEAT === 'number' && gameState && typeof gameState.active === 'number' && window.MY_SEAT === gameState.active);
+
+    if (!includeActive && isActivePlayer) {
+      return;
+    }
+
+    const skipDeathFx = !!opts.skipDeathFx || (includeActive && isActivePlayer);
+
+    const makeSignature = (unit) => {
+      if (!unit) return null;
+      if (unit.uid != null) return `UID:${unit.uid}`;
+      const owner = unit.owner != null ? unit.owner : 'x';
+      const tpl = unit.tplId || 'unknown';
+      const hp = (typeof unit.currentHP === 'number') ? unit.currentHP : (typeof unit.hp === 'number' ? unit.hp : 'x');
+      const facing = unit.facing || 'N';
+      return `SIG:${owner}:${tpl}:${hp}:${facing}`;
+    };
+
+    const makeLooseSignature = (unit) => {
+      if (!unit) return null;
+      const owner = unit.owner != null ? unit.owner : 'x';
+      const tpl = unit.tplId || 'unknown';
+      return `LOOSE:${owner}:${tpl}`;
+    };
 
     const prevB = prevState.board || [];
     const nextB = nextState.board || [];
+
+    const nextPosByUid = new Map();
+    const nextSigPositions = new Map();
+    const nextLoosePositions = new Map();
+    const prevLooseCounts = new Map();
+
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
+        if (!nu) continue;
+        if (nu.uid != null) {
+          nextPosByUid.set(nu.uid, { r, c });
+        } else {
+          const sig = makeSignature(nu);
+          if (!sig) continue;
+          if (!nextSigPositions.has(sig)) nextSigPositions.set(sig, []);
+          nextSigPositions.get(sig).push({ r, c });
+        }
+        const loose = makeLooseSignature(nu);
+        if (loose) {
+          if (!nextLoosePositions.has(loose)) nextLoosePositions.set(loose, []);
+          nextLoosePositions.get(loose).push({ r, c });
+        }
+      }
+    }
 
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) {
         const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
         const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
+        if (pu) {
+          const loosePrev = makeLooseSignature(pu);
+          if (loosePrev) {
+            prevLooseCounts.set(loosePrev, (prevLooseCounts.get(loosePrev) || 0) + 1);
+          }
+        }
         if (pu && !nu) {
+          const sigPrev = makeSignature(pu);
+          let moved = false;
+          if (pu.uid != null) {
+            const pos = nextPosByUid.get(pu.uid);
+            if (pos && (pos.r !== r || pos.c !== c)) moved = true;
+          } else if (sigPrev) {
+            const positions = nextSigPositions.get(sigPrev) || [];
+            moved = positions.some(pos => pos.r !== r || pos.c !== c);
+            if (!moved) {
+              const looseKey = makeLooseSignature(pu);
+              if (looseKey && (prevLooseCounts.get(looseKey) || 0) === 1) {
+                const loosePositions = nextLoosePositions.get(looseKey) || [];
+                moved = loosePositions.some(pos => pos.r !== r || pos.c !== c);
+              }
+            }
+          }
+          if (moved) continue;
           try {
             const prevPl = prevState?.players?.[pu.owner];
             const nextPl = nextState?.players?.[pu.owner];
@@ -36,6 +108,7 @@ export function playDeltaAnimations(prevState, nextState) {
               prevPl.discard.length > nextPl.discard.length &&
               nextPl.hand.length > prevPl.hand.length;
             if (!canceled) {
+              if (skipDeathFx) continue;
               const tile = tileMeshes?.[r]?.[c]; if (!tile) continue;
               const ghost = createCard3D ? createCard3D(CARDS[pu.tplId], false) : null;
               if (ghost && window.THREE) {
@@ -67,7 +140,7 @@ export function playDeltaAnimations(prevState, nextState) {
       }
     }
 
-    if (isActivePlayer) {
+    if (!includeActive && isActivePlayer) {
       return;
     }
 

@@ -78,6 +78,13 @@ function updateFrameHighlight(frame, unit, viewerSeat, THREE) {
 function animateToPosition(mesh, target, isNew) {
   if (!mesh) return;
   mesh.userData = mesh.userData || {};
+  try {
+    const shake = mesh.userData.__shakeTimeline;
+    if (shake && typeof shake.kill === 'function') {
+      shake.kill();
+    }
+    mesh.userData.__shakeTimeline = null;
+  } catch {}
   const gsap = (typeof window !== 'undefined') ? window.gsap : null;
   const prevTarget = mesh.userData.__targetPosition;
   const sameTarget = prevTarget && Math.abs(prevTarget.x - target.x) < 1e-3 && Math.abs(prevTarget.y - target.y) < 1e-3 && Math.abs(prevTarget.z - target.z) < 1e-3;
@@ -215,6 +222,13 @@ export function updateUnits(gameState) {
       if (usedUids.has(uid)) continue;
       try { setInvisibilityFx(mesh, false); } catch {}
       try { disposePossessionOverlay(mesh); } catch {}
+      try {
+        const shake = mesh.userData?.__shakeTimeline;
+        if (shake && typeof shake.kill === 'function') {
+          shake.kill();
+        }
+        if (mesh?.userData) mesh.userData.__shakeTimeline = null;
+      } catch {}
       try {
         if (mesh.userData?.__moveTween && typeof mesh.userData.__moveTween.kill === 'function') {
           mesh.userData.__moveTween.kill();

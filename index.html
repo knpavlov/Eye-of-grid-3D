@@ -338,9 +338,11 @@
     }
 
     // Синхронизирует 3D-модели юнитов с текущим состоянием gameState
-    function updateUnits() {
+    function updateUnits(stateOverride = null) {
+      const stateToRender = stateOverride || gameState;
+      if (!stateToRender) return;
       if (window.__units && typeof window.__units.updateUnits === 'function') {
-        window.__units.updateUnits(gameState);
+        window.__units.updateUnits(stateToRender);
         const ctx = window.__scene && typeof window.__scene.getCtx === 'function'
           ? window.__scene.getCtx() : null;
         if (ctx && ctx.unitMeshes) {
@@ -349,6 +351,7 @@
         }
       }
     }
+    try { window.updateUnits = updateUnits; } catch {}
 
     // Визуализировать изменения между предыдущим и новым состоянием (для наблюдателя/оппонента)
     // Показывает визуальные различия на поле между предыдущим и новым состоянием
@@ -604,9 +607,17 @@
             }
           }
           // Финализация: анимация смерти и орбы перед применением состояния
+          const stateBeforeFinish = gameState ? JSON.parse(JSON.stringify(gameState)) : null;
           const res = staged.finish();
+          const attackerPos = res.attackerPosUpdate || { r, c };
           gameState = res.n1;
-          try { window.applyGameState(gameState); } catch {}
+          const finalState = gameState;
+          try { window.applyGameState(finalState); } catch {}
+          try {
+            if (typeof window.playDeltaAnimations === 'function') {
+              window.playDeltaAnimations(stateBeforeFinish, finalState, { includeActive: true, skipDeathFx: true });
+            }
+          } catch {}
           if (res.deaths && res.deaths.length) {
             for (const d of res.deaths) {
               try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
@@ -627,9 +638,12 @@
               window.__interactions?.showOracleDeathBuff?.(d.owner, tplDead.onDeathAddHPAll);
             }
           }
-          if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn;
+            const pos = attackerPos;
+            if (markAttackTurn && gameState.board[pos.r]?.[pos.c]?.unit) {
+              gameState.board[pos.r][pos.c].unit.lastAttackTurn = gameState.turn;
+            }
             setTimeout(() => {
-              updateUnits(); updateUI();
+              updateUnits(finalState); updateUI();
               for (const l of res.logLines.reverse()) addLog(l);
               try { schedulePush('battle-finish', { force: true }); } catch {}
               if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
@@ -637,15 +651,26 @@
                 try { endTurn(); } catch {}
               }
             }, 1000);
+            setTimeout(() => {
+              try { updateUnits(finalState); } catch {}
+            }, 1400);
           } else {
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем обновим визуально
             setTimeout(() => {
-              updateUnits(); updateUI(); for (const l of res.logLines.reverse()) addLog(l); if (markAttackTurn && gameState.board[r][c]?.unit) gameState.board[r][c].unit.lastAttackTurn = gameState.turn; try { schedulePush('battle-finish', { force: true }); } catch {}
+              updateUnits(finalState); updateUI(); for (const l of res.logLines.reverse()) addLog(l);
+              const pos2 = attackerPos;
+              if (markAttackTurn && gameState.board[pos2.r]?.[pos2.c]?.unit) {
+                gameState.board[pos2.r][pos2.c].unit.lastAttackTurn = gameState.turn;
+              }
+              try { schedulePush('battle-finish', { force: true }); } catch {}
               if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
                 window.__interactions.interactionState.autoEndTurnAfterAttack = false;
                 try { endTurn(); } catch {}
               }
             }, Math.max(0, animDelayMs));
+            setTimeout(() => {
+              try { updateUnits(finalState); } catch {}
+            }, Math.max(0, animDelayMs) + 420);
           }
         }, 420);
       };
@@ -703,6 +728,7 @@
       if (!attacker || attacker.lastAttackTurn === gameState.turn) { showNotification('Incorrect target', 'error'); return; }
       const res = magicAttack(gameState, from.r, from.c, tr, tc);
       if (!res) { showNotification('Incorrect target', 'error'); return; }
+      const attackerPosMagic = res.attackerPosUpdate || from;
       for (const l of res.logLines.reverse()) addLog(l);
       const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
       if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
@@ -740,7 +766,9 @@
         }
         gameState = res.n1;
         try { window.applyGameState(gameState); } catch {}
-        const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
+        const attackerCell = window.gameState?.board?.[attackerPosMagic.r]?.[attackerPosMagic.c];
+        const attackerUnit = attackerCell?.unit;
+        if (attackerUnit) attackerUnit.lastAttackTurn = window.gameState.turn;
         setTimeout(() => {
           updateUnits(); updateUI();
           try { schedulePush('magic-battle-finish', { force: true }); } catch {}
@@ -753,7 +781,9 @@
         // Если смертей нет — применяем состояние сразу
         gameState = res.n1; try { window.applyGameState(gameState); } catch {}
         updateUnits(); updateUI();
-        const attacker = gameState.board[from.r][from.c] && gameState.board[from.r][from.c].unit; if (attacker) attacker.lastAttackTurn = gameState.turn;
+        const attackerCell2 = gameState.board?.[attackerPosMagic.r]?.[attackerPosMagic.c];
+        const attackerUnit2 = attackerCell2?.unit;
+        if (attackerUnit2) attackerUnit2.lastAttackTurn = gameState.turn;
         try { schedulePush('magic-battle-finish', { force: true }); } catch {}
         if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
           window.__interactions.interactionState.autoEndTurnAfterAttack = false;
