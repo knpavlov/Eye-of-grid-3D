@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack, stagedAttack } from '../src/core/rules.js';
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
-import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions } from '../src/core/abilities.js';
+import {
+  hasFirstStrike,
+  applySummonAbilities,
+  shouldUseMagicAttack,
+  refreshContinuousPossessions,
+  refreshDodgeAuras,
+} from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -797,6 +803,72 @@ describe('новые механики', () => {
     state.board[1][1].unit = { owner:0, tplId:'FIRE_DIDI_THE_ENLIGHTENED', facing:'N' };
     const cells = computeFieldquakeLockedCells(state);
     expect(cells.length).toBe(8);
+  });
+});
+
+describe('water card abilities', () => {
+  it('Cloud Runner добирает карты по количеству водных полей', () => {
+    const state = { board: makeBoard(), players: [], turn: 1, active: 0 };
+    state.board[0][0].element = 'WATER';
+    state.board[0][1].element = 'WATER';
+    state.board[1][0].element = 'WATER';
+    state.players = [
+      {
+        name: 'P1',
+        deck: [CARDS.FIRE_FLAME_MAGUS, CARDS.FIRE_HELLFIRE_SPITTER, CARDS.FIRE_PARTMOLE_FLAME_LIZARD],
+        hand: [],
+        discard: [],
+        graveyard: [],
+        mana: 0,
+        maxMana: 10,
+      },
+      { name: 'P2', deck: [], hand: [], discard: [], graveyard: [], mana: 0, maxMana: 10 },
+    ];
+    state.board[0][0].unit = { owner: 0, tplId: 'WATER_CLOUD_RUNNER', facing: 'N', currentHP: 1 };
+    const events = applySummonAbilities(state, 0, 0);
+    expect(state.players[0].hand.length).toBe(3);
+    expect(events.draws?.[0]?.count).toBe(3);
+  });
+
+  it('Don of Venoa использует вихрь на водном поле', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[1][1].element = 'WATER';
+    state.board[1][1].unit = { owner:0, tplId:'WATER_DON_OF_VENOA', facing:'N' };
+    state.board[0][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'S' };
+    state.board[1][2].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'W' };
+    state.board[2][1].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'N' };
+    state.board[1][0].unit = { owner:1, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'E' };
+    const hitsWater = computeHits(state, 1, 1, { union: true });
+    const coordsWater = hitsWater.map(h => `${h.r},${h.c}`).sort();
+    expect(coordsWater).toEqual(['0,1', '1,0', '1,2', '2,1']);
+    state.board[1][1].element = 'FIRE';
+    const hitsFire = computeHits(state, 1, 1, { union: true });
+    const coordsFire = hitsFire.map(h => `${h.r},${h.c}`).sort();
+    expect(coordsFire).toEqual(['0,1', '2,1']);
+  });
+
+  it('Latoo дает попытку Dodge союзникам на водных полях', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[1][1].element = 'WATER';
+    state.board[1][1].unit = { owner:0, tplId:'WATER_MERCENARY_SAVIOR_LATOO', facing:'N' };
+    state.board[0][1].element = 'WATER';
+    state.board[0][1].unit = { owner:0, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'S', currentHP:2 };
+    refreshDodgeAuras(state);
+    expect(state.board[0][1].unit.dodgeState?.max ?? 0).toBeGreaterThanOrEqual(1);
+    state.board[0][1].element = 'FIRE';
+    refreshDodgeAuras(state);
+    expect(state.board[0][1].unit.dodgeState).toBeUndefined();
+  });
+
+  it('Tritonan Harpoonsman получает Dodge только на воде', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[1][1].element = 'WATER';
+    state.board[1][1].unit = { owner:0, tplId:'WATER_TRITONAN_HARPOONSMAN', facing:'N', currentHP:2 };
+    refreshDodgeAuras(state);
+    expect(state.board[1][1].unit.dodgeState?.max ?? 0).toBeGreaterThanOrEqual(1);
+    state.board[1][1].element = 'EARTH';
+    refreshDodgeAuras(state);
+    expect(state.board[1][1].unit.dodgeState).toBeUndefined();
   });
 });
 

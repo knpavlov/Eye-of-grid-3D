@@ -16,6 +16,8 @@ import {
   attemptUnitDodge,
   collectDamageInteractions,
   applyDamageInteractionResults,
+  resolveUnitAttackProfile,
+  refreshDodgeAuras,
 } from './abilities.js';
 import { countUnits } from './board.js';
 import { computeCellBuff } from './fieldEffects.js';
@@ -88,7 +90,14 @@ export function computeHits(state, r, c, opts = {}) {
   if (!attacker) return [];
   const tplA = CARDS[attacker.tplId];
   // tplA.friendlyFire — может ли атака задевать союзников
-  const cells = attackCellsForTpl(tplA, attacker.facing, opts);
+  const profile = resolveUnitAttackProfile(state, r, c, tplA);
+  const tplAttack = {
+    ...tplA,
+    attacks: (profile.attacks && profile.attacks.length) ? profile.attacks : (tplA.attacks || []),
+    chooseDir: profile.chooseDir != null ? profile.chooseDir : tplA.chooseDir,
+  };
+  const attackType = profile.attackType || tplA.attackType || 'STANDARD';
+  const cells = attackCellsForTpl(tplAttack, attacker.facing, opts);
   const { atk } = effectiveStats(state.board[r][c], attacker);
   const hits = [];
   const aFlying = (tplA.keywords || []).includes('FLYING');
@@ -223,6 +232,9 @@ export function stagedAttack(state, r, c, opts = {}) {
   const tplA = CARDS[attacker.tplId];
   if (!canAttack(tplA)) return null;
 
+  const attackProfile = resolveUnitAttackProfile(base, r, c, tplA);
+  const attackType = attackProfile.attackType || tplA.attackType || 'STANDARD';
+
   const startElement = base.board?.[r]?.[c]?.element;
   const attackCostValue = attackCost(tplA, startElement, {
     state: base,
@@ -319,7 +331,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     const B = cell?.unit;
     if (!B) return { ...h, dealt: 0 };
     const sameOwner = B.owner === attacker.owner;
-    const isMagic = tplA.attackType === 'MAGIC';
+    const isMagic = attackType === 'MAGIC';
     const tplB = CARDS[B.tplId];
     if (sameOwner) {
       // Союзники не уклоняются от массового удара, поэтому просто получаем урон
@@ -437,7 +449,7 @@ export function stagedAttack(state, r, c, opts = {}) {
         retaliators.push({ r: h.r, c: h.c });
       }
     }
-    const preventRetaliation = tplA.attackType === 'MAGIC' || (tplA.avoidRetaliation50 && Math.random() < 0.5);
+    const preventRetaliation = attackType === 'MAGIC' || (tplA.avoidRetaliation50 && Math.random() < 0.5);
     const total = preventRetaliation ? 0 : totalRetaliation;
     return { total, retaliators };
   }
@@ -538,6 +550,7 @@ export function stagedAttack(state, r, c, opts = {}) {
 
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
     const combinedReleases = [...releaseEvents.releases, ...continuous.releases];
+    refreshDodgeAuras(nFinal);
     return {
       n1: nFinal,
       logLines,
@@ -774,6 +787,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
   attacker.lastAttackTurn = n1.turn;
   attacker.apSpent = (attacker.apSpent || 0) + attackCostValue;
   const combinedReleases = [...releaseEvents.releases, ...continuous.releases];
+  refreshDodgeAuras(n1);
   return { n1, logLines, targets, deaths, releases: combinedReleases, possessions: continuous.possessions, attackerPosUpdate };
 }
 

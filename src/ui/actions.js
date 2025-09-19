@@ -8,6 +8,7 @@ import {
   shouldUseMagicAttack,
   collectUnitActions,
   executeUnitAction,
+  resolveUnitAttackProfile,
 } from '../core/abilities.js';
 import {
   interactionState,
@@ -82,8 +83,10 @@ export function performUnitAttack(unitMesh) {
       ? window.attackCost(tpl, fieldElement, { state: gameState, r, c, unit, owner: unit.owner })
       : 0;
     const iState = window.__interactions?.interactionState;
+    const attackProfile = resolveUnitAttackProfile(gameState, r, c, tpl);
+    const attackType = attackProfile.attackType || tpl?.attackType;
     const mustUseMagic = shouldUseMagicAttack(gameState, r, c, tpl);
-    if (tpl?.attackType === 'MAGIC' || mustUseMagic) {
+    if ((attackType === 'MAGIC') || mustUseMagic) {
       const allowFriendly = !!tpl.friendlyFire;
       const cells = [];
       let hasEnemy = false;
@@ -117,8 +120,11 @@ export function performUnitAttack(unitMesh) {
       return;
     }
     const computeHits = window.computeHits;
-    const attacks = tpl?.attacks || [];
-    const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
+    const attacks = (attackProfile.attacks && attackProfile.attacks.length)
+      ? attackProfile.attacks
+      : (tpl?.attacks || []);
+    const chooseDir = attackProfile.chooseDir != null ? attackProfile.chooseDir : tpl?.chooseDir;
+    const needsChoice = chooseDir || attacks.some(a => a.mode === 'ANY');
     const includeEmpty = attacks.some(a => Array.isArray(a.ranges) && a.ranges.length > 1 && !a.mode);
     const hitsAll = typeof computeHits === 'function' ? computeHits(gameState, r, c, { union: true, includeEmpty }) : [];
     const allowFriendly = !!tpl?.friendlyFire;

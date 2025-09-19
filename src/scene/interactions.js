@@ -9,6 +9,7 @@ import {
   evaluateIncarnationSummon,
   applyIncarnationSummon,
   isIncarnationCard,
+  resolveUnitAttackProfile,
 } from '../core/abilities.js';
 import { capMana } from '../core/constants.js';
 
@@ -40,6 +41,44 @@ function isInputLocked() {
     return window.isInputLocked();
   }
   return false;
+}
+
+function scheduleSummonDrawAnimations(drawEvents, sourceTpl) {
+  if (!Array.isArray(drawEvents) || !drawEvents.length) return;
+  const w = window;
+  const sourceName = sourceTpl?.name || 'Способность';
+  const activeSeat = w.gameState?.active ?? null;
+  const plural = (n) => {
+    const count = Math.abs(n) % 100;
+    const last = count % 10;
+    if (count > 10 && count < 20) return 'карт';
+    if (last > 1 && last < 5) return 'карты';
+    if (last === 1) return 'карту';
+    return 'карт';
+  };
+  for (const ev of drawEvents) {
+    const count = ev?.count ?? ev?.cards?.length ?? 0;
+    if (count <= 0) continue;
+    const owner = ev.owner;
+    if (owner === activeSeat) {
+      w.addLog?.(`${sourceName}: вы добираете ${count} ${plural(count)}.`);
+    } else {
+      const label = typeof owner === 'number' ? owner + 1 : '?';
+      w.addLog?.(`${sourceName}: игрок ${label} добирает ${count} ${plural(count)}.`);
+    }
+  }
+  Promise.resolve().then(async () => {
+    const animate = w.__hand?.animateDrawnCardToHand;
+    if (typeof animate !== 'function') return;
+    for (const ev of drawEvents) {
+      if (ev.owner !== activeSeat) continue;
+      const cards = Array.isArray(ev.cards) ? ev.cards : [];
+      for (const tpl of cards) {
+        try { await animate(tpl); } catch {}
+      }
+      w.updateHand?.();
+    }
+  }).catch(err => console.warn('[summon-draw]', err));
 }
 
 // === POINTER INTERACTION HANDLERS ===
@@ -670,6 +709,9 @@ export function placeUnitWithDirection(direction) {
   }
   if (gameState.board[row][col].unit) {
     const summonEvents = applySummonAbilities(gameState, row, col);
+    if (summonEvents?.draws?.length) {
+      scheduleSummonDrawAnimations(summonEvents.draws, cardData);
+    }
     if (summonEvents?.possessions?.length) {
       try {
         const cards = window.CARDS || {};
@@ -722,12 +764,14 @@ export function placeUnitWithDirection(direction) {
       window.updateUI();
       const tpl = window.CARDS?.[cardData.id];
       const forcedMagic = shouldUseMagicAttack(gameState, row, col, tpl);
+      const attackProfile = resolveUnitAttackProfile(gameState, row, col, tpl);
+      const attackType = attackProfile.attackType || tpl?.attackType;
       if (wasIncarnation) {
         interactionState.autoEndTurnAfterAttack = false;
         if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
         return;
       }
-      if (tpl?.attackType === 'MAGIC' || forcedMagic) {
+      if ((attackType === 'MAGIC') || forcedMagic) {
         const allowFriendly = !!tpl.friendlyFire;
         const cells = [];
         let hasEnemy = false;
@@ -755,8 +799,11 @@ export function placeUnitWithDirection(direction) {
           try { window.endTurn && window.endTurn(); } catch {}
         }
       } else {
-        const attacks = tpl?.attacks || [];
-        const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
+        const attacks = (attackProfile.attacks && attackProfile.attacks.length)
+          ? attackProfile.attacks
+          : (tpl?.attacks || []);
+        const chooseDir = attackProfile.chooseDir != null ? attackProfile.chooseDir : tpl?.chooseDir;
+        const needsChoice = chooseDir || attacks.some(a => a.mode === 'ANY');
         // если в шаблоне несколько дистанций без выбора, подсвечиваем и пустые клетки
         const includeEmpty = attacks.some(a => Array.isArray(a.ranges) && a.ranges.length > 1 && !a.mode);
         const hitsAll = window.computeHits(gameState, row, col, { union: true, includeEmpty });

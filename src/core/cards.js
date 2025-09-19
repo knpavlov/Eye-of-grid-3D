@@ -320,6 +320,122 @@ export const CARDS = {
     ],
     desc: 'Magic Attack. While on a Water field, Imposter Queen Anfisa gains Possession of all enemies on adjacent fields.'
   },
+  WATER_CLOUD_RUNNER: {
+    id: 'WATER_CLOUD_RUNNER', name: 'Cloud Runner', type: 'UNIT', cost: 3, activation: 2,
+    element: 'WATER', atk: 2, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY' } ],
+    blindspots: ['S'],
+    keywords: ['DODGE_ATTEMPT'],
+    dodge: { chance: 0.5, attempts: 1 },
+    drawCardsOnSummonByFieldCount: { element: 'WATER' },
+    desc: 'Chooses a target up to 2 cells ahead. When Cloud Runner is summoned, draw cards equal to the number of Water fields. Dodge attempt.'
+  },
+  WATER_DON_OF_VENOA: {
+    id: 'WATER_DON_OF_VENOA', name: 'Don of Venoa', type: 'UNIT', cost: 5, activation: 3,
+    element: 'WATER', atk: 3, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'N', ranges: [1], group: 'FRONT_BACK' },
+      { dir: 'S', ranges: [1], group: 'FRONT_BACK' },
+    ],
+    attackSchemes: [
+      {
+        key: 'BASE',
+        label: 'Base',
+        attacks: [
+          { dir: 'N', ranges: [1], group: 'FRONT_BACK' },
+          { dir: 'S', ranges: [1], group: 'FRONT_BACK' },
+        ],
+      },
+      {
+        key: 'WATER_SWEEP',
+        label: 'Water',
+        attacks: [
+          { dir: 'N', ranges: [1], group: 'WATER_SWEEP' },
+          { dir: 'E', ranges: [1], group: 'WATER_SWEEP' },
+          { dir: 'S', ranges: [1], group: 'WATER_SWEEP' },
+          { dir: 'W', ranges: [1], group: 'WATER_SWEEP' },
+        ],
+      },
+    ],
+    forceSchemeOnElement: { element: 'WATER', scheme: 'WATER_SWEEP' },
+    blindspots: [],
+    keywords: ['DODGE_ATTEMPT'],
+    dodgePerAdjacentEnemies: { amount: 1 },
+    grantDodgeToAdjacentAllies: { amount: 1 },
+    desc: 'Attacks both the front and rear spaces, or all adjacent spaces while on a Water field. Gains one Dodge attempt for each adjacent enemy and grants adjacent allies one Dodge attempt.'
+  },
+  WATER_MERCENARY_SAVIOR_LATOO: {
+    id: 'WATER_MERCENARY_SAVIOR_LATOO', name: 'Mercenary Savior Latoo', type: 'UNIT', cost: 3, activation: 2,
+    element: 'WATER', atk: 2, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'N', ranges: [1], group: 'DOUBLE_FRONT' },
+      { dir: 'N', ranges: [2], group: 'DOUBLE_FRONT' },
+    ],
+    attackSchemes: [
+      {
+        key: 'BASE',
+        label: 'Base',
+        attacks: [
+          { dir: 'N', ranges: [1], group: 'DOUBLE_FRONT' },
+          { dir: 'N', ranges: [2], group: 'DOUBLE_FRONT' },
+        ],
+      },
+      {
+        key: 'EARTH_ONLY',
+        label: 'Earth',
+        attacks: [ { dir: 'N', ranges: [1] } ],
+      },
+    ],
+    forceSchemeOnElement: { element: 'EARTH', scheme: 'EARTH_ONLY' },
+    blindspots: ['S'],
+    keywords: ['DODGE_ATTEMPT'],
+    dodge: { chance: 0.5, attempts: 1 },
+    plusAtkIfTargetOnElement: { element: 'WATER', amount: 1 },
+    grantDodgeToAlliesOnElement: { element: 'WATER', amount: 1, includeSelf: false },
+    desc: 'Attacks both spaces in front (range 1-2), or only the first space when on an Earth field. Adds 1 to his Attack if at least one target is on a Water field. Dodge attempt. Other allied creatures on Water fields gain one Dodge attempt while Latoo remains on the board.'
+  },
+  WATER_TRITONAN_HARPOONSMAN: {
+    id: 'WATER_TRITONAN_HARPOONSMAN', name: 'Tritonan Harpoonsman', type: 'UNIT', cost: 2, activation: 1,
+    element: 'WATER', atk: 1, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'N', ranges: [1], group: 'DOUBLE_FRONT' },
+      { dir: 'N', ranges: [2], group: 'DOUBLE_FRONT' },
+    ],
+    attackSchemes: [
+      {
+        key: 'BASE',
+        label: 'Base',
+        attacks: [
+          { dir: 'N', ranges: [1], group: 'DOUBLE_FRONT' },
+          { dir: 'N', ranges: [2], group: 'DOUBLE_FRONT' },
+        ],
+      },
+      {
+        key: 'EARTH_ONLY',
+        label: 'Earth',
+        attacks: [ { dir: 'N', ranges: [1] } ],
+      },
+    ],
+    forceSchemeOnElement: { element: 'EARTH', scheme: 'EARTH_ONLY' },
+    blindspots: ['S'],
+    keywords: ['DODGE_ATTEMPT'],
+    gainDodgeOnElement: { element: 'WATER', amount: 1 },
+    desc: 'Attacks the first two spaces ahead, or only the adjacent space while on an Earth field. While on a Water field, Tritonan Harpoonsman gains one Dodge attempt.'
+  },
+  WATER_ALUHJA_PRIESTESS: {
+    id: 'WATER_ALUHJA_PRIESTESS', name: 'Aluhja Priestess', type: 'UNIT', cost: 2, activation: 1,
+    element: 'WATER', atk: 1, hp: 1,
+    attackType: 'MAGIC',
+    attacks: [],
+    blindspots: ['N','E','S','W'],
+    keywords: ['DODGE_ATTEMPT'],
+    gainDodgeOnElement: { element: 'WATER', amount: 1 },
+    desc: 'Magic Attack. While on a Water field, Aluhja Priestess gains one Dodge attempt.'
+  },
   FOREST_SWALLOW_NINJA: {
     id: 'FOREST_SWALLOW_NINJA', name: 'Swallow Ninja', type: 'UNIT', cost: 3, activation: 2,
     element: 'FOREST', atk: 1, hp: 3,

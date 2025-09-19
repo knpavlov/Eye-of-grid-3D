@@ -15,6 +15,9 @@ import {
   ensureDodgeState,
   attemptDodge as attemptDodgeInternal,
 } from './abilityHandlers/dodge.js';
+import { resolveAttackProfile as resolveAttackProfileInternal } from './abilityHandlers/attackSchemes.js';
+import { rebuildDodgeStates as rebuildDodgeStatesInternal } from './abilityHandlers/dodgeAuras.js';
+import { applyDrawOnSummon as applyDrawOnSummonInternal } from './abilityHandlers/draw.js';
 import { computeTargetCostBonus as computeTargetCostBonusInternal } from './abilityHandlers/attackModifiers.js';
 import { collectRepositionOnDamage } from './abilityHandlers/reposition.js';
 import { extraActivationCostFromAuras } from './abilityHandlers/costModifiers.js';
@@ -451,6 +454,17 @@ export function applySummonAbilities(state, r, c) {
 
   ensureDodgeState(unit, tpl);
 
+  const drawRes = applyDrawOnSummonInternal(state, {
+    tpl,
+    owner: unit.owner,
+    r,
+    c,
+    unit,
+  });
+  if (Array.isArray(drawRes?.draws) && drawRes.draws.length) {
+    events.draws = [...(events.draws || []), ...drawRes.draws];
+  }
+
   const possessionCfg = normalizeElementConfig(
     tpl.gainPossessionEnemiesOnElement,
     { requireDifferentField: true }
@@ -472,6 +486,8 @@ export function applySummonAbilities(state, r, c) {
   if (continuous.releases.length) {
     events.releases = [...(events.releases || []), ...continuous.releases];
   }
+
+  rebuildDodgeStatesInternal(state);
 
   return events;
 }
@@ -584,6 +600,23 @@ export const applyIncarnationSummon = applyIncarnationSummonInternal;
 export const ensureUnitDodgeState = ensureDodgeState;
 export const attemptUnitDodge = attemptDodgeInternal;
 export const refreshContinuousPossessions = refreshContinuousPossessionsInternal;
+
+export function resolveUnitAttackProfile(state, r, c, tplOverride = null) {
+  const cell = state?.board?.[r]?.[c] || null;
+  const unit = cell?.unit || null;
+  const tpl = tplOverride || getUnitTemplate(unit);
+  return resolveAttackProfileInternal(state, tpl, {
+    r,
+    c,
+    unit,
+    cell,
+    cellElement: cell?.element,
+  });
+}
+
+export function refreshDodgeAuras(state) {
+  return rebuildDodgeStatesInternal(state);
+}
 
 export function collectUnitActions(state, r, c) {
   const actions = [];
