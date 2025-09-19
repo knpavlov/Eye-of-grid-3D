@@ -27,7 +27,7 @@ export const CARDS = {
   FIRE_FREEDONIAN_WANDERER: {
     id: 'FIRE_FREEDONIAN_WANDERER', name: 'Freedonian Wanderer', type: 'UNIT', cost: 2, activation: 1,
     element: 'FIRE', atk: 1, hp: 2,
-    attackType: 'STANDARD',
+    attackType: 'STANDARD', pierce: true,
     attacks: [ { dir: 'N', ranges: [1] } ],
     blindspots: ['S'], auraGainManaOnSummon: true,
     desc: 'While Freedonian Wanderer is on a non‑Fire field, you gain 1 mana each time you summon an allied creature.'
@@ -43,7 +43,7 @@ export const CARDS = {
   FIRE_GREAT_MINOS: {
     id: 'FIRE_GREAT_MINOS', name: 'Great Minos of Sciondar', type: 'UNIT', cost: 3, activation: 2,
     element: 'FIRE', atk: 2, hp: 1,
-    attackType: 'STANDARD',
+    attackType: 'STANDARD', pierce: true,
     // бьёт сразу по двум клеткам впереди, игнорируя преграды и задевая союзников
     attacks: [ { dir: 'N', ranges: [1, 2] } ],
     blindspots: ['S'], perfectDodge: true, activationReduction: 1, diesOffElement: 'FIRE',
@@ -190,6 +190,108 @@ export const CARDS = {
     targetAllNonElement: 'WATER',
     diesOnElement: 'BIOLITH',
     desc: 'Incarnation. Goddess Tritona’s Magic Attack targets all enemies on non-Water fields. Destroy Goddess Tritona if she is on a Biolith field.'
+  },
+
+  WATER_CLOUD_RUNNER: {
+    id: 'WATER_CLOUD_RUNNER', name: 'Cloud Runner', type: 'UNIT', cost: 3, activation: 2,
+    element: 'WATER', atk: 1, hp: 2,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1, 2], mode: 'ANY' },
+      { dir: 'E', ranges: [1, 2], mode: 'ANY' },
+      { dir: 'S', ranges: [1, 2], mode: 'ANY' },
+      { dir: 'W', ranges: [1, 2], mode: 'ANY' },
+    ],
+    dodge: { chance: 0.5, attempts: 1 },
+    drawOnSummonByElementFields: { element: 'WATER', includeSelf: true, includeCenter: true },
+    desc: 'Dodge attempt. When Cloud Runner is summoned, draw cards equal to the number of Water fields.'
+  },
+
+  WATER_DON_OF_VENOA: {
+    id: 'WATER_DON_OF_VENOA', name: 'Don of Venoa', type: 'UNIT', cost: 5, activation: 3,
+    element: 'WATER', atk: 2, hp: 3,
+    attackType: 'STANDARD',
+    attackSchemes: [
+      {
+        key: 'BASE',
+        label: 'Cleave',
+        attacks: [
+          { dir: 'N', ranges: [1], group: 'FRONT_BACK' },
+          { dir: 'S', ranges: [1], group: 'FRONT_BACK' },
+        ],
+      },
+      {
+        key: 'WATER_SWIRL',
+        label: 'Whirlpool',
+        attacks: [
+          { dir: 'N', ranges: [1], group: 'SWIRL' },
+          { dir: 'S', ranges: [1], group: 'SWIRL' },
+          { dir: 'E', ranges: [1], group: 'SWIRL' },
+          { dir: 'W', ranges: [1], group: 'SWIRL' },
+        ],
+      },
+    ],
+    defaultAttackScheme: 'BASE',
+    mustUseSchemeOnElement: [ { element: 'WATER', scheme: 'WATER_SWIRL' } ],
+    dodge: { chance: 0.5, attempts: 1 },
+    gainDodgeFromAdjacentEnemies: { attemptsPerEnemy: 1 },
+    grantDodgeAdjacentAllies: 1,
+    desc: 'Dodge attempt. Gains one Dodge attempt for each adjacent enemy. Adjacent allied creatures gain one Dodge attempt. While on a Water field he strikes all adjacent cells.'
+  },
+
+  WATER_MERCENARY_SAVIOR_LATOO: {
+    id: 'WATER_MERCENARY_SAVIOR_LATOO', name: 'Mercenary Savior Latoo', type: 'UNIT', cost: 3, activation: 2,
+    element: 'WATER', atk: 2, hp: 3,
+    attackType: 'STANDARD',
+    attackSchemes: [
+      {
+        key: 'BASE',
+        attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE' } ],
+      },
+      {
+        key: 'EARTH_STRIKE',
+        attacks: [ { dir: 'N', ranges: [1] } ],
+      },
+    ],
+    defaultAttackScheme: 'BASE',
+    mustUseSchemeOnElement: [ { element: 'EARTH', scheme: 'EARTH_STRIKE' } ],
+    plusAtkIfTargetOnElement: { element: 'WATER', amount: 1 },
+    auraGrantDodgeOnElement: { element: 'WATER', attempts: 1, includeSelf: false },
+    dodge: { chance: 0.5, attempts: 1 },
+    desc: 'Dodge attempt. Adds 1 to his Attack if at least one target is on a Water field. While Latoo is on the board, allied creatures on Water fields gain one Dodge attempt. While on an Earth field he strikes only the adjacent cell.'
+  },
+
+  WATER_TRITONAN_HARPOONSMAN: {
+    id: 'WATER_TRITONAN_HARPOONSMAN', name: 'Tritonan Harpoonsman', type: 'UNIT', cost: 2, activation: 1,
+    element: 'WATER', atk: 1, hp: 2,
+    attackType: 'STANDARD',
+    attackSchemes: [
+      {
+        key: 'BASE',
+        attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE' } ],
+      },
+      {
+        key: 'EARTH_STRIKE',
+        attacks: [ { dir: 'N', ranges: [1] } ],
+      },
+    ],
+    defaultAttackScheme: 'BASE',
+    mustUseSchemeOnElement: [ { element: 'EARTH', scheme: 'EARTH_STRIKE' } ],
+    dodge: { chance: 0.5, attempts: 1 },
+    gainDodgeOnElement: { element: 'WATER', attempts: 1 },
+    desc: 'Dodge attempt. While on a Water field Tritonan Harpoonsman gains one additional Dodge attempt. While on an Earth field his attack reaches only the adjacent cell.'
+  },
+
+  WATER_ALUHJA_PRIESTESS: {
+    id: 'WATER_ALUHJA_PRIESTESS', name: 'Aluhja Priestess', type: 'UNIT', cost: 2, activation: 1,
+    element: 'WATER', atk: 1, hp: 1,
+    attackType: 'MAGIC',
+    attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
+    blindspots: ['N', 'E', 'S', 'W'],
+    magicAttackArea: 'CROSS',
+    dodge: { chance: 0.5, attempts: 1 },
+    gainDodgeOnElement: { element: 'WATER', attempts: 1 },
+    desc: 'Magic Attack. Dodge attempt. While on a Water field, Aluhja Priestess gains one additional Dodge attempt.'
   },
 
   EARTH_NOVOGUS_GRAVEKEEPER: {

@@ -15,6 +15,7 @@ import {
   ensureDodgeState,
   attemptDodge as attemptDodgeInternal,
 } from './abilityHandlers/dodge.js';
+import { refreshBoardDodgeStates } from './abilityHandlers/dodgeEffects.js';
 import { computeTargetCostBonus as computeTargetCostBonusInternal } from './abilityHandlers/attackModifiers.js';
 import { collectRepositionOnDamage } from './abilityHandlers/reposition.js';
 import { extraActivationCostFromAuras } from './abilityHandlers/costModifiers.js';
@@ -22,6 +23,7 @@ import {
   applyElementalPossession,
   refreshContinuousPossessions as refreshContinuousPossessionsInternal,
 } from './abilityHandlers/possession.js';
+import { applySummonDraw } from './abilityHandlers/draw.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -64,6 +66,115 @@ function normalizeElements(value) {
     }
   }
   return set;
+}
+
+function cloneAttackEntry(entry = {}) {
+  const copy = { ...entry };
+  if (Array.isArray(entry.ranges)) copy.ranges = entry.ranges.slice();
+  return copy;
+}
+
+function buildSchemeMap(tpl) {
+  const list = Array.isArray(tpl?.attackSchemes) ? tpl.attackSchemes : [];
+  const map = new Map();
+  list.forEach((scheme, idx) => {
+    if (!scheme) return;
+    const key = scheme.key || scheme.id || scheme.code || `SCHEME_${idx}`;
+    map.set(key, {
+      key,
+      attackType: scheme.attackType || tpl.attackType,
+      attacks: Array.isArray(scheme.attacks) ? scheme.attacks.map(cloneAttackEntry) : [],
+      chooseDir: scheme.chooseDir != null ? !!scheme.chooseDir : undefined,
+      magicAttackArea: scheme.magicArea || scheme.magicAttackArea || tpl.magicAttackArea,
+    });
+  });
+  return map;
+}
+
+function normalizeSchemeRequirements(raw) {
+  if (!raw) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  const result = [];
+  for (const item of list) {
+    if (!item) continue;
+    if (typeof item === 'string') {
+      result.push({ element: item.toUpperCase(), scheme: 'ALT' });
+      continue;
+    }
+    if (typeof item === 'object') {
+      const element = item.element || item.field || item.type;
+      const scheme = item.scheme || item.key || item.use;
+      if (!element) continue;
+      result.push({ element: String(element).toUpperCase(), scheme: scheme ? String(scheme) : 'ALT' });
+    }
+  }
+  return result;
+}
+
+export function resolveAttackProfile(state, r, c, tpl, opts = {}) {
+  if (!tpl) {
+    return {
+      attackType: 'STANDARD',
+      attacks: [],
+      chooseDir: false,
+      magicAttackArea: null,
+      schemeKey: null,
+    };
+  }
+  const cellElement = state?.board?.[r]?.[c]?.element || null;
+  const schemeMap = buildSchemeMap(tpl);
+  const defaultKey = tpl.defaultAttackScheme || 'BASE';
+  const defaultScheme = schemeMap.get(defaultKey) || (schemeMap.size ? schemeMap.values().next().value : null);
+
+  const requirements = normalizeSchemeRequirements(tpl.mustUseSchemeOnElement);
+  let active = null;
+  if (requirements.length && cellElement) {
+    for (const req of requirements) {
+      if (req.element === cellElement) {
+        if (req.scheme && schemeMap.has(req.scheme)) {
+          active = schemeMap.get(req.scheme);
+          break;
+        }
+      }
+    }
+  }
+  if (!active && tpl.mustUseMagicOnElement && cellElement === tpl.mustUseMagicOnElement) {
+    const scheme = tpl.forceMagicSchemeKey && schemeMap.get(tpl.forceMagicSchemeKey);
+    active = scheme || null;
+    if (!active) {
+      active = {
+        key: 'FORCED_MAGIC',
+        attackType: 'MAGIC',
+        attacks: [],
+        chooseDir: false,
+        magicAttackArea: tpl.magicAttackArea,
+      };
+    }
+  }
+  if (!active) {
+    active = defaultScheme || {
+      key: null,
+      attackType: tpl.attackType,
+      attacks: Array.isArray(tpl.attacks) ? tpl.attacks.map(cloneAttackEntry) : [],
+      chooseDir: tpl.chooseDir,
+      magicAttackArea: tpl.magicAttackArea,
+    };
+  }
+
+  const attackType = active.attackType || tpl.attackType || 'STANDARD';
+  const attacks = Array.isArray(active.attacks) && active.attacks.length
+    ? active.attacks.map(cloneAttackEntry)
+    : (Array.isArray(tpl.attacks) ? tpl.attacks.map(cloneAttackEntry) : []);
+  const chooseDir = active.chooseDir != null ? !!active.chooseDir : !!tpl.chooseDir;
+  const magicAttackArea = active.magicAttackArea != null ? active.magicAttackArea : tpl.magicAttackArea;
+
+  return {
+    attackType,
+    attacks,
+    chooseDir,
+    magicAttackArea,
+    schemeKey: active.key || null,
+  };
 }
 
 function collectInvisibilitySources(tpl) {
@@ -449,7 +560,15 @@ export function applySummonAbilities(state, r, c) {
   const tpl = getUnitTemplate(unit);
   if (!tpl) return events;
 
-  ensureDodgeState(unit, tpl);
+  const drawRes = applySummonDraw(state, r, c, unit, tpl);
+  if (drawRes.drawn > 0) {
+    events.draw = {
+      player: unit.owner,
+      count: drawRes.drawn,
+      cards: drawRes.cards,
+      element: cell.element || null,
+    };
+  }
 
   const possessionCfg = normalizeElementConfig(
     tpl.gainPossessionEnemiesOnElement,
@@ -471,6 +590,11 @@ export function applySummonAbilities(state, r, c) {
   }
   if (continuous.releases.length) {
     events.releases = [...(events.releases || []), ...continuous.releases];
+  }
+
+  const dodgeInfo = refreshBoardDodgeStates(state);
+  if (Array.isArray(dodgeInfo?.updated) && dodgeInfo.updated.length) {
+    events.dodgeUpdates = dodgeInfo.updated;
   }
 
   return events;
@@ -511,9 +635,10 @@ export function shouldUseMagicAttack(state, r, c, tplOverride = null) {
   const unit = cell?.unit;
   const tpl = tplOverride || getUnitTemplate(unit);
   if (!cell || !unit || !tpl) return false;
-  const requiredElement = tpl.mustUseMagicOnElement;
-  if (!requiredElement) return false;
-  return cell.element === requiredElement;
+  const profile = resolveAttackProfile(state, r, c, tpl, { unit, cell });
+  if (!profile) return false;
+  const baseType = tpl.attackType || 'STANDARD';
+  return profile.attackType === 'MAGIC' && baseType !== 'MAGIC';
 }
 
 export function computeMagicAreaCells(tpl, tr, tc) {
@@ -584,6 +709,7 @@ export const applyIncarnationSummon = applyIncarnationSummonInternal;
 export const ensureUnitDodgeState = ensureDodgeState;
 export const attemptUnitDodge = attemptDodgeInternal;
 export const refreshContinuousPossessions = refreshContinuousPossessionsInternal;
+export { refreshBoardDodgeStates };
 
 export function collectUnitActions(state, r, c) {
   const actions = [];
