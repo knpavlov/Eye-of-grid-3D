@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack, stagedAttack } from '../src/core/rules.js';
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
-import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack } from '../src/core/abilities.js';
+import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshPassivePossessions } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -766,6 +766,56 @@ describe('новые механики', () => {
     state.board[1][1].unit = { owner:0, tplId:'FIRE_DIDI_THE_ENLIGHTENED', facing:'N' };
     const cells = computeFieldquakeLockedCells(state);
     expect(cells.length).toBe(8);
+  });
+});
+
+describe('possession auras', () => {
+  function makeState() {
+    return { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 5 };
+  }
+
+  it('Anfisa захватывает соседних врагов на водном поле и отпускает при смене поля', () => {
+    const state = makeState();
+    state.board[1][1].element = 'WATER';
+    state.board[1][1].unit = { owner: 0, tplId: 'WATER_IMPOSTER_QUEEN_ANFISA', facing: 'N' };
+    state.board[1][0].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'E' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'S' };
+
+    const events = applySummonAbilities(state, 1, 1);
+    expect(events.possessions).toHaveLength(2);
+    expect(state.board[1][0].unit.owner).toBe(0);
+    expect(state.board[1][0].unit.possessed?.originalOwner).toBe(1);
+    expect(state.board[0][1].unit.owner).toBe(0);
+
+    state.board[1][1].element = 'FIRE';
+    const release = refreshPassivePossessions(state);
+    expect(state.board[1][0].unit.owner).toBe(1);
+    expect(state.board[1][0].unit.possessed).toBeUndefined();
+    expect(state.board[0][1].unit.owner).toBe(1);
+    expect(state.board[0][1].unit.possessed).toBeUndefined();
+    expect(Array.isArray(release.released)).toBe(true);
+    expect(release.released.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('Tentacles of Possession контролируют только цель перед собой', () => {
+    const state = makeState();
+    state.board[1][1].element = 'WATER';
+    state.board[1][1].unit = { owner: 0, tplId: 'WATER_TENTACLES_OF_POSSESSION', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'S' };
+    state.board[1][2].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'W' };
+
+    let aura = refreshPassivePossessions(state);
+    expect(aura.gained).toHaveLength(1);
+    expect(state.board[0][1].unit.owner).toBe(0);
+    expect(state.board[1][2].unit.owner).toBe(1);
+
+    state.board[1][1].unit.facing = 'E';
+    aura = refreshPassivePossessions(state);
+    expect(aura.gained).toHaveLength(1);
+    expect(state.board[0][1].unit.owner).toBe(1);
+    expect(state.board[0][1].unit.possessed).toBeUndefined();
+    expect(state.board[1][2].unit.owner).toBe(0);
+    expect(state.board[1][2].unit.possessed?.originalOwner).toBe(1);
   });
 });
 

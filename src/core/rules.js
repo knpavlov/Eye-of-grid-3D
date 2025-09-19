@@ -15,6 +15,7 @@ import {
   attemptUnitDodge,
   collectDamageInteractions,
   applyDamageInteractionResults,
+  refreshPassivePossessions,
 } from './abilities.js';
 import { countUnits } from './board.js';
 import { computeCellBuff } from './fieldEffects.js';
@@ -511,6 +512,22 @@ export function stagedAttack(state, r, c, opts = {}) {
       }
     }
 
+    const auraEvents = refreshPassivePossessions(nFinal);
+    if (Array.isArray(auraEvents?.gained) && auraEvents.gained.length) {
+      for (const ev of auraEvents.gained) {
+        const tplTarget = CARDS[ev.targetTplId];
+        const name = tplTarget?.name || 'Существо';
+        logLines.push(`${name}: контроль переходит к игроку ${ev.newOwner + 1}.`);
+      }
+    }
+    if (Array.isArray(auraEvents?.released) && auraEvents.released.length) {
+      for (const ev of auraEvents.released) {
+        const tplRel = CARDS[ev.targetTplId];
+        const name = tplRel?.name || 'Существо';
+        logLines.push(`${name}: контроль возвращается к игроку ${ev.owner + 1}.`);
+      }
+    }
+
     if (A) {
       A.lastAttackTurn = nFinal.turn;
       A.apSpent = (A.apSpent || 0) + attackCostValue;
@@ -730,6 +747,21 @@ export function magicAttack(state, fr, fc, tr, tc) {
   }
   if (Array.isArray(applied?.logLines) && applied.logLines.length) {
     logLines.push(...applied.logLines);
+  }
+  const auraEvents = refreshPassivePossessions(n1);
+  if (Array.isArray(auraEvents?.gained) && auraEvents.gained.length) {
+    for (const ev of auraEvents.gained) {
+      const tplTarget = CARDS[ev.targetTplId];
+      const name = tplTarget?.name || 'Существо';
+      logLines.push(`${name}: контроль переходит к игроку ${ev.newOwner + 1}.`);
+    }
+  }
+  if (Array.isArray(auraEvents?.released) && auraEvents.released.length) {
+    for (const ev of auraEvents.released) {
+      const tplRel = CARDS[ev.targetTplId];
+      const name = tplRel?.name || 'Существо';
+      logLines.push(`${name}: контроль возвращается к игроку ${ev.owner + 1}.`);
+    }
   }
   attacker.lastAttackTurn = n1.turn;
   attacker.apSpent = (attacker.apSpent || 0) + attackCostValue;

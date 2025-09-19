@@ -18,6 +18,12 @@ import {
 import { computeTargetCostBonus as computeTargetCostBonusInternal } from './abilityHandlers/attackModifiers.js';
 import { collectRepositionOnDamage } from './abilityHandlers/reposition.js';
 import { extraActivationCostFromAuras } from './abilityHandlers/costModifiers.js';
+import {
+  normalizeElementConfig,
+  applyElementalPossessionOnSummon,
+  refreshPossessionAuras,
+  samePossessionSource,
+} from './abilityHandlers/possession.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -332,47 +338,6 @@ export function applyDamageInteractionResults(state, effects = {}) {
   return { attackerPosUpdate, logLines: logs };
 }
 
-function normalizeElementConfig(value, defaults = {}) {
-  if (!value) return null;
-  if (typeof value === 'string') {
-    return { ...defaults, element: value };
-  }
-  if (typeof value === 'object') {
-    return { ...defaults, ...value };
-  }
-  return null;
-}
-
-function sameSource(possessionSource, deathInfo) {
-  if (!possessionSource || !deathInfo) return false;
-  if (possessionSource.uid != null && deathInfo.uid != null) {
-    if (possessionSource.uid === deathInfo.uid) return true;
-  }
-  if (possessionSource.position && deathInfo.position) {
-    if (possessionSource.position.r === deathInfo.position.r &&
-        possessionSource.position.c === deathInfo.position.c) {
-      return true;
-    }
-  }
-  if (possessionSource.tplId && deathInfo.tplId) {
-    if (possessionSource.tplId === deathInfo.tplId &&
-        possessionSource.owner === deathInfo.owner) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function buildSourceDescriptor(state, r, c, unit, tpl) {
-  return {
-    uid: getUnitUid(unit),
-    tplId: tpl?.id || unit?.tplId || null,
-    owner: unit?.owner,
-    position: { r, c },
-    turn: state?.turn ?? 0,
-  };
-}
-
 function ensureUniqueCells(cells) {
   const seen = new Set();
   const res = [];
@@ -425,7 +390,7 @@ export const hasFirstStrike = (tpl) => !!(tpl && tpl.firstStrike);
 export const hasDoubleAttack = (tpl) => !!(tpl && tpl.doubleAttack);
 
 // Может ли существо атаковать (крепости не могут)
-export const canAttack = (tpl) => !(tpl && tpl.fortress);
+export const canAttack = (tpl) => !(tpl && (tpl.fortress || tpl.cannotAttack));
 
 // Реализация ауры Фридонийского Странника при призыве союзников
 // Возвращает количество полученных единиц маны
@@ -457,43 +422,14 @@ export function applySummonAbilities(state, r, c) {
 
   ensureDodgeState(unit, tpl);
 
-  const possessionCfg = normalizeElementConfig(
-    tpl.gainPossessionEnemiesOnElement,
-    { requireDifferentField: true }
-  );
-  if (possessionCfg && possessionCfg.element) {
-    const cellElement = cell.element;
-    const requireDiff = possessionCfg.requireDifferentField !== false;
-    const shouldTrigger = !requireDiff || cellElement !== possessionCfg.element;
-    if (shouldTrigger) {
-      for (let rr = 0; rr < 3; rr++) {
-        for (let cc = 0; cc < 3; cc++) {
-          const targetCell = state?.board?.[rr]?.[cc];
-          const targetUnit = targetCell?.unit;
-          if (!targetUnit) continue;
-          if (targetUnit.owner === unit.owner) continue;
-          if (targetCell.element !== possessionCfg.element) continue;
-          const originalOwner = targetUnit.possessed?.originalOwner ?? targetUnit.owner;
-          const tplTarget = getUnitTemplate(targetUnit);
-          targetUnit.owner = unit.owner;
-          targetUnit.possessed = {
-            by: unit.owner,
-            originalOwner,
-            source: buildSourceDescriptor(state, r, c, unit, tpl),
-            sinceTurn: state?.turn ?? 0,
-            targetTplId: tplTarget?.id ?? targetUnit.tplId,
-          };
-          targetUnit.lastAttackTurn = state?.turn ?? 0;
-          events.possessions.push({
-            r: rr,
-            c: cc,
-            originalOwner,
-            newOwner: unit.owner,
-            targetTplId: tplTarget?.id ?? targetUnit.tplId,
-          });
-        }
-      }
-    }
+  const elemental = applyElementalPossessionOnSummon(state, r, c, unit, tpl);
+  if (elemental.length) {
+    events.possessions.push(...elemental);
+  }
+
+  const auraEvents = refreshPossessionAuras(state);
+  if (Array.isArray(auraEvents?.gained) && auraEvents.gained.length) {
+    events.possessions.push(...auraEvents.gained);
   }
   return events;
 }
@@ -513,7 +449,7 @@ export function releasePossessionsAfterDeaths(state, deaths = []) {
       const unit = state.board?.[rr]?.[cc]?.unit;
       if (!unit?.possessed) continue;
       const src = unit.possessed.source;
-      const match = sources.some(s => sameSource(src, s));
+      const match = sources.some(s => samePossessionSource(src, s));
       if (!match) continue;
       const originalOwner = unit.possessed.originalOwner;
       unit.owner = originalOwner;
@@ -605,6 +541,10 @@ export const evaluateIncarnationSummon = evaluateIncarnationSummonInternal;
 export const applyIncarnationSummon = applyIncarnationSummonInternal;
 export const ensureUnitDodgeState = ensureDodgeState;
 export const attemptUnitDodge = attemptDodgeInternal;
+
+export function refreshPassivePossessions(state) {
+  return refreshPossessionAuras(state);
+}
 
 export function collectUnitActions(state, r, c) {
   const actions = [];

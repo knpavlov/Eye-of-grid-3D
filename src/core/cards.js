@@ -276,6 +276,27 @@ export const CARDS = {
     swapWithTargetOnElement: 'WATER',
     desc: 'Gains Invisibility while at least one allied Swallow Ninja is on the board. If Wolf Ninja damages a creature on a Water field, it switches places with that creature (which cannot counterattack).'
   },
+  WATER_IMPOSTER_QUEEN_ANFISA: {
+    id: 'WATER_IMPOSTER_QUEEN_ANFISA', name: 'Imposter Queen Anfisa', type: 'UNIT', cost: 6, activation: 2,
+    element: 'WATER', atk: 2, hp: 5,
+    attackType: 'MAGIC',
+    attacks: [], blindspots: ['S'],
+    possessionAuras: [
+      { id: 'ANFISA_WATER_AURA', tag: 'POSSESSION_AURA', element: 'WATER', requireSourceOnElement: true, directions: 'ADJACENT' },
+    ],
+    desc: 'Magic Attack. While on a Water field, Imposter Queen Anfisa gains possession of all adjacent enemy creatures.'
+  },
+  WATER_TENTACLES_OF_POSSESSION: {
+    id: 'WATER_TENTACLES_OF_POSSESSION', name: 'Tentacles of Possession', type: 'UNIT', cost: 2, activation: 1,
+    element: 'WATER', atk: 0, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [], blindspots: ['S'],
+    cannotAttack: true,
+    possessionAuras: [
+      { id: 'TENTACLES_FRONT_AURA', tag: 'POSSESSION_AURA', directions: ['FRONT'] },
+    ],
+    desc: 'Cannot attack. Tentacles of Possession gains possession of the enemy directly in front of it.'
+  },
   WATER_BLUE_CUBIC: {
     id: 'WATER_BLUE_CUBIC', name: 'Blue Cubic', type: 'UNIT', cost: 1, activation: 1,
     element: 'WATER', atk: 1, hp: 1,
