@@ -11,6 +11,8 @@ import {
   computeDynamicMagicAttack,
   releasePossessionsAfterDeaths,
   refreshContinuousPossessions,
+  refreshUnitDodgeBonuses,
+  resolveUnitAttackProfile,
   hasPerfectDodge,
   hasInvisibility,
   attemptUnitDodge,
@@ -44,14 +46,15 @@ function rotateDir(facing, dir) {
 }
 
 // Возвращает все потенциальные клетки атаки без учёта препятствий
-function attackCellsForTpl(tpl, facing, opts = {}) {
+function attackCellsForProfile(tpl, profile, facing, opts = {}) {
   const res = [];
-  const attacks = tpl.attacks || [];
+  const attacks = profile?.attacks || [];
   const { chosenDir, rangeChoices, union } = opts;
+  const chooseDir = profile?.chooseDir ?? tpl?.chooseDir ?? false;
   let seq = 0;
   for (const a of attacks) {
-    if (!union && tpl.chooseDir) {
-      if (!chosenDir) continue; // направление нужно выбрать явно
+    if (!union && chooseDir) {
+      if (!chosenDir) continue;
       if (a.dir !== chosenDir) continue;
     }
     const dirAbs = rotateDir(facing, a.dir);
@@ -88,13 +91,15 @@ export function computeHits(state, r, c, opts = {}) {
   if (!attacker) return [];
   const tplA = CARDS[attacker.tplId];
   // tplA.friendlyFire — может ли атака задевать союзников
-  const cells = attackCellsForTpl(tplA, attacker.facing, opts);
+  const profile = resolveUnitAttackProfile(state, r, c, { tpl: tplA, unit: attacker });
+  const cells = attackCellsForProfile(tplA, profile, attacker.facing, opts);
   const { atk } = effectiveStats(state.board[r][c], attacker);
   const hits = [];
   const aFlying = (tplA.keywords || []).includes('FLYING');
   const basePierce = !!tplA.pierce;
   const allowFriendly = !!tplA.friendlyFire; // может ли существо задевать союзников
   const forceBackAttack = !!tplA.backAttack;
+  const attackType = profile?.attackType || tplA.attackType;
   const grouped = new Map();
   let fallbackIdx = 0;
   for (const cell of cells) {
@@ -238,6 +243,8 @@ export function stagedAttack(state, r, c, opts = {}) {
   const damageEffects = { preventRetaliation: new Set(), events: [] };
   const randomFn = typeof opts?.rng === 'function' ? opts.rng : Math.random;
 
+  const profile = resolveUnitAttackProfile(base, r, c, { tpl: tplA, unit: attacker });
+  const attackType = profile?.attackType || tplA.attackType;
   const hitsRaw = computeHits(base, r, c, opts);
   if (!hitsRaw.length) return { empty: true };
 
@@ -319,7 +326,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     const B = cell?.unit;
     if (!B) return { ...h, dealt: 0 };
     const sameOwner = B.owner === attacker.owner;
-    const isMagic = tplA.attackType === 'MAGIC';
+    const isMagic = attackType === 'MAGIC';
     const tplB = CARDS[B.tplId];
     if (sameOwner) {
       // Союзники не уклоняются от массового удара, поэтому просто получаем урон
@@ -437,7 +444,7 @@ export function stagedAttack(state, r, c, opts = {}) {
         retaliators.push({ r: h.r, c: h.c });
       }
     }
-    const preventRetaliation = tplA.attackType === 'MAGIC' || (tplA.avoidRetaliation50 && Math.random() < 0.5);
+    const preventRetaliation = attackType === 'MAGIC' || (tplA.avoidRetaliation50 && Math.random() < 0.5);
     const total = preventRetaliation ? 0 : totalRetaliation;
     return { total, retaliators };
   }
@@ -531,6 +538,8 @@ export function stagedAttack(state, r, c, opts = {}) {
       }
     }
 
+    refreshUnitDodgeBonuses(nFinal);
+
     if (A) {
       A.lastAttackTurn = nFinal.turn;
       A.apSpent = (A.apSpent || 0) + attackCostValue;
@@ -572,6 +581,11 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (attacker.lastAttackTurn === n1.turn) return null;
   const tplA = CARDS[attacker.tplId];
   if (!canAttack(tplA)) return null;
+
+  const profile = resolveUnitAttackProfile(n1, fr, fc, { tpl: tplA, unit: attacker });
+  const tplForMagic = profile?.magicArea
+    ? { ...tplA, magicAttackArea: profile.magicArea }
+    : tplA;
 
   const startElement = n1.board?.[fr]?.[fc]?.element;
   const attackCostValue = attackCost(tplA, startElement, {
@@ -632,7 +646,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
   const primaryTarget = (typeof tr === 'number' && typeof tc === 'number')
     ? { r: tr, c: tc }
     : null;
-  const baseCells = collectMagicTargetCells(n1, tplA, { r: fr, c: fc }, primaryTarget) || [];
+  const baseCells = collectMagicTargetCells(n1, tplForMagic, { r: fr, c: fc }, primaryTarget) || [];
   for (const cell of baseCells) { addCell(cell.r, cell.c); }
 
   const splash = tplA.splash || 0;
@@ -771,6 +785,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
       logLines.push(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
     }
   }
+  refreshUnitDodgeBonuses(n1);
   attacker.lastAttackTurn = n1.turn;
   attacker.apSpent = (attacker.apSpent || 0) + attackCostValue;
   const combinedReleases = [...releaseEvents.releases, ...continuous.releases];

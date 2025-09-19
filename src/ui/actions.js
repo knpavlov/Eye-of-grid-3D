@@ -19,6 +19,7 @@ import {
   clearPendingAbilityOrientation,
   showOracleDeathBuff,
 } from '../scene/interactions.js';
+import { playDrawEvents } from './drawEvents.js';
 
 export function rotateUnit(unitMesh, dir) {
   try {
@@ -117,8 +118,11 @@ export function performUnitAttack(unitMesh) {
       return;
     }
     const computeHits = window.computeHits;
-    const attacks = tpl?.attacks || [];
-    const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
+    const profile = window.resolveUnitAttackProfile
+      ? window.resolveUnitAttackProfile(gameState, r, c, { tpl })
+      : { attacks: tpl?.attacks || [], chooseDir: tpl?.chooseDir };
+    const attacks = profile?.attacks || [];
+    const needsChoice = (profile?.chooseDir ?? tpl?.chooseDir) || attacks.some(a => a.mode === 'ANY');
     const includeEmpty = attacks.some(a => Array.isArray(a.ranges) && a.ranges.length > 1 && !a.mode);
     const hitsAll = typeof computeHits === 'function' ? computeHits(gameState, r, c, { union: true, includeEmpty }) : [];
     const allowFriendly = !!tpl?.friendlyFire;
@@ -288,7 +292,7 @@ export function performUnitAbility(unitMesh, actionId) {
   }
 }
 
-export function confirmUnitAbilityOrientation(context, direction) {
+export async function confirmUnitAbilityOrientation(context, direction) {
   try {
     if (typeof window === 'undefined') return;
     const w = window;
@@ -347,6 +351,20 @@ export function confirmUnitAbilityOrientation(context, direction) {
         const tplTaken = unitTaken ? w.CARDS?.[unitTaken.tplId] : null;
         const name = tplTaken?.name || 'Существо';
         w.addLog?.(`${name}: контроль переходит к игроку ${gameState.active + 1}.`);
+      }
+    }
+
+    if (result.summonEvents?.draws?.length) {
+      try {
+        await playDrawEvents(result.summonEvents.draws, {
+          sourceName: replacementName,
+          animateCard: (cardTpl) => w.animateDrawnCardToHand?.(cardTpl),
+          updateHand: (state) => w.updateHand?.(state ?? gameState),
+          log: (message) => w.addLog?.(message),
+          state: gameState,
+        });
+      } catch (err) {
+        console.warn('[confirmUnitAbilityOrientation] Ошибка обработки добора', err);
       }
     }
 

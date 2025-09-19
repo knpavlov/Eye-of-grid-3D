@@ -10,6 +10,7 @@ import {
   applyIncarnationSummon,
   isIncarnationCard,
 } from '../core/abilities.js';
+import { playDrawEvents } from '../ui/drawEvents.js';
 import { capMana } from '../core/constants.js';
 
 // Centralized interaction state
@@ -100,7 +101,10 @@ function onMouseMove(event) {
     const gs = window.gameState;
     const unit = gs.board?.[r]?.[c]?.unit;
     const tpl = window.CARDS?.[unit?.tplId];
-    const attacks = tpl?.attacks || [];
+    const profile = window.resolveUnitAttackProfile
+      ? window.resolveUnitAttackProfile(gs, r, c, { tpl })
+      : { attacks: tpl?.attacks || [] };
+    const attacks = profile?.attacks || [];
     const includeEmpty = attacks.some(a => Array.isArray(a.ranges) && a.ranges.length > 1 && !a.mode);
     const hits = (typeof window !== 'undefined' && window.computeHits)
       ? window.computeHits(gs, r, c, { union: true, includeEmpty })
@@ -558,7 +562,7 @@ function castSpellByDrag(cardMesh, unitMesh, tileMesh) {
   if (!handled) { showNotification('Incorrect target', 'error'); }
 }
 
-export function placeUnitWithDirection(direction) {
+export async function placeUnitWithDirection(direction) {
   const gameState = window.gameState;
   if (!interactionState.pendingPlacement) return;
   const { card, row, col, handIndex, incarnation } = interactionState.pendingPlacement;
@@ -692,6 +696,19 @@ export function placeUnitWithDirection(direction) {
         }
       } catch {}
     }
+    if (summonEvents?.draws?.length) {
+      try {
+        await playDrawEvents(summonEvents.draws, {
+          sourceName: cardData.name,
+          animateCard: (cardTpl) => window.animateDrawnCardToHand?.(cardTpl),
+          updateHand: (state) => window.updateHand?.(state ?? gameState),
+          log: (message) => window.addLog?.(message),
+          state: gameState,
+        });
+      } catch (err) {
+        console.warn('[interactions] Ошибка обработки добора при призыве', err);
+      }
+    }
     const gained = applyFreedonianAura(gameState, gameState.active);
     if (gained > 0) {
       window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
@@ -727,7 +744,11 @@ export function placeUnitWithDirection(direction) {
         if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
         return;
       }
-      if (tpl?.attackType === 'MAGIC' || forcedMagic) {
+      const profile = window.resolveUnitAttackProfile
+        ? window.resolveUnitAttackProfile(gameState, row, col, { tpl })
+        : { attacks: tpl?.attacks || [], chooseDir: tpl?.chooseDir, attackType: tpl?.attackType };
+      const attackType = profile?.attackType || tpl?.attackType;
+      if (attackType === 'MAGIC' || forcedMagic) {
         const allowFriendly = !!tpl.friendlyFire;
         const cells = [];
         let hasEnemy = false;
@@ -755,8 +776,8 @@ export function placeUnitWithDirection(direction) {
           try { window.endTurn && window.endTurn(); } catch {}
         }
       } else {
-        const attacks = tpl?.attacks || [];
-        const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
+        const attacks = profile?.attacks || [];
+        const needsChoice = (profile?.chooseDir ?? tpl?.chooseDir) || attacks.some(a => a.mode === 'ANY');
         // если в шаблоне несколько дистанций без выбора, подсвечиваем и пустые клетки
         const includeEmpty = attacks.some(a => Array.isArray(a.ranges) && a.ranges.length > 1 && !a.mode);
         const hitsAll = window.computeHits(gameState, row, col, { union: true, includeEmpty });

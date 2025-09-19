@@ -14,6 +14,7 @@ import {
 import {
   ensureDodgeState,
   attemptDodge as attemptDodgeInternal,
+  refreshDodgeBonuses as refreshDodgeBonusesInternal,
 } from './abilityHandlers/dodge.js';
 import { computeTargetCostBonus as computeTargetCostBonusInternal } from './abilityHandlers/attackModifiers.js';
 import { collectRepositionOnDamage } from './abilityHandlers/reposition.js';
@@ -22,6 +23,8 @@ import {
   applyElementalPossession,
   refreshContinuousPossessions as refreshContinuousPossessionsInternal,
 } from './abilityHandlers/possession.js';
+import { resolveAttackProfile } from './abilityHandlers/attackSchemes.js';
+import { applySummonDraw } from './abilityHandlers/draw.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -34,6 +37,37 @@ function getUnitTemplate(unit) {
 
 function getUnitUid(unit) {
   return (unit && unit.uid != null) ? unit.uid : null;
+}
+
+function buildAttackProfile(tpl, scheme = null) {
+  const base = {
+    attacks: tpl?.attacks || [],
+    chooseDir: tpl?.chooseDir || false,
+    attackType: tpl?.attackType,
+    magicArea: tpl?.magicAttackArea,
+  };
+  if (!scheme) return base;
+  return {
+    attacks: scheme.attacks || base.attacks,
+    chooseDir: scheme.chooseDir ?? base.chooseDir,
+    attackType: scheme.attackType || base.attackType,
+    magicArea: scheme.magicArea || scheme.magicAttackArea || base.magicArea,
+  };
+}
+
+export function resolveUnitAttackProfile(state, r, c, opts = {}) {
+  const cell = state?.board?.[r]?.[c];
+  const unit = opts.unit || cell?.unit;
+  const tpl = opts.tpl || getUnitTemplate(unit);
+  if (!tpl) return buildAttackProfile(null, null);
+  const scheme = resolveAttackProfile(state, {
+    tpl,
+    unit,
+    r,
+    c,
+    schemeKey: opts.schemeKey,
+  });
+  return buildAttackProfile(tpl, scheme);
 }
 
 function toArray(value) {
@@ -451,6 +485,12 @@ export function applySummonAbilities(state, r, c) {
 
   ensureDodgeState(unit, tpl);
 
+  const drawInfo = applySummonDraw(state, { owner: unit.owner, tpl });
+  if (drawInfo) {
+    events.draws = events.draws || [];
+    events.draws.push(drawInfo);
+  }
+
   const possessionCfg = normalizeElementConfig(
     tpl.gainPossessionEnemiesOnElement,
     { requireDifferentField: true }
@@ -472,6 +512,8 @@ export function applySummonAbilities(state, r, c) {
   if (continuous.releases.length) {
     events.releases = [...(events.releases || []), ...continuous.releases];
   }
+
+  refreshDodgeBonusesInternal(state);
 
   return events;
 }
@@ -584,6 +626,7 @@ export const applyIncarnationSummon = applyIncarnationSummonInternal;
 export const ensureUnitDodgeState = ensureDodgeState;
 export const attemptUnitDodge = attemptDodgeInternal;
 export const refreshContinuousPossessions = refreshContinuousPossessionsInternal;
+export const refreshUnitDodgeBonuses = refreshDodgeBonusesInternal;
 
 export function collectUnitActions(state, r, c) {
   const actions = [];

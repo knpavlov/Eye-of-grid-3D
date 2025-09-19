@@ -72,11 +72,11 @@ export function attachUIEvents() {
   });
 
   document.querySelectorAll('[data-dir]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const direction = btn.getAttribute('data-dir');
       const abilityOrientation = w.__interactions?.getPendingAbilityOrientation?.();
       if (abilityOrientation) {
-        w.__ui?.actions?.confirmUnitAbilityOrientation?.(abilityOrientation, direction);
+        await w.__ui?.actions?.confirmUnitAbilityOrientation?.(abilityOrientation, direction);
         return;
       }
       const pso = w.__interactions?.getPendingSpellOrientation?.();
@@ -98,7 +98,7 @@ export function attachUIEvents() {
         try { w.__ui.cancelButton.refreshCancelButton(); } catch {}
         return;
       }
-      w.__interactions.placeUnitWithDirection(direction);
+      await w.__interactions.placeUnitWithDirection(direction);
     });
   });
 }

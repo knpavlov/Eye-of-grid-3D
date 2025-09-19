@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack, stagedAttack } from '../src/core/rules.js';
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
-import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions } from '../src/core/abilities.js';
+import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, refreshUnitDodgeBonuses } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -797,6 +797,166 @@ describe('новые механики', () => {
     state.board[1][1].unit = { owner:0, tplId:'FIRE_DIDI_THE_ENLIGHTENED', facing:'N' };
     const cells = computeFieldquakeLockedCells(state);
     expect(cells.length).toBe(8);
+  });
+});
+
+describe('новые водные карты', () => {
+  function makePlayer(deck = []) {
+    return {
+      name: 'Tester',
+      deck: deck.slice(),
+      hand: [],
+      discard: [],
+      graveyard: [],
+      mana: 0,
+      maxMana: 10,
+    };
+  }
+
+  it('Cloud Runner добирает карты по числу водных полей', () => {
+    const board = makeBoard();
+    board[0][0].element = 'WATER';
+    board[0][2].element = 'WATER';
+    board[1][0].element = 'WATER';
+    const deck = [
+      CARDS.FIRE_PARTMOLE_FLAME_LIZARD,
+      CARDS.FIRE_HELLFIRE_SPITTER,
+      CARDS.FIRE_GREAT_MINOS,
+    ];
+    const state = {
+      board,
+      players: [makePlayer(deck), makePlayer([])],
+      active: 0,
+      turn: 1,
+    };
+    const unit = {
+      owner: 0,
+      tplId: 'WATER_CLOUD_RUNNER',
+      currentHP: CARDS.WATER_CLOUD_RUNNER.hp,
+      facing: 'N',
+    };
+    board[0][0].unit = unit;
+    const events = applySummonAbilities(state, 0, 0);
+    expect(events.draws?.length).toBe(1);
+    expect(events.draws?.[0]?.cards?.length).toBe(3);
+    expect(state.players[0].hand.length).toBe(3);
+  });
+
+  it('Don of Venoa на воде поражает все четыре соседние клетки', () => {
+    const board = makeBoard();
+    board[1][1].element = 'WATER';
+    const enemyTpl = 'FIRE_PARTMOLE_FLAME_LIZARD';
+    const state = {
+      board,
+      players: [{ mana: 0 }, { mana: 0 }],
+      turn: 1,
+    };
+    board[1][1].unit = {
+      owner: 0,
+      tplId: 'WATER_DON_OF_VENOA',
+      currentHP: CARDS.WATER_DON_OF_VENOA.hp,
+      facing: 'N',
+    };
+    board[0][1].unit = { owner: 1, tplId: enemyTpl, currentHP: 2, facing: 'S' };
+    board[1][0].unit = { owner: 1, tplId: enemyTpl, currentHP: 2, facing: 'E' };
+    board[1][2].unit = { owner: 1, tplId: enemyTpl, currentHP: 2, facing: 'W' };
+    board[2][1].unit = { owner: 1, tplId: enemyTpl, currentHP: 2, facing: 'N' };
+    const hits = computeHits(state, 1, 1);
+    const coords = hits.filter(h => h.dmg > 0).map(h => `${h.r},${h.c}`).sort();
+    expect(coords).toEqual(['0,1', '1,0', '1,2', '2,1']);
+  });
+
+  it('Don of Venoa вне воды атакует только перед собой и за спиной', () => {
+    const board = makeBoard();
+    board[1][1].element = 'FIRE';
+    const state = {
+      board,
+      players: [{ mana: 0 }, { mana: 0 }],
+      turn: 1,
+    };
+    board[1][1].unit = {
+      owner: 0,
+      tplId: 'WATER_DON_OF_VENOA',
+      currentHP: CARDS.WATER_DON_OF_VENOA.hp,
+      facing: 'N',
+    };
+    board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', currentHP: 2, facing: 'S' };
+    board[2][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', currentHP: 2, facing: 'N' };
+    board[1][0].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', currentHP: 2, facing: 'E' };
+    const hits = computeHits(state, 1, 1);
+    const coords = hits.filter(h => h.dmg > 0).map(h => `${h.r},${h.c}`).sort();
+    expect(coords).toEqual(['0,1', '2,1']);
+  });
+
+  it('Ауры и бонусы Dodge для новых существ пересчитываются корректно', () => {
+    const board = makeBoard();
+    board[0][0].element = 'WATER';
+    board[0][2].element = 'WATER';
+    board[1][1].element = 'FIRE';
+    const state = {
+      board,
+      players: [{ mana: 0 }, { mana: 0 }],
+      turn: 1,
+    };
+    const latoo = {
+      owner: 0,
+      tplId: 'WATER_MERCENARY_SAVIOR_LATOO',
+      currentHP: CARDS.WATER_MERCENARY_SAVIOR_LATOO.hp,
+      facing: 'N',
+    };
+    const ally = {
+      owner: 0,
+      tplId: 'FIRE_PARTMOLE_FLAME_LIZARD',
+      currentHP: CARDS.FIRE_PARTMOLE_FLAME_LIZARD.hp,
+      facing: 'E',
+    };
+    const don = {
+      owner: 0,
+      tplId: 'WATER_DON_OF_VENOA',
+      currentHP: CARDS.WATER_DON_OF_VENOA.hp,
+      facing: 'N',
+    };
+    const foe = {
+      owner: 1,
+      tplId: 'FIRE_PARTMOLE_FLAME_LIZARD',
+      currentHP: 2,
+      facing: 'W',
+    };
+    board[0][0].unit = latoo;
+    board[0][2].unit = ally;
+    board[1][1].unit = don;
+    board[1][2].unit = { ...foe, facing: 'W' };
+    board[2][1].unit = { ...foe, facing: 'N' };
+
+    refreshUnitDodgeBonuses(state);
+
+    expect(ally.dodgeState).toBeTruthy();
+    expect(ally.dodgeState.bonusAttempts).toBe(1);
+    expect(don.dodgeState).toBeTruthy();
+    expect(don.dodgeState.bonusAttempts).toBe(2);
+  });
+
+  it('Tritonan Harpoonsman получает дополнительную попытку Dodge на воде', () => {
+    const board = makeBoard();
+    board[1][1].element = 'WATER';
+    const state = {
+      board,
+      players: [{ mana: 0 }, { mana: 0 }],
+      turn: 1,
+    };
+    const harpoon = {
+      owner: 0,
+      tplId: 'WATER_TRITONAN_HARPOONSMAN',
+      currentHP: CARDS.WATER_TRITONAN_HARPOONSMAN.hp,
+      facing: 'N',
+    };
+    board[1][1].unit = harpoon;
+    refreshUnitDodgeBonuses(state);
+    expect(harpoon.dodgeState).toBeTruthy();
+    expect(harpoon.dodgeState.bonusAttempts).toBe(1);
+    board[1][1].element = 'EARTH';
+    refreshUnitDodgeBonuses(state);
+    expect(harpoon.dodgeState.bonusAttempts).toBe(0);
   });
 });
 
