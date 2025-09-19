@@ -1,5 +1,6 @@
 // Board construction and materials
 import { getCtx } from './context.js';
+import { clearDodgeOverlays } from './dodgeOverlay.js';
 
 const BASE_MAP = {
   FIRE: './textures/tile_fire.png',
@@ -125,6 +126,7 @@ export function createBoard(gameState) {
   // Cleanup previous
   (ctx.tileMeshes || []).forEach(row => row && row.forEach(tile => { try { boardGroup.remove(tile); } catch {} }));
   (ctx.tileFrames || []).forEach(row => row && row.forEach(f => { try { boardGroup.remove(f); } catch {} }));
+  try { clearDodgeOverlays(); } catch {}
   ctx.tileMeshes = []; ctx.tileFrames = [];
 
   const tileSize = 6.2;

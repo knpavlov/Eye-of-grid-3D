@@ -5,6 +5,7 @@ import { renderFieldLocks } from './fieldlocks.js';
 import { isUnitPossessed, hasInvisibility } from '../core/abilities.js';
 import { attachPossessionOverlay, disposePossessionOverlay } from './possessionOverlay.js';
 import { setInvisibilityFx } from './unitFx.js';
+import { updateDodgeOverlays } from './dodgeOverlay.js';
 
 function getTHREE() {
   const ctx = getCtx();
@@ -245,6 +246,7 @@ export function updateUnits(gameState) {
   try { if (typeof window !== 'undefined') window.unitMeshes = ctx.unitMeshes; } catch {}
 
   try { renderFieldLocks(gameState); } catch {}
+  try { updateDodgeOverlays(gameState); } catch {}
 }
 
 try { if (typeof window !== 'undefined') window.__units = { updateUnits }; } catch {}
