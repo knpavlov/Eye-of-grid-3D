@@ -104,3 +104,16 @@ export async function upsertDeckRecord(deck) {
   return mapRow(result.rows?.[0]);
 }
 
+export async function deleteDeckRecord(id) {
+  if (!isDbReady()) throw new Error('Хранилище колод недоступно');
+  if (!id) return false;
+  const result = await query(
+    'DELETE FROM decks WHERE id = $1;',
+    [id]
+  );
+  const affected = typeof result.rowCount === 'number'
+    ? result.rowCount
+    : Number(result.rowCount || 0);
+  return affected > 0;
+}
+

@@ -1,5 +1,5 @@
 // Сетевые операции с колодами — чистые функции без привязки к DOM
-import { hydrateDeck, serializeDeck, setDecks, upsertDeck } from '../core/decks.js';
+import { hydrateDeck, serializeDeck, setDecks, upsertDeck, removeDeck } from '../core/decks.js';
 import { getDecksApiBase } from './config.js';
 
 let lastError = null;
@@ -95,7 +95,23 @@ export async function saveDeck(deck, { signal, persistLocal = true } = {}) {
   }
 }
 
-export const api = { refreshDecks, fetchDeckById, saveDeck, getLastSyncError };
+export async function deleteDeck(id, { signal, persistLocal = true } = {}) {
+  try {
+    if (!id) return false;
+    await requestJson(buildUrl(`/${encodeURIComponent(id)}`), {
+      method: 'DELETE',
+      signal,
+    });
+    const removed = removeDeck(id, { persistLocal });
+    lastError = null;
+    return removed;
+  } catch (err) {
+    lastError = err;
+    throw err;
+  }
+}
+
+export const api = { refreshDecks, fetchDeckById, saveDeck, deleteDeck, getLastSyncError };
 
 try {
   if (typeof window !== 'undefined') {
