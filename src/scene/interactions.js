@@ -2,6 +2,8 @@
 import { getCtx } from './context.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
+import { trackDodgeHover, resetDodgeHover } from './dodgeTooltip.js';
+import { showTooltip, hideTooltip } from '../ui/tooltip.js';
 import {
   applyFreedonianAura,
   applySummonAbilities,
@@ -33,6 +35,8 @@ export const interactionState = {
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
 };
+
+const META_TOOLTIP_SOURCE = 'meta-hover';
 
 export function logDodgeUpdates(updates, state, sourceName = null) {
   if (!Array.isArray(updates) || !updates.length) return;
@@ -74,6 +78,7 @@ function onMouseMove(event) {
   mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
   if (interactionState.draggedCard) {
+    resetDodgeHover();
     raycaster.setFromCamera(mouse, ctx.camera);
     const intersects = raycaster.intersectObjects(tileMeshes.flat());
 
@@ -114,6 +119,35 @@ function onMouseMove(event) {
       gsap.to(newHover.scale, { x: 0.675, y: 1, z: 0.675, duration: 0.18 });
       setHandCardHoverVisual(newHover, true);
     }
+
+    let hoveredUnitMesh = null;
+    const unitHits = raycaster.intersectObjects(unitMeshes, true);
+    if (unitHits.length > 0) {
+      let candidate = unitHits[0].object;
+      while (candidate && (!candidate.userData || candidate.userData.type !== 'unit')) {
+        candidate = candidate.parent;
+      }
+      if (candidate && candidate.userData?.type === 'unit') {
+        hoveredUnitMesh = candidate;
+      }
+    }
+    const gameState = typeof window !== 'undefined' ? window.gameState : null;
+    if (hoveredUnitMesh && gameState) {
+      const r = hoveredUnitMesh.userData?.row;
+      const c = hoveredUnitMesh.userData?.col;
+      if (r != null && c != null) {
+        const unit = gameState.board?.[r]?.[c]?.unit;
+        if (unit) {
+          trackDodgeHover({ unit, r, c, event });
+        } else {
+          resetDodgeHover();
+        }
+      } else {
+        resetDodgeHover();
+      }
+    } else {
+      resetDodgeHover();
+    }
   }
   if (interactionState.selectedUnit) {
     const r = interactionState.selectedUnit.userData.row;
@@ -137,27 +171,29 @@ function onMouseMove(event) {
   const deckMeshes = (typeof window !== 'undefined' && window.deckMeshes) || [];
   const graveyardMeshes = (typeof window !== 'undefined' && window.graveyardMeshes) || [];
   const metaHits = raycaster.intersectObjects([...deckMeshes, ...graveyardMeshes], true);
-  const tip = document.getElementById('hover-tooltip');
+  let metaShown = false;
   if (metaHits.length > 0) {
     const obj = metaHits[0].object;
     const data = obj.userData || obj.parent?.userData || {};
     if (data && data.metaType) {
       const p = data.player ?? 0;
       interactionState.hoveredMeta = { metaType: data.metaType, player: p };
-      if (tip) {
-        const deckCount = window.gameState?.players?.[p]?.deck?.length ?? 0;
-        const gyCount = window.gameState?.players?.[p]?.graveyard?.length ?? 0;
-        tip.textContent = data.metaType === 'deck'
-          ? `Deck - Player ${p===0? '1':'2'}: ${deckCount}`
-          : `Graveyard - Player ${p===0? '1':'2'}: ${gyCount}`;
-        tip.style.left = (event.clientX + 16) + 'px';
-        tip.style.top = (event.clientY + 16) + 'px';
-        tip.classList.remove('hidden');
-      }
+      const deckCount = window.gameState?.players?.[p]?.deck?.length ?? 0;
+      const gyCount = window.gameState?.players?.[p]?.graveyard?.length ?? 0;
+      const text = data.metaType === 'deck'
+        ? `Deck - Player ${p === 0 ? '1' : '2'}: ${deckCount}`
+        : `Graveyard - Player ${p === 0 ? '1' : '2'}: ${gyCount}`;
+      showTooltip(META_TOOLTIP_SOURCE, {
+        text,
+        x: (event.clientX ?? 0) + 16,
+        y: (event.clientY ?? 0) + 16,
+      });
+      metaShown = true;
     }
-  } else {
+  }
+  if (!metaShown) {
     interactionState.hoveredMeta = null;
-    if (tip) tip.classList.add('hidden');
+    hideTooltip(META_TOOLTIP_SOURCE);
   }
 }
 
@@ -165,6 +201,8 @@ function onMouseDown(event) {
   const gameState = (typeof window !== 'undefined' ? window.gameState : null);
   if (!gameState || gameState.winner !== null) return;
   if (isInputLocked() && !interactionState.pendingDiscardSelection) return;
+  resetDodgeHover();
+  hideTooltip(META_TOOLTIP_SOURCE);
   const ctx = getCtx();
   const { renderer, mouse, raycaster, unitMeshes, handCardMeshes } = ctx;
   const rect = renderer.domElement.getBoundingClientRect();
@@ -612,6 +650,12 @@ export function placeUnitWithDirection(direction) {
     interactionState.pendingPlacement = null;
     return;
   }
+  let summonEndedTurn = false;
+  const endTurnAfterSummon = () => {
+    if (summonEndedTurn) return;
+    summonEndedTurn = true;
+    try { window.endTurn && window.endTurn(); } catch {}
+  };
   let incarnationResult = null;
   if (incarnation?.active) {
     const applied = applyIncarnationSummon(gameState, { r: row, c: col, tpl: cardData, owner: gameState.active });
@@ -814,7 +858,7 @@ export function placeUnitWithDirection(direction) {
           }
         } else {
           if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
-          try { window.endTurn && window.endTurn(); } catch {}
+          endTurnAfterSummon();
         }
       } else {
         const attacks = Array.isArray(profile?.attacks) ? profile.attacks : (tpl?.attacks || []);
@@ -856,7 +900,7 @@ export function placeUnitWithDirection(direction) {
           }
         } else {
           if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
-          try { window.endTurn && window.endTurn(); } catch {}
+          endTurnAfterSummon();
         }
       }
       try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
@@ -882,6 +926,8 @@ export function setupInteractions() {
       setHandCardHoverVisual(interactionState.hoveredHandCard, false);
       interactionState.hoveredHandCard = null;
     }
+    resetDodgeHover();
+    hideTooltip(META_TOOLTIP_SOURCE);
   });
 }
 

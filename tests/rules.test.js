@@ -902,7 +902,21 @@ describe('Water cards — добор и уклонения', () => {
     expect(profile.attacks.map(a => a.dir).sort()).toEqual(['E', 'N', 'S', 'W']);
   });
 
-  it('Harpoonsman сокращает дальность на земном поле', () => {
+  it('Cloud Runner может атаковать вторую боковую клетку', () => {
+    const board = makeBoard();
+    const state = { board };
+    state.board[1][0].unit = { tplId: 'WATER_CLOUD_RUNNER', owner: 0, facing: 'N' };
+    state.board[1][2].unit = { tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', owner: 1, facing: 'W' };
+
+    const unionHits = computeHits(state, 1, 0, { union: true });
+    expect(unionHits.some(h => h.r === 1 && h.c === 2)).toBe(true);
+
+    const opts = { chosenDir: 'E', rangeChoices: { E: 2 } };
+    const precise = computeHits(state, 1, 0, opts);
+    expect(precise.some(h => h.r === 1 && h.c === 2)).toBe(true);
+  });
+
+  it('Harpoonsman сохраняет дальность вне воды', () => {
     const board = makeBoard();
     const state = { board };
     state.board[0][1].unit = { tplId: 'WATER_TRITONAN_HARPOONSMAN', owner: 0, facing: 'N' };
@@ -915,7 +929,7 @@ describe('Water cards — добор и уклонения', () => {
     board[0][1].element = 'EARTH';
     profile = resolveAttackProfile(state, 0, 1, CARDS.WATER_TRITONAN_HARPOONSMAN);
     expect(profile.schemeKey).toBeNull();
-    expect(profile.attacks[0].ranges).toEqual([1]);
+    expect(profile.attacks[0].ranges).toContain(2);
   });
 
   it('Harpoonsman получает Dodge только на водном поле', () => {

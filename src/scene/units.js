@@ -5,7 +5,7 @@ import { renderFieldLocks } from './fieldlocks.js';
 import { isUnitPossessed, hasInvisibility } from '../core/abilities.js';
 import { attachPossessionOverlay, disposePossessionOverlay } from './possessionOverlay.js';
 import { setInvisibilityFx } from './unitFx.js';
-import { updateDodgeTokens } from './dodgeTokens.js';
+import { resetDodgeHover } from './dodgeTooltip.js';
 
 function getTHREE() {
   const ctx = getCtx();
@@ -245,8 +245,7 @@ export function updateUnits(gameState) {
 
   try { if (typeof window !== 'undefined') window.unitMeshes = ctx.unitMeshes; } catch {}
 
-  try { updateDodgeTokens(gameState); } catch (err) { console.warn('[dodgeTokens] update failed', err); }
-
+  resetDodgeHover();
   try { renderFieldLocks(gameState); } catch {}
 }
 

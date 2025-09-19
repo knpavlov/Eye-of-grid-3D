@@ -242,11 +242,10 @@ export const CARDS = {
     element: 'WATER', atk: 2, hp: 3,
     attackType: 'STANDARD',
     attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE' } ],
-    limitRangeOnElement: { element: 'EARTH', maxRange: 1 },
     plusAtkIfTargetOnElement: { element: 'WATER', amount: 1 },
     auraGrantDodgeOnElement: { element: 'WATER', attempts: 1, includeSelf: false },
     dodge: { chance: 0.5, attempts: 1 },
-    desc: 'Dodge attempt. Adds 1 to his Attack if at least one target is on a Water field. While Latoo is on the board, allied creatures on Water fields gain one Dodge attempt. While on an Earth field he strikes only the adjacent cell.'
+    desc: 'Dodge attempt. Adds 1 to his Attack if at least one target is on a Water field. While Latoo is on the board, allied creatures on Water fields gain one Dodge attempt.'
   },
 
   WATER_TRITONAN_HARPOONSMAN: {
@@ -254,9 +253,8 @@ export const CARDS = {
     element: 'WATER', atk: 1, hp: 2,
     attackType: 'STANDARD',
     attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE' } ],
-    limitRangeOnElement: { element: 'EARTH', maxRange: 1 },
     gainDodgeOnElement: { element: 'WATER', attempts: 1 },
-    desc: 'While on a Water field Tritonan Harpoonsman gains Dodge attempt. While on an Earth field his attack reaches only the adjacent cell.'
+    desc: 'While on a Water field Tritonan Harpoonsman gains Dodge attempt.'
   },
 
   WATER_ALUHJA_PRIESTESS: {
@@ -265,7 +263,6 @@ export const CARDS = {
     attackType: 'MAGIC',
     attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
     blindspots: ['N', 'E', 'S', 'W'],
-    magicAttackArea: 'CROSS',
     gainDodgeOnElement: { element: 'WATER', attempts: 1 },
     desc: 'Magic Attack. While on a Water field, Aluhja Priestess gains Dodge attempt.'
   },

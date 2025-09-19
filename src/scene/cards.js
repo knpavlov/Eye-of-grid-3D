@@ -452,11 +452,29 @@ function drawAttackScheme(ctx, scheme, cardData, x, y, cell, gap) {
   }
 
   if (chooseDir || attacks.some(a => a.mode === 'ANY')) {
-    const cx = x + 1 * (cell + gap);
-    const cy = y + 0 * (cell + gap);
-    ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = accentLine;
-    ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+    const highlightCells = new Set();
+    for (const a of attacks) {
+      const vec = map[a.dir];
+      if (!vec) continue;
+      const ranges = Array.isArray(a.ranges) && a.ranges.length
+        ? a.ranges.map(v => Math.max(1, Math.floor(Number(v)))).filter(Boolean)
+        : [1];
+      if (!ranges.length) continue;
+      const minDist = Math.min(...ranges);
+      const rr = 1 + vec[0] * minDist;
+      const cc = 1 + vec[1] * minDist;
+      if (rr < 0 || rr > 2 || cc < 0 || cc > 2) continue;
+      highlightCells.add(`${rr},${cc}`);
+    }
+    if (!highlightCells.size) highlightCells.add('0,1');
+    for (const key of highlightCells) {
+      const [rr, cc] = key.split(',').map(Number);
+      const cx = x + cc * (cell + gap);
+      const cy = y + rr * (cell + gap);
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = accentLine;
+      ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+    }
   }
 }
 
