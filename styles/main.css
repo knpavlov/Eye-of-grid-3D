@@ -96,8 +96,9 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
 .battle-flash-bg { position: absolute; inset: 0; background: radial-gradient(80% 60% at 50% 50%, rgba(255,255,255,0.08), rgba(0,0,0,0.8)); mix-blend-mode: screen; }
 .battle-flash-text { position: relative; font-weight: 900; letter-spacing: 0.08em; text-shadow: 0 0 20px rgba(255, 236, 153, .9), 0 0 40px rgba(255, 98, 0, .7); }
 .battle-flash-scan { position:absolute; inset:0; background: linear-gradient( to bottom, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100% ); transform: translateY(-100%); }
-/* Tooltip для 3D-колод/кладбищ */
-#hover-tooltip { position: fixed; pointer-events: none; z-index: 50; }
+/* Tooltip для 3D-колод/кладбищ и всплывашек Dodge */
+#hover-tooltip,
+#dodge-tooltip { position: fixed; pointer-events: none; z-index: 50; }
 
 /* Opponent hand count indicator */
 #opponent-hand-count {

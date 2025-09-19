@@ -2,10 +2,10 @@
 import { getCtx } from './context.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
+import { scheduleDodgeTooltip, cancelDodgeTooltip } from './dodgeTooltip.js';
 import {
   applyFreedonianAura,
   applySummonAbilities,
-  shouldUseMagicAttack,
   evaluateIncarnationSummon,
   applyIncarnationSummon,
   isIncarnationCard,
@@ -23,6 +23,7 @@ export const interactionState = {
   magicFrom: null,
   pendingAttack: null,
   hoveredMeta: null,
+  hoveredDodgeUnit: null,
   pendingSpellOrientation: null,
   pendingDiscardSelection: null,
   pendingRitualBoardMesh: null,
@@ -34,6 +35,28 @@ export const interactionState = {
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
 };
+
+export function logDodgeUpdates(updates, state, sourceName = null) {
+  if (!Array.isArray(updates) || !updates.length) return;
+  const cardsRef = window.CARDS || {};
+  for (const upd of updates) {
+    const targetUnit = state?.board?.[upd.r]?.[upd.c]?.unit;
+    if (!targetUnit) continue;
+    const tplTarget = cardsRef[targetUnit.tplId];
+    const name = tplTarget?.name || 'Существо';
+    const prefix = sourceName ? `${sourceName}: ` : '';
+    if (upd.removed) {
+      window.__ui?.log?.add?.(`${prefix}${name}: способность Dodge отключена.`);
+      continue;
+    }
+    const chance = (typeof upd.chance === 'number') ? Math.round(upd.chance * 100) : 50;
+    if (upd.unlimited) {
+      window.__ui?.log?.add?.(`${prefix}${name}: шанс Dodge ${chance}%.`);
+    } else if (typeof upd.attempts === 'number') {
+      window.__ui?.log?.add?.(`${prefix}${name}: ${upd.attempts} попытк(и) Dodge (${chance}%).`);
+    }
+  }
+}
 
 function isInputLocked() {
   if (typeof window !== 'undefined' && typeof window.isInputLocked === 'function') {
@@ -111,6 +134,26 @@ function onMouseMove(event) {
     }
   }
 
+  raycaster.setFromCamera(mouse, ctx.camera);
+  const unitHoverHits = raycaster.intersectObjects(unitMeshes, true);
+  let hoveredUnitForTooltip = null;
+  if (unitHoverHits.length > 0) {
+    let cand = unitHoverHits[0].object;
+    while (cand && (!cand.userData || cand.userData.type !== 'unit')) {
+      cand = cand.parent;
+    }
+    if (cand && cand.userData && cand.userData.type === 'unit') {
+      hoveredUnitForTooltip = cand;
+    }
+  }
+  if (hoveredUnitForTooltip) {
+    scheduleDodgeTooltip(hoveredUnitForTooltip, event);
+    interactionState.hoveredDodgeUnit = hoveredUnitForTooltip;
+  } else if (interactionState.hoveredDodgeUnit) {
+    cancelDodgeTooltip();
+    interactionState.hoveredDodgeUnit = null;
+  }
+
   // Tooltip for decks/graveyards
   raycaster.setFromCamera(mouse, ctx.camera);
   const deckMeshes = (typeof window !== 'undefined' && window.deckMeshes) || [];
@@ -144,6 +187,8 @@ function onMouseDown(event) {
   const gameState = (typeof window !== 'undefined' ? window.gameState : null);
   if (!gameState || gameState.winner !== null) return;
   if (isInputLocked() && !interactionState.pendingDiscardSelection) return;
+  cancelDodgeTooltip();
+  interactionState.hoveredDodgeUnit = null;
   const ctx = getCtx();
   const { renderer, mouse, raycaster, unitMeshes, handCardMeshes } = ctx;
   const rect = renderer.domElement.getBoundingClientRect();
@@ -503,7 +548,16 @@ function performChosenAttack(from, targetMesh) {
   const ORDER = ['N', 'E', 'S', 'W'];
   const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(attacker.facing) + 4) % 4];
   const dist = Math.max(Math.abs(dr), Math.abs(dc));
-  const opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
+  const tpl = window.CARDS?.[attacker.tplId];
+  const profile = window.resolveAttackProfile
+    ? window.resolveAttackProfile(gameState, from.r, from.c, tpl)
+    : { attacks: tpl?.attacks || [], chooseDir: tpl?.chooseDir };
+  const attacks = Array.isArray(profile?.attacks) ? profile.attacks : [];
+  const needsRangeChoice = attacks.some(a => a?.mode === 'ANY');
+  const opts = { chosenDir: relDir, profile };
+  if (needsRangeChoice) {
+    opts.rangeChoices = { [relDir]: dist };
+  }
   const hits = window.computeHits(gameState, from.r, from.c, opts);
   if (!hits.length) { showNotification('Incorrect target', 'error'); return false; }
   window.performBattleSequence(from.r, from.c, true, opts);
@@ -563,6 +617,16 @@ export function placeUnitWithDirection(direction) {
   if (!interactionState.pendingPlacement) return;
   const { card, row, col, handIndex, incarnation } = interactionState.pendingPlacement;
   const cardData = card.userData.cardData;
+  if (card) {
+    card.userData = card.userData || {};
+    card.userData.isInHand = false;
+    try {
+      const ctxLocal = getCtx();
+      if (Array.isArray(ctxLocal.handCardMeshes)) {
+        ctxLocal.handCardMeshes = ctxLocal.handCardMeshes.filter(mesh => mesh !== card);
+      }
+    } catch {}
+  }
   const player = gameState.players[gameState.active];
   const summonCost = (incarnation?.active ? (incarnation.cost ?? cardData.cost ?? 0) : cardData.cost) ?? 0;
   if (summonCost > player.mana) {
@@ -670,6 +734,25 @@ export function placeUnitWithDirection(direction) {
   }
   if (gameState.board[row][col].unit) {
     const summonEvents = applySummonAbilities(gameState, row, col);
+    if (summonEvents?.draw?.count > 0) {
+      const drawInfo = summonEvents.draw;
+      const ownerIdx = typeof drawInfo.player === 'number' ? drawInfo.player : gameState.active;
+      const cards = Array.isArray(drawInfo.cards) ? drawInfo.cards : [];
+      const name = cardData?.name || 'Существо';
+      window.__ui?.log?.add?.(`${name}: игрок ${ownerIdx + 1} добирает ${drawInfo.count} карт(ы).`);
+      (async () => {
+        const animate = window.animateDrawnCardToHand;
+        if (typeof animate === 'function') {
+          for (const tplDrawn of cards) {
+            try { await animate(tplDrawn); } catch (err) { console.warn('[summonDraw] animation failed', err); }
+          }
+        }
+        window.updateHand?.(gameState);
+      })();
+    }
+    if (Array.isArray(summonEvents?.dodgeUpdates) && summonEvents.dodgeUpdates.length) {
+      logDodgeUpdates(summonEvents.dodgeUpdates, gameState, cardData?.name || null);
+    }
     if (summonEvents?.possessions?.length) {
       try {
         const cards = window.CARDS || {};
@@ -721,13 +804,17 @@ export function placeUnitWithDirection(direction) {
       window.updateUnits();
       window.updateUI();
       const tpl = window.CARDS?.[cardData.id];
-      const forcedMagic = shouldUseMagicAttack(gameState, row, col, tpl);
+      const profile = window.resolveAttackProfile
+        ? window.resolveAttackProfile(gameState, row, col, tpl)
+        : { attacks: tpl?.attacks || [], chooseDir: tpl?.chooseDir, attackType: tpl?.attackType };
+      const usesMagic = profile?.attackType === 'MAGIC';
+      let shouldAutoEndTurn = true;
       if (wasIncarnation) {
         interactionState.autoEndTurnAfterAttack = false;
         if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
         return;
       }
-      if (tpl?.attackType === 'MAGIC' || forcedMagic) {
+      if (usesMagic) {
         const allowFriendly = !!tpl.friendlyFire;
         const cells = [];
         let hasEnemy = false;
@@ -742,6 +829,7 @@ export function placeUnitWithDirection(direction) {
           }
         }
         if (cells.length && (allowFriendly || hasEnemy)) {
+          shouldAutoEndTurn = false;
           interactionState.magicFrom = { r: row, c: col, cancelMode: 'summon', owner: unit.owner };
           interactionState.autoEndTurnAfterAttack = true;
           highlightTiles(cells);
@@ -750,23 +838,23 @@ export function placeUnitWithDirection(direction) {
             const delay = 1200;
             setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, delay);
           }
-        } else {
-          if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
-          try { window.endTurn && window.endTurn(); } catch {}
+        } else if (unlockTriggered) {
+          setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0);
         }
       } else {
-        const attacks = tpl?.attacks || [];
-        const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
+        const attacks = Array.isArray(profile?.attacks) ? profile.attacks : (tpl?.attacks || []);
+        const needsChoice = !!profile?.chooseDir || attacks.some(a => a.mode === 'ANY');
         // если в шаблоне несколько дистанций без выбора, подсвечиваем и пустые клетки
         const includeEmpty = attacks.some(a => Array.isArray(a.ranges) && a.ranges.length > 1 && !a.mode);
-        const hitsAll = window.computeHits(gameState, row, col, { union: true, includeEmpty });
+        const hitsAll = window.computeHits(gameState, row, col, { union: true, includeEmpty, profile });
         const hasEnemy = hitsAll.some(h => {
           const u2 = gameState.board?.[h.r]?.[h.c]?.unit;
           return u2 && u2.owner !== unit.owner;
         });
         if (hitsAll.length && hasEnemy) {
+          shouldAutoEndTurn = false;
           if (needsChoice && hitsAll.length > 1) {
-            interactionState.pendingAttack = { r: row, c: col, cancelMode: 'summon', owner: unit.owner };
+            interactionState.pendingAttack = { r: row, c: col, cancelMode: 'summon', owner: unit.owner, profile };
             interactionState.autoEndTurnAfterAttack = true;
             highlightTiles(hitsAll);
             window.__ui?.log?.add?.(`${tpl.name}: choose a target for the attack.`);
@@ -780,7 +868,10 @@ export function placeUnitWithDirection(direction) {
               const ORDER = ['N', 'E', 'S', 'W'];
               const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(unit.facing) + 4) % 4];
               const dist = Math.max(Math.abs(dr), Math.abs(dc));
-              opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
+              opts = { chosenDir: relDir, profile };
+              if (attacks.some(a => a.mode === 'ANY')) {
+                opts.rangeChoices = { [relDir]: dist };
+              }
             }
             interactionState.autoEndTurnAfterAttack = true;
             window.performBattleSequence(row, col, true, opts);
@@ -789,10 +880,12 @@ export function placeUnitWithDirection(direction) {
             const delay = 1200;
             setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, delay);
           }
-        } else {
-          if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
-          try { window.endTurn && window.endTurn(); } catch {}
+        } else if (unlockTriggered) {
+          setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0);
         }
+      }
+      if (shouldAutoEndTurn) {
+        try { window.endTurn && window.endTurn(); } catch {}
       }
       try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
     },
@@ -817,6 +910,8 @@ export function setupInteractions() {
       setHandCardHoverVisual(interactionState.hoveredHandCard, false);
       interactionState.hoveredHandCard = null;
     }
+    cancelDodgeTooltip();
+    interactionState.hoveredDodgeUnit = null;
   });
 }
 

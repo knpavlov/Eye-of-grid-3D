@@ -451,7 +451,37 @@ function drawAttackScheme(ctx, scheme, cardData, x, y, cell, gap) {
     ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
   }
 
-  if (chooseDir || attacks.some(a => a.mode === 'ANY')) {
+  const choiceTargets = new Set();
+  for (const a of attacks) {
+    const requiresChoice = chooseDir || a.mode === 'ANY';
+    if (!requiresChoice) continue;
+    const vec = map[a.dir];
+    if (!vec) continue;
+    const rangesRaw = Array.isArray(a.ranges) && a.ranges.length ? a.ranges : [1];
+    const normalized = rangesRaw
+      .map((r) => {
+        const num = Math.floor(Number(r));
+        return Number.isFinite(num) && num > 0 ? num : 1;
+      })
+      .filter(Boolean);
+    if (!normalized.length) continue;
+    const minDist = Math.min(...normalized);
+    const rr = 1 + vec[0] * minDist;
+    const cc = 1 + vec[1] * minDist;
+    if (rr < 0 || rr > 2 || cc < 0 || cc > 2) continue;
+    choiceTargets.add(`${rr},${cc}`);
+  }
+
+  if (choiceTargets.size > 0) {
+    for (const key of choiceTargets) {
+      const [rr, cc] = key.split(',').map(Number);
+      const cx = x + cc * (cell + gap);
+      const cy = y + rr * (cell + gap);
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = accentLine;
+      ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+    }
+  } else if (chooseDir || attacks.some(a => a.mode === 'ANY')) {
     const cx = x + 1 * (cell + gap);
     const cy = y + 0 * (cell + gap);
     ctx.strokeStyle = '#ef4444';

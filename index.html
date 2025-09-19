@@ -141,6 +141,7 @@
     </div>
     <!-- Tooltip -->
     <div id="hover-tooltip" class="hidden overlay-panel px-2 py-1 text-xs"></div>
+    <div id="dodge-tooltip" class="hidden overlay-panel px-2 py-1 text-xs"></div>
   </div>
 
   <!-- Версия билда (сверху слева) -->
@@ -472,6 +473,9 @@
        Split into logic (src/core/battle.js), FX (src/scene/battleFx.js)
        and net sync (src/net/battleSync.js). */
     async function performBattleSequence(r, c, markAttackTurn, opts = {}) {
+      const unitBefore = gameState.board?.[r]?.[c]?.unit;
+      const tplBefore = unitBefore ? CARDS[unitBefore.tplId] : null;
+      const attackerName = tplBefore?.name || 'Существо';
       const staged = stagedAttack(gameState, r, c, opts);
       if (!staged || staged.empty) return;
       // flashy заставка BATTLE (сокращённая)
@@ -613,6 +617,9 @@
           gameState = res.n1;
           const finalState = gameState;
           try { window.applyGameState(finalState); } catch {}
+          if (Array.isArray(res.dodgeUpdates) && res.dodgeUpdates.length) {
+            try { window.__interactions?.logDodgeUpdates?.(res.dodgeUpdates, finalState, attackerName); } catch {}
+          }
           try {
             if (typeof window.playDeltaAnimations === 'function') {
               window.playDeltaAnimations(stateBeforeFinish, finalState, { includeActive: true, skipDeathFx: true });
@@ -656,17 +663,17 @@
             }, 1400);
           } else {
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем обновим визуально
-            setTimeout(() => {
-              updateUnits(finalState); updateUI(); for (const l of res.logLines.reverse()) addLog(l);
-              const pos2 = attackerPos;
-              if (markAttackTurn && gameState.board[pos2.r]?.[pos2.c]?.unit) {
-                gameState.board[pos2.r][pos2.c].unit.lastAttackTurn = gameState.turn;
-              }
-              try { schedulePush('battle-finish', { force: true }); } catch {}
-              if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
-                window.__interactions.interactionState.autoEndTurnAfterAttack = false;
-                try { endTurn(); } catch {}
-              }
+        setTimeout(() => {
+          updateUnits(finalState); updateUI(); for (const l of res.logLines.reverse()) addLog(l);
+          const pos2 = attackerPos;
+          if (markAttackTurn && gameState.board[pos2.r]?.[pos2.c]?.unit) {
+            gameState.board[pos2.r][pos2.c].unit.lastAttackTurn = gameState.turn;
+          }
+          try { schedulePush('battle-finish', { force: true }); } catch {}
+          if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
+            window.__interactions.interactionState.autoEndTurnAfterAttack = false;
+            try { endTurn(); } catch {}
+          }
             }, Math.max(0, animDelayMs));
             setTimeout(() => {
               try { updateUnits(finalState); } catch {}
@@ -726,6 +733,7 @@
       const tr = targetMesh.userData.row; const tc = targetMesh.userData.col;
       const attacker = gameState.board?.[from.r]?.[from.c]?.unit;
       if (!attacker || attacker.lastAttackTurn === gameState.turn) { showNotification('Incorrect target', 'error'); return; }
+      const attackerName = CARDS[attacker.tplId]?.name || 'Существо';
       const res = magicAttack(gameState, from.r, from.c, tr, tc);
       if (!res) { showNotification('Incorrect target', 'error'); return; }
       const attackerPosMagic = res.attackerPosUpdate || from;
@@ -766,6 +774,9 @@
         }
         gameState = res.n1;
         try { window.applyGameState(gameState); } catch {}
+        if (Array.isArray(res.dodgeUpdates) && res.dodgeUpdates.length) {
+          try { window.__interactions?.logDodgeUpdates?.(res.dodgeUpdates, gameState, attackerName); } catch {}
+        }
         const attackerCell = window.gameState?.board?.[attackerPosMagic.r]?.[attackerPosMagic.c];
         const attackerUnit = attackerCell?.unit;
         if (attackerUnit) attackerUnit.lastAttackTurn = window.gameState.turn;
@@ -780,6 +791,9 @@
       } else {
         // Если смертей нет — применяем состояние сразу
         gameState = res.n1; try { window.applyGameState(gameState); } catch {}
+        if (Array.isArray(res.dodgeUpdates) && res.dodgeUpdates.length) {
+          try { window.__interactions?.logDodgeUpdates?.(res.dodgeUpdates, gameState, attackerName); } catch {}
+        }
         updateUnits(); updateUI();
         const attackerCell2 = gameState.board?.[attackerPosMagic.r]?.[attackerPosMagic.c];
         const attackerUnit2 = attackerCell2?.unit;

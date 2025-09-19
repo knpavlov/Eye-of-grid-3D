@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack, stagedAttack } from '../src/core/rules.js';
+import {
+  computeCellBuff,
+  effectiveStats,
+  hasAdjacentGuard,
+  computeHits,
+  magicAttack,
+  stagedAttack,
+  resolveAttackProfile,
+  refreshBoardDodgeStates,
+} from '../src/core/rules.js';
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
 import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
@@ -8,6 +17,10 @@ function makeBoard() {
   const b = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE', unit: null })));
   b[1][1].element = 'BIOLITH';
   return b;
+}
+
+function cloneCard(id) {
+  return JSON.parse(JSON.stringify(CARDS[id]));
 }
 
 
@@ -72,7 +85,7 @@ describe('guards and hits', () => {
     state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S' };
     state.board[1][2].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'W' };
     // без выбранного направления ничего не происходит
-    expect(computeHits(state, 1, 1)).toEqual([]);
+    expect(computeHits(state, 1, 1)).toHaveLength(0);
     // union=true возвращает все возможные цели
     const allHits = computeHits(state, 1, 1, { union: true });
     expect(allHits.length).toBe(2);
@@ -212,7 +225,7 @@ describe('guards and hits', () => {
       currentHP: CARDS.FIRE_PARTMOLE_FLAME_LIZARD.hp,
     };
     const hits = computeHits(state, 2, 1);
-    expect(hits).toEqual([]);
+    expect(hits).toHaveLength(0);
   });
 });
 
@@ -797,6 +810,158 @@ describe('новые механики', () => {
     state.board[1][1].unit = { owner:0, tplId:'FIRE_DIDI_THE_ENLIGHTENED', facing:'N' };
     const cells = computeFieldquakeLockedCells(state);
     expect(cells.length).toBe(8);
+  });
+});
+
+describe('Water cards — добор и уклонения', () => {
+  function prepareStateForSummon() {
+    const board = makeBoard();
+    const waterTiles = [ [0, 0], [0, 1], [1, 0], [1, 1], [2, 2] ];
+    for (const [r, c] of waterTiles) {
+      board[r][c].element = 'WATER';
+    }
+    const deckIds = [
+      'FIRE_FLAME_MAGUS',
+      'FIRE_HELLFIRE_SPITTER',
+      'FIRE_RED_CUBIC',
+      'FIRE_PARTMOLE_FLAME_LIZARD',
+      'FIRE_GREAT_MINOS',
+    ];
+    return {
+      state: {
+        board,
+        players: [
+          { deck: deckIds.map(cloneCard), hand: [], discard: [], graveyard: [], mana: 0 },
+          { deck: [], hand: [], discard: [], graveyard: [], mana: 0 },
+        ],
+        active: 0,
+        turn: 1,
+      },
+      waterTiles,
+    };
+  }
+
+  it('Cloud Runner добирает карты по числу водных полей и получает dodge', () => {
+    const { state, waterTiles } = prepareStateForSummon();
+    const r = 0; const c = 1;
+    state.board[r][c].unit = {
+      tplId: 'WATER_CLOUD_RUNNER',
+      owner: 0,
+      facing: 'N',
+      currentHP: CARDS.WATER_CLOUD_RUNNER.hp,
+    };
+
+    const events = applySummonAbilities(state, r, c);
+    expect(events.draw).toBeTruthy();
+    expect(events.draw.count).toBe(waterTiles.length);
+    expect(events.draw.player).toBe(0);
+    expect(events.draw.element).toBe('WATER');
+    expect(state.players[0].hand).toHaveLength(waterTiles.length);
+    const drawnIds = events.draw.cards.map(card => card.id);
+    expect(drawnIds).toEqual(state.players[0].hand.map(card => card.id));
+    expect(events.dodgeUpdates.some(u => u.r === r && u.c === c && (u.attempts ?? 0) >= 1)).toBe(true);
+  });
+
+  it('refreshBoardDodgeStates суммирует ауру Лату и бонусы Дона', () => {
+    const board = makeBoard();
+    board[1][1].element = 'WATER';
+    board[1][0].element = 'EARTH';
+    board[0][1].element = 'WATER';
+    board[1][2].element = 'WATER';
+
+    const state = { board };
+    state.board[1][1].unit = { tplId: 'WATER_DON_OF_VENOA', owner: 0, facing: 'N' };
+    state.board[1][0].unit = { tplId: 'FIRE_FLAME_MAGUS', owner: 1, facing: 'E' };
+    state.board[0][1].unit = { tplId: 'WATER_MERCENARY_SAVIOR_LATOO', owner: 0, facing: 'S' };
+    state.board[1][2].unit = { tplId: 'WATER_CLOUD_RUNNER', owner: 0, facing: 'W' };
+
+    const { updated } = refreshBoardDodgeStates(state);
+    expect(updated).toBeTruthy();
+    const find = (r, c) => updated.find(u => u.r === r && u.c === c);
+    const don = find(1, 1);
+    const latoo = find(0, 1);
+    const runner = find(1, 2);
+    expect(don?.attempts).toBe(3);
+    expect(latoo?.attempts).toBe(2);
+    expect(runner?.attempts).toBe(3);
+  });
+
+  it('resolveAttackProfile переключает схемы атаки Дона на воде', () => {
+    const board = makeBoard();
+    const state = { board };
+    state.board[1][1].unit = { tplId: 'WATER_DON_OF_VENOA', owner: 0, facing: 'N' };
+
+    board[1][1].element = 'EARTH';
+    let profile = resolveAttackProfile(state, 1, 1, CARDS.WATER_DON_OF_VENOA);
+    expect(profile.schemeKey).toBe('BASE');
+    expect(profile.attacks.map(a => a.dir).sort()).toEqual(['N', 'S']);
+
+    board[1][1].element = 'WATER';
+    profile = resolveAttackProfile(state, 1, 1, CARDS.WATER_DON_OF_VENOA);
+    expect(profile.schemeKey).toBe('WATER_SWIRL');
+    expect(profile.attacks.map(a => a.dir).sort()).toEqual(['E', 'N', 'S', 'W']);
+  });
+
+  it('Harpoonsman сохраняет дальность на любом поле', () => {
+    const board = makeBoard();
+    const state = { board };
+    state.board[0][1].unit = { tplId: 'WATER_TRITONAN_HARPOONSMAN', owner: 0, facing: 'N' };
+
+    board[0][1].element = 'WATER';
+    let profile = resolveAttackProfile(state, 0, 1, CARDS.WATER_TRITONAN_HARPOONSMAN);
+    expect(profile.schemeKey).toBeNull();
+    expect(profile.attacks[0].ranges).toContain(2);
+
+    board[0][1].element = 'EARTH';
+    profile = resolveAttackProfile(state, 0, 1, CARDS.WATER_TRITONAN_HARPOONSMAN);
+    expect(profile.schemeKey).toBeNull();
+    expect(profile.attacks[0].ranges).toContain(2);
+  });
+
+  it('Latoo сохраняет дальность независимо от поля', () => {
+    const board = makeBoard();
+    const state = { board };
+    state.board[1][1].unit = { tplId: 'WATER_MERCENARY_SAVIOR_LATOO', owner: 0, facing: 'N' };
+
+    board[1][1].element = 'WATER';
+    let profile = resolveAttackProfile(state, 1, 1, CARDS.WATER_MERCENARY_SAVIOR_LATOO);
+    expect(profile.attacks[0].ranges).toContain(2);
+
+    board[1][1].element = 'EARTH';
+    profile = resolveAttackProfile(state, 1, 1, CARDS.WATER_MERCENARY_SAVIOR_LATOO);
+    expect(profile.attacks[0].ranges).toContain(2);
+  });
+
+  it('Harpoonsman получает Dodge только на водном поле', () => {
+    const board = makeBoard();
+    const state = { board };
+    state.board[1][1].unit = { tplId: 'WATER_TRITONAN_HARPOONSMAN', owner: 0, facing: 'N' };
+
+    board[1][1].element = 'EARTH';
+    refreshBoardDodgeStates(state);
+    expect(state.board[1][1].unit.dodgeState).toBeUndefined();
+
+    board[1][1].element = 'WATER';
+    refreshBoardDodgeStates(state);
+    const dodgeState = state.board[1][1].unit.dodgeState;
+    expect(dodgeState).toBeTruthy();
+    expect(dodgeState?.remaining ?? 0).toBe(1);
+  });
+
+  it('Aluhja Priestess получает Dodge только на воде', () => {
+    const board = makeBoard();
+    const state = { board };
+    state.board[2][2].unit = { tplId: 'WATER_ALUHJA_PRIESTESS', owner: 0, facing: 'N' };
+
+    board[2][2].element = 'FOREST';
+    refreshBoardDodgeStates(state);
+    expect(state.board[2][2].unit.dodgeState).toBeUndefined();
+
+    board[2][2].element = 'WATER';
+    refreshBoardDodgeStates(state);
+    const dodgeState = state.board[2][2].unit.dodgeState;
+    expect(dodgeState).toBeTruthy();
+    expect(dodgeState?.remaining ?? 0).toBe(1);
   });
 });
 
