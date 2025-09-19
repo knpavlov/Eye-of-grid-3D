@@ -8,6 +8,7 @@ import { getCtx } from '../scene/context.js';
 import { interactionState, resetCardSelection } from '../scene/interactions.js';
 import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
+import { refreshPossessionsUI } from '../ui/possessions.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -243,6 +244,7 @@ export const handlers = {
     onUnit({ tpl, pl, idx, u }) {
       if (u) u.facing = turnCW[u.facing];
       addLog(`${tpl.name}: ${CARDS[u.tplId].name} повёрнут.`);
+      refreshPossessionsUI(gameState);
       spendAndDiscardSpell(pl, idx);
       resetCardSelection();
       updateHand();
@@ -279,6 +281,7 @@ export const handlers = {
           }
           setTimeout(() => {
             gameState.board[r][c].unit = null;
+            refreshPossessionsUI(gameState);
             updateUnits();
             updateUI();
           }, 1000);
@@ -348,6 +351,7 @@ export const handlers = {
       const prevEl = cell.element;
       const nextEl = oppMap[prevEl] || prevEl;
       cell.element = nextEl;
+      refreshPossessionsUI(gameState);
       try {
         const tile = getCtx().tileMeshes[r][c];
         const mat = getTileMaterial(nextEl);
@@ -385,6 +389,7 @@ export const handlers = {
               window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9);
               setTimeout(() => {
                 gameState.board[r][c].unit = null;
+                refreshPossessionsUI(gameState);
                 updateUnits();
                 updateUI();
               }, 1000);

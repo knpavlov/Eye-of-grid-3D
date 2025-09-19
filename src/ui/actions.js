@@ -2,6 +2,7 @@
 // These functions rely on existing globals to minimize coupling.
 import { highlightTiles, clearHighlights } from '../scene/highlight.js';
 import { enforceHandLimit } from './handLimit.js';
+import { refreshPossessionsUI } from './possessions.js';
 import {
   canAttack,
   shouldUseMagicAttack,
@@ -46,7 +47,12 @@ export function rotateUnit(unitMesh, dir) {
     const turnCW = window.turnCW || {}; const turnCCW = window.turnCCW || {};
     u.facing = dir === 'cw' ? turnCW[u.facing] : turnCCW[u.facing];
     u.lastRotateTurn = gameState.turn;
+    const possessionEvents = refreshPossessionsUI(gameState, { addLog: window.addLog });
     window.__units?.updateUnits?.(gameState);
+    window.updateUnits?.(gameState);
+    if (possessionEvents.possessions?.length || possessionEvents.releases?.length) {
+      window.updateUI?.(gameState);
+    }
     try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
   } catch {}
 }
@@ -103,7 +109,7 @@ export function performUnitAttack(unitMesh) {
       window.__ui?.updateUI?.(gameState);
       try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
       if (iState) {
-        iState.magicFrom = { r, c };
+        iState.magicFrom = { r, c, cancelMode: 'attack', owner: unit.owner, spentMana: cost };
         highlightTiles(cells);
         try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
       }
@@ -135,7 +141,7 @@ export function performUnitAttack(unitMesh) {
     try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
     if (needsChoice && targets.length > 1) {
       if (iState) {
-        iState.pendingAttack = { r, c };
+        iState.pendingAttack = { r, c, cancelMode: 'attack', owner: unit.owner, spentMana: cost };
         highlightTiles(targets);
         try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
       }

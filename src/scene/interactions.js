@@ -742,7 +742,7 @@ export function placeUnitWithDirection(direction) {
           }
         }
         if (cells.length && (allowFriendly || hasEnemy)) {
-          interactionState.magicFrom = { r: row, c: col };
+          interactionState.magicFrom = { r: row, c: col, cancelMode: 'summon', owner: unit.owner };
           interactionState.autoEndTurnAfterAttack = true;
           highlightTiles(cells);
           window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
@@ -766,7 +766,7 @@ export function placeUnitWithDirection(direction) {
         });
         if (hitsAll.length && hasEnemy) {
           if (needsChoice && hitsAll.length > 1) {
-            interactionState.pendingAttack = { r: row, c: col };
+            interactionState.pendingAttack = { r: row, c: col, cancelMode: 'summon', owner: unit.owner };
             interactionState.autoEndTurnAfterAttack = true;
             highlightTiles(hitsAll);
             window.__ui?.log?.add?.(`${tpl.name}: choose a target for the attack.`);
