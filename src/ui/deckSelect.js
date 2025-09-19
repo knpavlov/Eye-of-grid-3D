@@ -1,6 +1,7 @@
 // Меню выбора колоды
-import { DECKS, removeDeck, onDecksChanged } from '../core/decks.js';
-import { refreshDecks } from '../net/decks.js';
+import { DECKS, removeDeck as removeDeckLocal, onDecksChanged } from '../core/decks.js';
+import { refreshDecks, deleteDeck as deleteDeckRemote } from '../net/decks.js';
+import { show as showNotification } from './notifications.js';
 
 function pickDeckImage(deck) {
   // выбираем самую дорогую по мане карту; при равенстве — случайная
@@ -98,10 +99,48 @@ export function open(opts = {}) {
     delBtn = document.createElement('button');
     delBtn.className = 'overlay-panel px-3 py-1.5 bg-red-600 hover:bg-red-700 glossy-btn transition-colors';
     delBtn.textContent = 'Delete';
-    delBtn.addEventListener('click', () => {
+    delBtn.addEventListener('click', async () => {
       const deck = getSelectedDeck();
       if (!deck) return;
-      removeDeck(deck.id);
+
+      // Подтверждаем удаление, чтобы избежать случайных действий
+      let accepted = true;
+      try {
+        if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+          accepted = window.confirm(`Delete deck "${deck.name}"?`);
+        }
+      } catch {}
+      if (!accepted) return;
+
+      const prevText = delBtn.textContent;
+      delBtn.disabled = true;
+      delBtn.textContent = 'Deleting…';
+
+      try {
+        await deleteDeckRemote(deck.id);
+        showNotification('Deck deleted on the server', 'success');
+      } catch (err) {
+        console.warn('[deckSelect] Ошибка удаления колоды', err);
+        const status = err?.status;
+        const isNetworkError = err?.name === 'TypeError' || err?.message?.includes('Failed to fetch');
+        if (status === 404) {
+          // Колода уже отсутствует на сервере — очищаем локальную копию
+          removeDeckLocal(deck.id);
+          showNotification('Deck already missing on the server — removed locally', 'success');
+        } else if (status === 503 || status === 0 || isNetworkError) {
+          const removed = removeDeckLocal(deck.id);
+          const message = removed
+            ? 'Server unavailable — deck removed locally'
+            : 'Server unavailable — unable to remove deck';
+          showNotification(message, 'error');
+        } else {
+          const message = err?.message || 'Unable to delete deck';
+          showNotification(message, 'error');
+        }
+      } finally {
+        delBtn.disabled = false;
+        delBtn.textContent = prevText;
+      }
     });
     leftBtns.appendChild(delBtn);
 
