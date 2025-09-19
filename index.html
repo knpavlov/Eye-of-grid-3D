@@ -637,6 +637,9 @@
                 try { endTurn(); } catch {}
               }
             }, 1000);
+            setTimeout(() => {
+              try { updateUnits(); } catch {}
+            }, 1400);
           } else {
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем обновим визуально
             setTimeout(() => {
@@ -646,6 +649,9 @@
                 try { endTurn(); } catch {}
               }
             }, Math.max(0, animDelayMs));
+            setTimeout(() => {
+              try { updateUnits(); } catch {}
+            }, Math.max(0, animDelayMs) + 420);
           }
         }, 420);
       };

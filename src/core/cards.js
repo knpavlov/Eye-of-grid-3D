@@ -261,7 +261,7 @@ export const CARDS = {
     id: 'EARTH_DARK_YOKOZUNA_SEKIMARU', name: 'Dark Yokozuna Sekimaru', type: 'UNIT', cost: 3, activation: 2,
     element: 'EARTH', atk: 2, hp: 3,
     attackType: 'STANDARD',
-    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    attacks: [ { dir: 'N', ranges: [1] } ],
     blindspots: ['S'],
     pushTargetOnDamage: { distance: 1 },
     desc: 'If Dark Yokozuna Sekimaru attacks (but does not destroy) a creature, that creature is pushed back one field in the direction of the attack (provided the field is empty) and cannot counterattack.'
@@ -310,7 +310,7 @@ export const CARDS = {
   },
   FOREST_ELVEN_DEATH_DANCER: {
     id: 'FOREST_ELVEN_DEATH_DANCER', name: 'Elven Death Dancer', type: 'UNIT', cost: 5, activation: 4,
-    element: 'FOREST', atk: 3, hp: 4,
+    element: 'FOREST', atk: 1, hp: 3,
     attackType: 'MAGIC',
     attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY' } ],
     blindspots: ['S'],

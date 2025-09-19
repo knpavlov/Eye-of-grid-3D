@@ -446,6 +446,25 @@ describe('особые способности', () => {
     expect(fin.retaliators.length).toBe(0);
   });
 
+  it('магические существа не контратакуют по умолчанию', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[2][1].unit = {
+      owner:0,
+      tplId:'FIRE_PARTMOLE_FLAME_LIZARD',
+      facing:'N',
+      currentHP:CARDS.FIRE_PARTMOLE_FLAME_LIZARD.hp,
+    };
+    state.board[1][1].unit = {
+      owner:1,
+      tplId:'FIRE_FLAME_MAGUS',
+      facing:'S',
+      currentHP:CARDS.FIRE_FLAME_MAGUS.hp + 2,
+    };
+    const res = stagedAttack(state,2,1);
+    const fin = res.finish();
+    expect(fin.retaliators.length).toBe(0);
+  });
+
   it('Elven Death Dancer меняется местами с целью после магической атаки', () => {
     const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
     state.board[1][1].unit = {

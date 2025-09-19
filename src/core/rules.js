@@ -382,6 +382,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       const tplB = CARDS[B.tplId];
       const alive = (B.currentHP ?? B.hp) > 0;
       if (!alive) continue;
+      if (tplB?.attackType === 'MAGIC' && !tplB?.allowMagicRetaliation) continue;
       // быстрота защитника уже сработала на stepQuick, если атакующий не был быстрым
       if (!attackerQuick && hasFirstStrike(tplB)) continue;
       const hitsB = computeHits(n1, h.r, h.c, { target: { r, c }, union: true });
