@@ -916,6 +916,21 @@ describe('Water cards — добор и уклонения', () => {
     expect(precise.some(h => h.r === 1 && h.c === 2)).toBe(true);
   });
 
+  it('Cloud Runner может выбрать дальнюю цель через союзника', () => {
+    const board = makeBoard();
+    const state = { board };
+    state.board[1][0].unit = { tplId: 'WATER_CLOUD_RUNNER', owner: 0, facing: 'N' };
+    state.board[1][1].unit = { tplId: 'WATER_MERCENARY_SAVIOR_LATOO', owner: 0, facing: 'N' };
+    state.board[1][2].unit = { tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', owner: 1, facing: 'W' };
+
+    const unionHits = computeHits(state, 1, 0, { union: true });
+    expect(unionHits.some(h => h.r === 1 && h.c === 2)).toBe(true);
+
+    const opts = { chosenDir: 'E', rangeChoices: { E: 2 } };
+    const precise = computeHits(state, 1, 0, opts);
+    expect(precise.some(h => h.r === 1 && h.c === 2)).toBe(true);
+  });
+
   it('Harpoonsman сохраняет дальность вне воды', () => {
     const board = makeBoard();
     const state = { board };

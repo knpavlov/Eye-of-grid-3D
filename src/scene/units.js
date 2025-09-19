@@ -243,6 +243,15 @@ export function updateUnits(gameState) {
   ctx.unitMeshes = newList;
   ctx.unitMeshesByUid = nextMap;
 
+  if (cardGroup && typeof cardGroup.children === 'object') {
+    const validMeshes = new Set(nextMap.values());
+    for (const child of [...cardGroup.children]) {
+      if (!child || child.userData?.type !== 'unit') continue;
+      if (validMeshes.has(child)) continue;
+      try { cardGroup.remove(child); } catch {}
+    }
+  }
+
   try { if (typeof window !== 'undefined') window.unitMeshes = ctx.unitMeshes; } catch {}
 
   resetDodgeHover();

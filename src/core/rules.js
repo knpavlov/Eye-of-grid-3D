@@ -69,9 +69,10 @@ function attackCellsFromProfile(profile, tpl, facing, opts = {}) {
     }
     const baseGroup = (a.group != null) ? `combo-${String(a.group)}` : null;
     const ignoreBlocking = !!a.ignoreBlocking;
+    const skipFriendlyBlocking = !!a.skipFriendlyBlocking;
     for (const r of used) {
       const groupId = baseGroup ?? `g-${seq++}`;
-      res.push({ dirAbs, range: r, dirRel: a.dir, groupId, ignoreBlocking });
+      res.push({ dirAbs, range: r, dirRel: a.dir, groupId, ignoreBlocking, skipFriendlyBlocking });
     }
   }
   return res;
@@ -137,6 +138,7 @@ export function computeHits(state, r, c, opts = {}) {
     for (const pos of evaluated) {
       const { cell, dr, dc, nr, nc } = pos;
       const allowPierce = basePierce || cell.ignoreBlocking;
+      const skipFriendly = !!cell.skipFriendlyBlocking;
 
       if (!allowPierce) {
         let blocked = false;
@@ -144,7 +146,10 @@ export function computeHits(state, r, c, opts = {}) {
           const tr = r + dr * step;
           const tc = c + dc * step;
           const uMid = state.board?.[tr]?.[tc]?.unit;
-          if (uMid && (uMid.currentHP ?? CARDS[uMid.tplId]?.hp) > 0) { blocked = true; break; }
+          if (uMid && (uMid.currentHP ?? CARDS[uMid.tplId]?.hp) > 0) {
+            if (skipFriendly && uMid.owner === attacker.owner) continue;
+            blocked = true; break;
+          }
         }
         if (blocked) continue;
       }

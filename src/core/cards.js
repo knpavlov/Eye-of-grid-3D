@@ -197,8 +197,8 @@ export const CARDS = {
     element: 'WATER', atk: 1, hp: 2,
     attackType: 'STANDARD', chooseDir: true,
     attacks: [
-      { dir: 'E', ranges: [1, 2], mode: 'ANY' },
-      { dir: 'W', ranges: [1, 2], mode: 'ANY' },
+      { dir: 'E', ranges: [1, 2], mode: 'ANY', skipFriendlyBlocking: true },
+      { dir: 'W', ranges: [1, 2], mode: 'ANY', skipFriendlyBlocking: true },
     ],
     dodge: { chance: 0.5, attempts: 1 },
     drawOnSummonByElementFields: { element: 'WATER', includeSelf: true, includeCenter: true },

@@ -452,8 +452,9 @@ function drawAttackScheme(ctx, scheme, cardData, x, y, cell, gap) {
   }
 
   if (chooseDir || attacks.some(a => a.mode === 'ANY')) {
-    const highlightCells = new Set();
+    let highlightTarget = null;
     for (const a of attacks) {
+      if (highlightTarget) break;
       const vec = map[a.dir];
       if (!vec) continue;
       const ranges = Array.isArray(a.ranges) && a.ranges.length
@@ -464,17 +465,17 @@ function drawAttackScheme(ctx, scheme, cardData, x, y, cell, gap) {
       const rr = 1 + vec[0] * minDist;
       const cc = 1 + vec[1] * minDist;
       if (rr < 0 || rr > 2 || cc < 0 || cc > 2) continue;
-      highlightCells.add(`${rr},${cc}`);
+      highlightTarget = { rr, cc };
     }
-    if (!highlightCells.size) highlightCells.add('0,1');
-    for (const key of highlightCells) {
-      const [rr, cc] = key.split(',').map(Number);
-      const cx = x + cc * (cell + gap);
-      const cy = y + rr * (cell + gap);
-      ctx.strokeStyle = '#ef4444';
-      ctx.lineWidth = accentLine;
-      ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+    if (!highlightTarget) {
+      highlightTarget = { rr: 0, cc: 1 };
     }
+    const { rr, cc } = highlightTarget;
+    const cx = x + cc * (cell + gap);
+    const cy = y + rr * (cell + gap);
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = accentLine;
+    ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
   }
 }
 
