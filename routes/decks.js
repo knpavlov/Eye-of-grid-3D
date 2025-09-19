@@ -6,6 +6,7 @@ import {
   listDecks,
   getDeckById,
   upsertDeckRecord,
+  deleteDeckById,
 } from '../server/repositories/decksRepository.js';
 import { CARDS } from '../src/core/cards.js';
 import { DEFAULT_DECK_BLUEPRINTS } from '../src/core/defaultDecks.js';
@@ -109,6 +110,24 @@ router.post('/', async (req, res) => {
   } catch (err) {
     const status = err.status || 500;
     res.status(status).json({ error: err.message || 'Не удалось сохранить колоду' });
+  }
+});
+
+router.delete('/:id', async (req, res) => {
+  try {
+    await ensureStoragePrepared();
+    const deckId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+    if (!deckId) {
+      throw deckValidationError('Идентификатор колоды обязателен для удаления');
+    }
+    const removed = await deleteDeckById(deckId);
+    if (!removed) {
+      return res.status(404).json({ error: 'Колода не найдена' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    const status = err.status || 500;
+    res.status(status).json({ error: err.message || 'Не удалось удалить колоду' });
   }
 });
 

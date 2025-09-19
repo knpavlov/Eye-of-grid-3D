@@ -1,5 +1,5 @@
 // Сетевые операции с колодами — чистые функции без привязки к DOM
-import { hydrateDeck, serializeDeck, setDecks, upsertDeck } from '../core/decks.js';
+import { hydrateDeck, serializeDeck, setDecks, upsertDeck, removeDeck } from '../core/decks.js';
 import { getDecksApiBase } from './config.js';
 
 let lastError = null;
@@ -95,7 +95,24 @@ export async function saveDeck(deck, { signal, persistLocal = true } = {}) {
   }
 }
 
-export const api = { refreshDecks, fetchDeckById, saveDeck, getLastSyncError };
+export async function deleteDeck(id, { signal, persistLocal = true } = {}) {
+  try {
+    const deckId = typeof id === 'string' ? id.trim() : '';
+    if (!deckId) throw new Error('Идентификатор колоды обязателен для удаления');
+    await requestJson(buildUrl(`/${encodeURIComponent(deckId)}`), {
+      method: 'DELETE',
+      signal,
+    });
+    removeDeck(deckId, { persistLocal });
+    lastError = null;
+    return true;
+  } catch (err) {
+    lastError = err;
+    throw err;
+  }
+}
+
+export const api = { refreshDecks, fetchDeckById, saveDeck, deleteDeck, getLastSyncError };
 
 try {
   if (typeof window !== 'undefined') {

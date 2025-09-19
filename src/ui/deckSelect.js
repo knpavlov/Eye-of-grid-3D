@@ -1,6 +1,7 @@
 // Меню выбора колоды
-import { DECKS, removeDeck, onDecksChanged } from '../core/decks.js';
-import { refreshDecks } from '../net/decks.js';
+import { DECKS, onDecksChanged } from '../core/decks.js';
+import { refreshDecks, deleteDeck as deleteDeckRemote } from '../net/decks.js';
+import { show as showNotification } from './notifications.js';
 
 function pickDeckImage(deck) {
   // выбираем самую дорогую по мане карту; при равенстве — случайная
@@ -48,6 +49,7 @@ export function open(opts = {}) {
   let editBtn = null;
   let delBtn = null;
   let okBtn = null;
+  let deleting = false;
 
   function getSelectedDeck() {
     return DECKS.find(d => d.id === selectedId) || null;
@@ -64,7 +66,7 @@ export function open(opts = {}) {
   function updateButtonsState() {
     const hasDeck = !!getSelectedDeck();
     if (editBtn) editBtn.disabled = !hasDeck;
-    if (delBtn) delBtn.disabled = !hasDeck;
+    if (delBtn) delBtn.disabled = deleting || !hasDeck;
     if (okBtn) okBtn.disabled = !hasDeck;
   }
 
@@ -98,10 +100,26 @@ export function open(opts = {}) {
     delBtn = document.createElement('button');
     delBtn.className = 'overlay-panel px-3 py-1.5 bg-red-600 hover:bg-red-700 glossy-btn transition-colors';
     delBtn.textContent = 'Delete';
-    delBtn.addEventListener('click', () => {
+    delBtn.addEventListener('click', async () => {
+      if (deleting) return;
       const deck = getSelectedDeck();
       if (!deck) return;
-      removeDeck(deck.id);
+      deleting = true;
+      const prevText = delBtn.textContent;
+      delBtn.disabled = true;
+      delBtn.textContent = 'Deleting…';
+      try {
+        await deleteDeckRemote(deck.id);
+        showNotification('Deck deleted on the server', 'success');
+      } catch (err) {
+        console.warn('[deckSelect] Не удалось удалить колоду на сервере', err);
+        showNotification('Не удалось удалить колоду — проверьте соединение', 'error');
+        refreshDecks().catch(syncErr => console.warn('[deckSelect] Не удалось синхронизировать колоды после ошибки удаления', syncErr));
+      } finally {
+        deleting = false;
+        delBtn.disabled = false;
+        delBtn.textContent = prevText;
+      }
     });
     leftBtns.appendChild(delBtn);
 
