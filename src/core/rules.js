@@ -403,9 +403,14 @@ export function stagedAttack(state, r, c, opts = {}) {
     const ret = step2();
 
     const applied = applyDamageInteractionResults(nFinal, damageEffects);
+    let attackerPosUpdate = null;
     if (applied?.attackerPosUpdate) {
-      r = applied.attackerPosUpdate.r;
-      c = applied.attackerPosUpdate.c;
+      attackerPosUpdate = {
+        r: applied.attackerPosUpdate.r,
+        c: applied.attackerPosUpdate.c,
+      };
+      r = attackerPosUpdate.r;
+      c = attackerPosUpdate.c;
     }
     if (Array.isArray(applied?.logLines) && applied.logLines.length) {
       logLines.push(...applied.logLines);
@@ -472,7 +477,15 @@ export function stagedAttack(state, r, c, opts = {}) {
     }
 
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
-    return { n1: nFinal, logLines, targets, deaths, retaliators: ret.retaliators, releases: releaseEvents.releases };
+    return {
+      n1: nFinal,
+      logLines,
+      targets,
+      deaths,
+      retaliators: ret.retaliators,
+      releases: releaseEvents.releases,
+      attackerPosUpdate,
+    };
   }
 
   return {
@@ -670,16 +683,28 @@ export function magicAttack(state, fr, fc, tr, tc) {
     }
   }
   const applied = applyDamageInteractionResults(n1, damageEffects);
+  let attackerPosUpdate = null;
   if (applied?.attackerPosUpdate) {
-    fr = applied.attackerPosUpdate.r;
-    fc = applied.attackerPosUpdate.c;
+    attackerPosUpdate = {
+      r: applied.attackerPosUpdate.r,
+      c: applied.attackerPosUpdate.c,
+    };
+    fr = attackerPosUpdate.r;
+    fc = attackerPosUpdate.c;
   }
   if (Array.isArray(applied?.logLines) && applied.logLines.length) {
     logLines.push(...applied.logLines);
   }
   attacker.lastAttackTurn = n1.turn;
   attacker.apSpent = (attacker.apSpent || 0) + attackCostValue;
-  return { n1, logLines, targets, deaths, releases: releaseEvents.releases };
+  return {
+    n1,
+    logLines,
+    targets,
+    deaths,
+    releases: releaseEvents.releases,
+    attackerPosUpdate,
+  };
 }
 
 export { computeCellBuff };

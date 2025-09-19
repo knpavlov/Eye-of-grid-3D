@@ -45,7 +45,7 @@ export const CARDS = {
     element: 'FIRE', atk: 2, hp: 1,
     attackType: 'STANDARD',
     // бьёт сразу по двум клеткам впереди, игнорируя преграды и задевая союзников
-    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    attacks: [ { dir: 'N', ranges: [1, 2], group: 'FRONT_LINE', ignoreBlocking: true } ],
     blindspots: ['S'], perfectDodge: true, activationReduction: 1, diesOffElement: 'FIRE',
     friendlyFire: true, pierce: true,
     desc: 'Perfect Dodge. The activation cost to attack is 1 less. Destroy Great Minos if he is on a non‑Fire field.'
@@ -137,7 +137,7 @@ export const CARDS = {
     id: 'FIRE_WARDEN_HILDA', name: 'Warden Hilda', type: 'UNIT', cost: 3, activation: 2,
     element: 'FIRE', atk: 2, hp: 4,
     attackType: 'STANDARD',
-    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    attacks: [ { dir: 'N', ranges: [1, 2], group: 'FRONT_LINE', ignoreBlocking: true } ],
     blindspots: ['S'],
     plusAtkVsElement: { element: 'FIRE', amount: 1 },
     gainPossessionEnemiesOnElement: { element: 'FIRE', requireDifferentField: true },
@@ -386,7 +386,7 @@ export const CARDS = {
     id: 'BIOLITH_TAURUS_MONOLITH', name: 'Taurus Monolith', type: 'UNIT', cost: 5, activation: 3,
     element: 'BIOLITH', atk: 3, hp: 6,
     attackType: 'STANDARD',
-    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    attacks: [ { dir: 'N', ranges: [1, 2], group: 'FRONT_LINE', ignoreBlocking: true } ],
     blindspots: ['S'],
     pushTargetOnDamage: { distance: 1 },
     desc: 'If Taurus Monolith attacks (but does not destroy) a creature, that creature is pushed back one field in the direction of the attack (provided the field is empty) and cannot counterattack.'

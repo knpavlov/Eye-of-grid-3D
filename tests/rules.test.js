@@ -446,6 +446,34 @@ describe('особые способности', () => {
     expect(fin.retaliators.length).toBe(0);
   });
 
+  it('Taurus Monolith поражает обе клетки перед собой одновременно', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[2][1].unit = {
+      owner:0,
+      tplId:'BIOLITH_TAURUS_MONOLITH',
+      facing:'N',
+      currentHP:CARDS.BIOLITH_TAURUS_MONOLITH.hp,
+    };
+    state.board[1][1].unit = {
+      owner:1,
+      tplId:'FIRE_TRICEPTAUR_BEHEMOTH',
+      facing:'S',
+      currentHP:CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp,
+    };
+    state.board[0][1].unit = {
+      owner:1,
+      tplId:'FIRE_PARTMOLE_FLAME_LIZARD',
+      facing:'S',
+      currentHP:CARDS.FIRE_PARTMOLE_FLAME_LIZARD.hp,
+    };
+    const res = stagedAttack(state,2,1);
+    res.step1();
+    const mid = res.n1.board[1][1].unit;
+    const far = res.n1.board[0][1].unit;
+    expect(mid?.currentHP).toBe(CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp - CARDS.BIOLITH_TAURUS_MONOLITH.atk);
+    expect(far?.currentHP).toBe(Math.max(0, CARDS.FIRE_PARTMOLE_FLAME_LIZARD.hp - CARDS.BIOLITH_TAURUS_MONOLITH.atk));
+  });
+
   it('магические существа не контратакуют по умолчанию', () => {
     const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
     state.board[2][1].unit = {
@@ -488,6 +516,7 @@ describe('особые способности', () => {
     expect(swapped?.currentHP).toBe((CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp + 2) - CARDS.FOREST_ELVEN_DEATH_DANCER.atk - 2);
     const dmgEntry = res.targets.find(t => t.r === 0 && t.c === 1);
     expect(dmgEntry?.dmg).toBe(CARDS.FOREST_ELVEN_DEATH_DANCER.atk);
+    expect(res.attackerPosUpdate).toEqual({ r: 0, c: 1 });
   });
 
   it('способность backAttack наносит удар в спину и блокирует ответный урон', () => {
