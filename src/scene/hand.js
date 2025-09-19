@@ -160,17 +160,16 @@ export async function animateDrawnCardToHand(cardTpl) {
   allMaterials.forEach(m => { if (m) { m.transparent = true; m.opacity = 0; } });
   cardGroup.add(big);
 
-  const totalVisible = Math.max(0, (ctx.handCardMeshes || []).filter(m => m?.userData?.isInHand).length);
+  const handMeshes = (ctx.handCardMeshes || []).filter(m => m?.userData?.isInHand);
+  const totalVisible = Math.max(0, handMeshes.length);
   const totalAfter = totalVisible + 1;
   const indexAfter = totalAfter - 1;
   const target = computeHandTransform(indexAfter, totalAfter);
 
   try {
     const preLayoutDuration = 0.6;
-    for (let i = 0; i < ctx.handCardMeshes.length; i++) {
-      const mesh = ctx.handCardMeshes[i];
-      if (!mesh || !mesh.userData || !mesh.userData.isInHand) continue;
-      const t = computeHandTransform(i, totalAfter);
+    handMeshes.forEach((mesh, idx) => {
+      const t = computeHandTransform(idx, totalAfter);
       gsap.to(mesh.position, {
         x: t.position.x,
         y: t.position.y,
@@ -188,7 +187,7 @@ export async function animateDrawnCardToHand(cardTpl) {
       gsap.to(mesh.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.18 });
       try { mesh.userData.originalPosition.copy(t.position); } catch {}
       try { mesh.userData.originalRotation.copy(t.rotation); } catch {}
-    }
+    });
   } catch {}
 
   await new Promise(resolve => {
