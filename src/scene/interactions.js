@@ -9,6 +9,8 @@ import {
   evaluateIncarnationSummon,
   applyIncarnationSummon,
   isIncarnationCard,
+  refreshContinuousPossessions,
+  formatPossessionEvents,
 } from '../core/abilities.js';
 import { capMana } from '../core/constants.js';
 
@@ -684,6 +686,13 @@ export function placeUnitWithDirection(direction) {
     const gained = applyFreedonianAura(gameState, gameState.active);
     if (gained > 0) {
       window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
+    }
+    const possessionEvents = refreshContinuousPossessions(gameState);
+    const possessionMessages = formatPossessionEvents(possessionEvents);
+    if (Array.isArray(possessionMessages) && possessionMessages.length) {
+      for (const line of possessionMessages) {
+        window.addLog?.(line);
+      }
     }
   }
   // Синхронизируем состояние после призыва

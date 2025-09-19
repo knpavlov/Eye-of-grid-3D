@@ -7,6 +7,8 @@ import {
   shouldUseMagicAttack,
   collectUnitActions,
   executeUnitAction,
+  refreshContinuousPossessions,
+  formatPossessionEvents,
 } from '../core/abilities.js';
 import {
   interactionState,
@@ -46,6 +48,13 @@ export function rotateUnit(unitMesh, dir) {
     const turnCW = window.turnCW || {}; const turnCCW = window.turnCCW || {};
     u.facing = dir === 'cw' ? turnCW[u.facing] : turnCCW[u.facing];
     u.lastRotateTurn = gameState.turn;
+    const possessionEvents = refreshContinuousPossessions(gameState);
+    const possessionMessages = formatPossessionEvents(possessionEvents);
+    if (Array.isArray(possessionMessages) && possessionMessages.length) {
+      for (const line of possessionMessages) {
+        window.addLog?.(line);
+      }
+    }
     window.__units?.updateUnits?.(gameState);
     try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
   } catch {}

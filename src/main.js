@@ -2,6 +2,7 @@
 import * as Constants from './core/constants.js';
 import { CARDS } from './core/cards.js';
 import { DECKS } from './core/decks.js';
+import * as Abilities from './core/abilities.js';
 // Стартовая колода по умолчанию — первая из списка
 const STARTER_FIRESET = DECKS[0]?.cards || [];
 import * as Rules from './core/rules.js';
@@ -171,8 +172,19 @@ try {
     createCard3D: Cards.createCard3D,
     drawCardFace: Cards.drawCardFace,
   };
+  const updateUnitsWithPossession = (state) => {
+    try {
+      const gs = state || (typeof window !== 'undefined' ? window.gameState : null);
+      if (gs) {
+        Abilities.refreshContinuousPossessions(gs, { collectEvents: false });
+      }
+      Units.updateUnits(gs);
+    } catch (err) {
+      console.warn('[main] Не удалось обновить юнитов', err);
+    }
+  };
   window.__units = {
-    updateUnits: Units.updateUnits,
+    updateUnits: updateUnitsWithPossession,
   };
   window.__hand = {
     setHandCardHoverVisual: Hand.setHandCardHoverVisual,
@@ -197,6 +209,7 @@ try {
   window.__ui.deckSelect = DeckSelect;
   window.__ui.deckBuilder = DeckBuilder;
   window.__ui.mainMenu = MainMenu;
+  window.updateUnits = (state) => updateUnitsWithPossession(state);
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;

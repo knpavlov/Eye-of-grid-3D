@@ -1,6 +1,7 @@
 // Навешивание обработчиков UI элементов
 
 import { refreshInputLockUI } from './inputLock.js';
+import { refreshContinuousPossessions, formatPossessionEvents } from '../core/abilities.js';
 
 export function attachUIEvents() {
   if (typeof document === 'undefined') return;
@@ -91,6 +92,11 @@ export function attachUIEvents() {
           u.facing = direction;
           w.addLog?.(`${tpl.name}: ${w.CARDS[u.tplId].name} повёрнут в ${direction}.`);
           pl.discard.push(tpl); pl.hand.splice(idx, 1);
+          const possessionEvents = refreshContinuousPossessions(gameState);
+          const possessionMessages = formatPossessionEvents(possessionEvents);
+          if (Array.isArray(possessionMessages) && possessionMessages.length) {
+            for (const line of possessionMessages) w.addLog?.(line);
+          }
           w.__interactions.resetCardSelection(); w.updateHand(); w.updateUnits(); w.updateUI();
         }
         w.__interactions.clearPendingSpellOrientation();

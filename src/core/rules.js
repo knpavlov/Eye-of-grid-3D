@@ -15,6 +15,8 @@ import {
   attemptUnitDodge,
   collectDamageInteractions,
   applyDamageInteractionResults,
+  refreshContinuousPossessions,
+  formatPossessionEvents,
 } from './abilities.js';
 import { countUnits } from './board.js';
 import { computeCellBuff } from './fieldEffects.js';
@@ -516,6 +518,14 @@ export function stagedAttack(state, r, c, opts = {}) {
       A.apSpent = (A.apSpent || 0) + attackCostValue;
     }
 
+    const possessionEvents = refreshContinuousPossessions(nFinal);
+    if (possessionEvents) {
+      const messages = formatPossessionEvents(possessionEvents);
+      if (Array.isArray(messages) && messages.length) {
+        logLines.push(...messages);
+      }
+    }
+
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
     return {
       n1: nFinal,
@@ -525,6 +535,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       retaliators: ret.retaliators,
       releases: releaseEvents.releases,
       attackerPosUpdate,
+      possessionEvents,
     };
   }
 
@@ -733,7 +744,14 @@ export function magicAttack(state, fr, fc, tr, tc) {
   }
   attacker.lastAttackTurn = n1.turn;
   attacker.apSpent = (attacker.apSpent || 0) + attackCostValue;
-  return { n1, logLines, targets, deaths, releases: releaseEvents.releases, attackerPosUpdate };
+  const possessionEvents = refreshContinuousPossessions(n1);
+  if (possessionEvents) {
+    const messages = formatPossessionEvents(possessionEvents);
+    if (Array.isArray(messages) && messages.length) {
+      logLines.push(...messages);
+    }
+  }
+  return { n1, logLines, targets, deaths, releases: releaseEvents.releases, attackerPosUpdate, possessionEvents };
 }
 
 export { computeCellBuff };

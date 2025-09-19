@@ -18,6 +18,11 @@ import {
 import { computeTargetCostBonus as computeTargetCostBonusInternal } from './abilityHandlers/attackModifiers.js';
 import { collectRepositionOnDamage } from './abilityHandlers/reposition.js';
 import { extraActivationCostFromAuras } from './abilityHandlers/costModifiers.js';
+import {
+  buildPossessionSourceDescriptor,
+  refreshContinuousPossessions,
+  formatPossessionEvents,
+} from './abilityHandlers/possession.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -363,16 +368,6 @@ function sameSource(possessionSource, deathInfo) {
   return false;
 }
 
-function buildSourceDescriptor(state, r, c, unit, tpl) {
-  return {
-    uid: getUnitUid(unit),
-    tplId: tpl?.id || unit?.tplId || null,
-    owner: unit?.owner,
-    position: { r, c },
-    turn: state?.turn ?? 0,
-  };
-}
-
 function ensureUniqueCells(cells) {
   const seen = new Set();
   const res = [];
@@ -479,7 +474,7 @@ export function applySummonAbilities(state, r, c) {
           targetUnit.possessed = {
             by: unit.owner,
             originalOwner,
-            source: buildSourceDescriptor(state, r, c, unit, tpl),
+            source: buildPossessionSourceDescriptor(state, r, c, unit, tpl),
             sinceTurn: state?.turn ?? 0,
             targetTplId: tplTarget?.id ?? targetUnit.tplId,
           };
@@ -605,6 +600,7 @@ export const evaluateIncarnationSummon = evaluateIncarnationSummonInternal;
 export const applyIncarnationSummon = applyIncarnationSummonInternal;
 export const ensureUnitDodgeState = ensureDodgeState;
 export const attemptUnitDodge = attemptDodgeInternal;
+export { refreshContinuousPossessions, formatPossessionEvents };
 
 export function collectUnitActions(state, r, c) {
   const actions = [];

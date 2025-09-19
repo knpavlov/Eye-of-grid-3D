@@ -8,6 +8,7 @@ import { getCtx } from '../scene/context.js';
 import { interactionState, resetCardSelection } from '../scene/interactions.js';
 import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
+import { refreshContinuousPossessions, formatPossessionEvents } from '../core/abilities.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -104,6 +105,21 @@ function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
   addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`);
 }
 
+function applyPossessionRefresh({ log = true } = {}) {
+  try {
+    const events = refreshContinuousPossessions(gameState);
+    if (log) {
+      const messages = formatPossessionEvents(events);
+      if (Array.isArray(messages) && messages.length) {
+        for (const line of messages) addLog?.(line);
+      }
+    }
+    return events;
+  } catch {
+    return { acquired: [], released: [] };
+  }
+}
+
 export const handlers = {
   SPELL_BEGUILING_FOG: {
     requiresUnitTarget: true,
@@ -164,6 +180,7 @@ export const handlers = {
       spendAndDiscardSpell(pl, idx);
       resetCardSelection();
       updateHand();
+      applyPossessionRefresh();
       updateUnits();
       updateUI();
     },
@@ -246,6 +263,7 @@ export const handlers = {
       spendAndDiscardSpell(pl, idx);
       resetCardSelection();
       updateHand();
+      applyPossessionRefresh();
       updateUnits();
       updateUI();
     },
@@ -279,6 +297,7 @@ export const handlers = {
           }
           setTimeout(() => {
             gameState.board[r][c].unit = null;
+            applyPossessionRefresh();
             updateUnits();
             updateUI();
           }, 1000);
@@ -287,6 +306,7 @@ export const handlers = {
       spendAndDiscardSpell(pl, idx);
       resetCardSelection();
       updateHand();
+      applyPossessionRefresh();
       updateUnits();
       updateUI();
     },
@@ -315,6 +335,7 @@ export const handlers = {
       spendAndDiscardSpell(pl, idx);
       resetCardSelection();
       updateHand();
+      applyPossessionRefresh();
       updateUnits();
       updateUI();
     },
@@ -381,21 +402,23 @@ export const handlers = {
           if (u.currentHP <= 0) {
             try { gameState.players[u.owner].graveyard.push(CARDS[u.tplId]); } catch {}
             const deadMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-            if (deadMesh) {
-              window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9);
-              setTimeout(() => {
-                gameState.board[r][c].unit = null;
-                updateUnits();
-                updateUI();
-              }, 1000);
-            }
+          if (deadMesh) {
+            window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9);
+            setTimeout(() => {
+              gameState.board[r][c].unit = null;
+              applyPossessionRefresh();
+              updateUnits();
+              updateUI();
+            }, 1000);
           }
         }
+      }
       }
       burnSpellCard(tpl, tileMesh);
       spendAndDiscardSpell(pl, idx);
       resetCardSelection();
       updateHand();
+      applyPossessionRefresh();
       updateUnits();
       updateUI();
     },
