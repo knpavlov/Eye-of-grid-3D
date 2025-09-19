@@ -5,7 +5,6 @@ import { enforceHandLimit } from './handLimit.js';
 import { refreshPossessionsUI } from './possessions.js';
 import {
   canAttack,
-  shouldUseMagicAttack,
   collectUnitActions,
   executeUnitAction,
 } from '../core/abilities.js';
@@ -82,8 +81,11 @@ export function performUnitAttack(unitMesh) {
       ? window.attackCost(tpl, fieldElement, { state: gameState, r, c, unit, owner: unit.owner })
       : 0;
     const iState = window.__interactions?.interactionState;
-    const mustUseMagic = shouldUseMagicAttack(gameState, r, c, tpl);
-    if (tpl?.attackType === 'MAGIC' || mustUseMagic) {
+    const profile = window.resolveAttackProfile
+      ? window.resolveAttackProfile(gameState, r, c, tpl)
+      : { attacks: tpl?.attacks || [], chooseDir: tpl?.chooseDir, attackType: tpl?.attackType };
+    const usesMagic = profile?.attackType === 'MAGIC';
+    if (usesMagic) {
       const allowFriendly = !!tpl.friendlyFire;
       const cells = [];
       let hasEnemy = false;
@@ -117,10 +119,12 @@ export function performUnitAttack(unitMesh) {
       return;
     }
     const computeHits = window.computeHits;
-    const attacks = tpl?.attacks || [];
-    const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
+    const attacks = Array.isArray(profile?.attacks) ? profile.attacks : (tpl?.attacks || []);
+    const needsChoice = !!profile?.chooseDir || attacks.some(a => a.mode === 'ANY');
     const includeEmpty = attacks.some(a => Array.isArray(a.ranges) && a.ranges.length > 1 && !a.mode);
-    const hitsAll = typeof computeHits === 'function' ? computeHits(gameState, r, c, { union: true, includeEmpty }) : [];
+    const hitsAll = typeof computeHits === 'function'
+      ? computeHits(gameState, r, c, { union: true, includeEmpty, profile })
+      : [];
     const allowFriendly = !!tpl?.friendlyFire;
     const targets = hitsAll.filter(h => {
       const u2 = gameState.board?.[h.r]?.[h.c]?.unit;
@@ -141,7 +145,7 @@ export function performUnitAttack(unitMesh) {
     try { window.selectedUnit = null; window.__ui?.panels?.hideUnitActionPanel(); } catch {}
     if (needsChoice && targets.length > 1) {
       if (iState) {
-        iState.pendingAttack = { r, c, cancelMode: 'attack', owner: unit.owner, spentMana: cost };
+        iState.pendingAttack = { r, c, cancelMode: 'attack', owner: unit.owner, spentMana: cost, profile };
         highlightTiles(targets);
         try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
       }
@@ -158,7 +162,10 @@ export function performUnitAttack(unitMesh) {
       const ORDER = ['N', 'E', 'S', 'W'];
       const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(unit.facing) + 4) % 4];
       const dist = Math.max(Math.abs(dr), Math.abs(dc));
-      opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
+      opts = { chosenDir: relDir, profile };
+      if (attacks.some(a => a.mode === 'ANY')) {
+        opts.rangeChoices = { [relDir]: dist };
+      }
     }
     if (typeof window.performBattleSequence === 'function') {
       window.performBattleSequence(r, c, true, opts);
