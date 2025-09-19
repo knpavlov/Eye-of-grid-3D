@@ -113,10 +113,9 @@ export function computeHits(state, r, c, opts = {}) {
       evaluated.push({ cell, dr, dc, nr, nc });
     }
     if (!evaluated.length) continue;
-    if (opts.target) {
-      const match = evaluated.some(pos => pos.nr === opts.target.r && pos.nc === opts.target.c);
-      if (!match) continue;
-    }
+
+    const considered = [];
+    let hasEnemy = false;
     for (const pos of evaluated) {
       const { cell, dr, dc, nr, nc } = pos;
       const allowPierce = basePierce || cell.ignoreBlocking;
@@ -132,46 +131,81 @@ export function computeHits(state, r, c, opts = {}) {
         if (blocked) continue;
       }
 
-      let B = state.board?.[nr]?.[nc]?.unit;
-      if (B && (B.currentHP ?? CARDS[B.tplId]?.hp) <= 0) B = null;
+      let unit = state.board?.[nr]?.[nc]?.unit;
+      if (unit && (unit.currentHP ?? CARDS[unit.tplId]?.hp) <= 0) unit = null;
+      if (unit && unit.owner !== attacker.owner) hasEnemy = true;
+      considered.push({ ...pos, nr, nc, unit });
+    }
+    if (!considered.length) continue;
+
+    if (opts.target) {
+      const match = considered.some(pos => pos.nr === opts.target.r && pos.nc === opts.target.c);
+      if (!match) continue;
+    }
+
+    const multiGroup = groupCells.length > 1;
+    const allowAlliedHits = allowFriendly || (multiGroup && hasEnemy);
+    if (!hasEnemy && !allowFriendly) {
+      if (opts.includeEmpty) {
+        for (const pos of considered) {
+          if (!pos.unit || pos.unit.owner === attacker.owner) {
+            hits.push({ r: pos.nr, c: pos.nc, dmg: 0 });
+          }
+        }
+      }
+      continue;
+    }
+
+    for (const pos of considered) {
+      const { nr, nc, unit: B } = pos;
       if (!B) {
         if (opts.includeEmpty) hits.push({ r: nr, c: nc, dmg: 0 });
         continue;
       }
-      if (B.owner === attacker.owner && !allowFriendly) {
+
+      const sameOwner = B.owner === attacker.owner;
+      if (sameOwner && !allowAlliedHits) {
         if (opts.includeEmpty) hits.push({ r: nr, c: nc, dmg: 0 });
-        continue; // по умолчанию союзников не бьём
+        continue;
       }
-      if (B.owner !== attacker.owner &&
-          !aFlying && hasAdjacentGuard(state, nr, nc) && !(CARDS[B.tplId].keywords || []).includes('GUARD')) {
-        continue; // охрана работает только против врагов
+
+      if (!sameOwner) {
+        if (!aFlying && hasAdjacentGuard(state, nr, nc) && !(CARDS[B.tplId].keywords || []).includes('GUARD')) {
+          continue; // охрана работает только против врагов
+        }
+        const backDir = { N: 'S', S: 'N', E: 'W', W: 'E' }[B.facing];
+        const [bdr, bdc] = DIR_VECTORS[backDir] || [0, 0];
+        let isBack = (nr + bdr === r && nc + bdc === c);
+        const dirAbsFromB = (() => {
+          if (r === nr - 1 && c === nc) return 'N';
+          if (r === nr + 1 && c === nc) return 'S';
+          if (r === nr && c === nc - 1) return 'W';
+          return 'E';
+        })();
+        const ORDER = ['N', 'E', 'S', 'W'];
+        const absIdx = ORDER.indexOf(dirAbsFromB);
+        const faceIdx = ORDER.indexOf(B.facing);
+        const relIdx = (absIdx - faceIdx + 4) % 4;
+        let dirRel = ORDER[relIdx];
+        if (forceBackAttack) {
+          isBack = true;
+          dirRel = 'S';
+        }
+        const tplB = CARDS[B.tplId] || {};
+        const hasExplicitBlind = Object.prototype.hasOwnProperty.call(tplB, 'blindspots');
+        const blindRaw = hasExplicitBlind ? tplB.blindspots : ['S'];
+        const blind = Array.isArray(blindRaw) ? blindRaw : ['S'];
+        const inBlind = blind.includes(dirRel);
+        const extraTotal = inBlind ? 1 : 0;
+        const dmg = Math.max(0, atk + extraTotal);
+        hits.push({ r: nr, c: nc, dmg, backstab: isBack, sameOwner: false });
+        continue;
       }
-      const backDir = { N: 'S', S: 'N', E: 'W', W: 'E' }[B.facing];
-      const [bdr, bdc] = DIR_VECTORS[backDir] || [0, 0];
-      let isBack = (nr + bdr === r && nc + bdc === c);
-      const dirAbsFromB = (() => {
-        if (r === nr - 1 && c === nc) return 'N';
-        if (r === nr + 1 && c === nc) return 'S';
-        if (r === nr && c === nc - 1) return 'W';
-        return 'E';
-      })();
-      const ORDER = ['N', 'E', 'S', 'W'];
-      const absIdx = ORDER.indexOf(dirAbsFromB);
-      const faceIdx = ORDER.indexOf(B.facing);
-      const relIdx = (absIdx - faceIdx + 4) % 4;
-      let dirRel = ORDER[relIdx];
-      if (forceBackAttack) {
-        isBack = true;
-        dirRel = 'S';
-      }
-      const tplB = CARDS[B.tplId] || {};
-      const hasExplicitBlind = Object.prototype.hasOwnProperty.call(tplB, 'blindspots');
-      const blindRaw = hasExplicitBlind ? tplB.blindspots : ['S'];
-      const blind = Array.isArray(blindRaw) ? blindRaw : ['S'];
-      const inBlind = blind.includes(dirRel);
-      const extraTotal = inBlind ? 1 : 0;
-      const dmg = Math.max(0, atk + extraTotal);
-      hits.push({ r: nr, c: nc, dmg, backstab: isBack });
+
+      // Для мульти-ударов по нескольким клеткам союзники тоже получают урон,
+      // если в секторе есть враг
+      const dmg = Math.max(0, atk);
+      hits.push({ r: nr, c: nc, dmg, backstab: false, sameOwner: true });
     }
   }
   return hits;
@@ -187,6 +221,15 @@ export function stagedAttack(state, r, c, opts = {}) {
   if (attacker.lastAttackTurn === base.turn) return null;
   const tplA = CARDS[attacker.tplId];
   if (!canAttack(tplA)) return null;
+
+  const startElement = base.board?.[r]?.[c]?.element;
+  const attackCostValue = attackCost(tplA, startElement, {
+    state: base,
+    r,
+    c,
+    unit: attacker,
+    owner: attacker?.owner,
+  });
 
   const baseStats = effectiveStats(base.board[r][c], attacker);
   let atk = baseStats.atk;
@@ -254,6 +297,7 @@ export function stagedAttack(state, r, c, opts = {}) {
   const quickRetaliators = [];
   let quickRetaliation = 0;
   for (const h of hitsRaw) {
+    if (h?.sameOwner) continue;
     const B = base.board?.[h.r]?.[h.c]?.unit;
     if (!B) continue;
     const tplB = CARDS[B.tplId];
@@ -273,8 +317,14 @@ export function stagedAttack(state, r, c, opts = {}) {
     const cell = base.board?.[h.r]?.[h.c];
     const B = cell?.unit;
     if (!B) return { ...h, dealt: 0 };
+    const sameOwner = B.owner === attacker.owner;
     const isMagic = tplA.attackType === 'MAGIC';
     const tplB = CARDS[B.tplId];
+    if (sameOwner) {
+      // Союзники не уклоняются от массового удара, поэтому просто получаем урон
+      const dealt = Math.max(0, h.dmg);
+      return { ...h, dealt, dodge: false, invisible: false, sameOwner: true };
+    }
     const invisible = hasInvisibility(base, h.r, h.c, { unit: B, tpl: tplB });
     const perfect = !isMagic && !invisible && hasPerfectDodge(base, h.r, h.c, { unit: B, tpl: tplB });
     let dodgeInfo = null;
@@ -283,7 +333,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     }
     const dodgeSuccess = !isMagic && !invisible && (perfect || (dodgeInfo?.success === true));
     const dealt = (invisible || dodgeSuccess) ? 0 : h.dmg;
-    return { ...h, dealt, dodge: dodgeSuccess, invisible, dodgeInfo };
+    return { ...h, dealt, dodge: dodgeSuccess, invisible, dodgeInfo, sameOwner: false };
   });
 
   const n1 = JSON.parse(JSON.stringify(base));
@@ -342,7 +392,9 @@ export function stagedAttack(state, r, c, opts = {}) {
         attackerPos: { r, c },
         attackerUnit: n1.board?.[r]?.[c]?.unit,
         tpl: tplA,
-        hits: step1Damages.map(h => ({ r: h.r, c: h.c, dealt: h.dealt || 0 })),
+        hits: step1Damages
+          .filter(h => !h.sameOwner)
+          .map(h => ({ r: h.r, c: h.c, dealt: h.dealt || 0 })),
       });
       if (interactions) {
         const prevents = interactions.preventRetaliation;
@@ -366,6 +418,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     let totalRetaliation = 0;
     const retaliators = [];
     for (const h of step1Damages) {
+      if (h.sameOwner) continue;
       const preventKey = `${h.r},${h.c}`;
       if (damageEffects.preventRetaliation.has(preventKey)) continue;
       const B = n1.board?.[h.r]?.[h.c]?.unit;
@@ -373,6 +426,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       const tplB = CARDS[B.tplId];
       const alive = (B.currentHP ?? B.hp) > 0;
       if (!alive) continue;
+      if (tplB?.attackType === 'MAGIC' && !tplB?.allowMagicRetaliation) continue;
       // быстрота защитника уже сработала на stepQuick, если атакующий не был быстрым
       if (!attackerQuick && hasFirstStrike(tplB)) continue;
       const hitsB = computeHits(n1, h.r, h.c, { target: { r, c }, union: true });
@@ -393,9 +447,10 @@ export function stagedAttack(state, r, c, opts = {}) {
     const ret = step2();
 
     const applied = applyDamageInteractionResults(nFinal, damageEffects);
-    if (applied?.attackerPosUpdate) {
-      r = applied.attackerPosUpdate.r;
-      c = applied.attackerPosUpdate.c;
+    const attackerPosUpdate = applied?.attackerPosUpdate || null;
+    if (attackerPosUpdate) {
+      r = attackerPosUpdate.r;
+      c = attackerPosUpdate.c;
     }
     if (Array.isArray(applied?.logLines) && applied.logLines.length) {
       logLines.push(...applied.logLines);
@@ -458,12 +513,19 @@ export function stagedAttack(state, r, c, opts = {}) {
 
     if (A) {
       A.lastAttackTurn = nFinal.turn;
-      const cellEl = nFinal.board?.[r]?.[c]?.element;
-      A.apSpent = (A.apSpent || 0) + attackCost(tplA, cellEl);
+      A.apSpent = (A.apSpent || 0) + attackCostValue;
     }
 
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
-    return { n1: nFinal, logLines, targets, deaths, retaliators: ret.retaliators, releases: releaseEvents.releases };
+    return {
+      n1: nFinal,
+      logLines,
+      targets,
+      deaths,
+      retaliators: ret.retaliators,
+      releases: releaseEvents.releases,
+      attackerPosUpdate,
+    };
   }
 
   return {
@@ -488,6 +550,15 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (attacker.lastAttackTurn === n1.turn) return null;
   const tplA = CARDS[attacker.tplId];
   if (!canAttack(tplA)) return null;
+
+  const startElement = n1.board?.[fr]?.[fc]?.element;
+  const attackCostValue = attackCost(tplA, startElement, {
+    state: n1,
+    r: fr,
+    c: fc,
+    unit: attacker,
+    owner: attacker?.owner,
+  });
   const allowFriendly = !!tplA.friendlyFire;
   const mainTarget = n1.board?.[tr]?.[tc]?.unit;
   if (!allowFriendly && (!mainTarget || mainTarget.owner === attacker.owner)) return null;
@@ -652,17 +723,17 @@ export function magicAttack(state, fr, fc, tr, tc) {
     }
   }
   const applied = applyDamageInteractionResults(n1, damageEffects);
-  if (applied?.attackerPosUpdate) {
-    fr = applied.attackerPosUpdate.r;
-    fc = applied.attackerPosUpdate.c;
+  const attackerPosUpdate = applied?.attackerPosUpdate || null;
+  if (attackerPosUpdate) {
+    fr = attackerPosUpdate.r;
+    fc = attackerPosUpdate.c;
   }
   if (Array.isArray(applied?.logLines) && applied.logLines.length) {
     logLines.push(...applied.logLines);
   }
   attacker.lastAttackTurn = n1.turn;
-  const cellEl = n1.board?.[fr]?.[fc]?.element;
-  attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA, cellEl);
-  return { n1, logLines, targets, deaths, releases: releaseEvents.releases };
+  attacker.apSpent = (attacker.apSpent || 0) + attackCostValue;
+  return { n1, logLines, targets, deaths, releases: releaseEvents.releases, attackerPosUpdate };
 }
 
 export { computeCellBuff };

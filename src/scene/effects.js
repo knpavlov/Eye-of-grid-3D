@@ -178,7 +178,20 @@ export function magicBurst(pos, durationSec = 0.75) {
 
 export function shakeMesh(mesh, times = 3, duration = 0.1) {
   const gsap = window.gsap; if (!gsap || !mesh) return;
-  const tl = gsap.timeline();
+  mesh.userData = mesh.userData || {};
+  try {
+    const prev = mesh.userData.__shakeTimeline;
+    if (prev && typeof prev.kill === 'function') {
+      prev.kill();
+    }
+  } catch {}
+  const tl = gsap.timeline({
+    onComplete: () => {
+      try {
+        if (mesh?.userData) mesh.userData.__shakeTimeline = null;
+      } catch {}
+    },
+  });
   const ox = mesh.position.x; const oz = mesh.position.z;
   for (let i = 0; i < times; i++) {
     const dx = (Math.random()*0.2 - 0.1);
@@ -186,6 +199,7 @@ export function shakeMesh(mesh, times = 3, duration = 0.1) {
     tl.to(mesh.position, { x: ox + dx, z: oz + dz, duration: duration/2 })
       .to(mesh.position, { x: ox, z: oz, duration: duration/2 });
   }
+  mesh.userData.__shakeTimeline = tl;
   return tl;
 }
 

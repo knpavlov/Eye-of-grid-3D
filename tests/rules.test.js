@@ -170,6 +170,50 @@ describe('guards and hits', () => {
     const coords = hits.map(h => `${h.r},${h.c}`).sort();
     expect(coords).toEqual(['0,1', '1,2']);
   });
+
+  it('Taurus Monolith задевает союзника, если в секторе есть враг', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_TAURUS_MONOLITH',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_TAURUS_MONOLITH.hp,
+    };
+    state.board[1][1].unit = {
+      owner: 0,
+      tplId: 'FIRE_PARTMOLE_FLAME_LIZARD',
+      facing: 'S',
+      currentHP: 1,
+    };
+    state.board[0][1].unit = {
+      owner: 1,
+      tplId: 'FIRE_PARTMOLE_FLAME_LIZARD',
+      facing: 'S',
+      currentHP: 1,
+    };
+    const res = stagedAttack(state, 2, 1);
+    const fin = res.finish();
+    expect(fin.n1.board[1][1].unit).toBeNull();
+    expect(fin.n1.board[0][1].unit).toBeNull();
+  });
+
+  it('Taurus Monolith не атакует, если перед ним только союзники', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_TAURUS_MONOLITH',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_TAURUS_MONOLITH.hp,
+    };
+    state.board[1][1].unit = {
+      owner: 0,
+      tplId: 'FIRE_PARTMOLE_FLAME_LIZARD',
+      facing: 'S',
+      currentHP: CARDS.FIRE_PARTMOLE_FLAME_LIZARD.hp,
+    };
+    const hits = computeHits(state, 2, 1);
+    expect(hits).toEqual([]);
+  });
 });
 
 describe('особые способности', () => {
@@ -391,6 +435,135 @@ describe('особые способности', () => {
     expect(fin.retaliators.length).toBe(0);
     const dmgEntry = fin.targets.find(t => t.r === 1 && t.c === 1);
     expect(dmgEntry?.dmg).toBe(1);
+  });
+
+  it('Dark Yokozuna Sekimaru отталкивает цель и блокирует контратаку', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[2][1].unit = {
+      owner:0,
+      tplId:'EARTH_DARK_YOKOZUNA_SEKIMARU',
+      facing:'N',
+      currentHP:CARDS.EARTH_DARK_YOKOZUNA_SEKIMARU.hp,
+    };
+    state.board[1][1].unit = {
+      owner:1,
+      tplId:'FIRE_TRICEPTAUR_BEHEMOTH',
+      facing:'S',
+      currentHP:CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp,
+    };
+    const res = stagedAttack(state,2,1);
+    const fin = res.finish();
+    expect(fin.n1.board[2][1].unit?.tplId).toBe('EARTH_DARK_YOKOZUNA_SEKIMARU');
+    expect(fin.n1.board[1][1].unit).toBeNull();
+    const pushed = fin.n1.board[0][1].unit;
+    expect(pushed?.tplId).toBe('FIRE_TRICEPTAUR_BEHEMOTH');
+    expect(pushed?.currentHP).toBe(CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp);
+    expect(fin.retaliators.length).toBe(0);
+  });
+
+  it('Taurus Monolith не даёт врагу контратаковать даже без свободной клетки для отталкивания', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[2][1].unit = {
+      owner:0,
+      tplId:'BIOLITH_TAURUS_MONOLITH',
+      facing:'N',
+      currentHP:CARDS.BIOLITH_TAURUS_MONOLITH.hp,
+    };
+    state.board[1][1].unit = {
+      owner:1,
+      tplId:'FIRE_TRICEPTAUR_BEHEMOTH',
+      facing:'S',
+      currentHP:CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp,
+    };
+    state.board[0][1].unit = {
+      owner:1,
+      tplId:'FIRE_PURSUER_OF_SAINT_DHEES',
+      facing:'S',
+      currentHP:CARDS.FIRE_PURSUER_OF_SAINT_DHEES.hp + 2,
+    };
+    const res = stagedAttack(state,2,1);
+    const fin = res.finish();
+    const target = fin.n1.board[1][1].unit;
+    expect(target?.tplId).toBe('FIRE_TRICEPTAUR_BEHEMOTH');
+    expect(target?.currentHP).toBe(CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp - CARDS.BIOLITH_TAURUS_MONOLITH.atk);
+    expect(fin.n1.board[0][1].unit?.tplId).toBe('FIRE_PURSUER_OF_SAINT_DHEES');
+    expect(fin.retaliators.length).toBe(0);
+  });
+
+  it('магические существа не контратакуют по умолчанию', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[2][1].unit = {
+      owner:0,
+      tplId:'FIRE_PARTMOLE_FLAME_LIZARD',
+      facing:'N',
+      currentHP:CARDS.FIRE_PARTMOLE_FLAME_LIZARD.hp,
+    };
+    state.board[1][1].unit = {
+      owner:1,
+      tplId:'FIRE_FLAME_MAGUS',
+      facing:'S',
+      currentHP:CARDS.FIRE_FLAME_MAGUS.hp + 2,
+    };
+    const res = stagedAttack(state,2,1);
+    const fin = res.finish();
+    expect(fin.retaliators.length).toBe(0);
+  });
+
+  it('Elven Death Dancer меняется местами с целью после магической атаки', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[1][1].unit = {
+      owner:0,
+      tplId:'FOREST_ELVEN_DEATH_DANCER',
+      facing:'N',
+      currentHP:CARDS.FOREST_ELVEN_DEATH_DANCER.hp,
+    };
+    state.board[0][1].unit = {
+      owner:1,
+      tplId:'FIRE_TRICEPTAUR_BEHEMOTH',
+      facing:'S',
+      currentHP:CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp + 2,
+    };
+    const res = magicAttack(state,1,1,0,1);
+    expect(res).toBeTruthy();
+    expect(res.attackerPosUpdate).toEqual({ r: 0, c: 1 });
+    const board = res.n1.board;
+    expect(board[0][1].unit?.tplId).toBe('FOREST_ELVEN_DEATH_DANCER');
+    const swapped = board[1][1].unit;
+    expect(swapped?.tplId).toBe('FIRE_TRICEPTAUR_BEHEMOTH');
+    expect(swapped?.currentHP).toBe((CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp + 2) - CARDS.FOREST_ELVEN_DEATH_DANCER.atk - 2);
+    const dmgEntry = res.targets.find(t => t.r === 0 && t.c === 1);
+    expect(dmgEntry?.dmg).toBe(CARDS.FOREST_ELVEN_DEATH_DANCER.atk);
+  });
+
+  it('Taurus Monolith одновременно повреждает две клетки перед собой', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[2][1].unit = {
+      owner:0,
+      tplId:'BIOLITH_TAURUS_MONOLITH',
+      facing:'N',
+      currentHP:CARDS.BIOLITH_TAURUS_MONOLITH.hp,
+    };
+    state.board[1][1].unit = {
+      owner:1,
+      tplId:'FIRE_TRICEPTAUR_BEHEMOTH',
+      facing:'S',
+      currentHP:CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp + 4,
+    };
+    state.board[0][1].unit = {
+      owner:1,
+      tplId:'FIRE_PARTMOLE_FLAME_LIZARD',
+      facing:'S',
+      currentHP:CARDS.FIRE_PARTMOLE_FLAME_LIZARD.hp + 5,
+    };
+    const res = stagedAttack(state,2,1);
+    const fin = res.finish();
+    expect(fin.attackerPosUpdate).toBeNull();
+    const front = fin.n1.board[1][1].unit;
+    const rear = fin.n1.board[0][1].unit;
+    expect(front?.tplId).toBe('FIRE_TRICEPTAUR_BEHEMOTH');
+    expect(front?.currentHP).toBe((CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp + 4) - CARDS.BIOLITH_TAURUS_MONOLITH.atk);
+    expect(rear?.tplId).toBe('FIRE_PARTMOLE_FLAME_LIZARD');
+    expect(rear?.currentHP).toBe((CARDS.FIRE_PARTMOLE_FLAME_LIZARD.hp + 5) - CARDS.BIOLITH_TAURUS_MONOLITH.atk);
   });
 
   it('способность backAttack наносит удар в спину и блокирует ответный урон', () => {

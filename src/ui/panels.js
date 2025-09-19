@@ -10,12 +10,17 @@ export function showUnitActionPanel(unitMesh){
     try { if (typeof window !== 'undefined') window.selectedUnit = unitMesh; } catch {}
     const unitData = unitMesh.userData?.unitData; const cardData = unitMesh.userData?.cardData; const gs = (typeof window !== 'undefined') ? window.gameState : null;
     if (!gs || !unitData || !cardData) return;
+    const row = unitMesh.userData?.row;
+    const col = unitMesh.userData?.col;
     const el = document.getElementById('unit-info'); if (el) el.textContent = `${cardData.name} (${(unitMesh.userData.row||0) + 1},${(unitMesh.userData.col||0) + 1})`;
     const alreadyAttacked = unitData.lastAttackTurn === gs.turn;
     const attackBtn = document.getElementById('attack-btn'); if (attackBtn) {
       const cannot = !canAttack(cardData);
       attackBtn.disabled = !!alreadyAttacked || cannot;
-      const cost = (typeof window !== 'undefined' && typeof window.attackCost === 'function') ? window.attackCost(cardData) : 1;
+      const fieldElement = (typeof row === 'number' && typeof col === 'number') ? gs.board?.[row]?.[col]?.element : undefined;
+      const cost = (typeof window !== 'undefined' && typeof window.attackCost === 'function')
+        ? window.attackCost(cardData, fieldElement, { state: gs, r: row, c: col, unit: unitData, owner: unitData?.owner })
+        : 1;
       attackBtn.textContent = cannot ? 'Cannot attack' : alreadyAttacked ? 'Already attacked' : `Attack (-${cost})`;
     }
     const extraActions = collectUnitActions(gs, unitMesh.userData.row, unitMesh.userData.col);

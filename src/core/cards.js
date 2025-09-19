@@ -257,6 +257,15 @@ export const CARDS = {
     ],
     desc: 'Sacrifice Yellow Cubic to summon a non‑cubic Earth creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
   },
+  EARTH_DARK_YOKOZUNA_SEKIMARU: {
+    id: 'EARTH_DARK_YOKOZUNA_SEKIMARU', name: 'Dark Yokozuna Sekimaru', type: 'UNIT', cost: 3, activation: 2,
+    element: 'EARTH', atk: 2, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    pushTargetOnDamage: { distance: 1 },
+    desc: 'If Dark Yokozuna Sekimaru attacks (but does not destroy) a creature, that creature is pushed back one field in the direction of the attack (provided the field is empty) and cannot counterattack.'
+  },
   WATER_WOLF_NINJA: {
     id: 'WATER_WOLF_NINJA', name: 'Wolf Ninja', type: 'UNIT', cost: 3, activation: 2,
     element: 'WATER', atk: 1, hp: 3,
@@ -298,6 +307,16 @@ export const CARDS = {
     invisibilityAllies: ['FIRE_FIREFLY_NINJA'],
     rotateTargetOnDamage: true,
     desc: 'Gains Invisibility while at least one allied Firefly Ninja is on the board. When Swallow Ninja damages (but does not destroy) a creature, rotate that creature so its back faces Swallow Ninja. The target creature cannot counterattack.'
+  },
+  FOREST_ELVEN_DEATH_DANCER: {
+    id: 'FOREST_ELVEN_DEATH_DANCER', name: 'Elven Death Dancer', type: 'UNIT', cost: 5, activation: 4,
+    element: 'FOREST', atk: 1, hp: 3,
+    attackType: 'MAGIC',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY' } ],
+    blindspots: ['S'],
+    swapOnDamage: true,
+    enemyActivationTaxAdjacent: 3,
+    desc: 'Magic Attack. If Elven Death Dancer damages (but does not destroy) a creature, she switches locations with that creature (which cannot counterattack). Enemies on adjacent fields add 3 to their Activation Cost.'
   },
   FOREST_GREEN_CUBIC: {
     id: 'FOREST_GREEN_CUBIC', name: 'Green Cubic', type: 'UNIT', cost: 1, activation: 1,
@@ -361,6 +380,19 @@ export const CARDS = {
     friendlyFire: true,
     blindspots: ['S'],
     desc: ''
+  },
+
+  BIOLITH_TAURUS_MONOLITH: {
+    id: 'BIOLITH_TAURUS_MONOLITH', name: 'Taurus Monolith', type: 'UNIT', cost: 5, activation: 3,
+    element: 'BIOLITH', atk: 3, hp: 6,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'N', ranges: [1], group: 'DOUBLE_FRONT', ignoreBlocking: true },
+      { dir: 'N', ranges: [2], group: 'DOUBLE_FRONT', ignoreBlocking: true },
+    ],
+    blindspots: ['S'],
+    pushTargetOnDamage: { distance: 1 },
+    desc: 'If Taurus Monolith attacks (but does not destroy) a creature, that creature is pushed back one field in the direction of the attack (provided the field is empty) and cannot counterattack.'
   },
 
   BIOLITH_ARC_SATELLITE_CANNON: {

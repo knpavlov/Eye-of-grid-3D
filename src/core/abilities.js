@@ -16,6 +16,8 @@ import {
   attemptDodge as attemptDodgeInternal,
 } from './abilityHandlers/dodge.js';
 import { computeTargetCostBonus as computeTargetCostBonusInternal } from './abilityHandlers/attackModifiers.js';
+import { collectRepositionOnDamage } from './abilityHandlers/reposition.js';
+import { extraActivationCostFromAuras } from './abilityHandlers/costModifiers.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -158,24 +160,9 @@ export function collectDamageInteractions(state, context = {}) {
   const { attackerPos, attackerUnit, tpl, hits } = context;
   if (!tpl || !attackerUnit || !Array.isArray(hits) || !hits.length) return result;
 
-  const attackerRef = {
-    uid: getUnitUid(attackerUnit),
-    r: attackerPos?.r,
-    c: attackerPos?.c,
-    tplId: tpl.id,
-  };
-
-  let swapHandled = false;
-  const swapElements = normalizeElements(
-    tpl.swapWithTargetOnElement || (tpl.switchOnDamage ? tpl.element : null)
-  );
-
+  const processed = [];
   for (const h of hits) {
     if (!h) continue;
-    const key = `${h.r},${h.c}`;
-    if (tpl.backAttack) {
-      result.preventRetaliation.add(key);
-    }
     const dealt = h.dealt ?? h.dmg ?? 0;
     if (dealt <= 0) continue;
     const cell = state.board?.[h.r]?.[h.c];
@@ -183,28 +170,55 @@ export function collectDamageInteractions(state, context = {}) {
     if (!target) continue;
     const tplTarget = getUnitTemplate(target);
     const alive = (target.currentHP ?? tplTarget?.hp ?? 0) > 0;
-
-    if (!swapHandled && swapElements.size && alive && cell?.element && swapElements.has(cell.element)) {
-      result.events.push({
-        type: 'SWAP_POSITIONS',
-        attacker: attackerRef,
-        target: { uid: getUnitUid(target), r: h.r, c: h.c, tplId: tplTarget?.id },
-      });
-      swapHandled = true;
+    if (!alive) continue;
+    const key = `${h.r},${h.c}`;
+    processed.push({
+      r: h.r,
+      c: h.c,
+      dealt,
+      target,
+      tplTarget,
+      cellElement: cell?.element ?? null,
+      key,
+    });
+    if (tpl.backAttack) {
       result.preventRetaliation.add(key);
     }
-
-    if (tpl.rotateTargetOnDamage && alive) {
-      result.events.push({
-        type: 'ROTATE_TARGET',
-        target: { uid: getUnitUid(target), r: h.r, c: h.c, tplId: tplTarget?.id },
-        faceAwayFrom: attackerRef,
-      });
-      result.preventRetaliation.add(key);
-    }
-
     if (tpl.preventRetaliationOnDamage) {
       result.preventRetaliation.add(key);
+    }
+  }
+
+  if (!processed.length) {
+    return result;
+  }
+
+  const attackerRef = {
+    uid: getUnitUid(attackerUnit),
+    r: attackerPos?.r,
+    c: attackerPos?.c,
+    tplId: tpl.id,
+  };
+
+  const reposition = collectRepositionOnDamage(state, {
+    attackerRef,
+    attackerPos: attackerPos || { r: attackerRef.r, c: attackerRef.c },
+    tpl,
+    hits: processed,
+  });
+
+  if (reposition) {
+    if (Array.isArray(reposition.events) && reposition.events.length) {
+      result.events.push(...reposition.events);
+    }
+    let preventList = [];
+    if (reposition.preventRetaliation instanceof Set) {
+      preventList = Array.from(reposition.preventRetaliation);
+    } else if (Array.isArray(reposition.preventRetaliation)) {
+      preventList = reposition.preventRetaliation;
+    }
+    for (const key of preventList) {
+      if (key) result.preventRetaliation.add(key);
     }
   }
 
@@ -274,6 +288,44 @@ export function applyDamageInteractionResults(state, effects = {}) {
         const name = CARDS[target.unit.tplId]?.name || 'Цель';
         logs.push(`${name} поворачивается спиной к атакующему.`);
       }
+    } else if (ev?.type === 'PUSH_TARGET') {
+      const target = findUnitRef(state, ev.target);
+      if (!target.unit) continue;
+      const tplTarget = CARDS[target.unit.tplId];
+      const aliveTarget = (target.unit.currentHP ?? tplTarget?.hp ?? 0) > 0;
+      if (!aliveTarget) continue;
+      const to = ev.to || {};
+      if (!inBounds(to.r, to.c)) continue;
+      const destCell = state.board?.[to.r]?.[to.c];
+      if (destCell?.unit) {
+        const destUnit = destCell.unit;
+        const tplDest = CARDS[destUnit.tplId];
+        const aliveDest = (destUnit.currentHP ?? tplDest?.hp ?? 0) > 0;
+        if (aliveDest) continue;
+      }
+      const fromElement = state.board?.[target.r]?.[target.c]?.element ?? null;
+      const toElement = state.board?.[to.r]?.[to.c]?.element ?? null;
+      state.board[target.r][target.c].unit = null;
+      state.board[to.r][to.c].unit = target.unit;
+      const attackerName = ev.source?.tplId ? (CARDS[ev.source.tplId]?.name || 'Атакующий') : 'Атакующий';
+      const targetName = CARDS[target.unit.tplId]?.name || 'Цель';
+      logs.push(`${attackerName} отталкивает ${targetName} назад.`);
+      const shiftTarget = applyFieldTransitionToUnit(
+        target.unit,
+        tplTarget,
+        fromElement,
+        toElement,
+      );
+      if (shiftTarget) {
+        const fieldLabel = shiftTarget.nextElement ? `поле ${shiftTarget.nextElement}` : 'нейтральное поле';
+        const prev = shiftTarget.beforeHp;
+        const next = shiftTarget.afterHp;
+        if (shiftTarget.deltaHp > 0) {
+          logs.push(`${targetName} усиливается на ${fieldLabel}: HP ${prev}→${next}.`);
+        } else if (shiftTarget.deltaHp < 0) {
+          logs.push(`${targetName} теряет силу на ${fieldLabel}: HP ${prev}→${next}.`);
+        }
+      }
     }
   }
 
@@ -342,7 +394,7 @@ function baseActivationCost(tpl) {
 }
 
 // фактическая стоимость атаки с учётом скидок (например, "активация на X меньше")
-export function activationCost(tpl, fieldElement) {
+export function activationCost(tpl, fieldElement, ctx = {}) {
   let cost = baseActivationCost(tpl);
   if (tpl && tpl.activationReduction) {
     cost = Math.max(0, cost - tpl.activationReduction);
@@ -351,7 +403,16 @@ export function activationCost(tpl, fieldElement) {
   if (onElem && fieldElement === onElem.element) {
     cost = Math.max(0, cost - onElem.reduction);
   }
-  return cost;
+  if (ctx && ctx.state && typeof ctx.r === 'number' && typeof ctx.c === 'number') {
+    const extra = extraActivationCostFromAuras(ctx.state, ctx.r, ctx.c, {
+      unit: ctx.unit,
+      owner: ctx.owner,
+    });
+    if (extra) {
+      cost += extra;
+    }
+  }
+  return Math.max(0, cost);
 }
 
 // стоимость поворота/обычной активации — без скидок
