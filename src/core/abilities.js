@@ -24,6 +24,8 @@ import {
   refreshContinuousPossessions as refreshContinuousPossessionsInternal,
 } from './abilityHandlers/possession.js';
 import { applySummonDraw } from './abilityHandlers/draw.js';
+import { transformAttackProfile } from './abilityHandlers/attackTransforms.js';
+import { cloneAttackEntry } from './utils/attacks.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -66,12 +68,6 @@ function normalizeElements(value) {
     }
   }
   return set;
-}
-
-function cloneAttackEntry(entry = {}) {
-  const copy = { ...entry };
-  if (Array.isArray(entry.ranges)) copy.ranges = entry.ranges.slice();
-  return copy;
 }
 
 function buildSchemeMap(tpl) {
@@ -168,13 +164,15 @@ export function resolveAttackProfile(state, r, c, tpl, opts = {}) {
   const chooseDir = active.chooseDir != null ? !!active.chooseDir : !!tpl.chooseDir;
   const magicAttackArea = active.magicAttackArea != null ? active.magicAttackArea : tpl.magicAttackArea;
 
-  return {
+  const profile = {
     attackType,
     attacks,
     chooseDir,
     magicAttackArea,
     schemeKey: active.key || null,
   };
+
+  return transformAttackProfile(state, r, c, tpl, profile);
 }
 
 function collectInvisibilitySources(tpl) {

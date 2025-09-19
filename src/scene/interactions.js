@@ -593,6 +593,16 @@ export function placeUnitWithDirection(direction) {
   if (!interactionState.pendingPlacement) return;
   const { card, row, col, handIndex, incarnation } = interactionState.pendingPlacement;
   const cardData = card.userData.cardData;
+  if (card) {
+    card.userData = card.userData || {};
+    card.userData.isInHand = false;
+    try {
+      const ctxLocal = getCtx();
+      if (Array.isArray(ctxLocal.handCardMeshes)) {
+        ctxLocal.handCardMeshes = ctxLocal.handCardMeshes.filter(mesh => mesh !== card);
+      }
+    } catch {}
+  }
   const player = gameState.players[gameState.active];
   const summonCost = (incarnation?.active ? (incarnation.cost ?? cardData.cost ?? 0) : cardData.cost) ?? 0;
   if (summonCost > player.mana) {

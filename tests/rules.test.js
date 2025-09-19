@@ -909,13 +909,45 @@ describe('Water cards — добор и уклонения', () => {
 
     board[0][1].element = 'WATER';
     let profile = resolveAttackProfile(state, 0, 1, CARDS.WATER_TRITONAN_HARPOONSMAN);
-    expect(profile.schemeKey).toBe('BASE');
+    expect(profile.schemeKey).toBeNull();
     expect(profile.attacks[0].ranges).toContain(2);
 
     board[0][1].element = 'EARTH';
     profile = resolveAttackProfile(state, 0, 1, CARDS.WATER_TRITONAN_HARPOONSMAN);
-    expect(profile.schemeKey).toBe('EARTH_STRIKE');
+    expect(profile.schemeKey).toBeNull();
     expect(profile.attacks[0].ranges).toEqual([1]);
+  });
+
+  it('Harpoonsman получает Dodge только на водном поле', () => {
+    const board = makeBoard();
+    const state = { board };
+    state.board[1][1].unit = { tplId: 'WATER_TRITONAN_HARPOONSMAN', owner: 0, facing: 'N' };
+
+    board[1][1].element = 'EARTH';
+    refreshBoardDodgeStates(state);
+    expect(state.board[1][1].unit.dodgeState).toBeUndefined();
+
+    board[1][1].element = 'WATER';
+    refreshBoardDodgeStates(state);
+    const dodgeState = state.board[1][1].unit.dodgeState;
+    expect(dodgeState).toBeTruthy();
+    expect(dodgeState?.remaining ?? 0).toBe(1);
+  });
+
+  it('Aluhja Priestess получает Dodge только на воде', () => {
+    const board = makeBoard();
+    const state = { board };
+    state.board[2][2].unit = { tplId: 'WATER_ALUHJA_PRIESTESS', owner: 0, facing: 'N' };
+
+    board[2][2].element = 'FOREST';
+    refreshBoardDodgeStates(state);
+    expect(state.board[2][2].unit.dodgeState).toBeUndefined();
+
+    board[2][2].element = 'WATER';
+    refreshBoardDodgeStates(state);
+    const dodgeState = state.board[2][2].unit.dodgeState;
+    expect(dodgeState).toBeTruthy();
+    expect(dodgeState?.remaining ?? 0).toBe(1);
   });
 });
 

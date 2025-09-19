@@ -197,9 +197,7 @@ export const CARDS = {
     element: 'WATER', atk: 1, hp: 2,
     attackType: 'STANDARD', chooseDir: true,
     attacks: [
-      { dir: 'N', ranges: [1, 2], mode: 'ANY' },
       { dir: 'E', ranges: [1, 2], mode: 'ANY' },
-      { dir: 'S', ranges: [1, 2], mode: 'ANY' },
       { dir: 'W', ranges: [1, 2], mode: 'ANY' },
     ],
     dodge: { chance: 0.5, attempts: 1 },
@@ -243,18 +241,8 @@ export const CARDS = {
     id: 'WATER_MERCENARY_SAVIOR_LATOO', name: 'Mercenary Savior Latoo', type: 'UNIT', cost: 3, activation: 2,
     element: 'WATER', atk: 2, hp: 3,
     attackType: 'STANDARD',
-    attackSchemes: [
-      {
-        key: 'BASE',
-        attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE' } ],
-      },
-      {
-        key: 'EARTH_STRIKE',
-        attacks: [ { dir: 'N', ranges: [1] } ],
-      },
-    ],
-    defaultAttackScheme: 'BASE',
-    mustUseSchemeOnElement: [ { element: 'EARTH', scheme: 'EARTH_STRIKE' } ],
+    attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE' } ],
+    limitRangeOnElement: { element: 'EARTH', maxRange: 1 },
     plusAtkIfTargetOnElement: { element: 'WATER', amount: 1 },
     auraGrantDodgeOnElement: { element: 'WATER', attempts: 1, includeSelf: false },
     dodge: { chance: 0.5, attempts: 1 },
@@ -265,21 +253,10 @@ export const CARDS = {
     id: 'WATER_TRITONAN_HARPOONSMAN', name: 'Tritonan Harpoonsman', type: 'UNIT', cost: 2, activation: 1,
     element: 'WATER', atk: 1, hp: 2,
     attackType: 'STANDARD',
-    attackSchemes: [
-      {
-        key: 'BASE',
-        attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE' } ],
-      },
-      {
-        key: 'EARTH_STRIKE',
-        attacks: [ { dir: 'N', ranges: [1] } ],
-      },
-    ],
-    defaultAttackScheme: 'BASE',
-    mustUseSchemeOnElement: [ { element: 'EARTH', scheme: 'EARTH_STRIKE' } ],
-    dodge: { chance: 0.5, attempts: 1 },
+    attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE' } ],
+    limitRangeOnElement: { element: 'EARTH', maxRange: 1 },
     gainDodgeOnElement: { element: 'WATER', attempts: 1 },
-    desc: 'Dodge attempt. While on a Water field Tritonan Harpoonsman gains one additional Dodge attempt. While on an Earth field his attack reaches only the adjacent cell.'
+    desc: 'While on a Water field Tritonan Harpoonsman gains Dodge attempt. While on an Earth field his attack reaches only the adjacent cell.'
   },
 
   WATER_ALUHJA_PRIESTESS: {
@@ -289,9 +266,8 @@ export const CARDS = {
     attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
     blindspots: ['N', 'E', 'S', 'W'],
     magicAttackArea: 'CROSS',
-    dodge: { chance: 0.5, attempts: 1 },
     gainDodgeOnElement: { element: 'WATER', attempts: 1 },
-    desc: 'Magic Attack. Dodge attempt. While on a Water field, Aluhja Priestess gains one additional Dodge attempt.'
+    desc: 'Magic Attack. While on a Water field, Aluhja Priestess gains Dodge attempt.'
   },
 
   EARTH_NOVOGUS_GRAVEKEEPER: {
