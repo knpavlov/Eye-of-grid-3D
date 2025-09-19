@@ -22,11 +22,29 @@ export function playDeltaAnimations(prevState, nextState) {
     const prevB = prevState.board || [];
     const nextB = nextState.board || [];
 
+    const getUid = (unit) => {
+      if (!unit || unit.uid == null) return null;
+      try { return String(unit.uid); } catch { return null; }
+    };
+    const nextUidPositions = new Map();
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
+        const uid = getUid(nu);
+        if (uid) nextUidPositions.set(uid, { r, c });
+      }
+    }
+
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) {
         const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
         const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
         if (pu && !nu) {
+          const movedElsewhere = (() => {
+            const uid = getUid(pu);
+            return uid ? nextUidPositions.has(uid) : false;
+          })();
+          if (movedElsewhere) continue; // юнит просто сместился, а не погиб
           try {
             const prevPl = prevState?.players?.[pu.owner];
             const nextPl = nextState?.players?.[pu.owner];
