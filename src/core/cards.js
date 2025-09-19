@@ -296,6 +296,30 @@ export const CARDS = {
     backAttack: true,
     desc: 'Always attacks the back of its target.'
   },
+  WATER_TENTACLES_OF_POSSESSION: {
+    id: 'WATER_TENTACLES_OF_POSSESSION', name: 'Tentacles of Possession', type: 'UNIT', cost: 2, activation: 1,
+    element: 'WATER', atk: 0, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [],
+    blindspots: ['S'],
+    possession: true,
+    possessionEffects: [
+      { pattern: 'FRONT', range: 1, id: 'TENTACLES_FRONT' },
+    ],
+    desc: 'Tentacles of Possession gain Possession of the enemy directly in front of it.'
+  },
+  WATER_IMPOSTER_QUEEN_ANFISA: {
+    id: 'WATER_IMPOSTER_QUEEN_ANFISA', name: 'Imposter Queen Anfisa', type: 'UNIT', cost: 6, activation: 2,
+    element: 'WATER', atk: 2, hp: 5,
+    attackType: 'MAGIC',
+    attacks: [],
+    blindspots: ['N','E','S','W'],
+    possession: true,
+    possessionEffects: [
+      { pattern: 'ADJACENT', requireSourceElement: 'WATER', id: 'ANFISA_WATER_AURA' },
+    ],
+    desc: 'Magic Attack. While on a Water field, Imposter Queen Anfisa gains Possession of all enemies on adjacent fields.'
+  },
   FOREST_SWALLOW_NINJA: {
     id: 'FOREST_SWALLOW_NINJA', name: 'Swallow Ninja', type: 'UNIT', cost: 3, activation: 2,
     element: 'FOREST', atk: 1, hp: 3,

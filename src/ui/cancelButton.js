@@ -1,6 +1,8 @@
 // Кнопка отмены действий при установке карты или выборе цели
 import { interactionState, returnCardToHand } from '../scene/interactions.js';
 import { clearHighlights } from '../scene/highlight.js';
+import { capMana } from '../core/constants.js';
+import { refreshPossessionsUI } from './possessions.js';
 
 function refundSummon(row, col) {
   const gs = window.gameState;
@@ -19,6 +21,37 @@ function refundSummon(row, col) {
   player.hand.push(tpl);
   // убрать юнита с поля
   cell.unit = null;
+  refreshPossessionsUI(gs);
+}
+
+function cancelTargetSelection() {
+  const gs = window.gameState;
+  if (!gs) return;
+  const source = interactionState.magicFrom || interactionState.pendingAttack;
+  if (!source) return;
+  const mode = source.cancelMode || 'attack';
+  const r = source.r;
+  const c = source.c;
+  if (mode === 'summon') {
+    refundSummon(r, c);
+  } else {
+    const owner = (typeof source.owner === 'number')
+      ? source.owner
+      : gs.board?.[r]?.[c]?.unit?.owner;
+    const spent = typeof source.spentMana === 'number' ? source.spentMana : 0;
+    if (spent > 0 && owner != null && gs.players?.[owner]) {
+      const player = gs.players[owner];
+      player.mana = capMana((player.mana || 0) + spent);
+    }
+    refreshPossessionsUI(gs);
+  }
+  interactionState.magicFrom = null;
+  interactionState.pendingAttack = null;
+  interactionState.autoEndTurnAfterAttack = false;
+  try { window.__ui?.panels?.hideUnitActionPanel?.(); } catch {}
+  window.updateUnits?.();
+  window.updateHand?.();
+  window.updateUI?.();
 }
 
 export function refreshCancelButton() {
@@ -38,14 +71,7 @@ export function setupCancelButton() {
         interactionState.pendingPlacement = null;
         window.__ui?.panels?.hideOrientationPanel?.();
       } else if (interactionState.magicFrom || interactionState.pendingAttack) {
-        const pos = interactionState.magicFrom || interactionState.pendingAttack;
-        refundSummon(pos.r, pos.c);
-        interactionState.magicFrom = null;
-        interactionState.pendingAttack = null;
-        interactionState.autoEndTurnAfterAttack = false;
-        window.updateUnits?.();
-        window.updateHand?.();
-        window.updateUI?.();
+        cancelTargetSelection();
       } else if (interactionState.pendingSpellOrientation) {
         interactionState.pendingSpellOrientation = null;
         window.__ui?.panels?.hideOrientationPanel?.();

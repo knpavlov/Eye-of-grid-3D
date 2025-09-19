@@ -18,6 +18,10 @@ import {
 import { computeTargetCostBonus as computeTargetCostBonusInternal } from './abilityHandlers/attackModifiers.js';
 import { collectRepositionOnDamage } from './abilityHandlers/reposition.js';
 import { extraActivationCostFromAuras } from './abilityHandlers/costModifiers.js';
+import {
+  applyElementalPossession,
+  refreshContinuousPossessions as refreshContinuousPossessionsInternal,
+} from './abilityHandlers/possession.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -363,16 +367,6 @@ function sameSource(possessionSource, deathInfo) {
   return false;
 }
 
-function buildSourceDescriptor(state, r, c, unit, tpl) {
-  return {
-    uid: getUnitUid(unit),
-    tplId: tpl?.id || unit?.tplId || null,
-    owner: unit?.owner,
-    position: { r, c },
-    turn: state?.turn ?? 0,
-  };
-}
-
 function ensureUniqueCells(cells) {
   const seen = new Set();
   const res = [];
@@ -462,39 +456,23 @@ export function applySummonAbilities(state, r, c) {
     { requireDifferentField: true }
   );
   if (possessionCfg && possessionCfg.element) {
-    const cellElement = cell.element;
-    const requireDiff = possessionCfg.requireDifferentField !== false;
-    const shouldTrigger = !requireDiff || cellElement !== possessionCfg.element;
-    if (shouldTrigger) {
-      for (let rr = 0; rr < 3; rr++) {
-        for (let cc = 0; cc < 3; cc++) {
-          const targetCell = state?.board?.[rr]?.[cc];
-          const targetUnit = targetCell?.unit;
-          if (!targetUnit) continue;
-          if (targetUnit.owner === unit.owner) continue;
-          if (targetCell.element !== possessionCfg.element) continue;
-          const originalOwner = targetUnit.possessed?.originalOwner ?? targetUnit.owner;
-          const tplTarget = getUnitTemplate(targetUnit);
-          targetUnit.owner = unit.owner;
-          targetUnit.possessed = {
-            by: unit.owner,
-            originalOwner,
-            source: buildSourceDescriptor(state, r, c, unit, tpl),
-            sinceTurn: state?.turn ?? 0,
-            targetTplId: tplTarget?.id ?? targetUnit.tplId,
-          };
-          targetUnit.lastAttackTurn = state?.turn ?? 0;
-          events.possessions.push({
-            r: rr,
-            c: cc,
-            originalOwner,
-            newOwner: unit.owner,
-            targetTplId: tplTarget?.id ?? targetUnit.tplId,
-          });
-        }
-      }
+    const possRes = applyElementalPossession(state, r, c, possessionCfg);
+    if (possRes.possessions.length) {
+      events.possessions.push(...possRes.possessions);
+    }
+    if (possRes.releases?.length) {
+      events.releases = [...(events.releases || []), ...possRes.releases];
     }
   }
+
+  const continuous = refreshContinuousPossessionsInternal(state);
+  if (continuous.possessions.length) {
+    events.possessions.push(...continuous.possessions);
+  }
+  if (continuous.releases.length) {
+    events.releases = [...(events.releases || []), ...continuous.releases];
+  }
+
   return events;
 }
 
@@ -605,6 +583,7 @@ export const evaluateIncarnationSummon = evaluateIncarnationSummonInternal;
 export const applyIncarnationSummon = applyIncarnationSummonInternal;
 export const ensureUnitDodgeState = ensureDodgeState;
 export const attemptUnitDodge = attemptDodgeInternal;
+export const refreshContinuousPossessions = refreshContinuousPossessionsInternal;
 
 export function collectUnitActions(state, r, c) {
   const actions = [];

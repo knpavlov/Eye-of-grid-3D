@@ -681,6 +681,17 @@ export function placeUnitWithDirection(direction) {
         }
       } catch {}
     }
+    if (summonEvents?.releases?.length) {
+      try {
+        const cards = window.CARDS || {};
+        for (const rel of summonEvents.releases) {
+          const unit = gameState.board?.[rel.r]?.[rel.c]?.unit;
+          const tplUnit = unit ? cards[unit.tplId] : null;
+          const name = tplUnit?.name || 'Существо';
+          window.addLog?.(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
+        }
+      } catch {}
+    }
     const gained = applyFreedonianAura(gameState, gameState.active);
     if (gained > 0) {
       window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
@@ -731,7 +742,7 @@ export function placeUnitWithDirection(direction) {
           }
         }
         if (cells.length && (allowFriendly || hasEnemy)) {
-          interactionState.magicFrom = { r: row, c: col };
+          interactionState.magicFrom = { r: row, c: col, cancelMode: 'summon', owner: unit.owner };
           interactionState.autoEndTurnAfterAttack = true;
           highlightTiles(cells);
           window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
@@ -755,7 +766,7 @@ export function placeUnitWithDirection(direction) {
         });
         if (hitsAll.length && hasEnemy) {
           if (needsChoice && hitsAll.length > 1) {
-            interactionState.pendingAttack = { r: row, c: col };
+            interactionState.pendingAttack = { r: row, c: col, cancelMode: 'summon', owner: unit.owner };
             interactionState.autoEndTurnAfterAttack = true;
             highlightTiles(hitsAll);
             window.__ui?.log?.add?.(`${tpl.name}: choose a target for the attack.`);
