@@ -170,6 +170,50 @@ describe('guards and hits', () => {
     const coords = hits.map(h => `${h.r},${h.c}`).sort();
     expect(coords).toEqual(['0,1', '1,2']);
   });
+
+  it('Taurus Monolith задевает союзника, если в секторе есть враг', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_TAURUS_MONOLITH',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_TAURUS_MONOLITH.hp,
+    };
+    state.board[1][1].unit = {
+      owner: 0,
+      tplId: 'FIRE_PARTMOLE_FLAME_LIZARD',
+      facing: 'S',
+      currentHP: 1,
+    };
+    state.board[0][1].unit = {
+      owner: 1,
+      tplId: 'FIRE_PARTMOLE_FLAME_LIZARD',
+      facing: 'S',
+      currentHP: 1,
+    };
+    const res = stagedAttack(state, 2, 1);
+    const fin = res.finish();
+    expect(fin.n1.board[1][1].unit).toBeNull();
+    expect(fin.n1.board[0][1].unit).toBeNull();
+  });
+
+  it('Taurus Monolith не атакует, если перед ним только союзники', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_TAURUS_MONOLITH',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_TAURUS_MONOLITH.hp,
+    };
+    state.board[1][1].unit = {
+      owner: 0,
+      tplId: 'FIRE_PARTMOLE_FLAME_LIZARD',
+      facing: 'S',
+      currentHP: CARDS.FIRE_PARTMOLE_FLAME_LIZARD.hp,
+    };
+    const hits = computeHits(state, 2, 1);
+    expect(hits).toEqual([]);
+  });
 });
 
 describe('особые способности', () => {
