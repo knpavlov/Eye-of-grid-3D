@@ -2,10 +2,11 @@
 import { getCtx } from './context.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
+import { trackDodgeHover, resetDodgeHover } from './dodgeTooltip.js';
+import { showTooltip, hideTooltip } from '../ui/tooltip.js';
 import {
   applyFreedonianAura,
   applySummonAbilities,
-  shouldUseMagicAttack,
   evaluateIncarnationSummon,
   applyIncarnationSummon,
   isIncarnationCard,
@@ -35,6 +36,30 @@ export const interactionState = {
   autoEndTurnAfterAttack: false,
 };
 
+const META_TOOLTIP_SOURCE = 'meta-hover';
+
+export function logDodgeUpdates(updates, state, sourceName = null) {
+  if (!Array.isArray(updates) || !updates.length) return;
+  const cardsRef = window.CARDS || {};
+  for (const upd of updates) {
+    const targetUnit = state?.board?.[upd.r]?.[upd.c]?.unit;
+    if (!targetUnit) continue;
+    const tplTarget = cardsRef[targetUnit.tplId];
+    const name = tplTarget?.name || 'Существо';
+    const prefix = sourceName ? `${sourceName}: ` : '';
+    if (upd.removed) {
+      window.__ui?.log?.add?.(`${prefix}${name}: способность Dodge отключена.`);
+      continue;
+    }
+    const chance = (typeof upd.chance === 'number') ? Math.round(upd.chance * 100) : 50;
+    if (upd.unlimited) {
+      window.__ui?.log?.add?.(`${prefix}${name}: шанс Dodge ${chance}%.`);
+    } else if (typeof upd.attempts === 'number') {
+      window.__ui?.log?.add?.(`${prefix}${name}: ${upd.attempts} попытк(и) Dodge (${chance}%).`);
+    }
+  }
+}
+
 function isInputLocked() {
   if (typeof window !== 'undefined' && typeof window.isInputLocked === 'function') {
     return window.isInputLocked();
@@ -53,6 +78,7 @@ function onMouseMove(event) {
   mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
   if (interactionState.draggedCard) {
+    resetDodgeHover();
     raycaster.setFromCamera(mouse, ctx.camera);
     const intersects = raycaster.intersectObjects(tileMeshes.flat());
 
@@ -93,6 +119,35 @@ function onMouseMove(event) {
       gsap.to(newHover.scale, { x: 0.675, y: 1, z: 0.675, duration: 0.18 });
       setHandCardHoverVisual(newHover, true);
     }
+
+    let hoveredUnitMesh = null;
+    const unitHits = raycaster.intersectObjects(unitMeshes, true);
+    if (unitHits.length > 0) {
+      let candidate = unitHits[0].object;
+      while (candidate && (!candidate.userData || candidate.userData.type !== 'unit')) {
+        candidate = candidate.parent;
+      }
+      if (candidate && candidate.userData?.type === 'unit') {
+        hoveredUnitMesh = candidate;
+      }
+    }
+    const gameState = typeof window !== 'undefined' ? window.gameState : null;
+    if (hoveredUnitMesh && gameState) {
+      const r = hoveredUnitMesh.userData?.row;
+      const c = hoveredUnitMesh.userData?.col;
+      if (r != null && c != null) {
+        const unit = gameState.board?.[r]?.[c]?.unit;
+        if (unit) {
+          trackDodgeHover({ unit, r, c, event });
+        } else {
+          resetDodgeHover();
+        }
+      } else {
+        resetDodgeHover();
+      }
+    } else {
+      resetDodgeHover();
+    }
   }
   if (interactionState.selectedUnit) {
     const r = interactionState.selectedUnit.userData.row;
@@ -116,27 +171,29 @@ function onMouseMove(event) {
   const deckMeshes = (typeof window !== 'undefined' && window.deckMeshes) || [];
   const graveyardMeshes = (typeof window !== 'undefined' && window.graveyardMeshes) || [];
   const metaHits = raycaster.intersectObjects([...deckMeshes, ...graveyardMeshes], true);
-  const tip = document.getElementById('hover-tooltip');
+  let metaShown = false;
   if (metaHits.length > 0) {
     const obj = metaHits[0].object;
     const data = obj.userData || obj.parent?.userData || {};
     if (data && data.metaType) {
       const p = data.player ?? 0;
       interactionState.hoveredMeta = { metaType: data.metaType, player: p };
-      if (tip) {
-        const deckCount = window.gameState?.players?.[p]?.deck?.length ?? 0;
-        const gyCount = window.gameState?.players?.[p]?.graveyard?.length ?? 0;
-        tip.textContent = data.metaType === 'deck'
-          ? `Deck - Player ${p===0? '1':'2'}: ${deckCount}`
-          : `Graveyard - Player ${p===0? '1':'2'}: ${gyCount}`;
-        tip.style.left = (event.clientX + 16) + 'px';
-        tip.style.top = (event.clientY + 16) + 'px';
-        tip.classList.remove('hidden');
-      }
+      const deckCount = window.gameState?.players?.[p]?.deck?.length ?? 0;
+      const gyCount = window.gameState?.players?.[p]?.graveyard?.length ?? 0;
+      const text = data.metaType === 'deck'
+        ? `Deck - Player ${p === 0 ? '1' : '2'}: ${deckCount}`
+        : `Graveyard - Player ${p === 0 ? '1' : '2'}: ${gyCount}`;
+      showTooltip(META_TOOLTIP_SOURCE, {
+        text,
+        x: (event.clientX ?? 0) + 16,
+        y: (event.clientY ?? 0) + 16,
+      });
+      metaShown = true;
     }
-  } else {
+  }
+  if (!metaShown) {
     interactionState.hoveredMeta = null;
-    if (tip) tip.classList.add('hidden');
+    hideTooltip(META_TOOLTIP_SOURCE);
   }
 }
 
@@ -144,6 +201,8 @@ function onMouseDown(event) {
   const gameState = (typeof window !== 'undefined' ? window.gameState : null);
   if (!gameState || gameState.winner !== null) return;
   if (isInputLocked() && !interactionState.pendingDiscardSelection) return;
+  resetDodgeHover();
+  hideTooltip(META_TOOLTIP_SOURCE);
   const ctx = getCtx();
   const { renderer, mouse, raycaster, unitMeshes, handCardMeshes } = ctx;
   const rect = renderer.domElement.getBoundingClientRect();
@@ -503,7 +562,16 @@ function performChosenAttack(from, targetMesh) {
   const ORDER = ['N', 'E', 'S', 'W'];
   const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(attacker.facing) + 4) % 4];
   const dist = Math.max(Math.abs(dr), Math.abs(dc));
-  const opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
+  const tpl = window.CARDS?.[attacker.tplId];
+  const profile = window.resolveAttackProfile
+    ? window.resolveAttackProfile(gameState, from.r, from.c, tpl)
+    : { attacks: tpl?.attacks || [], chooseDir: tpl?.chooseDir };
+  const attacks = Array.isArray(profile?.attacks) ? profile.attacks : [];
+  const needsRangeChoice = attacks.some(a => a?.mode === 'ANY');
+  const opts = { chosenDir: relDir, profile };
+  if (needsRangeChoice) {
+    opts.rangeChoices = { [relDir]: dist };
+  }
   const hits = window.computeHits(gameState, from.r, from.c, opts);
   if (!hits.length) { showNotification('Incorrect target', 'error'); return false; }
   window.performBattleSequence(from.r, from.c, true, opts);
@@ -563,6 +631,16 @@ export function placeUnitWithDirection(direction) {
   if (!interactionState.pendingPlacement) return;
   const { card, row, col, handIndex, incarnation } = interactionState.pendingPlacement;
   const cardData = card.userData.cardData;
+  if (card) {
+    card.userData = card.userData || {};
+    card.userData.isInHand = false;
+    try {
+      const ctxLocal = getCtx();
+      if (Array.isArray(ctxLocal.handCardMeshes)) {
+        ctxLocal.handCardMeshes = ctxLocal.handCardMeshes.filter(mesh => mesh !== card);
+      }
+    } catch {}
+  }
   const player = gameState.players[gameState.active];
   const summonCost = (incarnation?.active ? (incarnation.cost ?? cardData.cost ?? 0) : cardData.cost) ?? 0;
   if (summonCost > player.mana) {
@@ -572,6 +650,12 @@ export function placeUnitWithDirection(direction) {
     interactionState.pendingPlacement = null;
     return;
   }
+  let summonEndedTurn = false;
+  const endTurnAfterSummon = () => {
+    if (summonEndedTurn) return;
+    summonEndedTurn = true;
+    try { window.endTurn && window.endTurn(); } catch {}
+  };
   let incarnationResult = null;
   if (incarnation?.active) {
     const applied = applyIncarnationSummon(gameState, { r: row, c: col, tpl: cardData, owner: gameState.active });
@@ -670,6 +754,25 @@ export function placeUnitWithDirection(direction) {
   }
   if (gameState.board[row][col].unit) {
     const summonEvents = applySummonAbilities(gameState, row, col);
+    if (summonEvents?.draw?.count > 0) {
+      const drawInfo = summonEvents.draw;
+      const ownerIdx = typeof drawInfo.player === 'number' ? drawInfo.player : gameState.active;
+      const cards = Array.isArray(drawInfo.cards) ? drawInfo.cards : [];
+      const name = cardData?.name || 'Существо';
+      window.__ui?.log?.add?.(`${name}: игрок ${ownerIdx + 1} добирает ${drawInfo.count} карт(ы).`);
+      (async () => {
+        const animate = window.animateDrawnCardToHand;
+        if (typeof animate === 'function') {
+          for (const tplDrawn of cards) {
+            try { await animate(tplDrawn); } catch (err) { console.warn('[summonDraw] animation failed', err); }
+          }
+        }
+        window.updateHand?.(gameState);
+      })();
+    }
+    if (Array.isArray(summonEvents?.dodgeUpdates) && summonEvents.dodgeUpdates.length) {
+      logDodgeUpdates(summonEvents.dodgeUpdates, gameState, cardData?.name || null);
+    }
     if (summonEvents?.possessions?.length) {
       try {
         const cards = window.CARDS || {};
@@ -717,17 +820,26 @@ export function placeUnitWithDirection(direction) {
     z: 0,
     duration: 0.5,
     onComplete: () => {
+      // удаляем временный меш карты из руки, чтобы на поле не оставалась статичная копия
+      try {
+        if (card?.parent) {
+          card.parent.remove(card);
+        }
+      } catch {}
       window.updateHand();
       window.updateUnits();
       window.updateUI();
       const tpl = window.CARDS?.[cardData.id];
-      const forcedMagic = shouldUseMagicAttack(gameState, row, col, tpl);
+      const profile = window.resolveAttackProfile
+        ? window.resolveAttackProfile(gameState, row, col, tpl)
+        : { attacks: tpl?.attacks || [], chooseDir: tpl?.chooseDir, attackType: tpl?.attackType };
+      const usesMagic = profile?.attackType === 'MAGIC';
       if (wasIncarnation) {
         interactionState.autoEndTurnAfterAttack = false;
         if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
         return;
       }
-      if (tpl?.attackType === 'MAGIC' || forcedMagic) {
+      if (usesMagic) {
         const allowFriendly = !!tpl.friendlyFire;
         const cells = [];
         let hasEnemy = false;
@@ -752,21 +864,21 @@ export function placeUnitWithDirection(direction) {
           }
         } else {
           if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
-          try { window.endTurn && window.endTurn(); } catch {}
+          endTurnAfterSummon();
         }
       } else {
-        const attacks = tpl?.attacks || [];
-        const needsChoice = tpl?.chooseDir || attacks.some(a => a.mode === 'ANY');
+        const attacks = Array.isArray(profile?.attacks) ? profile.attacks : (tpl?.attacks || []);
+        const needsChoice = !!profile?.chooseDir || attacks.some(a => a.mode === 'ANY');
         // если в шаблоне несколько дистанций без выбора, подсвечиваем и пустые клетки
         const includeEmpty = attacks.some(a => Array.isArray(a.ranges) && a.ranges.length > 1 && !a.mode);
-        const hitsAll = window.computeHits(gameState, row, col, { union: true, includeEmpty });
+        const hitsAll = window.computeHits(gameState, row, col, { union: true, includeEmpty, profile });
         const hasEnemy = hitsAll.some(h => {
           const u2 = gameState.board?.[h.r]?.[h.c]?.unit;
           return u2 && u2.owner !== unit.owner;
         });
         if (hitsAll.length && hasEnemy) {
           if (needsChoice && hitsAll.length > 1) {
-            interactionState.pendingAttack = { r: row, c: col, cancelMode: 'summon', owner: unit.owner };
+            interactionState.pendingAttack = { r: row, c: col, cancelMode: 'summon', owner: unit.owner, profile };
             interactionState.autoEndTurnAfterAttack = true;
             highlightTiles(hitsAll);
             window.__ui?.log?.add?.(`${tpl.name}: choose a target for the attack.`);
@@ -780,7 +892,10 @@ export function placeUnitWithDirection(direction) {
               const ORDER = ['N', 'E', 'S', 'W'];
               const relDir = ORDER[(ORDER.indexOf(absDir) - ORDER.indexOf(unit.facing) + 4) % 4];
               const dist = Math.max(Math.abs(dr), Math.abs(dc));
-              opts = { chosenDir: relDir, rangeChoices: { [relDir]: dist } };
+              opts = { chosenDir: relDir, profile };
+              if (attacks.some(a => a.mode === 'ANY')) {
+                opts.rangeChoices = { [relDir]: dist };
+              }
             }
             interactionState.autoEndTurnAfterAttack = true;
             window.performBattleSequence(row, col, true, opts);
@@ -791,7 +906,7 @@ export function placeUnitWithDirection(direction) {
           }
         } else {
           if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
-          try { window.endTurn && window.endTurn(); } catch {}
+          endTurnAfterSummon();
         }
       }
       try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
@@ -817,6 +932,8 @@ export function setupInteractions() {
       setHandCardHoverVisual(interactionState.hoveredHandCard, false);
       interactionState.hoveredHandCard = null;
     }
+    resetDodgeHover();
+    hideTooltip(META_TOOLTIP_SOURCE);
   });
 }
 

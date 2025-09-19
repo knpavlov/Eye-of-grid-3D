@@ -452,8 +452,24 @@ function drawAttackScheme(ctx, scheme, cardData, x, y, cell, gap) {
   }
 
   if (chooseDir || attacks.some(a => a.mode === 'ANY')) {
-    const cx = x + 1 * (cell + gap);
-    const cy = y + 0 * (cell + gap);
+    let firstHighlight = null;
+    for (const a of attacks) {
+      const vec = map[a.dir];
+      if (!vec) continue;
+      const ranges = Array.isArray(a.ranges) && a.ranges.length
+        ? a.ranges.map(v => Math.max(1, Math.floor(Number(v)))).filter(Boolean)
+        : [1];
+      if (!ranges.length) continue;
+      const minDist = Math.min(...ranges);
+      const rr = 1 + vec[0] * minDist;
+      const cc = 1 + vec[1] * minDist;
+      if (rr < 0 || rr > 2 || cc < 0 || cc > 2) continue;
+      firstHighlight = { rr, cc };
+      break;
+    }
+    const mark = firstHighlight || { rr: 0, cc: 1 };
+    const cx = x + mark.cc * (cell + gap);
+    const cy = y + mark.rr * (cell + gap);
     ctx.strokeStyle = '#ef4444';
     ctx.lineWidth = accentLine;
     ctx.strokeRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
