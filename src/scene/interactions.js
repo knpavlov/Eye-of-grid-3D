@@ -681,6 +681,17 @@ export function placeUnitWithDirection(direction) {
         }
       } catch {}
     }
+    if (summonEvents?.releases?.length) {
+      try {
+        const cards = window.CARDS || {};
+        for (const rel of summonEvents.releases) {
+          const unit = gameState.board?.[rel.r]?.[rel.c]?.unit;
+          const tplUnit = unit ? cards[unit.tplId] : null;
+          const name = tplUnit?.name || 'Существо';
+          window.addLog?.(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
+        }
+      } catch {}
+    }
     const gained = applyFreedonianAura(gameState, gameState.active);
     if (gained > 0) {
       window.addLog(`Фридонийский Странник приносит ${gained} маны.`);

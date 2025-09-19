@@ -10,6 +10,7 @@ import {
   collectMagicTargetCells,
   computeDynamicMagicAttack,
   releasePossessionsAfterDeaths,
+  refreshContinuousPossessions,
   hasPerfectDodge,
   hasInvisibility,
   attemptUnitDodge,
@@ -511,19 +512,40 @@ export function stagedAttack(state, r, c, opts = {}) {
       }
     }
 
+    const continuous = refreshContinuousPossessions(nFinal);
+    if (continuous.possessions.length) {
+      for (const ev of continuous.possessions) {
+        const takenUnit = nFinal.board?.[ev.r]?.[ev.c]?.unit;
+        const tplTaken = takenUnit ? CARDS[takenUnit.tplId] : null;
+        const name = tplTaken?.name || 'Существо';
+        const ownerLabel = (ev.newOwner != null) ? ev.newOwner + 1 : '?';
+        logLines.push(`${name}: контроль переходит к игроку ${ownerLabel}.`);
+      }
+    }
+    if (continuous.releases.length) {
+      for (const rel of continuous.releases) {
+        const unit = nFinal.board?.[rel.r]?.[rel.c]?.unit;
+        const tplRel = unit ? CARDS[unit.tplId] : null;
+        const name = tplRel?.name || 'Существо';
+        logLines.push(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
+      }
+    }
+
     if (A) {
       A.lastAttackTurn = nFinal.turn;
       A.apSpent = (A.apSpent || 0) + attackCostValue;
     }
 
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
+    const combinedReleases = [...releaseEvents.releases, ...continuous.releases];
     return {
       n1: nFinal,
       logLines,
       targets,
       deaths,
       retaliators: ret.retaliators,
-      releases: releaseEvents.releases,
+      releases: combinedReleases,
+      possessions: continuous.possessions,
       attackerPosUpdate,
     };
   }
@@ -731,9 +753,28 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (Array.isArray(applied?.logLines) && applied.logLines.length) {
     logLines.push(...applied.logLines);
   }
+  const continuous = refreshContinuousPossessions(n1);
+  if (continuous.possessions.length) {
+    for (const ev of continuous.possessions) {
+      const takenUnit = n1.board?.[ev.r]?.[ev.c]?.unit;
+      const tplTaken = takenUnit ? CARDS[takenUnit.tplId] : null;
+      const name = tplTaken?.name || 'Существо';
+      const ownerLabel = (ev.newOwner != null) ? ev.newOwner + 1 : '?';
+      logLines.push(`${name}: контроль переходит к игроку ${ownerLabel}.`);
+    }
+  }
+  if (continuous.releases.length) {
+    for (const rel of continuous.releases) {
+      const unit = n1.board?.[rel.r]?.[rel.c]?.unit;
+      const tplRel = unit ? CARDS[unit.tplId] : null;
+      const name = tplRel?.name || 'Существо';
+      logLines.push(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
+    }
+  }
   attacker.lastAttackTurn = n1.turn;
   attacker.apSpent = (attacker.apSpent || 0) + attackCostValue;
-  return { n1, logLines, targets, deaths, releases: releaseEvents.releases, attackerPosUpdate };
+  const combinedReleases = [...releaseEvents.releases, ...continuous.releases];
+  return { n1, logLines, targets, deaths, releases: combinedReleases, possessions: continuous.possessions, attackerPosUpdate };
 }
 
 export { computeCellBuff };

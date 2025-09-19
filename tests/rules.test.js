@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { computeCellBuff, effectiveStats, hasAdjacentGuard, computeHits, magicAttack, stagedAttack } from '../src/core/rules.js';
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
-import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack } from '../src/core/abilities.js';
+import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -664,6 +664,37 @@ describe('новые способности (Хильда и Диос)', () => {
     const fin = battle.finish();
     expect(fin.n1.board[0][0].unit.owner).toBe(1);
     expect(fin.releases && fin.releases.length).toBeGreaterThan(0);
+  });
+
+  it('Tentacles of Possession захватывают врага перед собой и отпускают при смене направления', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'WATER';
+    state.board[1][1].unit = { owner: 0, tplId: 'WATER_TENTACLES_OF_POSSESSION', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'S' };
+    refreshContinuousPossessions(state);
+    const possessed = state.board[0][1].unit;
+    expect(possessed.owner).toBe(0);
+    expect(possessed.possessed?.originalOwner).toBe(1);
+    state.board[1][1].unit.facing = 'E';
+    refreshContinuousPossessions(state);
+    const released = state.board[0][1].unit;
+    expect(released.owner).toBe(1);
+    expect(released.possessed).toBeUndefined();
+  });
+
+  it('Imposter Queen Anfisa контролирует соседей только на воде', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'WATER';
+    state.board[1][1].unit = { owner: 0, tplId: 'WATER_IMPOSTER_QUEEN_ANFISA', facing: 'N' };
+    state.board[1][0].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'E' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'S' };
+    refreshContinuousPossessions(state);
+    expect(state.board[1][0].unit.owner).toBe(0);
+    expect(state.board[0][1].unit.owner).toBe(0);
+    state.board[1][1].element = 'FIRE';
+    refreshContinuousPossessions(state);
+    expect(state.board[1][0].unit.owner).toBe(1);
+    expect(state.board[0][1].unit.owner).toBe(1);
   });
 
   it('Crucible King Dios IV на огненном поле вынужден использовать магическую атаку', () => {
