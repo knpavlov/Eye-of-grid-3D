@@ -233,5 +233,38 @@ export function updateUnits(gameState) {
   try { renderFieldLocks(gameState); } catch {}
 }
 
-try { if (typeof window !== 'undefined') window.__units = { updateUnits }; } catch {}
+export function forceResyncUnits(gameState) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const cleanup = (mesh) => {
+    if (!mesh) return;
+    try { setInvisibilityFx(mesh, false); } catch {}
+    try { disposePossessionOverlay(mesh); } catch {}
+    try {
+      if (mesh.userData?.__moveTween && typeof mesh.userData.__moveTween.kill === 'function') {
+        mesh.userData.__moveTween.kill();
+        mesh.userData.__moveTween = null;
+      }
+    } catch {}
+    try { if (mesh.parent) mesh.parent.remove(mesh); } catch {}
+  };
+  if (ctx.unitMeshesByUid instanceof Map) {
+    for (const mesh of ctx.unitMeshesByUid.values()) cleanup(mesh);
+  } else if (Array.isArray(ctx.unitMeshes)) {
+    for (const mesh of ctx.unitMeshes) cleanup(mesh);
+  }
+  ctx.unitMeshesByUid = new Map();
+  ctx.unitMeshes = [];
+  updateUnits(gameState);
+}
+
+try {
+  if (typeof window !== 'undefined') {
+    window.__units = window.__units || {};
+    window.__units.updateUnits = updateUnits;
+    window.__units.forceResyncUnits = forceResyncUnits;
+  }
+} catch {}
+
+export default { updateUnits, forceResyncUnits };
 

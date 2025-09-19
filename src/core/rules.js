@@ -188,6 +188,15 @@ export function stagedAttack(state, r, c, opts = {}) {
   const tplA = CARDS[attacker.tplId];
   if (!canAttack(tplA)) return null;
 
+  const startElement = base.board?.[r]?.[c]?.element;
+  const attackCostValue = attackCost(tplA, startElement, {
+    state: base,
+    r,
+    c,
+    unit: attacker,
+    owner: attacker?.owner,
+  });
+
   const baseStats = effectiveStats(base.board[r][c], attacker);
   let atk = baseStats.atk;
   let logLines = [];
@@ -373,6 +382,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       const tplB = CARDS[B.tplId];
       const alive = (B.currentHP ?? B.hp) > 0;
       if (!alive) continue;
+      if (tplB?.attackType === 'MAGIC' && !tplB?.allowMagicRetaliation) continue;
       // быстрота защитника уже сработала на stepQuick, если атакующий не был быстрым
       if (!attackerQuick && hasFirstStrike(tplB)) continue;
       const hitsB = computeHits(n1, h.r, h.c, { target: { r, c }, union: true });
@@ -393,6 +403,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     const ret = step2();
 
     const applied = applyDamageInteractionResults(nFinal, damageEffects);
+    const needsResync = !!applied?.needsFullResync;
     if (applied?.attackerPosUpdate) {
       r = applied.attackerPosUpdate.r;
       c = applied.attackerPosUpdate.c;
@@ -458,12 +469,19 @@ export function stagedAttack(state, r, c, opts = {}) {
 
     if (A) {
       A.lastAttackTurn = nFinal.turn;
-      const cellEl = nFinal.board?.[r]?.[c]?.element;
-      A.apSpent = (A.apSpent || 0) + attackCost(tplA, cellEl);
+      A.apSpent = (A.apSpent || 0) + attackCostValue;
     }
 
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
-    return { n1: nFinal, logLines, targets, deaths, retaliators: ret.retaliators, releases: releaseEvents.releases };
+    return {
+      n1: nFinal,
+      logLines,
+      targets,
+      deaths,
+      retaliators: ret.retaliators,
+      releases: releaseEvents.releases,
+      needsFullResync: needsResync,
+    };
   }
 
   return {
@@ -488,6 +506,15 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (attacker.lastAttackTurn === n1.turn) return null;
   const tplA = CARDS[attacker.tplId];
   if (!canAttack(tplA)) return null;
+
+  const startElement = n1.board?.[fr]?.[fc]?.element;
+  const attackCostValue = attackCost(tplA, startElement, {
+    state: n1,
+    r: fr,
+    c: fc,
+    unit: attacker,
+    owner: attacker?.owner,
+  });
   const allowFriendly = !!tplA.friendlyFire;
   const mainTarget = n1.board?.[tr]?.[tc]?.unit;
   if (!allowFriendly && (!mainTarget || mainTarget.owner === attacker.owner)) return null;
@@ -652,6 +679,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     }
   }
   const applied = applyDamageInteractionResults(n1, damageEffects);
+  const needsResync = !!applied?.needsFullResync;
   if (applied?.attackerPosUpdate) {
     fr = applied.attackerPosUpdate.r;
     fc = applied.attackerPosUpdate.c;
@@ -660,9 +688,8 @@ export function magicAttack(state, fr, fc, tr, tc) {
     logLines.push(...applied.logLines);
   }
   attacker.lastAttackTurn = n1.turn;
-  const cellEl = n1.board?.[fr]?.[fc]?.element;
-  attacker.apSpent = (attacker.apSpent || 0) + attackCost(tplA, cellEl);
-  return { n1, logLines, targets, deaths, releases: releaseEvents.releases };
+  attacker.apSpent = (attacker.apSpent || 0) + attackCostValue;
+  return { n1, logLines, targets, deaths, releases: releaseEvents.releases, needsFullResync: needsResync };
 }
 
 export { computeCellBuff };

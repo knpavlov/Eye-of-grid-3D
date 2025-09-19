@@ -173,6 +173,7 @@ try {
   };
   window.__units = {
     updateUnits: Units.updateUnits,
+    forceResyncUnits: Units.forceResyncUnits,
   };
   window.__hand = {
     setHandCardHoverVisual: Hand.setHandCardHoverVisual,
