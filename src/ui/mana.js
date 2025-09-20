@@ -219,8 +219,11 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
         const tl = (typeof window !== 'undefined') ? window.gsap?.timeline?.({ onComplete: cleanup }) : null;
         if (tl) {
           tl.to(bar, { filter: 'brightness(2.1) drop-shadow(0 0 16px rgba(96,165,250,0.95))', duration: 0.154, ease: 'power2.out' })
-            .to(bar, { filter: 'none', duration: 0.42, ease: 'power2.inOut' })
-            .to({}, { duration: Math.max(0, (durationMs/1000) - 0.574) });
+            .to(bar, { filter: 'none', duration: 0.42, ease: 'power2.inOut' });
+          const baseGlowDuration = 0.574;
+          const desiredDuration = Math.max(durationMs / 1000, baseGlowDuration);
+          const tail = Math.min(0.25, Math.max(0, desiredDuration - baseGlowDuration));
+          if (tail > 0.001) tl.to({}, { duration: tail });
         } else {
           setTimeout(cleanup, durationMs);
         }
@@ -309,9 +312,12 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
         }
       }
       
-      // Добавляем паузу если анимация короче требуемой длительности
-      tl.to({}, { duration: Math.max(0, (durationMs/1000) - tl.duration()) });
-      
+      // Хвост для выравнивания длительности без ощутимой паузы
+      const baseDuration = tl.duration();
+      const desiredDuration = Math.max(durationMs / 1000, baseDuration);
+      const tail = Math.min(0.25, Math.max(0, desiredDuration - baseDuration));
+      if (tail > 0.001) tl.to({}, { duration: tail });
+
     } catch (e) {
       console.error('Error in animateTurnManaGain:', e);
       setManaGainActive(false);
