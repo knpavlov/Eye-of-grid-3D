@@ -74,7 +74,9 @@ export function hasAuraInvisibility(state, r, c, opts = {}) {
       if (!auraTpl) continue;
       if (!isUnitAlive(auraUnit, auraTpl)) continue;
 
-      if (auraTpl.grantInvisibilityToAlliesOnElement) {
+      const sameCell = rr === r && cc === c;
+
+      if (auraTpl.grantInvisibilityToAlliesOnElement && !sameCell) {
         const allowed = collectGrantElements(
           auraTpl.grantInvisibilityToAlliesOnElement,
           auraTpl.element,
@@ -85,7 +87,6 @@ export function hasAuraInvisibility(state, r, c, opts = {}) {
       }
 
       if (auraTpl.invisibilityAuraSameElement) {
-        const sameCell = rr === r && cc === c;
         if (!sameCell) {
           const auraElement = normalizeElement(state.board?.[rr]?.[cc]?.element);
           if (auraElement && cellElement && auraElement === cellElement) {

@@ -23,7 +23,7 @@ function isUnitAlive(unit, tpl) {
   return true;
 }
 
-function healUnit(state, r, c, amount) {
+function healUnit(state, r, c, amount, opts = {}) {
   if (!state?.board) return null;
   const cell = state.board?.[r]?.[c];
   const unit = cell?.unit;
@@ -31,12 +31,17 @@ function healUnit(state, r, c, amount) {
   const tpl = getTemplate(unit);
   if (!tpl) return null;
   if (!isUnitAlive(unit, tpl)) return null;
+  const safeAmount = Math.max(0, Math.floor(amount || 0));
+  if (safeAmount <= 0) return null;
   const cellElement = cell?.element || null;
   const buff = computeCellBuff(cellElement, tpl.element);
+  if (opts.increaseMax) {
+    unit.bonusHP = (unit.bonusHP || 0) + safeAmount;
+  }
   const maxHp = (tpl.hp || 0) + buff.hp + (unit.bonusHP || 0);
   const before = typeof unit.currentHP === 'number' ? unit.currentHP : (tpl.hp || 0);
   if (maxHp <= before) return null;
-  const delta = Math.min(amount, maxHp - before);
+  const delta = Math.min(safeAmount, maxHp - before);
   if (delta <= 0) return null;
   unit.currentHP = before + delta;
   return { r, c, before, after: unit.currentHP, amount: delta };
@@ -78,7 +83,7 @@ export function applyEnemySummonReactions(state, context = {}) {
         if (rr === trigger.r && cc === trigger.c) continue; // "other" союзники
         const ally = row[cc]?.unit;
         if (!ally || ally.owner !== owner) continue;
-        const healed = healUnit(state, rr, cc, trigger.amount);
+        const healed = healUnit(state, rr, cc, trigger.amount, { increaseMax: true });
         if (healed) healedList.push(healed);
       }
     }

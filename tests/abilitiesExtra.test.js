@@ -68,6 +68,7 @@ describe('реакции на призыв врага', () => {
     expect(reaction.heals).toHaveLength(1);
     expect(reaction.heals[0].healed[0].amount).toBe(1);
     expect(state.board[1][0].unit.currentHP).toBe(2);
+    expect(state.board[1][0].unit.bonusHP).toBe(1);
   });
 });
 

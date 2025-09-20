@@ -1079,6 +1079,7 @@ describe('Новые способности существ', () => {
     expect(Array.isArray(events.heals)).toBe(true);
     expect(events.heals.length).toBeGreaterThan(0);
     expect(board[0][1].unit.currentHP).toBe(5);
+    expect(board[0][1].unit.bonusHP).toBe(1);
     expect(board[1][1].unit.currentHP).toBe(4);
   });
 
@@ -1092,7 +1093,7 @@ describe('Новые способности существ', () => {
     board[2][2].element = 'FIRE';
     board[2][2].unit = { owner: 0, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'N' };
 
-    expect(hasInvisibility(state, 0, 0)).toBe(true);
+    expect(hasInvisibility(state, 0, 0)).toBe(false);
     expect(hasInvisibility(state, 0, 1)).toBe(true);
     expect(hasInvisibility(state, 2, 2)).toBe(false);
   });
