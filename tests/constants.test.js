@@ -33,6 +33,24 @@ describe('constants helpers', () => {
     expect(rotateCost(tpl)).toBe(3);
   });
 
+  it('rotateCost: учитывает ауры, повышающие стоимость', () => {
+    const state = {
+      board: Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'NEUTRAL', unit: null }))),
+    };
+    state.board[1][1].unit = { owner: 0, tplId: 'FOREST_SLEEPTRAP', currentHP: CARDS.FOREST_SLEEPTRAP.hp };
+    state.board[1][2].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', currentHP: CARDS.FIRE_HELLFIRE_SPITTER.hp };
+    const cell = state.board[1][2];
+    const tpl = CARDS.FIRE_HELLFIRE_SPITTER;
+    const cost = rotateCost(tpl, cell.element, {
+      state,
+      r: 1,
+      c: 2,
+      unit: cell.unit,
+      owner: cell.unit.owner,
+    });
+    expect(cost).toBe((tpl.activation || 0) + 1);
+  });
+
   it('attackCost: учитывает ауры, повышающие стоимость соседей', () => {
     const state = {
       board: Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'NEUTRAL', unit: null }))),

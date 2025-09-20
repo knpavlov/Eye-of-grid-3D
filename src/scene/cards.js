@@ -38,7 +38,7 @@ export function preloadCardTextures() {
   try { if (typeof window !== 'undefined') window.CARD_TEX = CARD_TEX; } catch {}
 }
 
-export function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
+export function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null, opts = {}) {
   const THREE = getTHREE();
   const BASE_W = 256;
   const BASE_H = 356;
@@ -201,7 +201,11 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   }
 
   if (cardData.type === 'UNIT') {
-    const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
+    const activationOverride = (opts && Object.prototype.hasOwnProperty.call(opts, 'activationOverride'))
+      ? opts.activationOverride
+      : ((opts && Object.prototype.hasOwnProperty.call(opts, 'activation')) ? opts.activation : null);
+    const actBase = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
+    const act = (activationOverride != null) ? activationOverride : actBase;
     const playSize = Math.max(ps(15), 13);
     const playCenterX = costTextX + inlineOffset + playSize / 2 + Math.max(ps(10), 8);
     drawPlayIcon(ctx, playCenterX, footerCenterY, playSize);
