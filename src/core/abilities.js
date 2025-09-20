@@ -26,6 +26,10 @@ import {
 import { applySummonDraw } from './abilityHandlers/draw.js';
 import { transformAttackProfile } from './abilityHandlers/attackTransforms.js';
 import { cloneAttackEntry } from './utils/attacks.js';
+import {
+  computeAuraAttackBonus as computeAuraAttackBonusInternal,
+  computeAuraActivationDelta as computeAuraActivationDeltaInternal,
+} from './abilityHandlers/auraModifiers.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -514,6 +518,14 @@ export function activationCost(tpl, fieldElement, ctx = {}) {
     if (extra) {
       cost += extra;
     }
+    const auraDelta = getAuraActivationModifier(ctx.state, ctx.r, ctx.c, {
+      unit: ctx.unit,
+      tpl,
+      owner: ctx.owner,
+    });
+    if (auraDelta) {
+      cost += auraDelta;
+    }
   }
   return Math.max(0, cost);
 }
@@ -699,6 +711,14 @@ export function getTargetElementBonus(tpl, state, hits) {
 
 export function getTargetCostBonus(state, tpl, hits) {
   return computeTargetCostBonusInternal(state, tpl, hits);
+}
+
+export function getAuraAttackBonus(state, r, c, opts = {}) {
+  return computeAuraAttackBonusInternal(state, r, c, opts);
+}
+
+export function getAuraActivationModifier(state, r, c, opts = {}) {
+  return computeAuraActivationDeltaInternal(state, r, c, opts);
 }
 
 export { isIncarnationCard };
