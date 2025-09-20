@@ -18,6 +18,26 @@ function setSplashActive(v) {
 
 function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
+function playTimeline(tl, desiredDuration){
+  return new Promise(resolve => {
+    if (!tl) { resolve(); return; }
+    try {
+      const baseDuration = typeof tl.duration === 'function' ? tl.duration() : 0;
+      if (baseDuration > 0 && desiredDuration > 0) {
+        const scale = baseDuration / desiredDuration;
+        if (typeof tl.timeScale === 'function') tl.timeScale(scale);
+      }
+      tl.eventCallback('onComplete', () => {
+        tl.eventCallback('onComplete', null);
+        resolve();
+      });
+      tl.play(0);
+    } catch {
+      resolve();
+    }
+  });
+}
+
 export async function showTurnSplash(title) {
   if (_splashInProgress) {
     // Если уже показываем заставку, ждем завершения
@@ -39,7 +59,7 @@ export async function showTurnSplash(title) {
   tb.appendChild(wrap);
   tb.style.display = 'flex'; tb.classList.remove('hidden'); tb.classList.add('flex');
   // Animate (best-effort if gsap is present)
-  const tl = (typeof window !== 'undefined') ? window.gsap?.timeline?.() : null;
+  const tl = (typeof window !== 'undefined') ? window.gsap?.timeline?.({ paused: true }) : null;
   try {
     if (tl) {
       tl.set(txt, { scale: 0.65, opacity: 0 })
@@ -55,12 +75,14 @@ export async function showTurnSplash(title) {
         .to([ringOuter, ringInner], { opacity: 0.9, duration: 0.14 }, 0.315)
         .to([bg, streaks], { opacity: 0.12, duration: 0.266 }, 0.406)
         .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.196, ease: 'power2.in' }, 1.134)
-        .to(tb, { opacity: 0, duration: 0.14, ease: 'power2.in' }, 1.19);
-      tl.timeScale?.(0.75);
-      await sleep(1000);
+        .to(tb, { opacity: 0, duration: 0.14, ease: 'power2.in' }, 1.19)
+        .set({}, {}, 1.33);
+      tb.style.opacity = '1';
+      await playTimeline(tl, 1.3);
+      try { tl.kill?.(); } catch {}
     } else {
-      // Fallback: simple 1s show
-      await sleep(1000);
+      // Запасной вариант: держим заставку 1.3 секунды
+      await sleep(1300);
     }
   } catch {}
   tb.classList.add('hidden'); tb.classList.remove('flex'); tb.style.display = 'none'; tb.style.opacity = '';
