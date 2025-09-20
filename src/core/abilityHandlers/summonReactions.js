@@ -35,7 +35,8 @@ function healUnit(state, r, c, amount, opts = {}) {
   if (safeAmount <= 0) return null;
   const cellElement = cell?.element || null;
   const buff = computeCellBuff(cellElement, tpl.element);
-  if (opts.increaseMax) {
+  const increaseMax = !!opts.increaseMax;
+  if (increaseMax) {
     unit.bonusHP = (unit.bonusHP || 0) + safeAmount;
   }
   const maxHp = (tpl.hp || 0) + buff.hp + (unit.bonusHP || 0);
@@ -44,7 +45,7 @@ function healUnit(state, r, c, amount, opts = {}) {
   const delta = Math.min(safeAmount, maxHp - before);
   if (delta <= 0) return null;
   unit.currentHP = before + delta;
-  return { r, c, before, after: unit.currentHP, amount: delta };
+  return { r, c, before, after: unit.currentHP, amount: delta, increaseMax };
 }
 
 export function applyEnemySummonReactions(state, context = {}) {

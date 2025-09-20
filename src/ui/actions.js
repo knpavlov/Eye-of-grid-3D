@@ -373,6 +373,16 @@ export function confirmUnitAbilityOrientation(context, direction) {
           ? heal.healed.reduce((acc, item) => acc + (item?.amount || 0), 0)
           : heal.amount;
         w.addLog?.(`${sourceName}: союзники восстанавливают ${totalHealed} HP.`);
+        if (Array.isArray(heal.healed)) {
+          for (const healed of heal.healed) {
+            if (!healed || !healed.increaseMax) continue;
+            const amount = Number.isFinite(healed.amount) ? healed.amount : 0;
+            if (amount <= 0) continue;
+            const { r: hr, c: hc } = healed;
+            if (typeof hr !== 'number' || typeof hc !== 'number') continue;
+            w.__fx?.scheduleHpPopup?.(hr, hc, amount, 600);
+          }
+        }
       }
     }
 
