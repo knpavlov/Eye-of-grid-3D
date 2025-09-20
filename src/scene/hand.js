@@ -25,6 +25,25 @@ function computeHandTransform(index, total) {
   return { position: pos, rotation: rot, scale };
 }
 
+function tweenQuaternion(timeline, mesh, fromQuat, toQuat, duration, ease, positionLabel) {
+  const qStart = fromQuat.clone();
+  const qEnd = toQuat.clone();
+  const state = { t: 0 };
+  timeline.to(state, {
+    t: 1,
+    duration,
+    ease,
+    onUpdate: () => {
+      mesh.quaternion.copy(qStart).slerp(qEnd, state.t);
+      mesh.rotation.setFromQuaternion(mesh.quaternion);
+    },
+    onComplete: () => {
+      mesh.quaternion.copy(qEnd);
+      mesh.rotation.setFromQuaternion(mesh.quaternion);
+    }
+  }, positionLabel);
+}
+
 export function setHandCardHoverVisual(mesh, hovered) {
   if (!mesh) return;
   const ctx = getCtx();
@@ -145,6 +164,17 @@ export async function animateDrawnCardToHand(cardTpl) {
     big.rotation.set(0, 0, 0);
   }
 
+  big.rotation.order = 'YXZ';
+  big.rotation.setFromQuaternion(big.quaternion);
+
+  const initialQuat = big.quaternion.clone();
+  const alignEuler = new THREE.Euler().setFromQuaternion(big.quaternion, 'YXZ');
+  const targetRoll = 0;
+  const normalizedRoll = THREE.MathUtils.euclideanModulo(alignEuler.z + Math.PI, Math.PI * 2) - Math.PI;
+  const rollDelta = Math.abs(normalizedRoll - targetRoll);
+  alignEuler.z = targetRoll;
+  const uprightQuat = new THREE.Quaternion().setFromEuler(alignEuler);
+
   big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
   big.renderOrder = 9000;
 
@@ -166,6 +196,7 @@ export async function animateDrawnCardToHand(cardTpl) {
   const totalAfter = totalVisible + 1;
   const indexAfter = totalAfter - 1;
   const target = computeHandTransform(indexAfter, totalAfter);
+  const targetQuat = new THREE.Quaternion().setFromEuler(target.rotation.clone());
 
   try {
     const preLayoutDuration = 0.6;
@@ -194,11 +225,22 @@ export async function animateDrawnCardToHand(cardTpl) {
   await new Promise(resolve => {
     const tl = gsap.timeline({ onComplete: resolve });
     const flightDuration = 0.46;
+    const rollAlignDuration = rollDelta > 1e-4 ? 0.28 : 0;
+    const postAlignQuat = rollDelta > 1e-4 ? uprightQuat : initialQuat;
     // Сначала проявляем карту, затем запускаем полёт в руку с одновременным доворотом под позу руки
-    tl.to(allMaterials, { opacity: 1, duration: 0.8, ease: 'power2.out' })
-      .to(big.position, { x: target.position.x, y: target.position.y, z: target.position.z, duration: flightDuration, ease: 'power2.inOut' })
-      .to(big.rotation, { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z, duration: flightDuration, ease: 'power2.inOut' }, '<')
-      .to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: flightDuration, ease: 'power2.inOut' }, '<');
+    tl.to(allMaterials, { opacity: 1, duration: 0.8, ease: 'power2.out' });
+    if (rollAlignDuration > 0) {
+      tweenQuaternion(tl, big, initialQuat, uprightQuat, rollAlignDuration, 'power2.out');
+    }
+    tl.to(big.position, {
+      x: target.position.x,
+      y: target.position.y,
+      z: target.position.z,
+      duration: flightDuration,
+      ease: 'power2.inOut'
+    });
+    tweenQuaternion(tl, big, postAlignQuat, targetQuat, flightDuration, 'power2.inOut', '<');
+    tl.to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: flightDuration, ease: 'power2.inOut' }, '<');
     try {
       big.rotateX(THREE.MathUtils.degToRad(T.pitchDeg || 0));
       big.rotateY(THREE.MathUtils.degToRad(T.yawDeg || 0));
