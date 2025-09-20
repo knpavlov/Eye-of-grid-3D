@@ -286,7 +286,7 @@ export const CARDS = {
     incarnation: true,
     targetAllNonElement: 'FOREST',
     diesOnElement: 'BIOLITH',
-    desc: 'Incarnation. Exalted Elven Deity’s Magic Attack targets all enemies on non-Wood fields. Destroy Exalted Elven Deity if it is on a Biolith field.'
+    desc: 'Incarnation. Exalted Elven Deity’s Magic Attack targets all enemies on non-Forest fields. Destroy Exalted Elven Deity if it is on a Biolith field.'
   },
 
   BIOLITH_PHASEUS: {
@@ -372,7 +372,7 @@ export const CARDS = {
     fortress: true,
     manaGainOnNonElement: 'EARTH',
     diesOnElement: 'FOREST',
-    desc: 'Fortress: cannot attack unless counterattacking. While on a non‑Earth field, its summoner gains 1 mana during their resolution phase. Destroy if on a Wood field.'
+    desc: 'Fortress: cannot attack unless counterattacking. While on a non‑Earth field, its summoner gains 1 mana during their resolution phase. Destroy if on a Forest field.'
   },
   WATER_WOLF_NINJA: {
     id: 'WATER_WOLF_NINJA', name: 'Wolf Ninja', type: 'UNIT', cost: 3, activation: 2,
@@ -453,8 +453,8 @@ export const CARDS = {
     rotateTargetOnDamage: true,
     desc: 'Gains Invisibility while at least one allied Firefly Ninja is on the board. When Swallow Ninja damages (but does not destroy) a creature, rotate that creature so its back faces Swallow Ninja. The target creature cannot counterattack.'
   },
-  WOOD_JUNO_PRISONER_TRAP: {
-    id: 'WOOD_JUNO_PRISONER_TRAP', name: 'Juno Prisoner Trap', type: 'UNIT', cost: 4, activation: 2,
+  FOREST_JUNO_PRISONER_TRAP: {
+    id: 'FOREST_JUNO_PRISONER_TRAP', name: 'Juno Prisoner Trap', type: 'UNIT', cost: 4, activation: 2,
     element: 'FOREST', atk: 0, hp: 4,
     attackType: 'STANDARD', chooseDir: true,
     attacks: [
@@ -466,18 +466,18 @@ export const CARDS = {
     blindspots: [],
     fortress: true,
     onEnemySummonAdjacentHealAllies: 1,
-    diesOffElement: 'EARTH',
+    diesOnElement: 'EARTH',
     desc: 'Fortress: cannot attack unless counterattacking. When an enemy creature is summoned adjacent to it, all other allied creatures gain 1 HP. Destroy if on an Earth field.'
   },
-  WOOD_EDIN_THE_PERSECUTED: {
-    id: 'WOOD_EDIN_THE_PERSECUTED', name: 'Edin the Persecuted', type: 'UNIT', cost: 3, activation: 2,
+  FOREST_EDIN_THE_PERSECUTED: {
+    id: 'FOREST_EDIN_THE_PERSECUTED', name: 'Edin the Persecuted', type: 'UNIT', cost: 3, activation: 2,
     element: 'FOREST', atk: 2, hp: 3,
     attackType: 'MAGIC',
     attacks: [],
     blindspots: ['S'],
-    plus1IfTargetOnElement: 'WOOD',
-    grantInvisibilityToAlliesOnElement: 'WOOD',
-    desc: '+1 Attack while attacking a creature on a Wood field. Allied creatures on Wood fields have Invisibility.'
+    plus1IfTargetOnElement: 'FOREST',
+    grantInvisibilityToAlliesOnElement: 'FOREST',
+    desc: '+1 Attack while attacking a creature on a Forest field. Allied creatures on Forest fields have Invisibility.'
   },
   FOREST_ELVEN_DEATH_DANCER: {
     id: 'FOREST_ELVEN_DEATH_DANCER', name: 'Elven Death Dancer', type: 'UNIT', cost: 5, activation: 4,
@@ -499,7 +499,7 @@ export const CARDS = {
     auraModifiers: [
       { stat: 'ACTIVATION', amount: 2, target: 'ENEMY', scope: 'ADJACENT', sourceOnElement: 'FOREST' },
     ],
-    desc: 'Juno Forest Dragon\'s Attack is equal to 5 plus the number of other Wood creatures on the board. While Juno Forest Dragon is on a Wood field, enemies on adjacent fields add 2 to their Activation Cost.'
+    desc: 'Juno Forest Dragon\'s Attack is equal to 5 plus the number of other Forest creatures on the board. While Juno Forest Dragon is on a Forest field, enemies on adjacent fields add 2 to their Activation Cost.'
   },
   FOREST_SLEEPTRAP: {
     id: 'FOREST_SLEEPTRAP', name: 'Sleeptrap', type: 'UNIT', cost: 2, activation: 1,
@@ -521,7 +521,7 @@ export const CARDS = {
     unitActions: [
       { key: 'SACRIFICE_TRANSFORM', element: 'FOREST', label: 'Sacrifice', requireNonCubic: true },
     ],
-    desc: 'Sacrifice Green Cubic to summon a non‑cubic Wood creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
+    desc: 'Sacrifice Green Cubic to summon a non‑cubic Forest creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
   },
   NEUTRAL_WHITE_CUBIC: {
     id: 'NEUTRAL_WHITE_CUBIC', name: 'White Cubic', type: 'UNIT', cost: 1, activation: 1,

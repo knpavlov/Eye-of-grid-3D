@@ -1069,7 +1069,7 @@ describe('Новые способности существ', () => {
       players: [ { mana: 0 }, { mana: 0 } ],
     };
     board[1][1].element = 'FOREST';
-    board[1][1].unit = { owner: 0, tplId: 'WOOD_JUNO_PRISONER_TRAP', currentHP: 4, facing: 'N' };
+    board[1][1].unit = { owner: 0, tplId: 'FOREST_JUNO_PRISONER_TRAP', currentHP: 4, facing: 'N' };
     board[0][1].element = 'FOREST';
     board[0][1].unit = { owner: 0, tplId: 'FOREST_SWALLOW_NINJA', currentHP: 4, facing: 'S' };
     board[1][2].element = 'FIRE';
@@ -1082,11 +1082,11 @@ describe('Новые способности существ', () => {
     expect(board[1][1].unit.currentHP).toBe(4);
   });
 
-  it('Edin делает союзников на древесных полях невидимыми', () => {
+  it('Edin делает союзников на лесных полях невидимыми', () => {
     const board = makeBoard();
     const state = { board };
     board[0][0].element = 'FOREST';
-    board[0][0].unit = { owner: 0, tplId: 'WOOD_EDIN_THE_PERSECUTED', facing: 'N' };
+    board[0][0].unit = { owner: 0, tplId: 'FOREST_EDIN_THE_PERSECUTED', facing: 'N' };
     board[0][1].element = 'FOREST';
     board[0][1].unit = { owner: 0, tplId: 'FOREST_ELVEN_DEATH_DANCER', facing: 'S' };
     board[2][2].element = 'FIRE';
@@ -1107,6 +1107,7 @@ describe('Новые способности существ', () => {
     board[0][2].element = 'WATER';
     board[0][2].unit = { owner: 0, tplId: 'BIOLITH_NINJA', facing: 'S' };
 
+    expect(hasInvisibility(state, 1, 1)).toBe(false);
     expect(hasInvisibility(state, 0, 1)).toBe(true);
     expect(hasInvisibility(state, 0, 2)).toBe(false);
   });

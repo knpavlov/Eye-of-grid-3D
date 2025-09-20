@@ -2,6 +2,12 @@
 import { CARDS } from '../cards.js';
 import { normalizeElementName } from '../utils/elements.js';
 
+const capMana = (value) => {
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  return value > 10 ? 10 : value;
+};
+
 function getTemplate(unit) {
   if (!unit) return null;
   return CARDS[unit.tplId] || null;
@@ -86,7 +92,7 @@ export function applyTurnStartManaEffects(state, playerIndex) {
 
       const before = typeof player.mana === 'number' ? player.mana : 0;
       const after = before + cfg.amount;
-      player.mana = after > 10 ? 10 : after;
+      player.mana = capMana(after);
       const gained = player.mana - before;
       if (gained > 0) {
         result.total += gained;

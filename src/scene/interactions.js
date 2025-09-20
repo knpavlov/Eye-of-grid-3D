@@ -10,6 +10,7 @@ import {
   evaluateIncarnationSummon,
   applyIncarnationSummon,
   isIncarnationCard,
+  canAttack,
 } from '../core/abilities.js';
 import { capMana } from '../core/constants.js';
 
@@ -850,6 +851,12 @@ export function placeUnitWithDirection(direction) {
       if (wasIncarnation) {
         interactionState.autoEndTurnAfterAttack = false;
         if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
+        return;
+      }
+      if (!canAttack(tpl)) {
+        interactionState.autoEndTurnAfterAttack = false;
+        if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
+        endTurnAfterSummon();
         return;
       }
       if (usesMagic) {
