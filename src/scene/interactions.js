@@ -795,6 +795,19 @@ export function placeUnitWithDirection(direction) {
         }
       } catch {}
     }
+    if (Array.isArray(summonEvents?.heals) && summonEvents.heals.length) {
+      try {
+        const cards = window.CARDS || {};
+        for (const heal of summonEvents.heals) {
+          const tplSource = cards[heal?.source?.tplId];
+          const sourceName = tplSource?.name || 'Существо';
+          const totalHealed = Array.isArray(heal.healed)
+            ? heal.healed.reduce((acc, item) => acc + (item?.amount || 0), 0)
+            : heal.amount;
+          window.addLog?.(`${sourceName}: союзники восстанавливают ${totalHealed} HP.`);
+        }
+      } catch {}
+    }
     const gained = applyFreedonianAura(gameState, gameState.active);
     if (gained > 0) {
       window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
@@ -830,6 +843,17 @@ export function placeUnitWithDirection(direction) {
       window.updateUnits();
       window.updateUI();
       const tpl = window.CARDS?.[cardData.id];
+      if (tpl?.fortress) {
+        interactionState.autoEndTurnAfterAttack = false;
+        if (unlockTriggered) {
+          setTimeout(() => {
+            try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {}
+          }, 0);
+        }
+        endTurnAfterSummon();
+        try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+        return;
+      }
       const profile = window.resolveAttackProfile
         ? window.resolveAttackProfile(gameState, row, col, tpl)
         : { attacks: tpl?.attacks || [], chooseDir: tpl?.chooseDir, attackType: tpl?.attackType };

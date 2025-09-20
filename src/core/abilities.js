@@ -30,6 +30,13 @@ import {
   computeAuraAttackBonus as computeAuraAttackBonusInternal,
   computeAuraActivationDelta as computeAuraActivationDeltaInternal,
 } from './abilityHandlers/auraModifiers.js';
+import { hasAuraInvisibility } from './abilityHandlers/invisibilityAura.js';
+import { applyEnemySummonReactions } from './abilityHandlers/summonReactions.js';
+import {
+  applyTurnStartManaEffects as applyTurnStartManaEffectsInternal,
+  resolveTurnStartPhase as resolveTurnStartPhaseInternal,
+} from './abilityHandlers/startPhase.js';
+import { normalizeElementName } from './utils/elements.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -67,9 +74,8 @@ function normalizeTplIdList(value) {
 function normalizeElements(value) {
   const set = new Set();
   for (const raw of toArray(value)) {
-    if (typeof raw === 'string' && raw) {
-      set.add(raw.toUpperCase());
-    }
+    const el = normalizeElementName(raw);
+    if (el) set.add(el);
   }
   return set;
 }
@@ -214,6 +220,9 @@ export function hasInvisibility(state, r, c, opts = {}) {
   if (tpl.invisibility) return true;
   const byElement = normalizeElements(tpl.invisibilityOnElement);
   if (byElement.size && cell?.element && byElement.has(cell.element)) {
+    return true;
+  }
+  if (hasAuraInvisibility(state, r, c, { unit, tpl })) {
     return true;
   }
   const sources = collectInvisibilitySources(tpl);
@@ -452,10 +461,19 @@ export function applyDamageInteractionResults(state, effects = {}) {
 function normalizeElementConfig(value, defaults = {}) {
   if (!value) return null;
   if (typeof value === 'string') {
-    return { ...defaults, element: value };
+    const element = normalizeElementName(value);
+    if (!element) return null;
+    return { ...defaults, element };
   }
   if (typeof value === 'object') {
-    return { ...defaults, ...value };
+    const result = { ...defaults, ...value };
+    if (value.element != null) {
+      const element = normalizeElementName(value.element);
+      if (element) {
+        result.element = element;
+      }
+    }
+    return result;
   }
   return null;
 }
@@ -627,6 +645,11 @@ export function applySummonAbilities(state, r, c) {
     events.dodgeUpdates = dodgeInfo.updated;
   }
 
+  const reactions = applyEnemySummonReactions(state, { r, c, unit, tpl });
+  if (Array.isArray(reactions?.heals) && reactions.heals.length) {
+    events.heals = [...(events.heals || []), ...reactions.heals];
+  }
+
   return events;
 }
 
@@ -748,6 +771,8 @@ export const ensureUnitDodgeState = ensureDodgeState;
 export const attemptUnitDodge = attemptDodgeInternal;
 export const refreshContinuousPossessions = refreshContinuousPossessionsInternal;
 export { refreshBoardDodgeStates };
+export const applyTurnStartManaEffects = applyTurnStartManaEffectsInternal;
+export const resolveTurnStartPhase = resolveTurnStartPhaseInternal;
 
 export function collectUnitActions(state, r, c) {
   const actions = [];

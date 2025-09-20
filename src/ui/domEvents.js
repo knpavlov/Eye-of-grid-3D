@@ -26,6 +26,10 @@ export function attachUIEvents() {
     } catch {}
   });
 
+  document.getElementById('mana-debug-btn')?.addEventListener('click', () => {
+    try { w.__ui?.actions?.grantTestMana?.(10); } catch {}
+  });
+
   document.getElementById('close-log-btn')?.addEventListener('click', () => {
     document.getElementById('log-panel')?.classList.add('hidden');
   });

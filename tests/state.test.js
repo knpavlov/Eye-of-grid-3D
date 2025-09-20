@@ -101,6 +101,25 @@ describe('reducer', () => {
     expect(next.__ver).toBeGreaterThan(state.__ver);
   });
 
+  it('A.END_TURN: Dungeon of Ten Tyrants grants extra mana on non-Earth fields', () => {
+    const board = makeEmptyBoard();
+    board[0][0].element = 'WATER';
+    board[0][0].unit = { owner: 1, tplId: 'EARTH_DUNGEON_OF_TEN_TYRANTS', currentHP: 4, facing: 'N' };
+    const state = {
+      board,
+      players: [
+        { deck: [], hand: [], mana: 0 },
+        { deck: [], hand: [], mana: 0 }
+      ],
+      active: 0,
+      turn: 1,
+      winner: null,
+      __ver: 0,
+    };
+    const next = reducer(state, { type: A.END_TURN });
+    expect(next.players[1].mana).toBe(3);
+  });
+
   it('A.END_TURN: declares winner if 5+ controlled by active', () => {
     const board = makeEmptyBoard();
     // Active player 0 controls 5 cells

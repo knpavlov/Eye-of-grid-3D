@@ -1,6 +1,7 @@
 ﻿// Game state: reducer + helpers
 import { capMana } from './constants.js';
 import { shuffle, drawOne, drawOneNoAdd, countControlled, countUnits, randomBoard, startGame } from './board.js';
+import { resolveTurnStartPhase } from './abilities.js';
 
 export { shuffle, drawOne, drawOneNoAdd, countControlled, countUnits, randomBoard, startGame };
 
@@ -33,12 +34,12 @@ export function reducer(state, action) {
       s.active = s.active === 0 ? 1 : 0;
       s.turn += 1;
       const pl = s.players[s.active];
-      const before = pl.mana || 0;
-      
+      const before = Number(pl.mana) || 0;
+
       // ВАЖНО: Сохраняем предыдущее значение маны для правильной анимации
       pl._beforeMana = before;
-      pl.mana = capMana(before + 2);
-      
+      resolveTurnStartPhase(s, s.active, { capMana, baseGain: 2 });
+
       // Optional draw: only enqueue for animation elsewhere; here push straight for logic
       const drawn = drawOneNoAdd(s, s.active);
       if (drawn) pl.hand.push(drawn);
