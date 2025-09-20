@@ -2,11 +2,66 @@
 import { getCtx } from './context.js';
 import { createCard3D } from './cards.js';
 
+const DRAW_ANIMATION_CONFIG = Object.freeze({
+  revealDuration: 0.7,
+  flightDuration: 0.7,
+  handReflowDuration: 0.5,
+  handScaleSnapDuration: 0.18
+});
+
 function getTHREE() {
   const ctx = getCtx();
   const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
   if (!THREE) throw new Error('THREE not available');
   return THREE;
+}
+
+// Собирает все материалы меша, чтобы управлять визуальными параметрами одним списком
+function collectMeshMaterials(root) {
+  const materials = [];
+  const stack = [root];
+  while (stack.length > 0) {
+    const obj = stack.pop();
+    if (!obj) continue;
+    if (obj.material) {
+      if (Array.isArray(obj.material)) materials.push(...obj.material);
+      else materials.push(obj.material);
+    }
+    if (obj.children && obj.children.length) stack.push(...obj.children);
+  }
+  return materials;
+}
+
+// Плавно перестраивает текущую руку под добавление новой карты
+function reflowHandForIncomingCard(handMeshes, totalAfter, duration, scaleSnapDuration) {
+  if (!handMeshes || !handMeshes.length) return;
+  const clampedDuration = Math.max(0, duration || 0);
+  handMeshes.forEach((mesh, idx) => {
+    if (!mesh) return;
+    const t = computeHandTransform(idx, totalAfter);
+    gsap.to(mesh.position, {
+      x: t.position.x,
+      y: t.position.y,
+      z: t.position.z,
+      duration: clampedDuration,
+      ease: 'power2.inOut'
+    });
+    gsap.to(mesh.rotation, {
+      x: t.rotation.x,
+      y: t.rotation.y,
+      z: t.rotation.z,
+      duration: clampedDuration,
+      ease: 'power2.inOut'
+    });
+    gsap.to(mesh.scale, {
+      x: 0.54,
+      y: 1,
+      z: 0.54,
+      duration: Math.max(0, scaleSnapDuration || 0.1)
+    });
+    try { mesh.userData.originalPosition.copy(t.position); } catch {}
+    try { mesh.userData.originalRotation.copy(t.rotation); } catch {}
+  });
 }
 
 function computeHandTransform(index, total) {
@@ -23,6 +78,33 @@ function computeHandTransform(index, total) {
   const pos = new THREE.Vector3(x, y, z);
   const scale = new THREE.Vector3(0.54, 1, 0.54);
   return { position: pos, rotation: rot, scale };
+}
+
+// Разворачивает карту так, чтобы её лицевая сторона была направлена прямо на камеру
+function orientCardFaceTowardCamera(card, camera) {
+  if (!card || !camera) return;
+  const THREE = getTHREE();
+
+  try {
+    const camForward = new THREE.Vector3();
+    camera.getWorldDirection(camForward);
+    const faceNormal = camForward.clone().negate().normalize();
+
+    const camUpWorld = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
+    let right = new THREE.Vector3().crossVectors(camUpWorld, faceNormal);
+    if (right.lengthSq() < 1e-6) {
+      right = new THREE.Vector3(1, 0, 0);
+    } else {
+      right.normalize();
+    }
+    const upInPlane = new THREE.Vector3().crossVectors(faceNormal, right).normalize();
+
+    const basis = new THREE.Matrix4().makeBasis(right, faceNormal, upInPlane);
+    const q = new THREE.Quaternion().setFromRotationMatrix(basis);
+    card.setRotationFromQuaternion(q);
+  } catch {
+    card.rotation.set(0, 0, 0);
+  }
 }
 
 export function setHandCardHoverVisual(mesh, hovered) {
@@ -129,35 +211,13 @@ export async function animateDrawnCardToHand(cardTpl) {
   const T = (typeof window !== 'undefined' ? window.DRAW_CARD_TUNE || {} : {});
   big.position.set(0, (T.posY ?? 10.0), (T.posZ ?? 2.4));
 
-  // Разворачиваем карту лицом к камере, чтобы проявление выглядело фронтально
-  try {
-    const camForward = new THREE.Vector3();
-    camera.getWorldDirection(camForward);
-    const faceNormal = camForward.clone().negate().normalize();
-    const camUpWorld = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
-    let right = new THREE.Vector3().crossVectors(camUpWorld, faceNormal);
-    if (right.lengthSq() < 1e-6) right.set(1, 0, 0); else right.normalize();
-    const upInPlane = new THREE.Vector3().crossVectors(faceNormal, right).normalize();
-    const basis = new THREE.Matrix4().makeBasis(right, faceNormal, upInPlane);
-    const q = new THREE.Quaternion().setFromRotationMatrix(basis);
-    big.setRotationFromQuaternion(q);
-  } catch {
-    big.rotation.set(0, 0, 0);
-  }
+  // Подготавливаем изначальный поворот, чтобы карта сразу смотрела на игрока
+  orientCardFaceTowardCamera(big, camera);
 
   big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
   big.renderOrder = 9000;
 
-  const allMaterials = [];
-  const collectMaterials = (obj) => {
-    if (!obj) return;
-    if (obj.material) {
-      if (Array.isArray(obj.material)) allMaterials.push(...obj.material);
-      else allMaterials.push(obj.material);
-    }
-    (obj.children || []).forEach(collectMaterials);
-  };
-  collectMaterials(big);
+  const allMaterials = collectMeshMaterials(big);
   allMaterials.forEach(m => { if (m) { m.transparent = true; m.opacity = 0; } });
   cardGroup.add(big);
 
@@ -168,37 +228,44 @@ export async function animateDrawnCardToHand(cardTpl) {
   const target = computeHandTransform(indexAfter, totalAfter);
 
   try {
-    const preLayoutDuration = 0.6;
-    handMeshes.forEach((mesh, idx) => {
-      const t = computeHandTransform(idx, totalAfter);
-      gsap.to(mesh.position, {
-        x: t.position.x,
-        y: t.position.y,
-        z: t.position.z,
-        duration: preLayoutDuration,
-        ease: 'power2.inOut'
-      });
-      gsap.to(mesh.rotation, {
-        x: t.rotation.x,
-        y: t.rotation.y,
-        z: t.rotation.z,
-        duration: preLayoutDuration,
-        ease: 'power2.inOut'
-      });
-      gsap.to(mesh.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.18 });
-      try { mesh.userData.originalPosition.copy(t.position); } catch {}
-      try { mesh.userData.originalRotation.copy(t.rotation); } catch {}
-    });
+    reflowHandForIncomingCard(
+      handMeshes,
+      totalAfter,
+      DRAW_ANIMATION_CONFIG.handReflowDuration,
+      DRAW_ANIMATION_CONFIG.handScaleSnapDuration
+    );
   } catch {}
 
   await new Promise(resolve => {
     const tl = gsap.timeline({ onComplete: resolve });
-    const flightDuration = 0.46;
-    // Сначала проявляем карту, затем запускаем полёт в руку с одновременным доворотом под позу руки
-    tl.to(allMaterials, { opacity: 1, duration: 0.8, ease: 'power2.out' })
-      .to(big.position, { x: target.position.x, y: target.position.y, z: target.position.z, duration: flightDuration, ease: 'power2.inOut' })
-      .to(big.rotation, { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z, duration: flightDuration, ease: 'power2.inOut' }, '<')
-      .to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: flightDuration, ease: 'power2.inOut' }, '<');
+    const { revealDuration, flightDuration } = DRAW_ANIMATION_CONFIG;
+
+    // Этап появления карты прямо перед камерой
+    tl.to(allMaterials, { opacity: 1, duration: revealDuration, ease: 'sine.out' });
+
+    // Полёт в руку с переходом к целевому положению
+    tl.to(big.position, {
+      x: target.position.x,
+      y: target.position.y,
+      z: target.position.z,
+      duration: flightDuration,
+      ease: 'power2.inOut'
+    })
+      .to(big.rotation, {
+        x: target.rotation.x,
+        y: target.rotation.y,
+        z: target.rotation.z,
+        duration: flightDuration,
+        ease: 'power2.inOut'
+      }, '<')
+      .to(big.scale, {
+        x: target.scale.x,
+        y: target.scale.y,
+        z: target.scale.z,
+        duration: flightDuration,
+        ease: 'power2.inOut'
+      }, '<')
+      .to(allMaterials, { opacity: 1, duration: flightDuration }, '<');
     try {
       big.rotateX(THREE.MathUtils.degToRad(T.pitchDeg || 0));
       big.rotateY(THREE.MathUtils.degToRad(T.yawDeg || 0));
