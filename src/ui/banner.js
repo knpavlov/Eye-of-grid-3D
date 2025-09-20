@@ -38,6 +38,7 @@ export async function showTurnSplash(title) {
   const scan = document.createElement('div'); scan.className = 'ts-scan'; wrap.appendChild(scan);
   tb.appendChild(wrap);
   tb.style.display = 'flex'; tb.classList.remove('hidden'); tb.classList.add('flex');
+  tb.style.opacity = '1';
   // Animate (best-effort if gsap is present)
   const tl = (typeof window !== 'undefined') ? window.gsap?.timeline?.() : null;
   try {
@@ -56,11 +57,29 @@ export async function showTurnSplash(title) {
         .to([bg, streaks], { opacity: 0.12, duration: 0.266 }, 0.406)
         .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.196, ease: 'power2.in' }, 1.134)
         .to(tb, { opacity: 0, duration: 0.14, ease: 'power2.in' }, 1.19);
-      tl.timeScale?.(0.75);
-      await sleep(1000);
+
+      const targetDuration = 1.3;
+      try {
+        const totalDuration = tl.totalDuration?.() || 0;
+        if (totalDuration > 0) {
+          const scale = totalDuration / targetDuration;
+          if (Math.abs(scale - 1) > 0.01) tl.timeScale?.(scale);
+        }
+      } catch {}
+
+      await new Promise(resolve => {
+        try {
+          tl.eventCallback('onComplete', () => {
+            try { tl.eventCallback('onComplete', null); } catch {}
+            resolve();
+          });
+        } catch {
+          resolve();
+        }
+      });
     } else {
-      // Fallback: simple 1s show
-      await sleep(1000);
+      // Fallback: простое ожидание длительности заставки
+      await sleep(1300);
     }
   } catch {}
   tb.classList.add('hidden'); tb.classList.remove('flex'); tb.style.display = 'none'; tb.style.opacity = '';
@@ -130,12 +149,25 @@ export async function ensureTurnSplashVisible(maxRetries = 2, currentTurn = null
     if (!_forceNext) return Promise.resolve();
   }
 
+  if (isVisible() || _splashActive) { _forceNext = false; return; }
+
   let tries = 0;
   while (tries <= (maxRetries || 0)) {
     tries += 1;
-    try { await requestTurnSplash(currentTurn); } catch {}
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-    if (isVisible()) { _forceNext = false; return; }
+    let sawVisible = false;
+    try {
+      const promise = requestTurnSplash(currentTurn);
+      for (let i = 0; i < 8; i++) {
+        await new Promise(r => requestAnimationFrame(r));
+        if (isVisible() || _splashActive) { sawVisible = true; break; }
+      }
+      await promise;
+    } catch {}
+
+    if (sawVisible || isVisible()) {
+      _forceNext = false;
+      return;
+    }
   }
   console.error(`[BANNER] Failed to ensure turn splash visibility for turn ${currentTurn} after ${maxRetries + 1} tries`);
 }

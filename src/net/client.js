@@ -377,30 +377,16 @@ import { getServerBase } from './config.js';
         if (isNewTurn) {
           console.log(`[NETWORK] Processing new turn ${state.turn} (prev: ${prev?.turn || 'none'})`);
           
-          // Ensure turn splash is visible (robust, idempotent)
-          try {
-            if (window.__ui && window.__ui.banner) {
-              const b = window.__ui.banner;
-              if (typeof b.ensureTurnSplashVisible === 'function') {
-                await b.ensureTurnSplashVisible(3, state.turn);
-              } else if (typeof b.forceTurnSplashWithRetry === 'function') {
-                await b.forceTurnSplashWithRetry(3, state.turn);
-              }
-            } else if (typeof forceTurnSplashWithRetry === 'function') {
-              await forceTurnSplashWithRetry(3);
-            }
-          } catch (e) {
-            console.error('[NETWORK] Turn splash failed:', e);
-          }
-          
           // 1. Показываем заставку хода
           try {
             if (window.__ui && window.__ui.banner) {
               const b = window.__ui.banner;
-              if (typeof b.ensureTurnSplashVisible === 'function') {
-                await b.ensureTurnSplashVisible(3, state.turn);
+              if (typeof b.requestTurnSplash === 'function') {
+                await b.requestTurnSplash(state.turn);
+              } else if (typeof b.ensureTurnSplashVisible === 'function') {
+                await b.ensureTurnSplashVisible(2, state.turn);
               } else if (typeof b.forceTurnSplashWithRetry === 'function') {
-                await b.forceTurnSplashWithRetry(3, state.turn);
+                await b.forceTurnSplashWithRetry(2, state.turn);
               }
             }
           } catch (e) {
@@ -419,7 +405,8 @@ import { getServerBase } from './config.js';
             console.log(`[NETWORK] Animating mana for player ${owner}: ${beforeM} -> ${afterM}`);
             try {
               if (window.__ui && window.__ui.mana && typeof window.__ui.mana.animateTurnManaGain === 'function') {
-                await window.__ui.mana.animateTurnManaGain(owner, beforeM, afterM, 1500);
+                // Укорачиваем хронометраж, чтобы быстрее перейти к проявлению карты
+                await window.__ui.mana.animateTurnManaGain(owner, beforeM, afterM, 650);
               }
             } catch (e) {
               console.error('[NETWORK] Mana animation failed:', e);
