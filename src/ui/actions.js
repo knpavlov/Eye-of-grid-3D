@@ -599,7 +599,8 @@ export async function endTurn() {
     } catch {}
     try {
       if (w.__ui && w.__ui.mana && typeof w.__ui.mana.animateTurnManaGain === 'function') {
-        await w.__ui.mana.animateTurnManaGain(gameState.active, before, manaAfter, 900);
+        // Разрешаем анимации маны завершаться визуально самостоятельно, ускоряя переход к добору карты
+        await w.__ui.mana.animateTurnManaGain(gameState.active, before, manaAfter, 900, 1000);
       } else {
         console.warn('Module mana animation not available, skipping');
       }

@@ -157,8 +157,63 @@ export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true, tar
   } catch {}
 }
 
-export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationMs = 900) {
+export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationMs = 900, resolveLeadMs = 0) {
   return new Promise(resolve => {
+    let earlyTimer = null;
+    let finished = false;
+    const sparks = [];
+
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      resolve();
+    };
+
+    const clearEarlyTimer = () => {
+      if (!earlyTimer) return;
+      try { clearTimeout(earlyTimer); } catch {}
+      earlyTimer = null;
+    };
+
+    const cleanup = () => {
+      console.log(`[MANA] Cleaning up animation for player ${ownerIndex}`);
+      clearEarlyTimer();
+      // Убираем все блестки
+      for (const s of sparks) {
+        try { if (s.parentNode) s.parentNode.removeChild(s); } catch {}
+      }
+      // Сбрасываем флаги и состояние
+      setManaGainActive(false);
+      try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
+      setAnim(null);
+
+      // Очищаем _beforeMana после завершения анимации
+      try {
+        if (typeof window !== 'undefined' && window.gameState && window.gameState.players && window.gameState.players[ownerIndex]) {
+          delete window.gameState.players[ownerIndex]._beforeMana;
+        }
+      } catch {}
+
+      try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+      finish();
+    };
+
+    const scheduleEarlyResolve = (totalMs = durationMs) => {
+      const safeDuration = Math.max(0, totalMs);
+      const minVisible = Math.min(safeDuration, 220);
+      const maxLead = Math.max(0, safeDuration - minVisible);
+      const effectiveLead = Math.max(0, Math.min(resolveLeadMs, maxLead));
+      const waitBeforeResolve = safeDuration - effectiveLead;
+      if (waitBeforeResolve <= 0) {
+        finish();
+      } else {
+        earlyTimer = setTimeout(() => {
+          earlyTimer = null;
+          finish();
+        }, waitBeforeResolve);
+      }
+    };
+
     try {
       // Проверяем, не идет ли уже анимация
       if (getManaGainActive()) {
@@ -190,30 +245,7 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
       
       const indices = [];
       for (let i = startIdx; i <= endIdx; i++) indices.push(i);
-      const sparks = [];
-      
-      const cleanup = () => {
-        console.log(`[MANA] Cleaning up animation for player ${ownerIndex}`);
-        // Убираем все блестки
-        for (const s of sparks) { 
-          try { if (s.parentNode) s.parentNode.removeChild(s); } catch {} 
-        }
-        // Сбрасываем флаги и состояние
-        setManaGainActive(false);
-        try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
-        setAnim(null);
-        
-        // Очищаем _beforeMana после завершения анимации
-        try {
-          if (typeof window !== 'undefined' && window.gameState && window.gameState.players && window.gameState.players[ownerIndex]) {
-            delete window.gameState.players[ownerIndex]._beforeMana;
-          }
-        } catch {}
-        
-        try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
-        resolve();
-      };
-      
+
       // Если нет новых орбов - просто вспышка на панели
       if (indices.length === 0) {
         const tl = (typeof window !== 'undefined') ? window.gsap?.timeline?.({ onComplete: cleanup }) : null;
@@ -221,15 +253,18 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
           tl.to(bar, { filter: 'brightness(2.1) drop-shadow(0 0 16px rgba(96,165,250,0.95))', duration: 0.154, ease: 'power2.out' })
             .to(bar, { filter: 'none', duration: 0.42, ease: 'power2.inOut' })
             .to({}, { duration: Math.max(0, (durationMs/1000) - 0.574) });
+          scheduleEarlyResolve(Math.max(durationMs, (tl.duration?.() || 0) * 1000));
         } else {
+          scheduleEarlyResolve(durationMs);
           setTimeout(cleanup, durationMs);
         }
         return;
       }
-      
+
       // Красивая анимация с вспышками и блестками для каждого нового орба
       const tl = (typeof window !== 'undefined') ? window.gsap?.timeline?.({ onComplete: cleanup }) : null;
       if (!tl) {
+        scheduleEarlyResolve(durationMs);
         setTimeout(cleanup, durationMs);
         return;
       }
@@ -308,15 +343,20 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
             }, `>-0.1`);
         }
       }
-      
+
       // Добавляем паузу если анимация короче требуемой длительности
       tl.to({}, { duration: Math.max(0, (durationMs/1000) - tl.duration()) });
-      
+      scheduleEarlyResolve(Math.max(durationMs, (tl.duration?.() || 0) * 1000));
+
     } catch (e) {
       console.error('Error in animateTurnManaGain:', e);
-      setManaGainActive(false);
-      try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
-      resolve();
+      try { cleanup(); } catch {
+        clearEarlyTimer();
+        setManaGainActive(false);
+        try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
+        setAnim(null);
+        finish();
+      }
     }
   });
 }

@@ -119,31 +119,27 @@ export function updateHand(gameState) {
 export async function animateDrawnCardToHand(cardTpl) {
   if (!cardTpl) return;
   const ctx = getCtx();
-  const THREE = getTHREE();
-  const { cardGroup, camera } = ctx;
+  const { cardGroup } = ctx;
 
   if (typeof window !== 'undefined') window.drawAnimationActive = true;
   try { if (typeof window !== 'undefined' && window.refreshInputLockUI) window.refreshInputLockUI(); } catch {}
 
   const big = createCard3D(cardTpl, false);
   const T = (typeof window !== 'undefined' ? window.DRAW_CARD_TUNE || {} : {});
+
+  const handMeshes = (ctx.handCardMeshes || []).filter(m => m?.userData?.isInHand);
+  const totalVisible = Math.max(0, handMeshes.length);
+  const totalAfter = totalVisible + 1;
+  const indexAfter = totalAfter - 1;
+  const target = computeHandTransform(indexAfter, totalAfter);
+
   big.position.set(0, (T.posY ?? 10.0), (T.posZ ?? 2.4));
-
   try {
-    const camForward = new THREE.Vector3();
-    camera.getWorldDirection(camForward);
-    const faceNormal = camForward.clone().negate().normalize();
-    const camUpWorld = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
-    let right = new THREE.Vector3().crossVectors(camUpWorld, faceNormal);
-    if (right.lengthSq() < 1e-6) right.set(1, 0, 0); else right.normalize();
-    const upInPlane = new THREE.Vector3().crossVectors(faceNormal, right).normalize();
-    const basis = new THREE.Matrix4().makeBasis(right, faceNormal, upInPlane);
-    const q = new THREE.Quaternion().setFromRotationMatrix(basis);
-    big.setRotationFromQuaternion(q);
+    // Ориентация совпадает с финальным положением в руке, чтобы исключить визуальный скачок
+    big.rotation.copy(target.rotation);
   } catch {
-    big.rotation.set(0, 0, 0);
+    big.rotation.set(target.rotation.x, target.rotation.y, target.rotation.z);
   }
-
   big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
   big.renderOrder = 9000;
 
@@ -160,14 +156,8 @@ export async function animateDrawnCardToHand(cardTpl) {
   allMaterials.forEach(m => { if (m) { m.transparent = true; m.opacity = 0; } });
   cardGroup.add(big);
 
-  const handMeshes = (ctx.handCardMeshes || []).filter(m => m?.userData?.isInHand);
-  const totalVisible = Math.max(0, handMeshes.length);
-  const totalAfter = totalVisible + 1;
-  const indexAfter = totalAfter - 1;
-  const target = computeHandTransform(indexAfter, totalAfter);
-
   try {
-    const preLayoutDuration = 0.6;
+    const preLayoutDuration = 0.5;
     handMeshes.forEach((mesh, idx) => {
       const t = computeHandTransform(idx, totalAfter);
       gsap.to(mesh.position, {
@@ -192,16 +182,32 @@ export async function animateDrawnCardToHand(cardTpl) {
 
   await new Promise(resolve => {
     const tl = gsap.timeline({ onComplete: resolve });
-    // Сначала проявляем карту, затем запускаем полёт в руку
-    tl.to(allMaterials, { opacity: 1, duration: 0.8, ease: 'power2.out' })
-      .to(big.position, { x: target.position.x, y: target.position.y, z: target.position.z, duration: 0.7, ease: 'power2.inOut' })
-      .to(big.rotation, { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z, duration: 0.7, ease: 'power2.inOut' }, '<')
-      .to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: 0.7, ease: 'power2.inOut' }, '<');
-    try {
-      big.rotateX(THREE.MathUtils.degToRad(T.pitchDeg || 0));
-      big.rotateY(THREE.MathUtils.degToRad(T.yawDeg || 0));
-      big.rotateZ(THREE.MathUtils.degToRad(T.rollDeg || 0));
-    } catch {}
+    const revealDuration = 0.5;
+    const travelDuration = 0.35;
+    const travelOverlap = 0.25;
+    // Карта проявляется быстрее и почти сразу устремляется в руку
+    tl.to(allMaterials, { opacity: 1, duration: revealDuration, ease: 'power2.out' })
+      .to(big.position, {
+        x: target.position.x,
+        y: target.position.y,
+        z: target.position.z,
+        duration: travelDuration,
+        ease: 'power2.inOut'
+      }, `>-${travelOverlap}`)
+      .to(big.rotation, {
+        x: target.rotation.x,
+        y: target.rotation.y,
+        z: target.rotation.z,
+        duration: travelDuration,
+        ease: 'power2.inOut'
+      }, '<')
+      .to(big.scale, {
+        x: target.scale.x,
+        y: target.scale.y,
+        z: target.scale.z,
+        duration: travelDuration,
+        ease: 'power2.inOut'
+      }, '<');
   });
 
   try { cardGroup.remove(big); } catch {}
