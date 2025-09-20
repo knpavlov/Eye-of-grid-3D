@@ -25,6 +25,28 @@ function computeHandTransform(index, total) {
   return { position: pos, rotation: rot, scale };
 }
 
+function orientCardTowardsCamera(cardMesh, camera) {
+  const THREE = getTHREE();
+
+  // Вектор направления от карты к камере — карта должна "смотреть" вдоль него
+  const toCamera = new THREE.Vector3().subVectors(camera.position, cardMesh.position).normalize();
+  if (toCamera.lengthSq() < 1e-6) return;
+
+  // Строим базис, опираясь на ориентацию камеры, но избегая вырожденных случаев
+  const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion).normalize();
+  const right = camRight.clone().projectOnPlane(toCamera);
+  if (right.lengthSq() < 1e-6) {
+    right.copy(new THREE.Vector3(0, 1, 0).cross(toCamera));
+  }
+  if (right.lengthSq() < 1e-6) right.set(1, 0, 0); else right.normalize();
+
+  const up = new THREE.Vector3().crossVectors(toCamera, right).normalize();
+  const basis = new THREE.Matrix4().makeBasis(right, toCamera, up);
+  const orientation = new THREE.Quaternion().setFromRotationMatrix(basis);
+
+  cardMesh.setRotationFromQuaternion(orientation);
+}
+
 export function setHandCardHoverVisual(mesh, hovered) {
   if (!mesh) return;
   const ctx = getCtx();
@@ -129,21 +151,9 @@ export async function animateDrawnCardToHand(cardTpl) {
   const T = (typeof window !== 'undefined' ? window.DRAW_CARD_TUNE || {} : {});
   big.position.set(0, (T.posY ?? 10.0), (T.posZ ?? 2.4));
 
-  // Разворачиваем карту лицом к камере, чтобы проявление выглядело фронтально
-  try {
-    const camForward = new THREE.Vector3();
-    camera.getWorldDirection(camForward);
-    const faceNormal = camForward.clone().negate().normalize();
-    const camUpWorld = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
-    let right = new THREE.Vector3().crossVectors(camUpWorld, faceNormal);
-    if (right.lengthSq() < 1e-6) right.set(1, 0, 0); else right.normalize();
-    const upInPlane = new THREE.Vector3().crossVectors(faceNormal, right).normalize();
-    const basis = new THREE.Matrix4().makeBasis(right, faceNormal, upInPlane);
-    const q = new THREE.Quaternion().setFromRotationMatrix(basis);
-    big.setRotationFromQuaternion(q);
-  } catch {
-    big.rotation.set(0, 0, 0);
-  }
+  // Разворачиваем карту фронтально относительно камеры с корректировкой крена
+  try { orientCardTowardsCamera(big, camera); }
+  catch { big.rotation.set(0, 0, 0); }
 
   big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
   big.renderOrder = 9000;
