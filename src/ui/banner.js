@@ -56,11 +56,24 @@ export async function showTurnSplash(title) {
         .to([bg, streaks], { opacity: 0.12, duration: 0.266 }, 0.406)
         .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.196, ease: 'power2.in' }, 1.134)
         .to(tb, { opacity: 0, duration: 0.14, ease: 'power2.in' }, 1.19);
-      tl.timeScale?.(0.75);
-      await sleep(1000);
+
+      // Точная синхронизация завершения анимации с нужной длительностью
+      const targetDuration = 1.3; // секунды
+      const totalDuration = typeof tl.totalDuration === 'function' ? tl.totalDuration() : 0;
+      if (totalDuration > 0 && typeof tl.timeScale === 'function') {
+        tl.timeScale(totalDuration / targetDuration);
+      }
+
+      await new Promise(resolve => {
+        try {
+          tl.eventCallback('onComplete', () => resolve());
+        } catch {
+          resolve();
+        }
+      });
     } else {
-      // Fallback: simple 1s show
-      await sleep(1000);
+      // Fallback: простая пауза нужной длительности
+      await sleep(1300);
     }
   } catch {}
   tb.classList.add('hidden'); tb.classList.remove('flex'); tb.style.display = 'none'; tb.style.opacity = '';
