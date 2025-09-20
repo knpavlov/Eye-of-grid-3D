@@ -25,6 +25,48 @@ function computeHandTransform(index, total) {
   return { position: pos, rotation: rot, scale };
 }
 
+// Собирает все материалы меша в массив для единого управления визуальными параметрами
+function collectMeshMaterials(root) {
+  const acc = [];
+  const visit = (obj) => {
+    if (!obj) return;
+    if (obj.material) {
+      if (Array.isArray(obj.material)) acc.push(...obj.material);
+      else acc.push(obj.material);
+    }
+    (obj.children || []).forEach(visit);
+  };
+  visit(root);
+  return acc;
+}
+
+// Разворачивает карту так, чтобы её лицевая сторона была направлена прямо на камеру
+function orientCardFaceTowardCamera(card, camera) {
+  if (!card || !camera) return;
+  const THREE = getTHREE();
+
+  try {
+    const camForward = new THREE.Vector3();
+    camera.getWorldDirection(camForward);
+    const faceNormal = camForward.clone().negate().normalize();
+
+    const camUpWorld = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
+    let right = new THREE.Vector3().crossVectors(camUpWorld, faceNormal);
+    if (right.lengthSq() < 1e-6) {
+      right = new THREE.Vector3(1, 0, 0);
+    } else {
+      right.normalize();
+    }
+    const upInPlane = new THREE.Vector3().crossVectors(faceNormal, right).normalize();
+
+    const basis = new THREE.Matrix4().makeBasis(right, faceNormal, upInPlane);
+    const q = new THREE.Quaternion().setFromRotationMatrix(basis);
+    card.setRotationFromQuaternion(q);
+  } catch {
+    card.rotation.set(0, 0, 0);
+  }
+}
+
 export function setHandCardHoverVisual(mesh, hovered) {
   if (!mesh) return;
   const ctx = getCtx();
@@ -129,35 +171,13 @@ export async function animateDrawnCardToHand(cardTpl) {
   const T = (typeof window !== 'undefined' ? window.DRAW_CARD_TUNE || {} : {});
   big.position.set(0, (T.posY ?? 10.0), (T.posZ ?? 2.4));
 
-  // Разворачиваем карту лицом к камере, чтобы проявление выглядело фронтально
-  try {
-    const camForward = new THREE.Vector3();
-    camera.getWorldDirection(camForward);
-    const faceNormal = camForward.clone().negate().normalize();
-    const camUpWorld = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
-    let right = new THREE.Vector3().crossVectors(camUpWorld, faceNormal);
-    if (right.lengthSq() < 1e-6) right.set(1, 0, 0); else right.normalize();
-    const upInPlane = new THREE.Vector3().crossVectors(faceNormal, right).normalize();
-    const basis = new THREE.Matrix4().makeBasis(right, faceNormal, upInPlane);
-    const q = new THREE.Quaternion().setFromRotationMatrix(basis);
-    big.setRotationFromQuaternion(q);
-  } catch {
-    big.rotation.set(0, 0, 0);
-  }
+  // Подготавливаем изначальный поворот, чтобы карта сразу смотрела на игрока
+  orientCardFaceTowardCamera(big, camera);
 
   big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
   big.renderOrder = 9000;
 
-  const allMaterials = [];
-  const collectMaterials = (obj) => {
-    if (!obj) return;
-    if (obj.material) {
-      if (Array.isArray(obj.material)) allMaterials.push(...obj.material);
-      else allMaterials.push(obj.material);
-    }
-    (obj.children || []).forEach(collectMaterials);
-  };
-  collectMaterials(big);
+  const allMaterials = collectMeshMaterials(big);
   allMaterials.forEach(m => { if (m) { m.transparent = true; m.opacity = 0; } });
   cardGroup.add(big);
 
@@ -193,12 +213,34 @@ export async function animateDrawnCardToHand(cardTpl) {
 
   await new Promise(resolve => {
     const tl = gsap.timeline({ onComplete: resolve });
-    const flightDuration = 0.46;
-    // Сначала проявляем карту, затем запускаем полёт в руку с одновременным доворотом под позу руки
-    tl.to(allMaterials, { opacity: 1, duration: 0.8, ease: 'power2.out' })
-      .to(big.position, { x: target.position.x, y: target.position.y, z: target.position.z, duration: flightDuration, ease: 'power2.inOut' })
-      .to(big.rotation, { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z, duration: flightDuration, ease: 'power2.inOut' }, '<')
-      .to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: flightDuration, ease: 'power2.inOut' }, '<');
+    const introDuration = 0.7;
+    const flightDuration = 0.7;
+
+    // Этап проявления: карта статична перед камерой и плавно становится непрозрачной
+    tl.to(allMaterials, { opacity: 1, duration: introDuration, ease: 'power2.inOut' });
+
+    // Этап перелёта: позиция, поворот и масштаб синхронно переходят к целевым значениям
+    tl.to(big.position, {
+      x: target.position.x,
+      y: target.position.y,
+      z: target.position.z,
+      duration: flightDuration,
+      ease: 'power2.inOut'
+    })
+      .to(big.rotation, {
+        x: target.rotation.x,
+        y: target.rotation.y,
+        z: target.rotation.z,
+        duration: flightDuration,
+        ease: 'power2.inOut'
+      }, '<')
+      .to(big.scale, {
+        x: target.scale.x,
+        y: target.scale.y,
+        z: target.scale.z,
+        duration: flightDuration,
+        ease: 'power2.inOut'
+      }, '<');
     try {
       big.rotateX(THREE.MathUtils.degToRad(T.pitchDeg || 0));
       big.rotateY(THREE.MathUtils.degToRad(T.yawDeg || 0));
