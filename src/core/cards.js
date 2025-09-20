@@ -358,6 +358,22 @@ export const CARDS = {
     ],
     desc: 'Verzar Elephant Brigade must use its secondary attack while it is on an Earth field. While Verzar Elephant Brigade is on an Earth field, allied creatures on adjacent fields add 2 to their Attack and 1 to their Activation Cost.'
   },
+  EARTH_DUNGEON_OF_TEN_TYRANTS: {
+    id: 'EARTH_DUNGEON_OF_TEN_TYRANTS', name: 'Dungeon of Ten Tyrants', type: 'UNIT', cost: 4, activation: 2,
+    element: 'EARTH', atk: 1, hp: 4,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1] },
+      { dir: 'E', ranges: [1] },
+      { dir: 'S', ranges: [1] },
+      { dir: 'W', ranges: [1] }
+    ],
+    blindspots: [],
+    fortress: true,
+    manaGainOnNonElement: 'EARTH',
+    diesOnElement: 'FOREST',
+    desc: 'Fortress: cannot attack unless counterattacking. While on a non‑Earth field, its summoner gains 1 mana during their resolution phase. Destroy if on a Forest field.'
+  },
   WATER_WOLF_NINJA: {
     id: 'WATER_WOLF_NINJA', name: 'Wolf Ninja', type: 'UNIT', cost: 3, activation: 2,
     element: 'WATER', atk: 1, hp: 3,
@@ -436,6 +452,32 @@ export const CARDS = {
     invisibilityAllies: ['FIRE_FIREFLY_NINJA'],
     rotateTargetOnDamage: true,
     desc: 'Gains Invisibility while at least one allied Firefly Ninja is on the board. When Swallow Ninja damages (but does not destroy) a creature, rotate that creature so its back faces Swallow Ninja. The target creature cannot counterattack.'
+  },
+  FOREST_JUNO_PRISONER_TRAP: {
+    id: 'FOREST_JUNO_PRISONER_TRAP', name: 'Juno Prisoner Trap', type: 'UNIT', cost: 4, activation: 2,
+    element: 'FOREST', atk: 0, hp: 4,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1] },
+      { dir: 'E', ranges: [1] },
+      { dir: 'S', ranges: [1] },
+      { dir: 'W', ranges: [1] }
+    ],
+    blindspots: [],
+    fortress: true,
+    onEnemySummonAdjacentHealAllies: 1,
+    diesOnElement: 'EARTH',
+    desc: 'Fortress: cannot attack unless counterattacking. When an enemy creature is summoned adjacent to it, all other allied creatures gain 1 HP. Destroy if on an Earth field.'
+  },
+  FOREST_EDIN_THE_PERSECUTED: {
+    id: 'FOREST_EDIN_THE_PERSECUTED', name: 'Edin the Persecuted', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FOREST', atk: 2, hp: 3,
+    attackType: 'MAGIC',
+    attacks: [],
+    blindspots: ['S'],
+    plus1IfTargetOnElement: 'FOREST',
+    grantInvisibilityToAlliesOnElement: 'FOREST',
+    desc: '+1 Attack while attacking a creature on a Forest field. Allied creatures on Forest fields have Invisibility.'
   },
   FOREST_ELVEN_DEATH_DANCER: {
     id: 'FOREST_ELVEN_DEATH_DANCER', name: 'Elven Death Dancer', type: 'UNIT', cost: 5, activation: 4,
@@ -553,6 +595,22 @@ export const CARDS = {
     friendlyFire: true,
     blindspots: ['S'],
     desc: ''
+  },
+
+  BIOLITH_AEGIS_CITADEL: {
+    id: 'BIOLITH_AEGIS_CITADEL', name: 'Aegis Citadel', type: 'UNIT', cost: 5, activation: 3,
+    element: 'BIOLITH', atk: 1, hp: 5,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1] },
+      { dir: 'E', ranges: [1] },
+      { dir: 'S', ranges: [1] },
+      { dir: 'W', ranges: [1] }
+    ],
+    blindspots: [],
+    fortress: true,
+    invisibilityAuraSameElement: true,
+    desc: 'Fortress: cannot attack except when counterattacking. Grants Invisibility to all allied creatures of the same element as the field it occupies.'
   },
 
   BIOLITH_TAURUS_MONOLITH: {

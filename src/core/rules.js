@@ -22,6 +22,7 @@ import {
 } from './abilities.js';
 import { countUnits } from './board.js';
 import { computeCellBuff } from './fieldEffects.js';
+import { normalizeElementName } from './utils/elements.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -319,11 +320,14 @@ export function stagedAttack(state, r, c, opts = {}) {
   const targetBonus = getTargetElementBonus(tplA, base, hitsRaw);
   const plusCfg = tplA.plusAtkIfTargetOnElement || (tplA.plus1IfTargetOnElement ? { element: tplA.plus1IfTargetOnElement, amount: 1 } : null);
   if (plusCfg) {
-    const { element: el, amount } = plusCfg;
-    const has = hitsRaw.some(h => base.board?.[h.r]?.[h.c]?.element === el);
-    if (has) {
-      atk += amount;
-      logLines.push(`${tplA.name}: +${amount} ATK по целям на поле ${el}`);
+    const el = normalizeElementName(plusCfg.element);
+    const amount = plusCfg.amount;
+    if (el) {
+      const has = hitsRaw.some(h => normalizeElementName(base.board?.[h.r]?.[h.c]?.element) === el);
+      if (has) {
+        atk += amount;
+        logLines.push(`${tplA.name}: +${amount} ATK по целям на поле ${el}`);
+      }
     }
   }
   const costBonus = getTargetCostBonus(base, tplA, hitsRaw);
@@ -691,9 +695,12 @@ export function magicAttack(state, fr, fc, tr, tc) {
 
   const plusCfg2 = tplA.plusAtkIfTargetOnElement || (tplA.plus1IfTargetOnElement ? { element: tplA.plus1IfTargetOnElement, amount: 1 } : null);
   if (plusCfg2) {
-    const { element: el, amount } = plusCfg2;
-    const cellEl = n1.board?.[tr]?.[tc]?.element;
-    if (cellEl === el) atk += amount;
+    const el = normalizeElementName(plusCfg2.element);
+    const amount = plusCfg2.amount;
+    if (el) {
+      const cellEl = normalizeElementName(n1.board?.[tr]?.[tc]?.element);
+      if (cellEl === el) atk += amount;
+    }
   }
   if (mainTarget) {
     const costBonus2 = getTargetCostBonus(n1, tplA, [ { r: tr, c: tc } ]);
