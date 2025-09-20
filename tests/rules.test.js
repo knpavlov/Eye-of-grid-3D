@@ -10,7 +10,7 @@ import {
   refreshBoardDodgeStates,
 } from '../src/core/rules.js';
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
-import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions } from '../src/core/abilities.js';
+import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, activationCost } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -803,6 +803,102 @@ describe('новые механики', () => {
     const fin = res.finish();
     const defender = fin.n1.board[0][1].unit;
     expect(defender.currentHP).toBe(5);
+  });
+
+  it('Sleeptrap увеличивает стоимость активации врагов рядом', () => {
+    const state = makeState();
+    state.board[1][1].element = 'FOREST';
+    state.board[1][1].unit = { owner: 0, tplId: 'FOREST_SLEEPTRAP', facing: 'N' };
+    state.board[1][2].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'W' };
+    const targetCell = state.board[1][2];
+    const tpl = CARDS[targetCell.unit.tplId];
+    const cost = activationCost(tpl, targetCell.element, { state, r: 1, c: 2, unit: targetCell.unit, owner: targetCell.unit.owner });
+    expect(cost).toBe((tpl.activation || 0) + 1);
+  });
+
+  it('Verzar Elephant Brigade усиливает соседних союзников на земляном поле', () => {
+    const state = makeState();
+    state.board[1][1].element = 'EARTH';
+    state.board[1][1].unit = { owner: 0, tplId: 'EARTH_VERZAR_ELEPHANT_BRIGADE', facing: 'N' };
+    state.board[1][2].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'W' };
+    const allyCell = state.board[1][2];
+    const stats = effectiveStats(allyCell, allyCell.unit, { state, r: 1, c: 2 });
+    expect(stats.atk).toBe(CARDS.FIRE_FLAME_MAGUS.atk + 2);
+    const cost = activationCost(CARDS.FIRE_FLAME_MAGUS, allyCell.element, { state, r: 1, c: 2, unit: allyCell.unit, owner: allyCell.unit.owner });
+    expect(cost).toBe((CARDS.FIRE_FLAME_MAGUS.activation || 0) + 1);
+  });
+
+  it('Verzar Elephant Brigade базовой атакой достаёт врага за союзником', () => {
+    const state = makeState();
+    if (!CARDS.TEST_DUMMY) {
+      CARDS.TEST_DUMMY = { id: 'TEST_DUMMY', name: 'Dummy', type: 'UNIT', element: 'WATER', atk: 0, hp: 10, attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [1] } ] };
+    }
+    state.board[2][1].unit = { owner: 0, tplId: 'EARTH_VERZAR_ELEPHANT_BRIGADE', facing: 'N' };
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'S', currentHP: CARDS.FIRE_FLAME_MAGUS.hp };
+    state.board[0][1].unit = { owner: 1, tplId: 'TEST_DUMMY', facing: 'S', currentHP: 10 };
+    const res = stagedAttack(state, 2, 1, { chosenDir: 'N' });
+    const fin = res.finish();
+    const defender = fin.n1.board[0][1].unit;
+    expect(defender.currentHP).toBe(8);
+  });
+
+  it('Siam ослабляет врагов на водных полях', () => {
+    const state = makeState();
+    state.board[1][1].unit = { owner: 0, tplId: 'WATER_SIAM_TRAITOR_OF_SEAS', facing: 'N' };
+    state.board[0][1].element = 'WATER';
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'S' };
+    const enemyCell = state.board[0][1];
+    const stats = effectiveStats(enemyCell, enemyCell.unit, { state, r: 0, c: 1 });
+    expect(stats.atk).toBe(0);
+  });
+
+  it('Juno Forest Dragon учитывает других лесных существ на поле', () => {
+    const state = makeState();
+    if (!CARDS.TEST_DUMMY) {
+      CARDS.TEST_DUMMY = { id: 'TEST_DUMMY', name: 'Dummy', type: 'UNIT', element: 'WATER', atk: 0, hp: 10, attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [1] } ] };
+    }
+    state.board[2][1].element = 'FOREST';
+    state.board[2][1].unit = { owner: 0, tplId: 'FOREST_JUNO_FOREST_DRAGON', facing: 'N' };
+    state.board[2][0].unit = { owner: 0, tplId: 'FOREST_SWALLOW_NINJA', facing: 'N' };
+    state.board[0][2].unit = { owner: 1, tplId: 'FOREST_GREEN_CUBIC', facing: 'S' };
+    state.board[1][1].unit = { owner: 1, tplId: 'TEST_DUMMY', facing: 'S', currentHP: 10 };
+    const res = stagedAttack(state, 2, 1, { chosenDir: 'N' });
+    const fin = res.finish();
+    const defender = fin.n1.board[1][1].unit;
+    expect(defender.currentHP).toBe(3);
+  });
+
+  it('Juno Forest Dragon атакует дальнюю цель даже при союзнике впереди', () => {
+    const state = makeState();
+    if (!CARDS.TEST_DUMMY) {
+      CARDS.TEST_DUMMY = { id: 'TEST_DUMMY', name: 'Dummy', type: 'UNIT', element: 'WATER', atk: 0, hp: 10, attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [1] } ] };
+    }
+    state.board[2][1].unit = { owner: 0, tplId: 'FOREST_JUNO_FOREST_DRAGON', facing: 'N' };
+    state.board[1][1].unit = { owner: 0, tplId: 'FOREST_GREEN_CUBIC', facing: 'S', currentHP: CARDS.FOREST_GREEN_CUBIC.hp };
+    state.board[0][1].unit = { owner: 1, tplId: 'TEST_DUMMY', facing: 'S', currentHP: 10 };
+    const res = stagedAttack(state, 2, 1, { chosenDir: 'N', rangeChoices: { N: 2 } });
+    expect(res).toBeTruthy();
+    const fin = res.finish();
+    const defender = fin.n1.board[0][1].unit;
+    expect(defender.currentHP).toBe(4);
+  });
+
+  it('Scion Biolith Lord поражает всех врагов той же стихии и снижает стоимость активации биолитов', () => {
+    const state = makeState();
+    state.board[2][1].unit = { owner: 0, tplId: 'BIOLITH_SCION_BIOLITH_LORD', facing: 'N' };
+    state.board[2][0].unit = { owner: 0, tplId: 'BIOLITH_NINJA', facing: 'N' };
+    state.board[1][1].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'S', currentHP: 3 };
+    state.board[0][0].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'S', currentHP: 2 };
+    state.board[0][2].unit = { owner: 1, tplId: 'WATER_ALUHJA_PRIESTESS', facing: 'S', currentHP: 1 };
+    const res = magicAttack(state, 2, 1, 1, 1);
+    expect(res).toBeTruthy();
+    const hits = res.targets.filter(t => t.dmg > 0);
+    const coords = hits.map(t => `${t.r},${t.c}`).sort();
+    expect(coords).toEqual(['0,0', '1,1']);
+    const allyCell = state.board[2][0];
+    const ninjaTpl = CARDS.BIOLITH_NINJA;
+    const cost = activationCost(ninjaTpl, allyCell.element, { state, r: 2, c: 0, unit: allyCell.unit, owner: allyCell.unit.owner });
+    expect(cost).toBe(0);
   });
 
   it('fieldquake lock корректно рассчитывает защищённые клетки', () => {

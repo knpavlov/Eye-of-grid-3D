@@ -36,7 +36,14 @@ export function rotateUnit(unitMesh, dir) {
       return;
     }
     const tpl = window.CARDS?.[u.tplId];
-    const cost = typeof window.rotateCost === 'function' ? window.rotateCost(tpl) : 0;
+    const row = unitMesh.userData?.row;
+    const col = unitMesh.userData?.col;
+    const fieldElement = (typeof row === 'number' && typeof col === 'number')
+      ? gameState.board?.[row]?.[col]?.element
+      : undefined;
+    const cost = typeof window.rotateCost === 'function'
+      ? window.rotateCost(tpl, fieldElement, { state: gameState, r: row, c: col, unit: u, owner: u.owner })
+      : 0;
     if (gameState.players[gameState.active].mana < cost) {
       window.__ui?.notifications?.show(`${cost} mana is required to rotate`, 'error');
       return;

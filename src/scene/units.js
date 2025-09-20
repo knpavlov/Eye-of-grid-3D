@@ -14,14 +14,14 @@ function getTHREE() {
   return THREE;
 }
 
-function updateCardTexture(mesh, cardData, hpValue, atkValue) {
+function updateCardTexture(mesh, cardData, hpValue, atkValue, opts = {}) {
   try {
     const material = Array.isArray(mesh.material) ? mesh.material[2] : mesh.material;
     const texture = material?.map;
     const canvas = texture?.image;
     const ctx2d = canvas?.getContext?.('2d');
     if (!ctx2d || !canvas) return;
-    drawCardFace(ctx2d, cardData, canvas.width, canvas.height, hpValue, atkValue);
+    drawCardFace(ctx2d, cardData, canvas.width, canvas.height, hpValue, atkValue, opts);
     texture.needsUpdate = true;
     const overlay = mesh.children?.find(ch => ch.userData?.kind === 'faceOverlay');
     if (overlay?.material?.map) overlay.material.map.needsUpdate = true;
@@ -155,9 +155,13 @@ export function updateUnits(gameState) {
       if (!unit) continue;
 
       const cardData = CARDS[unit.tplId];
-      const stats = effectiveStats(cell, unit);
+      const stats = effectiveStats(cell, unit, { state: gameState, r, c });
       const hpValue = typeof unit.currentHP === 'number' ? unit.currentHP : (cardData?.hp || 0);
       const atkValue = stats.atk ?? 0;
+      const fieldElement = cell?.element;
+      const activationValue = (typeof window !== 'undefined' && typeof window.rotateCost === 'function')
+        ? window.rotateCost(cardData, fieldElement, { state: gameState, r, c, unit, owner: unit.owner })
+        : ((cardData?.activation != null) ? cardData.activation : Math.max(0, (cardData?.cost || 0) - 1));
       const uid = unit.uid != null ? String(unit.uid) : `${unit.owner}:${unit.tplId}:${r}:${c}`;
       usedUids.add(uid);
 
@@ -172,12 +176,14 @@ export function updateUnits(gameState) {
         if (cardGroup && mesh.parent !== cardGroup) {
           try { cardGroup.add(mesh); } catch {}
         }
+        updateCardTexture(mesh, cardData, hpValue, atkValue, { activationOverride: activationValue });
       } else {
         ensureGlow(mesh, unit.owner, THREE);
         const lastHp = mesh.userData?.lastHp;
         const lastAtk = mesh.userData?.lastAtk;
-        if (lastHp !== hpValue || lastAtk !== atkValue) {
-          updateCardTexture(mesh, cardData, hpValue, atkValue);
+        const lastActivation = mesh.userData?.lastActivation;
+        if (lastHp !== hpValue || lastAtk !== atkValue || lastActivation !== activationValue) {
+          updateCardTexture(mesh, cardData, hpValue, atkValue, { activationOverride: activationValue });
         }
         if (mesh.parent == null && cardGroup) {
           try { cardGroup.add(mesh); } catch {}
@@ -193,6 +199,7 @@ export function updateUnits(gameState) {
       mesh.userData.unitUid = uid;
       mesh.userData.lastHp = hpValue;
       mesh.userData.lastAtk = atkValue;
+      mesh.userData.lastActivation = activationValue;
 
       const targetRotation = (facingDeg[unit.facing] || 0) * Math.PI / 180;
       mesh.rotation.y = targetRotation;

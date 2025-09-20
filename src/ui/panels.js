@@ -12,12 +12,12 @@ export function showUnitActionPanel(unitMesh){
     if (!gs || !unitData || !cardData) return;
     const row = unitMesh.userData?.row;
     const col = unitMesh.userData?.col;
+    const fieldElement = (typeof row === 'number' && typeof col === 'number') ? gs.board?.[row]?.[col]?.element : undefined;
     const el = document.getElementById('unit-info'); if (el) el.textContent = `${cardData.name} (${(unitMesh.userData.row||0) + 1},${(unitMesh.userData.col||0) + 1})`;
     const alreadyAttacked = unitData.lastAttackTurn === gs.turn;
     const attackBtn = document.getElementById('attack-btn'); if (attackBtn) {
       const cannot = !canAttack(cardData);
       attackBtn.disabled = !!alreadyAttacked || cannot;
-      const fieldElement = (typeof row === 'number' && typeof col === 'number') ? gs.board?.[row]?.[col]?.element : undefined;
       const cost = (typeof window !== 'undefined' && typeof window.attackCost === 'function')
         ? window.attackCost(cardData, fieldElement, { state: gs, r: row, c: col, unit: unitData, owner: unitData?.owner })
         : 1;
@@ -56,7 +56,9 @@ export function showUnitActionPanel(unitMesh){
         }
       }
     }
-    const rotateCost = (typeof window !== 'undefined' && typeof window.rotateCost === 'function') ? window.rotateCost(cardData) : 1;
+    const rotateCost = (typeof window !== 'undefined' && typeof window.rotateCost === 'function')
+      ? window.rotateCost(cardData, fieldElement, { state: gs, r: row, c: col, unit: unitData, owner: unitData?.owner })
+      : 1;
     const alreadyRotated = unitData.lastRotateTurn === gs.turn;
     const rCw = document.getElementById('rotate-cw-btn'); const rCcw = document.getElementById('rotate-ccw-btn');
     if (rCw && rCcw) { rCw.disabled = !!alreadyRotated; rCcw.disabled = !!alreadyRotated; rCw.textContent = alreadyRotated ? 'Already rotated' : `Rotate → (-${rotateCost})`; rCcw.textContent = alreadyRotated ? 'Already rotated' : `Rotate ← (-${rotateCost})`; }

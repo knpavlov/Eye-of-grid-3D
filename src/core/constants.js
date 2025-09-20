@@ -37,5 +37,5 @@ import { activationCost, rotateCost as rawRotateCost } from './abilities.js';
 export const attackCost = (tpl, fieldElement, ctx) => activationCost(tpl, fieldElement, ctx);
 
 // Стоимость поворота без скидок
-export const rotateCost = (tpl) => rawRotateCost(tpl);
+export const rotateCost = (tpl, fieldElement, ctx) => rawRotateCost(tpl, fieldElement, ctx);
 
