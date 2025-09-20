@@ -129,20 +129,32 @@ export async function animateDrawnCardToHand(cardTpl) {
   const T = (typeof window !== 'undefined' ? window.DRAW_CARD_TUNE || {} : {});
   big.position.set(0, (T.posY ?? 10.0), (T.posZ ?? 2.4));
 
+  // Разворачиваем карту лицевой стороной к зрителю, чтобы проявление выглядело ровно
   try {
-    const camForward = new THREE.Vector3();
-    camera.getWorldDirection(camForward);
-    const faceNormal = camForward.clone().negate().normalize();
-    const camUpWorld = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
-    let right = new THREE.Vector3().crossVectors(camUpWorld, faceNormal);
-    if (right.lengthSq() < 1e-6) right.set(1, 0, 0); else right.normalize();
-    const upInPlane = new THREE.Vector3().crossVectors(faceNormal, right).normalize();
-    const basis = new THREE.Matrix4().makeBasis(right, faceNormal, upInPlane);
-    const q = new THREE.Quaternion().setFromRotationMatrix(basis);
-    big.setRotationFromQuaternion(q);
+    if (camera) {
+      const camForward = new THREE.Vector3();
+      camera.getWorldDirection(camForward);
+      const faceNormal = camForward.clone().negate().normalize();
+      const camUpWorld = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
+      const right = new THREE.Vector3().crossVectors(camUpWorld, faceNormal);
+      if (right.lengthSq() < 1e-6) right.set(1, 0, 0); else right.normalize();
+      const upInPlane = new THREE.Vector3().crossVectors(faceNormal, right).normalize();
+      const basis = new THREE.Matrix4().makeBasis(right, faceNormal, upInPlane);
+      const q = new THREE.Quaternion().setFromRotationMatrix(basis);
+      big.setRotationFromQuaternion(q);
+    } else {
+      big.rotation.set(0, 0, 0);
+    }
   } catch {
     big.rotation.set(0, 0, 0);
   }
+
+  // Дополнительная пользовательская подстройка ориентации (если задана)
+  try {
+    big.rotateX(THREE.MathUtils.degToRad(T.pitchDeg || 0));
+    big.rotateY(THREE.MathUtils.degToRad(T.yawDeg || 0));
+    big.rotateZ(THREE.MathUtils.degToRad(T.rollDeg || 0));
+  } catch {}
 
   big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
   big.renderOrder = 9000;
@@ -192,16 +204,12 @@ export async function animateDrawnCardToHand(cardTpl) {
 
   await new Promise(resolve => {
     const tl = gsap.timeline({ onComplete: resolve });
+    const flightDuration = 0.46;
     // Сначала проявляем карту, затем запускаем полёт в руку
     tl.to(allMaterials, { opacity: 1, duration: 0.8, ease: 'power2.out' })
-      .to(big.position, { x: target.position.x, y: target.position.y, z: target.position.z, duration: 0.7, ease: 'power2.inOut' })
-      .to(big.rotation, { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z, duration: 0.7, ease: 'power2.inOut' }, '<')
-      .to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: 0.7, ease: 'power2.inOut' }, '<');
-    try {
-      big.rotateX(THREE.MathUtils.degToRad(T.pitchDeg || 0));
-      big.rotateY(THREE.MathUtils.degToRad(T.yawDeg || 0));
-      big.rotateZ(THREE.MathUtils.degToRad(T.rollDeg || 0));
-    } catch {}
+      .to(big.position, { x: target.position.x, y: target.position.y, z: target.position.z, duration: flightDuration, ease: 'power2.inOut' })
+      .to(big.rotation, { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z, duration: flightDuration, ease: 'power2.inOut' }, '<')
+      .to(big.scale, { x: target.scale.x, y: target.scale.y, z: target.scale.z, duration: flightDuration, ease: 'power2.inOut' }, '<');
   });
 
   try { cardGroup.remove(big); } catch {}

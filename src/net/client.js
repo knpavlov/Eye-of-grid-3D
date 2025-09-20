@@ -372,46 +372,36 @@ import { getServerBase } from './config.js';
       // Если начался новый ход — синхронизируем порядок анимаций как в офлайне:
       // 1) Заставка хода с корректным заголовком, 2) Анимация маны, 3) Добор
       // Упрощенная и надежная система обработки нового хода
+      const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+      let manaAnimationPromise = Promise.resolve();
+      let drawDelayMs = 0;
       try {
         const isNewTurn = (typeof state.turn === 'number') && (state.turn > ((prev && typeof prev.turn === 'number') ? prev.turn : (__lastTurnSeen || 0)));
         if (isNewTurn) {
           console.log(`[NETWORK] Processing new turn ${state.turn} (prev: ${prev?.turn || 'none'})`);
-          
-          // Ensure turn splash is visible (robust, idempotent)
+
           try {
             if (window.__ui && window.__ui.banner) {
               const b = window.__ui.banner;
-              if (typeof b.ensureTurnSplashVisible === 'function') {
-                await b.ensureTurnSplashVisible(3, state.turn);
-              } else if (typeof b.forceTurnSplashWithRetry === 'function') {
+              if (typeof b.forceTurnSplashWithRetry === 'function') {
                 await b.forceTurnSplashWithRetry(3, state.turn);
+              } else if (typeof b.requestTurnSplash === 'function') {
+                await b.requestTurnSplash(state.turn);
+              } else if (typeof b.queueTurnSplash === 'function') {
+                await b.queueTurnSplash(`Turn ${state.turn}`);
               }
             } else if (typeof forceTurnSplashWithRetry === 'function') {
-              await forceTurnSplashWithRetry(3);
+              await forceTurnSplashWithRetry(3, state.turn);
             }
           } catch (e) {
             console.error('[NETWORK] Turn splash failed:', e);
           }
-          
-          // 1. Показываем заставку хода
-          try {
-            if (window.__ui && window.__ui.banner) {
-              const b = window.__ui.banner;
-              if (typeof b.ensureTurnSplashVisible === 'function') {
-                await b.ensureTurnSplashVisible(3, state.turn);
-              } else if (typeof b.forceTurnSplashWithRetry === 'function') {
-                await b.forceTurnSplashWithRetry(3, state.turn);
-              }
-            }
-          } catch (e) {
-            console.error('[NETWORK] Turn splash failed:', e);
-          }
-          
+
           // 2. Анимация маны активного игрока
           const owner = (typeof state.active === 'number') ? state.active : 0;
           const beforeM = Math.max(0, (prev?.players?.[owner]?.mana ?? 0));
           const afterM = Math.max(0, (state?.players?.[owner]?.mana ?? 0));
-          
+
           // Expose _beforeMana for UI clamping until animation completes
           try { if (typeof window !== 'undefined' && window.gameState && window.gameState.players && window.gameState.players[owner]) { window.gameState.players[owner]._beforeMana = beforeM; } } catch {}
 
@@ -419,7 +409,10 @@ import { getServerBase } from './config.js';
             console.log(`[NETWORK] Animating mana for player ${owner}: ${beforeM} -> ${afterM}`);
             try {
               if (window.__ui && window.__ui.mana && typeof window.__ui.mana.animateTurnManaGain === 'function') {
-                await window.__ui.mana.animateTurnManaGain(owner, beforeM, afterM, 1500);
+                const requestedDuration = 1500;
+                drawDelayMs = Math.max(0, requestedDuration - 1000);
+                manaAnimationPromise = window.__ui.mana.animateTurnManaGain(owner, beforeM, afterM, requestedDuration)
+                  .catch(e => { console.error('[NETWORK] Mana animation failed:', e); });
               }
             } catch (e) {
               console.error('[NETWORK] Mana animation failed:', e);
@@ -429,29 +422,30 @@ import { getServerBase } from './config.js';
       } catch (e) {
         console.error('[NETWORK] Error processing new turn:', e);
       }
-      // Анимация добора у приёмника (только для своей руки)
-      try {
-        const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
-        if (mySeat !== null && __drawDelta > 0 && __drawCards.length === __drawDelta) {
-          for (let i = 0; i < __drawCards.length; i++) {
-            const tpl = __drawCards[i];
-            await animateDrawnCardToHand(tpl);
-            // После каждой анимации показываем карту в руке
-            pendingDrawCount = Math.max(0, pendingDrawCount - 1);
-            // синхронизируем глобальный счётчик скрытых карт
-            try { window.pendingDrawCount = pendingDrawCount; } catch {}
+      const runDrawSequence = async () => {
+        try {
+          const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
+          if (mySeat !== null && __drawDelta > 0 && __drawCards.length === __drawDelta) {
+            if (drawDelayMs > 0) await wait(drawDelayMs);
+            for (let i = 0; i < __drawCards.length; i++) {
+              const tpl = __drawCards[i];
+              await animateDrawnCardToHand(tpl);
+              pendingDrawCount = Math.max(0, pendingDrawCount - 1);
+              try { window.pendingDrawCount = pendingDrawCount; } catch {}
+              updateHand();
+            }
+          } else {
+            pendingDrawCount = 0;
+            try { window.pendingDrawCount = 0; } catch {}
             updateHand();
           }
-        } else {
+        } catch {
           pendingDrawCount = 0;
           try { window.pendingDrawCount = 0; } catch {}
           updateHand();
         }
-      } catch {
-        pendingDrawCount = 0;
-        try { window.pendingDrawCount = 0; } catch {}
-        updateHand();
-      }
+      };
+      await Promise.all([manaAnimationPromise, runDrawSequence()]);
     __endTurnInProgress = false;
     updateIndicator();
     updateInputLock();

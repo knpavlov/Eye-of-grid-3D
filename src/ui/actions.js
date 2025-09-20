@@ -509,13 +509,15 @@ export async function endTurn() {
     try {
       if (w.__ui && w.__ui.banner) {
         const b = w.__ui.banner;
-        if (typeof b.ensureTurnSplashVisible === 'function') {
-          await b.ensureTurnSplashVisible(3, gameState.turn);
-        } else if (typeof b.forceTurnSplashWithRetry === 'function') {
+        if (typeof b.forceTurnSplashWithRetry === 'function') {
           await b.forceTurnSplashWithRetry(3, gameState.turn);
+        } else if (typeof b.requestTurnSplash === 'function') {
+          await b.requestTurnSplash(gameState.turn);
+        } else if (typeof b.queueTurnSplash === 'function') {
+          await b.queueTurnSplash(`Turn ${gameState.turn}`);
         }
       } else if (typeof w.forceTurnSplashWithRetry === 'function') {
-        await w.forceTurnSplashWithRetry(3);
+        await w.forceTurnSplashWithRetry(3, gameState.turn);
       }
     } catch {}
 
@@ -597,25 +599,41 @@ export async function endTurn() {
         if (online) { tt.stop(); } else { tt.reset(100).start(); }
       }
     } catch {}
+    const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    let manaAnimationPromise = Promise.resolve();
+    let drawDelayMs = 0;
     try {
       if (w.__ui && w.__ui.mana && typeof w.__ui.mana.animateTurnManaGain === 'function') {
-        await w.__ui.mana.animateTurnManaGain(gameState.active, before, manaAfter, 900);
+        const requestedDuration = 900;
+        drawDelayMs = Math.max(0, requestedDuration - 1000);
+        manaAnimationPromise = w.__ui.mana.animateTurnManaGain(gameState.active, before, manaAfter, requestedDuration)
+          .catch(e => { console.error('Mana animation failed:', e); });
       } else {
         console.warn('Module mana animation not available, skipping');
       }
-      player.mana = manaAfter;
-    } catch {}
+    } catch (e) {
+      console.error('Mana animation failed:', e);
+    }
     // После получения маны сразу запускаем добор карты без лишней паузы
     w.updateUI?.();
-    try {
-      if (shouldAnimateDraw && drawnTpl) {
-        w.pendingDrawCount = 1; w.updateHand?.();
-        w.refreshInputLockUI?.();
-        await w.animateDrawnCardToHand?.(drawnTpl);
-        try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}
-        w.pendingDrawCount = 0; w.updateHand?.();
+    const runDrawAnimation = async () => {
+      try {
+        if (shouldAnimateDraw && drawnTpl) {
+          if (drawDelayMs > 0) await wait(drawDelayMs);
+          w.pendingDrawCount = 1; w.updateHand?.();
+          w.refreshInputLockUI?.();
+          await w.animateDrawnCardToHand?.(drawnTpl);
+          try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}
+          w.pendingDrawCount = 0; w.updateHand?.();
+        } else {
+          w.pendingDrawCount = 0; w.updateHand?.();
+        }
+      } catch {
+        w.pendingDrawCount = 0;
       }
-    } catch { w.pendingDrawCount = 0; }
+    };
+    await Promise.all([manaAnimationPromise, runDrawAnimation()]);
+    player.mana = manaAfter;
 
     if (Array.isArray(manaEffects.entries) && manaEffects.entries.length) {
       const cards = w.CARDS || {};
