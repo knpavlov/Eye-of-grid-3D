@@ -7,6 +7,7 @@ import {
   canAttack,
   collectUnitActions,
   executeUnitAction,
+  applyTurnStartManaEffects,
 } from '../core/abilities.js';
 import {
   interactionState,
@@ -364,6 +365,27 @@ export function confirmUnitAbilityOrientation(context, direction) {
       }
     }
 
+    if (Array.isArray(result.summonEvents?.heals) && result.summonEvents.heals.length) {
+      for (const heal of result.summonEvents.heals) {
+        const tplSource = w.CARDS?.[heal?.source?.tplId];
+        const sourceName = tplSource?.name || 'Существо';
+        const totalHealed = Array.isArray(heal.healed)
+          ? heal.healed.reduce((acc, item) => acc + (item?.amount || 0), 0)
+          : heal.amount;
+        w.addLog?.(`${sourceName}: союзники восстанавливают ${totalHealed} HP.`);
+        if (Array.isArray(heal.healed)) {
+          for (const healed of heal.healed) {
+            if (!healed || !healed.increaseMax) continue;
+            const amount = Number.isFinite(healed.amount) ? healed.amount : 0;
+            if (amount <= 0) continue;
+            const { r: hr, c: hc } = healed;
+            if (typeof hr !== 'number' || typeof hc !== 'number') continue;
+            w.__fx?.scheduleHpPopup?.(hr, hc, amount, 600);
+          }
+        }
+      }
+    }
+
     if (result.freedonianMana > 0) {
       w.addLog?.(`Фридонийский Странник приносит ${result.freedonianMana} маны.`);
     }
@@ -499,7 +521,13 @@ export async function endTurn() {
 
     const player = gameState.players[gameState.active];
     const before = player.mana;
-    const manaAfter = (typeof w.capMana === 'function') ? w.capMana(before + 2) : before + 2;
+    const capFn = (typeof w.capMana === 'function')
+      ? w.capMana
+      : ((value) => Math.min(10, value));
+    let manaAfter = capFn(before + 2);
+    player.mana = manaAfter;
+    const manaEffects = applyTurnStartManaEffects(gameState, gameState.active) || { total: 0, entries: [] };
+    manaAfter = player.mana;
     let drawnTpl = null;
     try {
       if (typeof w.drawOneNoAdd === 'function' && !player._drewThisTurn) {
@@ -510,7 +538,11 @@ export async function endTurn() {
 
     try {
       if (!w.PENDING_MANA_ANIM && !manaGainActive) {
-        w.PENDING_MANA_ANIM = { ownerIndex: gameState.active, startIdx: Math.max(0, Math.min(9, before)), endIdx: Math.max(-1, Math.min(9, manaAfter - 1)) };
+        w.PENDING_MANA_ANIM = {
+          ownerIndex: gameState.active,
+          startIdx: Math.max(0, Math.min(9, before)),
+          endIdx: Math.max(-1, Math.min(9, manaAfter - 1)),
+        };
       }
     } catch {}
     try { if (w.gameState && w.gameState.players && w.gameState.players[gameState.active]) { w.gameState.players[gameState.active]._beforeMana = before; } } catch {}
@@ -585,7 +617,17 @@ export async function endTurn() {
       }
     } catch { w.pendingDrawCount = 0; }
 
-    w.addLog?.(`Ход ${gameState.turn}. ${player.name} получает +2 маны и добирает карту.`);
+    if (Array.isArray(manaEffects.entries) && manaEffects.entries.length) {
+      const cards = w.CARDS || {};
+      for (const entry of manaEffects.entries) {
+        const tpl = cards[entry.tplId];
+        const sourceName = tpl?.name || 'Существо';
+        const field = entry.fieldElement ? `поле ${entry.fieldElement}` : 'нейтральное поле';
+        w.addLog?.(`${sourceName}: дополнительная мана +${entry.amount} (${field}).`);
+      }
+    }
+    const totalGain = Math.max(0, manaAfter - before);
+    w.addLog?.(`Ход ${gameState.turn}. ${player.name} получает +${totalGain} маны и добирает карту.`);
 
     w.__endTurnInProgress = false;
     w.manaGainActive = false;
