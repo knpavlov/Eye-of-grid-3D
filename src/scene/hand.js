@@ -9,6 +9,22 @@ function getTHREE() {
   return THREE;
 }
 
+function computeManifestQuaternion(cardPosition, camera) {
+  const THREE = getTHREE();
+  const faceNormal = new THREE.Vector3().subVectors(camera.position, cardPosition).normalize();
+  const worldUp = new THREE.Vector3(0, 1, 0);
+  let right = new THREE.Vector3().crossVectors(worldUp, faceNormal);
+  if (right.lengthSq() < 1e-6) {
+    const fallbackUp = Math.abs(faceNormal.y) > 0.9 ? new THREE.Vector3(0, 0, 1) : camera.up.clone();
+    right = new THREE.Vector3().crossVectors(fallbackUp, faceNormal);
+  }
+  if (right.lengthSq() < 1e-6) right = new THREE.Vector3(1, 0, 0);
+  else right.normalize();
+  const correctedUp = new THREE.Vector3().crossVectors(faceNormal, right).normalize();
+  const basis = new THREE.Matrix4().makeBasis(right, faceNormal, correctedUp);
+  return new THREE.Quaternion().setFromRotationMatrix(basis);
+}
+
 function computeHandTransform(index, total) {
   const THREE = getTHREE();
   const handSize = Math.max(1, total);
@@ -131,16 +147,9 @@ export async function animateDrawnCardToHand(cardTpl) {
 
   // Разворачиваем карту лицом к камере, чтобы проявление выглядело фронтально
   try {
-    const camForward = new THREE.Vector3();
-    camera.getWorldDirection(camForward);
-    const faceNormal = camForward.clone().negate().normalize();
-    const camUpWorld = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
-    let right = new THREE.Vector3().crossVectors(camUpWorld, faceNormal);
-    if (right.lengthSq() < 1e-6) right.set(1, 0, 0); else right.normalize();
-    const upInPlane = new THREE.Vector3().crossVectors(faceNormal, right).normalize();
-    const basis = new THREE.Matrix4().makeBasis(right, faceNormal, upInPlane);
-    const q = new THREE.Quaternion().setFromRotationMatrix(basis);
-    big.setRotationFromQuaternion(q);
+    // Выставляем карту лицом к камере без бокового наклона, чтобы проявление было строго фронтальным
+    const manifestQuat = computeManifestQuaternion(big.position.clone(), camera);
+    big.setRotationFromQuaternion(manifestQuat);
   } catch {
     big.rotation.set(0, 0, 0);
   }
