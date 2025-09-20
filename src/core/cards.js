@@ -358,6 +358,22 @@ export const CARDS = {
     ],
     desc: 'Verzar Elephant Brigade must use its secondary attack while it is on an Earth field. While Verzar Elephant Brigade is on an Earth field, allied creatures on adjacent fields add 2 to their Attack and 1 to their Activation Cost.'
   },
+  EARTH_DUNGEON_OF_TEN_TYRANTS: {
+    id: 'EARTH_DUNGEON_OF_TEN_TYRANTS', name: 'Dungeon of Ten Tyrants', type: 'UNIT', cost: 4, activation: 2,
+    element: 'EARTH', atk: 1, hp: 4,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1] },
+      { dir: 'E', ranges: [1] },
+      { dir: 'S', ranges: [1] },
+      { dir: 'W', ranges: [1] }
+    ],
+    blindspots: [],
+    fortress: true,
+    manaGainOnNonElement: { element: 'EARTH', amount: 1 },
+    diesOnElement: 'FOREST', // 'FOREST' соответствует древесному полю
+    desc: 'Fortress: cannot attack unless counterattacking. While on a non‑Earth field, its summoner gains 1 mana at the start of their turn. Destroy if on a Wood field.'
+  },
   WATER_WOLF_NINJA: {
     id: 'WATER_WOLF_NINJA', name: 'Wolf Ninja', type: 'UNIT', cost: 3, activation: 2,
     element: 'WATER', atk: 1, hp: 3,
@@ -470,6 +486,32 @@ export const CARDS = {
     ],
     desc: 'Enemies on adjacent fields add 1 to their Activation Cost.'
   },
+  WOOD_JUNO_PRISONER_TRAP: {
+    id: 'WOOD_JUNO_PRISONER_TRAP', name: 'Juno Prisoner Trap', type: 'UNIT', cost: 4, activation: 2,
+    element: 'FOREST', atk: 0, hp: 4, // 'FOREST' используется для древесных полей
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1] },
+      { dir: 'E', ranges: [1] },
+      { dir: 'S', ranges: [1] },
+      { dir: 'W', ranges: [1] }
+    ],
+    blindspots: [],
+    fortress: true,
+    onEnemySummonAdjacentHealAllies: 1,
+    diesOnElement: 'EARTH',
+    desc: 'Fortress: cannot attack unless counterattacking. When an enemy creature is summoned adjacent to it, all other allied creatures gain 1 HP. Destroy if on an Earth field.'
+  },
+  WOOD_EDIN_THE_PERSECUTED: {
+    id: 'WOOD_EDIN_THE_PERSECUTED', name: 'Edin the Persecuted', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FOREST', atk: 2, hp: 3,
+    attackType: 'MAGIC',
+    attacks: [],
+    blindspots: ['S'],
+    plus1IfTargetOnElement: 'FOREST',
+    grantInvisibilityToAlliesOnElement: 'FOREST',
+    desc: '+1 Attack while attacking a creature on a Wood field. Allied creatures on Wood fields have Invisibility.'
+  },
   FOREST_GREEN_CUBIC: {
     id: 'FOREST_GREEN_CUBIC', name: 'Green Cubic', type: 'UNIT', cost: 1, activation: 1,
     element: 'FOREST', atk: 1, hp: 1,
@@ -553,6 +595,22 @@ export const CARDS = {
     friendlyFire: true,
     blindspots: ['S'],
     desc: ''
+  },
+
+  BIOLITH_AEGIS_CITADEL: {
+    id: 'BIOLITH_AEGIS_CITADEL', name: 'Aegis Citadel', type: 'UNIT', cost: 5, activation: 3,
+    element: 'BIOLITH', atk: 1, hp: 5,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1] },
+      { dir: 'E', ranges: [1] },
+      { dir: 'S', ranges: [1] },
+      { dir: 'W', ranges: [1] }
+    ],
+    blindspots: [],
+    fortress: true,
+    invisibilityAuraSameElement: true,
+    desc: 'Fortress: cannot attack except when counterattacking. Grants Invisibility to all allied creatures of the same element as the field it occupies.'
   },
 
   BIOLITH_TAURUS_MONOLITH: {

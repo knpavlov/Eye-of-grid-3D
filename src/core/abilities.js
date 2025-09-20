@@ -30,6 +30,9 @@ import {
   computeAuraAttackBonus as computeAuraAttackBonusInternal,
   computeAuraActivationDelta as computeAuraActivationDeltaInternal,
 } from './abilityHandlers/auraModifiers.js';
+import { applyEnemySummonAdjacentHeal } from './abilityHandlers/heal.js';
+import { hasInvisibilityFromAuras } from './abilityHandlers/invisibilityAuras.js';
+import { normalizeElement, normalizeElementList } from './utils/elements.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -65,13 +68,7 @@ function normalizeTplIdList(value) {
 }
 
 function normalizeElements(value) {
-  const set = new Set();
-  for (const raw of toArray(value)) {
-    if (typeof raw === 'string' && raw) {
-      set.add(raw.toUpperCase());
-    }
-  }
-  return set;
+  return normalizeElementList(value);
 }
 
 function buildSchemeMap(tpl) {
@@ -98,14 +95,16 @@ function normalizeSchemeRequirements(raw) {
   for (const item of list) {
     if (!item) continue;
     if (typeof item === 'string') {
-      result.push({ element: item.toUpperCase(), scheme: 'ALT' });
+      const element = normalizeElement(item);
+      if (!element) continue;
+      result.push({ element, scheme: 'ALT' });
       continue;
     }
     if (typeof item === 'object') {
-      const element = item.element || item.field || item.type;
+      const element = normalizeElement(item.element || item.field || item.type);
       const scheme = item.scheme || item.key || item.use;
       if (!element) continue;
-      result.push({ element: String(element).toUpperCase(), scheme: scheme ? String(scheme) : 'ALT' });
+      result.push({ element, scheme: scheme ? String(scheme) : 'ALT' });
     }
   }
   return result;
@@ -121,7 +120,7 @@ export function resolveAttackProfile(state, r, c, tpl, opts = {}) {
       schemeKey: null,
     };
   }
-  const cellElement = state?.board?.[r]?.[c]?.element || null;
+  const cellElement = normalizeElement(state?.board?.[r]?.[c]?.element || null);
   const schemeMap = buildSchemeMap(tpl);
   const defaultKey = tpl.defaultAttackScheme || 'BASE';
   const defaultScheme = schemeMap.get(defaultKey) || (schemeMap.size ? schemeMap.values().next().value : null);
@@ -196,7 +195,7 @@ export function hasPerfectDodge(state, r, c, opts = {}) {
   const tpl = opts.tpl || getUnitTemplate(unit);
   if (!tpl) return false;
   if (tpl.perfectDodge) return true;
-  const cellElement = cell?.element;
+  const cellElement = normalizeElement(cell?.element);
   if (!cellElement) return false;
   const elements = normalizeElements(
     tpl.gainPerfectDodgeOnElement || tpl.perfectDodgeOnElement
@@ -213,7 +212,8 @@ export function hasInvisibility(state, r, c, opts = {}) {
   if (!tpl) return false;
   if (tpl.invisibility) return true;
   const byElement = normalizeElements(tpl.invisibilityOnElement);
-  if (byElement.size && cell?.element && byElement.has(cell.element)) {
+  const cellElement = normalizeElement(cell?.element);
+  if (byElement.size && cellElement && byElement.has(cellElement)) {
     return true;
   }
   const sources = collectInvisibilitySources(tpl);
@@ -229,6 +229,7 @@ export function hasInvisibility(state, r, c, opts = {}) {
       if (tplAlly?.name && sources.includes(tplAlly.name)) return true;
     }
   }
+  if (hasInvisibilityFromAuras(state, r, c, { unit, tpl })) return true;
   return false;
 }
 
@@ -452,10 +453,21 @@ export function applyDamageInteractionResults(state, effects = {}) {
 function normalizeElementConfig(value, defaults = {}) {
   if (!value) return null;
   if (typeof value === 'string') {
-    return { ...defaults, element: value };
+    const element = normalizeElement(value);
+    if (!element) return null;
+    return { ...defaults, element };
   }
   if (typeof value === 'object') {
-    return { ...defaults, ...value };
+    const cfg = { ...defaults, ...value };
+    const element = normalizeElement(cfg.element || cfg.field || cfg.type);
+    if (element) {
+      cfg.element = element;
+    } else if (cfg.element != null) {
+      return null;
+    }
+    delete cfg.field;
+    delete cfg.type;
+    return cfg;
   }
   return null;
 }
@@ -620,6 +632,11 @@ export function applySummonAbilities(state, r, c) {
   }
   if (continuous.releases.length) {
     events.releases = [...(events.releases || []), ...continuous.releases];
+  }
+
+  const healEvents = applyEnemySummonAdjacentHeal(state, r, c);
+  if (healEvents.heals.length) {
+    events.heals = [...(events.heals || []), ...healEvents.heals];
   }
 
   const dodgeInfo = refreshBoardDodgeStates(state);
