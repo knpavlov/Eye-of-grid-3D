@@ -597,25 +597,58 @@ export async function endTurn() {
         if (online) { tt.stop(); } else { tt.reset(100).start(); }
       }
     } catch {}
+    let manaAnimPromise = Promise.resolve();
     try {
       if (w.__ui && w.__ui.mana && typeof w.__ui.mana.animateTurnManaGain === 'function') {
-        await w.__ui.mana.animateTurnManaGain(gameState.active, before, manaAfter, 900);
+        manaAnimPromise = w.__ui.mana.animateTurnManaGain(gameState.active, before, manaAfter, 900);
       } else {
         console.warn('Module mana animation not available, skipping');
       }
-      player.mana = manaAfter;
-    } catch {}
-    // После получения маны сразу запускаем добор карты без лишней паузы
+    } catch {
+      manaAnimPromise = Promise.resolve();
+    }
+    player.mana = manaAfter;
+
+    // Мгновенно обновляем интерфейс и параллелим анимации маны и добора карты
     w.updateUI?.();
+
+    let drawPromise = Promise.resolve();
     try {
       if (shouldAnimateDraw && drawnTpl) {
         w.pendingDrawCount = 1; w.updateHand?.();
         w.refreshInputLockUI?.();
-        await w.animateDrawnCardToHand?.(drawnTpl);
-        try { gameState.players[gameState.active].hand.push(drawnTpl); } catch {}
-        w.pendingDrawCount = 0; w.updateHand?.();
+        const runDrawAnimation = async () => {
+          let addedToHand = false;
+          try {
+            await w.animateDrawnCardToHand?.(drawnTpl);
+            try {
+              gameState.players[gameState.active].hand.push(drawnTpl);
+              addedToHand = true;
+            } catch {}
+          } finally {
+            if (!addedToHand) {
+              try {
+                const hand = gameState.players?.[gameState.active]?.hand;
+                if (hand && !hand.includes(drawnTpl)) hand.push(drawnTpl);
+              } catch {}
+            }
+            w.pendingDrawCount = 0;
+            w.updateHand?.();
+          }
+        };
+        drawPromise = runDrawAnimation();
+      } else {
+        w.pendingDrawCount = 0;
       }
-    } catch { w.pendingDrawCount = 0; }
+    } catch {
+      w.pendingDrawCount = 0;
+    }
+
+    await Promise.all([
+      manaAnimPromise.catch(e => { console.error('[TURN] Mana gain animation failed:', e); }),
+      drawPromise.catch(e => { console.error('[TURN] Draw animation failed:', e); })
+    ]);
+    player.mana = manaAfter;
 
     if (Array.isArray(manaEffects.entries) && manaEffects.entries.length) {
       const cards = w.CARDS || {};

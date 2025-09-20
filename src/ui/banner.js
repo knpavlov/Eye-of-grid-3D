@@ -8,6 +8,8 @@ let _splashInProgress = false; // Гарантия от параллельных
 let _lastActivePlayer = null; // Отслеживаем смену активного игрока
 let _forceNext = false; // Флаг для принудительного показа
 
+const MIN_VISIBLE_DURATION = 1.3; // Минимальная длительность отображения заставки (сек)
+
 function setSplashActive(v) {
   _splashActive = !!v;
   try {
@@ -56,11 +58,35 @@ export async function showTurnSplash(title) {
         .to([bg, streaks], { opacity: 0.12, duration: 0.266 }, 0.406)
         .to([txt, ringOuter, ringInner], { opacity: 0, duration: 0.196, ease: 'power2.in' }, 1.134)
         .to(tb, { opacity: 0, duration: 0.14, ease: 'power2.in' }, 1.19);
-      tl.timeScale?.(0.75);
-      await sleep(1000);
+
+      // Выравниваем длительность анимации до требуемого минимума и ждём завершения, чтобы избежать мерцаний
+      const rawDuration = (typeof tl.totalDuration === 'function') ? tl.totalDuration() : MIN_VISIBLE_DURATION;
+      let appliedScale = 1;
+      if (typeof tl.timeScale === 'function' && rawDuration > 0) {
+        appliedScale = rawDuration / Math.max(MIN_VISIBLE_DURATION, 0.0001);
+        tl.timeScale(appliedScale);
+      }
+      const expectedSeconds = rawDuration / (appliedScale || 1) || MIN_VISIBLE_DURATION;
+      const startTs = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      const waitForTimeline = new Promise(resolve => {
+        if (typeof tl.eventCallback === 'function') {
+          const prevOnComplete = tl.eventCallback('onComplete');
+          tl.eventCallback('onComplete', () => {
+            try { if (typeof prevOnComplete === 'function') prevOnComplete(); } catch {}
+            resolve();
+          });
+        } else {
+          setTimeout(resolve, expectedSeconds * 1000);
+        }
+      });
+      await waitForTimeline;
+      const elapsed = ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - startTs) / 1000;
+      if (elapsed < MIN_VISIBLE_DURATION) {
+        await sleep((MIN_VISIBLE_DURATION - elapsed) * 1000);
+      }
     } else {
-      // Fallback: simple 1s show
-      await sleep(1000);
+      // Fallback: простое ожидание нужной длительности
+      await sleep(MIN_VISIBLE_DURATION * 1000);
     }
   } catch {}
   tb.classList.add('hidden'); tb.classList.remove('flex'); tb.style.display = 'none'; tb.style.opacity = '';
