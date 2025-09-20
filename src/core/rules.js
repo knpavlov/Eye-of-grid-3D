@@ -18,8 +18,9 @@ import {
   applyDamageInteractionResults,
   resolveAttackProfile,
   refreshBoardDodgeStates,
+  computeDynamicAttackBonus,
+  attackAuraBonus,
 } from './abilities.js';
-import { countUnits } from './board.js';
 import { computeCellBuff } from './fieldEffects.js';
 
 export function hasAdjacentGuard(state, r, c) {
@@ -78,15 +79,24 @@ function attackCellsFromProfile(profile, tpl, facing, opts = {}) {
   return res;
 }
 
-// Compute effective stats (handles temp buffs if present on cell)
-export function effectiveStats(cell, unit) {
+// Compute effective stats (handles временные баффы, динамическую атаку и ауры)
+export function effectiveStats(cell, unit, ctx = {}) {
   const tpl = unit ? CARDS[unit.tplId] : null;
   const buff = computeCellBuff(cell?.element, tpl?.element);
   const tempAtk = typeof unit?.tempAtkBuff === 'number' ? unit.tempAtkBuff : 0;
-  const atk = Math.max(0, (tpl?.atk || 0) + buff.atk + tempAtk);
-  const extra = typeof unit?.bonusHP === 'number' ? unit.bonusHP : 0;
-  const hp = Math.max(0, (tpl?.hp || 0) + buff.hp + extra);
-  return { atk, hp };
+  let atk = (tpl?.atk || 0) + buff.atk + tempAtk;
+  const extraHp = typeof unit?.bonusHP === 'number' ? unit.bonusHP : 0;
+  let hp = (tpl?.hp || 0) + buff.hp + extraHp;
+
+  const state = ctx.state;
+  const row = ctx.r;
+  const col = ctx.c;
+  if (state && typeof row === 'number' && typeof col === 'number' && tpl) {
+    atk += computeDynamicAttackBonus(state, row, col, tpl, unit);
+    atk += attackAuraBonus(state, row, col, { unit, tpl, owner: ctx.owner ?? unit?.owner });
+  }
+
+  return { atk: Math.max(0, atk), hp: Math.max(0, hp) };
 }
 
 export function computeHits(state, r, c, opts = {}) {
@@ -104,7 +114,7 @@ export function computeHits(state, r, c, opts = {}) {
   const attackType = profile?.attackType || tplA?.attackType || 'STANDARD';
   // tplA.friendlyFire — может ли атака задевать союзников
   const cells = attackCellsFromProfile(profile, tplA, attacker.facing, opts);
-  const { atk } = effectiveStats(cell, attacker);
+  const { atk } = effectiveStats(cell, attacker, { state, r, c });
   const hits = [];
   hits.profile = profile;
   hits.schemeKey = profile?.schemeKey || null;
@@ -261,7 +271,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     owner: attacker?.owner,
   });
 
-  const baseStats = effectiveStats(cellOrigin, attacker);
+  const baseStats = effectiveStats(cellOrigin, attacker, { state: base, r, c });
   let atk = baseStats.atk;
   let logLines = [];
   const damageEffects = { preventRetaliation: new Set(), events: [] };
@@ -271,22 +281,9 @@ export function stagedAttack(state, r, c, opts = {}) {
   const hitsRaw = computeHits(base, r, c, { ...opts, profile });
   if (!hitsRaw.length) return { empty: true };
 
-  if (tplA.dynamicAtk === 'OTHERS_ON_BOARD') {
-    const others = countUnits(base) - 1;
-    atk += others;
-    logLines.push(`${tplA.name}: атака увеличена на ${others}`);
-  }
-  if (tplA.dynamicAtk === 'FIRE_CREATURES') {
-    let cnt = 0;
-    for (let rr = 0; rr < 3; rr++) {
-      for (let cc = 0; cc < 3; cc++) {
-        if (rr === r && cc === c) continue;
-        const u = base.board[rr][cc]?.unit;
-        if (u && CARDS[u.tplId]?.element === 'FIRE') cnt++;
-      }
-    }
-    atk += cnt;
-    logLines.push(`${tplA.name}: атака увеличена на ${cnt}`);
+  const dynamicBonus = computeDynamicAttackBonus(base, r, c, tplA, attacker);
+  if (dynamicBonus) {
+    logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus}`);
   }
   const targetBonus = getTargetElementBonus(tplA, base, hitsRaw);
   const plusCfg = tplA.plusAtkIfTargetOnElement || (tplA.plus1IfTargetOnElement ? { element: tplA.plus1IfTargetOnElement, amount: 1 } : null);
@@ -335,7 +332,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     if (!attackerQuick && hasFirstStrike(tplB)) {
       const hitsB = computeHits(base, h.r, h.c, { target: { r, c }, union: true });
       if (hitsB.length) {
-        const { atk: batk } = effectiveStats(base.board[h.r][h.c], B);
+        const { atk: batk } = effectiveStats(base.board[h.r][h.c], B, { state: base, r: h.r, c: h.c });
         const dmg = Math.max(0, batk);
         quickRetaliation += dmg;
         quickSources.push(CARDS[B.tplId].name);
@@ -466,7 +463,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       if (!attackerQuick && hasFirstStrike(tplB)) continue;
       const hitsB = computeHits(n1, h.r, h.c, { target: { r, c }, union: true });
       if (hitsB.length) {
-        const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B);
+        const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B, { state: n1, r: h.r, c: h.c });
         totalRetaliation += Math.max(0, batk);
         retaliators.push({ r: h.r, c: h.c });
       }
@@ -653,7 +650,12 @@ export function magicAttack(state, fr, fc, tr, tc) {
     hitsSummary.set(key, entry);
   };
 
-  const atkStats = effectiveStats(originCell, attacker);
+  const atkStats = effectiveStats(originCell, attacker, {
+    state: n1,
+    r: fr,
+    c: fc,
+    owner: attacker?.owner,
+  });
   let atk = atkStats.atk || 0;
   const dynMagic = computeDynamicMagicAttack(n1, tplA);
   if (dynMagic) {

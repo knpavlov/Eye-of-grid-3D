@@ -18,7 +18,8 @@ import {
 import { refreshBoardDodgeStates } from './abilityHandlers/dodgeEffects.js';
 import { computeTargetCostBonus as computeTargetCostBonusInternal } from './abilityHandlers/attackModifiers.js';
 import { collectRepositionOnDamage } from './abilityHandlers/reposition.js';
-import { extraActivationCostFromAuras } from './abilityHandlers/costModifiers.js';
+import { extraActivationCostFromAuras, activationDiscountFromAuras } from './abilityHandlers/costModifiers.js';
+import { computeAttackAuraBonus } from './abilityHandlers/attackAuras.js';
 import {
   applyElementalPossession,
   refreshContinuousPossessions as refreshContinuousPossessionsInternal,
@@ -173,6 +174,52 @@ export function resolveAttackProfile(state, r, c, tpl, opts = {}) {
   };
 
   return transformAttackProfile(state, r, c, tpl, profile);
+}
+
+function countBoardUnits(state, predicate) {
+  if (!state?.board) return 0;
+  let total = 0;
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const unit = state.board?.[r]?.[c]?.unit;
+      if (!unit) continue;
+      if (predicate(unit, r, c)) total += 1;
+    }
+  }
+  return total;
+}
+
+export function computeDynamicAttackBonus(state, r, c, tpl, unit) {
+  if (!tpl?.dynamicAtk || !state?.board) return 0;
+  const key = tpl.dynamicAtk;
+  if (key === 'OTHERS_ON_BOARD') {
+    return countBoardUnits(state, (u, rr, cc) => !(rr === r && cc === c));
+  }
+  if (key === 'FIRE_CREATURES') {
+    return countBoardUnits(state, (u, rr, cc) => {
+      if (rr === r && cc === c) return false;
+      const tplU = CARDS[u.tplId];
+      return tplU?.element === 'FIRE';
+    });
+  }
+  if (typeof tpl.dynamicAtk === 'object') {
+    const cfg = tpl.dynamicAtk;
+    const type = String(cfg.type || cfg.mode || '').toUpperCase();
+    if (type === 'OTHERS_BY_ELEMENT') {
+      const element = String(cfg.element || cfg.field || '').toUpperCase();
+      if (!element) return 0;
+      return countBoardUnits(state, (u, rr, cc) => {
+        if (rr === r && cc === c) return false;
+        const tplU = CARDS[u.tplId];
+        return tplU?.element === element;
+      });
+    }
+  }
+  return 0;
+}
+
+export function attackAuraBonus(state, r, c, opts = {}) {
+  return computeAttackAuraBonus(state, r, c, opts);
 }
 
 function collectInvisibilitySources(tpl) {
@@ -514,6 +561,13 @@ export function activationCost(tpl, fieldElement, ctx = {}) {
     if (extra) {
       cost += extra;
     }
+    const discount = activationDiscountFromAuras(ctx.state, ctx.r, ctx.c, {
+      unit: ctx.unit,
+      owner: ctx.owner,
+    });
+    if (discount) {
+      cost = Math.max(0, cost - discount);
+    }
   }
   return Math.max(0, cost);
 }
@@ -639,7 +693,7 @@ export function shouldUseMagicAttack(state, r, c, tplOverride = null) {
   return profile.attackType === 'MAGIC' && baseType !== 'MAGIC';
 }
 
-export function computeMagicAreaCells(tpl, tr, tc) {
+export function computeMagicAreaCells(tpl, tr, tc, state) {
   const cells = [ { r: tr, c: tc } ];
   if (!tpl) return cells;
   const area = tpl.magicAttackArea;
@@ -660,12 +714,31 @@ export function computeMagicAreaCells(tpl, tr, tc) {
       const cc = tc + dc;
       if (inBounds(rr, cc)) cells.push({ r: rr, c: cc });
     }
+  } else if (type === 'SAME_ELEMENT') {
+    const targetUnit = state?.board?.[tr]?.[tc]?.unit || null;
+    if (!targetUnit) return ensureUniqueCells(cells);
+    const targetTpl = CARDS[targetUnit.tplId];
+    const element = targetTpl?.element;
+    if (!element) return ensureUniqueCells(cells);
+    const targetOwner = targetUnit.owner;
+    for (let rr = 0; rr < 3; rr++) {
+      for (let cc = 0; cc < 3; cc++) {
+        if (rr === tr && cc === tc) continue;
+        const other = state?.board?.[rr]?.[cc]?.unit;
+        if (!other) continue;
+        if (other.owner !== targetOwner) continue;
+        const tplOther = CARDS[other.tplId];
+        if (!tplOther || tplOther.element !== element) continue;
+        cells.push({ r: rr, c: cc });
+      }
+    }
   }
   return ensureUniqueCells(cells);
 }
 
 export function collectMagicTargetCells(state, tpl, attackerRef, primaryTarget) {
-  return collectMagicTargetsInternal(state, tpl, attackerRef, primaryTarget, computeMagicAreaCells);
+  const computeArea = (tplArg, tr, tc) => computeMagicAreaCells(tplArg, tr, tc, state);
+  return collectMagicTargetsInternal(state, tpl, attackerRef, primaryTarget, computeArea);
 }
 
 export function computeDynamicMagicAttack(state, tpl) {
