@@ -38,7 +38,7 @@ export function preloadCardTextures() {
   try { if (typeof window !== 'undefined') window.CARD_TEX = CARD_TEX; } catch {}
 }
 
-export function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
+export function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null, extra = {}) {
   const THREE = getTHREE();
   const BASE_W = 256;
   const BASE_H = 356;
@@ -201,7 +201,9 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   }
 
   if (cardData.type === 'UNIT') {
-    const act = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
+    const activationOverride = extra?.activationOverride ?? extra?.activation ?? null;
+    const baseActivation = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
+    const act = activationOverride != null ? Math.max(0, Math.round(activationOverride)) : baseActivation;
     const playSize = Math.max(ps(15), 13);
     const playCenterX = costTextX + inlineOffset + playSize / 2 + Math.max(ps(10), 8);
     drawPlayIcon(ctx, playCenterX, footerCenterY, playSize);
@@ -638,13 +640,15 @@ function attachIllustrationPlane(cardMesh, cardData) {
   cardMesh.add(plane);
 }
 
-export function createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
+export function createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null, opts = {}) {
   const THREE = getTHREE();
   const { renderer, cardGroup } = getCtx();
   const cardWidth = 4.8; const cardHeight = 5.6; const cardThickness = 0.12;
   const geometry = new THREE.BoxGeometry(cardWidth, cardThickness, cardHeight);
   const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 356;
-  const ctx2d = canvas.getContext('2d'); drawCardFace(ctx2d, cardData, canvas.width, canvas.height, hpOverride, atkOverride);
+  const activationOverride = opts?.activationOverride ?? opts?.activation ?? null;
+  const ctx2d = canvas.getContext('2d');
+  drawCardFace(ctx2d, cardData, canvas.width, canvas.height, hpOverride, atkOverride, { activationOverride });
   const texture = new THREE.CanvasTexture(canvas); try { texture.anisotropy = renderer?.capabilities?.getMaxAnisotropy?.() || 1; } catch {}
   if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
   const faceMaterial = new THREE.MeshStandardMaterial({ map: texture, metalness: 0.1, roughness: 0.7, side: THREE.DoubleSide });

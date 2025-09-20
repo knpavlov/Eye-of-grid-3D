@@ -828,6 +828,17 @@ describe('новые механики', () => {
     expect(cost).toBe((CARDS.FIRE_FLAME_MAGUS.activation || 0) + 1);
   });
 
+  it('Verzar Elephant Brigade пробивает союзника своей базовой атакой', () => {
+    const state = makeState();
+    state.board[2][1].unit = { owner: 0, tplId: 'EARTH_VERZAR_ELEPHANT_BRIGADE', facing: 'N' };
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'N', currentHP: CARDS.FIRE_FLAME_MAGUS.hp };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'S', currentHP: CARDS.FIRE_HELLFIRE_SPITTER.hp };
+    const battle = stagedAttack(state, 2, 1);
+    const fin = battle.finish();
+    const enemy = fin.n1.board[0][1].unit;
+    expect(enemy).toBeNull();
+  });
+
   it('Siam ослабляет врагов на водных полях', () => {
     const state = makeState();
     state.board[1][1].unit = { owner: 0, tplId: 'WATER_SIAM_TRAITOR_OF_SEAS', facing: 'N' };
@@ -852,6 +863,17 @@ describe('новые механики', () => {
     const fin = res.finish();
     const defender = fin.n1.board[1][1].unit;
     expect(defender.currentHP).toBe(3);
+  });
+
+  it('Juno Forest Dragon достаёт дальнюю цель даже при союзнике спереди', () => {
+    const state = makeState();
+    state.board[2][1].element = 'FOREST';
+    state.board[2][1].unit = { owner: 0, tplId: 'FOREST_JUNO_FOREST_DRAGON', facing: 'N', currentHP: CARDS.FOREST_JUNO_FOREST_DRAGON.hp };
+    state.board[1][1].unit = { owner: 0, tplId: 'FOREST_GREEN_CUBIC', facing: 'N', currentHP: CARDS.FOREST_GREEN_CUBIC.hp };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'S', currentHP: CARDS.FIRE_HELLFIRE_SPITTER.hp };
+    const battle = stagedAttack(state, 2, 1, { chosenDir: 'N', rangeChoices: { N: 2 } });
+    const fin = battle.finish();
+    expect(fin.n1.board[0][1].unit).toBeNull();
   });
 
   it('Scion Biolith Lord поражает всех врагов той же стихии и снижает стоимость активации биолитов', () => {

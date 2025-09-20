@@ -346,7 +346,7 @@ export const CARDS = {
     element: 'EARTH', atk: 2, hp: 5,
     attackType: 'STANDARD',
     attackSchemes: [
-      { key: 'BASE', attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE' } ] },
+      { key: 'BASE', attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE', ignoreBlocking: true } ] },
       { key: 'ALT', attacks: [ { dir: 'N', ranges: [1] } ] },
     ],
     defaultAttackScheme: 'BASE',
@@ -451,7 +451,7 @@ export const CARDS = {
     id: 'FOREST_JUNO_FOREST_DRAGON', name: 'Juno Forest Dragon', type: 'UNIT', cost: 7, activation: 4,
     element: 'FOREST', atk: 5, hp: 8,
     attackType: 'STANDARD',
-    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY' } ],
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY', ignoreBlocking: true } ],
     blindspots: ['S'],
     dynamicAtk: 'FOREST_CREATURES',
     auraModifiers: [

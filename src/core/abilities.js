@@ -500,6 +500,25 @@ function baseActivationCost(tpl) {
     : Math.max(0, (tpl && tpl.cost ? tpl.cost - 1 : 0));
 }
 
+function collectActivationSurcharge(tpl, ctx = {}) {
+  if (!ctx || !ctx.state) return 0;
+  const r = typeof ctx.r === 'number' ? ctx.r : null;
+  const c = typeof ctx.c === 'number' ? ctx.c : null;
+  if (r == null || c == null) return 0;
+  const unit = ctx.unit;
+  const owner = ctx.owner;
+  let total = 0;
+  const extra = extraActivationCostFromAuras(ctx.state, r, c, { unit, owner });
+  if (extra) {
+    total += extra;
+  }
+  const auraDelta = getAuraActivationModifier(ctx.state, r, c, { unit, tpl, owner });
+  if (auraDelta) {
+    total += auraDelta;
+  }
+  return total;
+}
+
 // фактическая стоимость атаки с учётом скидок (например, "активация на X меньше")
 export function activationCost(tpl, fieldElement, ctx = {}) {
   let cost = baseActivationCost(tpl);
@@ -510,28 +529,22 @@ export function activationCost(tpl, fieldElement, ctx = {}) {
   if (onElem && fieldElement === onElem.element) {
     cost = Math.max(0, cost - onElem.reduction);
   }
-  if (ctx && ctx.state && typeof ctx.r === 'number' && typeof ctx.c === 'number') {
-    const extra = extraActivationCostFromAuras(ctx.state, ctx.r, ctx.c, {
-      unit: ctx.unit,
-      owner: ctx.owner,
-    });
-    if (extra) {
-      cost += extra;
-    }
-    const auraDelta = getAuraActivationModifier(ctx.state, ctx.r, ctx.c, {
-      unit: ctx.unit,
-      tpl,
-      owner: ctx.owner,
-    });
-    if (auraDelta) {
-      cost += auraDelta;
-    }
+  const surcharge = collectActivationSurcharge(tpl, ctx);
+  if (surcharge) {
+    cost += surcharge;
   }
   return Math.max(0, cost);
 }
 
 // стоимость поворота/обычной активации — без скидок
-export const rotateCost = (tpl) => baseActivationCost(tpl);
+export const rotateCost = (tpl, _fieldElement, ctx = {}) => {
+  let cost = baseActivationCost(tpl);
+  const surcharge = collectActivationSurcharge(tpl, ctx);
+  if (surcharge) {
+    cost += surcharge;
+  }
+  return Math.max(0, cost);
+};
 
 // Проверка наличия способности "быстрота"
 export const hasFirstStrike = (tpl) => !!(tpl && tpl.firstStrike);

@@ -49,5 +49,22 @@ describe('constants helpers', () => {
     });
     expect(cost).toBe(4); // базовая стоимость 1 + налог ауры 3
   });
+
+  it('rotateCost: учитывает ауры, повышающие стоимость соседей', () => {
+    const state = {
+      board: Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'NEUTRAL', unit: null }))),
+    };
+    state.board[1][1].unit = { owner: 1, tplId: 'FOREST_ELVEN_DEATH_DANCER', currentHP: CARDS.FOREST_ELVEN_DEATH_DANCER.hp };
+    state.board[1][0].unit = { owner: 0, tplId: 'FIRE_HELLFIRE_SPITTER', currentHP: CARDS.FIRE_HELLFIRE_SPITTER.hp };
+    const cellEl = state.board[1][0].element;
+    const cost = rotateCost(CARDS.FIRE_HELLFIRE_SPITTER, cellEl, {
+      state,
+      r: 1,
+      c: 0,
+      unit: state.board[1][0].unit,
+      owner: 0,
+    });
+    expect(cost).toBe(4);
+  });
 });
 

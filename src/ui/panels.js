@@ -56,10 +56,19 @@ export function showUnitActionPanel(unitMesh){
         }
       }
     }
-    const rotateCost = (typeof window !== 'undefined' && typeof window.rotateCost === 'function') ? window.rotateCost(cardData) : 1;
+    const rotateCostValue = (typeof window !== 'undefined' && typeof window.rotateCost === 'function')
+      ? window.rotateCost(cardData, fieldElement, { state: gs, r: row, c: col, unit: unitData, owner: unitData?.owner })
+      : 1;
     const alreadyRotated = unitData.lastRotateTurn === gs.turn;
     const rCw = document.getElementById('rotate-cw-btn'); const rCcw = document.getElementById('rotate-ccw-btn');
-    if (rCw && rCcw) { rCw.disabled = !!alreadyRotated; rCcw.disabled = !!alreadyRotated; rCw.textContent = alreadyRotated ? 'Already rotated' : `Rotate → (-${rotateCost})`; rCcw.textContent = alreadyRotated ? 'Already rotated' : `Rotate ← (-${rotateCost})`; }
+    if (rCw && rCcw) {
+      rCw.disabled = !!alreadyRotated;
+      rCcw.disabled = !!alreadyRotated;
+      const label = alreadyRotated ? 'Already rotated' : `Rotate → (-${rotateCostValue})`;
+      const labelCcw = alreadyRotated ? 'Already rotated' : `Rotate ← (-${rotateCostValue})`;
+      rCw.textContent = label;
+      rCcw.textContent = labelCcw;
+    }
     // Flash rings on potential targets
     try {
       const computeHits = (typeof window !== 'undefined') ? window.computeHits : null;

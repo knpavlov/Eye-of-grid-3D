@@ -296,16 +296,16 @@
     }
     
     // Delegator: module cards implementation
-    function createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null) {
+    function createCard3D(cardData, isInHand = false, hpOverride = null, atkOverride = null, extra = {}) {
       if (window.__cards && typeof window.__cards.createCard3D === 'function') {
-        return window.__cards.createCard3D(cardData, isInHand, hpOverride, atkOverride);
+        return window.__cards.createCard3D(cardData, isInHand, hpOverride, atkOverride, extra);
       }
       throw new Error('[bridge] __cards.createCard3D not available; modules must be loaded.');
     }
     // Delegator: module cards implementation
-    function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null) {
+    function drawCardFace(ctx, cardData, width, height, hpOverride = null, atkOverride = null, extra = {}) {
       if (window.__cards && typeof window.__cards.drawCardFace === 'function') {
-        return window.__cards.drawCardFace(ctx, cardData, width, height, hpOverride, atkOverride);
+        return window.__cards.drawCardFace(ctx, cardData, width, height, hpOverride, atkOverride, extra);
       }
       throw new Error('[bridge] __cards.drawCardFace not available; modules must be loaded.');
     }
