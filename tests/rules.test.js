@@ -10,7 +10,7 @@ import {
   refreshBoardDodgeStates,
 } from '../src/core/rules.js';
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
-import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions } from '../src/core/abilities.js';
+import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, activationCost } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -965,3 +965,154 @@ describe('Water cards — добор и уклонения', () => {
   });
 });
 
+
+describe('новые существа и ауры', () => {
+  it('Siam снижает атаку врагов на водных полях', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].unit = { owner: 0, tplId: 'WATER_SIAM_TRAITOR_OF_SEAS', facing: 'N' };
+    state.board[0][1].element = 'WATER';
+    const enemy = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S' };
+    state.board[0][1].unit = enemy;
+    const stats = effectiveStats(state.board[0][1], enemy, { state, r: 0, c: 1, owner: enemy.owner });
+    expect(stats.atk).toBe(CARDS.FIRE_PARTMOLE_FLAME_LIZARD.atk - 1);
+  });
+
+  it('Sleeptrap повышает стоимость активации соседним врагам', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    const enemy = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'W' };
+    state.board[1][2].unit = enemy;
+    const baseCost = activationCost(CARDS.FIRE_PARTMOLE_FLAME_LIZARD, state.board[1][2].element, {
+      state,
+      r: 1,
+      c: 2,
+      unit: enemy,
+      owner: enemy.owner,
+    });
+    state.board[1][1].unit = { owner: 0, tplId: 'FOREST_SLEEPTRAP', facing: 'N' };
+    const taxedCost = activationCost(CARDS.FIRE_PARTMOLE_FLAME_LIZARD, state.board[1][2].element, {
+      state,
+      r: 1,
+      c: 2,
+      unit: enemy,
+      owner: enemy.owner,
+    });
+    expect(taxedCost).toBe(baseCost + 1);
+  });
+
+  it('Verzar Elephant Brigade усиливает союзников на земляном поле', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'EARTH';
+    const ally = { owner: 0, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'N' };
+    state.board[1][2].unit = ally;
+    const baseCost = activationCost(CARDS.FIRE_PARTMOLE_FLAME_LIZARD, state.board[1][2].element, {
+      state,
+      r: 1,
+      c: 2,
+      unit: ally,
+      owner: ally.owner,
+    });
+    const elephant = { owner: 0, tplId: 'EARTH_VERZAR_ELEPHANT_BRIGADE', facing: 'N' };
+    state.board[1][1].unit = elephant;
+    const stats = effectiveStats(state.board[1][2], ally, { state, r: 1, c: 2, owner: ally.owner });
+    expect(stats.atk).toBe(CARDS.FIRE_PARTMOLE_FLAME_LIZARD.atk + 2);
+    const taxedCost = activationCost(CARDS.FIRE_PARTMOLE_FLAME_LIZARD, state.board[1][2].element, {
+      state,
+      r: 1,
+      c: 2,
+      unit: ally,
+      owner: ally.owner,
+    });
+    expect(taxedCost).toBe(baseCost + 1);
+  });
+
+  it('Elephant меняет схему атаки на земляном поле', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].unit = { owner: 0, tplId: 'EARTH_VERZAR_ELEPHANT_BRIGADE', facing: 'N' };
+    let hits = computeHits(state, 2, 1, { union: true, includeEmpty: true });
+    let coords = hits.map(h => `${h.r},${h.c}`).sort();
+    expect(coords).toEqual(['0,1', '1,1']);
+
+    state.board[2][1].element = 'EARTH';
+    hits = computeHits(state, 2, 1, { union: true, includeEmpty: true });
+    coords = hits.map(h => `${h.r},${h.c}`).sort();
+    expect(coords).toEqual(['1,1']);
+  });
+
+  it('Juno Forest Dragon получает атаку от других лесных существ', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].unit = { owner: 0, tplId: 'FOREST_JUNO_FOREST_DRAGON', facing: 'N' };
+    state.board[1][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 3 };
+    state.board[0][0].unit = { owner: 0, tplId: 'FOREST_GREEN_CUBIC', facing: 'N' };
+    state.board[0][2].unit = { owner: 1, tplId: 'FOREST_GREEN_CUBIC', facing: 'S' };
+    const staged = stagedAttack(state, 2, 1);
+    const preview = staged.targetsPreview;
+    expect(preview[0].dmg).toBe(7);
+  });
+
+  it('Juno накладывает дополнительную стоимость активации только на лесном поле', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'FOREST';
+    const juno = { owner: 0, tplId: 'FOREST_JUNO_FOREST_DRAGON', facing: 'N' };
+    const enemy = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'W' };
+    state.board[1][2].unit = enemy;
+    const baseCost = activationCost(CARDS.FIRE_PARTMOLE_FLAME_LIZARD, state.board[1][2].element, {
+      state,
+      r: 1,
+      c: 2,
+      unit: enemy,
+      owner: enemy.owner,
+    });
+    state.board[1][1].unit = juno;
+    const costForest = activationCost(CARDS.FIRE_PARTMOLE_FLAME_LIZARD, state.board[1][2].element, {
+      state,
+      r: 1,
+      c: 2,
+      unit: enemy,
+      owner: enemy.owner,
+    });
+    expect(costForest).toBe(baseCost + 2);
+    state.board[1][1].element = 'FIRE';
+    const costFire = activationCost(CARDS.FIRE_PARTMOLE_FLAME_LIZARD, state.board[1][2].element, {
+      state,
+      r: 1,
+      c: 2,
+      unit: enemy,
+      owner: enemy.owner,
+    });
+    expect(costFire).toBe(baseCost);
+  });
+
+  it('Scion бьёт магией всех врагов той же стихии и снижает стоимость союзникам', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].unit = { owner: 0, tplId: 'BIOLITH_SCION_BIOLITH_LORD', facing: 'N' };
+    state.board[1][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 3 };
+    state.board[0][2].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 3 };
+    state.board[0][0].unit = { owner: 1, tplId: 'WATER_CLOUD_RUNNER', facing: 'S', currentHP: 3 };
+    const res = magicAttack(state, 2, 1, 1, 1);
+    expect(res).toBeTruthy();
+    const coords = res.targets.map(t => `${t.r},${t.c}`).sort();
+    expect(coords).toEqual(['0,2', '1,1']);
+
+    const allyState = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    allyState.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_SCION_BIOLITH_LORD', facing: 'N' };
+    const ninja = { owner: 0, tplId: 'BIOLITH_NINJA', facing: 'N' };
+    allyState.board[1][2].unit = ninja;
+    const costWithAura = activationCost(CARDS.BIOLITH_NINJA, allyState.board[1][2].element, {
+      state: allyState,
+      r: 1,
+      c: 2,
+      unit: ninja,
+      owner: ninja.owner,
+    });
+    expect(costWithAura).toBe(0);
+    allyState.board[1][1].unit = null;
+    const costNoAura = activationCost(CARDS.BIOLITH_NINJA, allyState.board[1][2].element, {
+      state: allyState,
+      r: 1,
+      c: 2,
+      unit: ninja,
+      owner: ninja.owner,
+    });
+    expect(costNoAura).toBe(CARDS.BIOLITH_NINJA.activation);
+  });
+});

@@ -18,7 +18,7 @@ import {
 import { refreshBoardDodgeStates } from './abilityHandlers/dodgeEffects.js';
 import { computeTargetCostBonus as computeTargetCostBonusInternal } from './abilityHandlers/attackModifiers.js';
 import { collectRepositionOnDamage } from './abilityHandlers/reposition.js';
-import { extraActivationCostFromAuras } from './abilityHandlers/costModifiers.js';
+import { computeAuraStatAdjustments } from './abilityHandlers/auraModifiers.js';
 import {
   applyElementalPossession,
   refreshContinuousPossessions as refreshContinuousPossessionsInternal,
@@ -507,12 +507,12 @@ export function activationCost(tpl, fieldElement, ctx = {}) {
     cost = Math.max(0, cost - onElem.reduction);
   }
   if (ctx && ctx.state && typeof ctx.r === 'number' && typeof ctx.c === 'number') {
-    const extra = extraActivationCostFromAuras(ctx.state, ctx.r, ctx.c, {
+    const aura = computeAuraStatAdjustments(ctx.state, ctx.r, ctx.c, {
       unit: ctx.unit,
       owner: ctx.owner,
     });
-    if (extra) {
-      cost += extra;
+    if (aura.activation) {
+      cost += aura.activation;
     }
   }
   return Math.max(0, cost);
@@ -664,8 +664,40 @@ export function computeMagicAreaCells(tpl, tr, tc) {
   return ensureUniqueCells(cells);
 }
 
+function resolveOwnerFromRef(state, ref = {}) {
+  if (typeof ref?.owner === 'number') return ref.owner;
+  if (typeof ref?.r === 'number' && typeof ref?.c === 'number') {
+    const unit = state?.board?.[ref.r]?.[ref.c]?.unit;
+    if (unit) return unit.owner ?? null;
+  }
+  return null;
+}
+
 export function collectMagicTargetCells(state, tpl, attackerRef, primaryTarget) {
-  return collectMagicTargetsInternal(state, tpl, attackerRef, primaryTarget, computeMagicAreaCells);
+  const base = collectMagicTargetsInternal(state, tpl, attackerRef, primaryTarget, computeMagicAreaCells) || [];
+  const combined = [...base];
+  if (tpl?.magicTargetsSameElement && state?.board && primaryTarget && typeof primaryTarget.r === 'number' && typeof primaryTarget.c === 'number') {
+    const targetUnit = state.board?.[primaryTarget.r]?.[primaryTarget.c]?.unit;
+    if (targetUnit) {
+      const targetTpl = CARDS[targetUnit.tplId];
+      const targetElement = targetTpl?.element ? String(targetTpl.element).toUpperCase() : null;
+      if (targetElement) {
+        const attackerOwner = resolveOwnerFromRef(state, attackerRef);
+        for (let rr = 0; rr < state.board.length; rr++) {
+          for (let cc = 0; cc < state.board[rr].length; cc++) {
+            const unit = state.board[rr][cc]?.unit;
+            if (!unit) continue;
+            const tplU = CARDS[unit.tplId];
+            if (!tplU) continue;
+            if (String(tplU.element || '').toUpperCase() !== targetElement) continue;
+            if (!tpl?.friendlyFire && attackerOwner != null && unit.owner === attackerOwner) continue;
+            combined.push({ r: rr, c: cc });
+          }
+        }
+      }
+    }
+  }
+  return ensureUniqueCells(combined);
 }
 
 export function computeDynamicMagicAttack(state, tpl) {

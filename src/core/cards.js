@@ -237,6 +237,18 @@ export const CARDS = {
     desc: 'Dodge attempt. Gains one Dodge attempt for each adjacent enemy. Adjacent allied creatures gain one Dodge attempt. While on a Water field he strikes all adjacent cells.'
   },
 
+  WATER_SIAM_TRAITOR_OF_SEAS: {
+    id: 'WATER_SIAM_TRAITOR_OF_SEAS', name: 'Siam, Traitor of Seas', type: 'UNIT', cost: 3, activation: 2,
+    element: 'WATER', atk: 2, hp: 4,
+    attackType: 'STANDARD', doubleAttack: true,
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    plusAtkVsElement: { element: 'WATER', amount: 1 },
+    auraStatAdjustments: [
+      { target: 'ENEMY', scope: 'BOARD', targetFieldElement: 'WATER', attack: -1 },
+    ],
+    desc: 'Siam attacks the same target twice. The counterattack of target creature occurs after second attack. Siam adds 1 Attack if the target creature is a Water creature. All enemies on Water fields subtract 1 from their Attack.'
+  },
+
   WATER_MERCENARY_SAVIOR_LATOO: {
     id: 'WATER_MERCENARY_SAVIOR_LATOO', name: 'Mercenary Savior Latoo', type: 'UNIT', cost: 3, activation: 2,
     element: 'WATER', atk: 2, hp: 3,
@@ -341,6 +353,31 @@ export const CARDS = {
     pushTargetOnDamage: { distance: 1 },
     desc: 'If Dark Yokozuna Sekimaru attacks (but does not destroy) a creature, that creature is pushed back one field in the direction of the attack (provided the field is empty) and cannot counterattack.'
   },
+  EARTH_VERZAR_ELEPHANT_BRIGADE: {
+    id: 'EARTH_VERZAR_ELEPHANT_BRIGADE', name: 'Verzar Elephant Brigade', type: 'UNIT', cost: 5, activation: 3,
+    element: 'EARTH', atk: 2, hp: 5,
+    attackType: 'STANDARD',
+    attackSchemes: [
+      {
+        key: 'BASE',
+        attacks: [
+          { dir: 'N', ranges: [1], group: 'ELEPHANT_CHARGE' },
+          { dir: 'N', ranges: [2], group: 'ELEPHANT_CHARGE' },
+        ],
+      },
+      {
+        key: 'EARTH_SINGLE',
+        attacks: [ { dir: 'N', ranges: [1] } ],
+      },
+    ],
+    defaultAttackScheme: 'BASE',
+    mustUseSchemeOnElement: [ { element: 'EARTH', scheme: 'EARTH_SINGLE' } ],
+    blindspots: ['S'],
+    auraStatAdjustments: [
+      { target: 'ALLY', scope: 'ADJACENT', requireSourceElement: 'EARTH', attack: 2, activation: 1 },
+    ],
+    desc: 'Verzar Elephant Brigade must use its secondary attack while it is on an Earth field. While Verzar Elephant Brigade is on an Earth field, allied creatures on adjacent fields add 2 to their Attack and 1 to their Activation Cost.'
+  },
   WATER_WOLF_NINJA: {
     id: 'WATER_WOLF_NINJA', name: 'Wolf Ninja', type: 'UNIT', cost: 3, activation: 2,
     element: 'WATER', atk: 1, hp: 3,
@@ -416,6 +453,28 @@ export const CARDS = {
     swapOnDamage: true,
     enemyActivationTaxAdjacent: 3,
     desc: 'Magic Attack. If Elven Death Dancer damages (but does not destroy) a creature, she switches locations with that creature (which cannot counterattack). Enemies on adjacent fields add 3 to their Activation Cost.'
+  },
+  FOREST_SLEEPTRAP: {
+    id: 'FOREST_SLEEPTRAP', name: 'Sleeptrap', type: 'UNIT', cost: 2, activation: 1,
+    element: 'FOREST', atk: 0, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [],
+    auraStatAdjustments: [
+      { target: 'ENEMY', scope: 'ADJACENT', activation: 1 },
+    ],
+    desc: 'Enemies on adjacent fields add 1 to their Activation Cost.'
+  },
+  FOREST_JUNO_FOREST_DRAGON: {
+    id: 'FOREST_JUNO_FOREST_DRAGON', name: 'Juno Forest Dragon', type: 'UNIT', cost: 7, activation: 4,
+    element: 'FOREST', atk: 5, hp: 8,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY' } ],
+    blindspots: ['S'],
+    dynamicAtk: 'OTHER_WOOD',
+    auraStatAdjustments: [
+      { target: 'ENEMY', scope: 'ADJACENT', requireSourceElement: 'FOREST', activation: 2 },
+    ],
+    desc: 'Juno Forest Dragon\'s Attack is equal to 5 plus the number of other Wood creatures on the board. While Juno Forest Dragon is on a Wood field, enemies on adjacent fields add 2 to their Activation Cost.'
   },
   FOREST_GREEN_CUBIC: {
     id: 'FOREST_GREEN_CUBIC', name: 'Green Cubic', type: 'UNIT', cost: 1, activation: 1,
@@ -506,6 +565,28 @@ export const CARDS = {
     ],
     blindspots: ['S'],
     desc: 'Magic Attack: choose one highlighted cell in front, back, left or right to target.'
+  },
+
+  BIOLITH_SCION_BIOLITH_LORD: {
+    id: 'BIOLITH_SCION_BIOLITH_LORD', name: 'Scion, Biolith Lord', type: 'UNIT', cost: 6, activation: 3,
+    element: 'BIOLITH', atk: 2, hp: 5,
+    attackType: 'MAGIC',
+    attacks: [],
+    magicTargetsSameElement: true,
+    auraStatAdjustments: [
+      { target: 'ALLY', scope: 'BOARD', targetUnitElement: 'BIOLITH', activation: -2, excludeSelf: true },
+    ],
+    desc: 'Scion\'s Magic Attack targets all enemies of the same element as the target. All other allied Biolith creatures subtract 2 from their Activation Cost.'
+  },
+
+  BIOLITH_DRAGOON_DRAGON_CAVALRY: {
+    id: 'BIOLITH_DRAGOON_DRAGON_CAVALRY', name: 'Dragoon Dragon Cavalry', type: 'UNIT', cost: 5, activation: 3,
+    element: 'BIOLITH', atk: 3, hp: 5,
+    attackType: 'STANDARD', doubleAttack: true,
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    plusAtkVsElement: { element: 'WATER', amount: 1 },
+    desc: 'Dragoon Dragon Cavalry attacks the same target twice. The counterattack of target creature occurs after the second attack. Dragoon Dragon Cavalry adds 1 Attack if the target creature is a Water creature. All enemy dragons subtract 3 from their Attack.'
   },
 
   FOREST_TWIN_GOBLINS: {

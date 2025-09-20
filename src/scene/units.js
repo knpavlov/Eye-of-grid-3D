@@ -155,7 +155,7 @@ export function updateUnits(gameState) {
       if (!unit) continue;
 
       const cardData = CARDS[unit.tplId];
-      const stats = effectiveStats(cell, unit);
+      const stats = effectiveStats(cell, unit, { state: gameState, r, c, owner: unit.owner });
       const hpValue = typeof unit.currentHP === 'number' ? unit.currentHP : (cardData?.hp || 0);
       const atkValue = stats.atk ?? 0;
       const uid = unit.uid != null ? String(unit.uid) : `${unit.owner}:${unit.tplId}:${r}:${c}`;
