@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import http from "http";
 import cors from "cors";
 import { Server } from "socket.io";
@@ -6,6 +6,8 @@ import decksRouter from "./routes/decks.js";
 import { initDb, getDbError } from "./server/db.js";
 import { ensureDeckTable, seedDecks } from "./server/repositories/decksRepository.js";
 import { DEFAULT_DECK_BLUEPRINTS } from "./src/core/defaultDecks.js";
+import { capMana } from "./src/core/constants.js";
+import { applyTurnStartManaEffects } from "./src/core/abilityHandlers/startPhase.js";
 
 const app = express();
 app.use(cors());
@@ -229,11 +231,21 @@ io.on("connection", (socket) => {
     st.active = st.active === 0 ? 1 : 0;
     st.turn = (Number(st.turn) || 0) + 1;
 
-    // Add +2 mana to new active
+    // Add +2 mana to new active и применяем эффекты начала хода
+    let manaEffects = null;
     try {
       const pl = st.players?.[st.active];
-      if (pl) pl.mana = Math.min(10, (Number(pl.mana) || 0) + 2);
-    } catch {}
+      if (pl) {
+        const before = Number(pl.mana) || 0;
+        pl.mana = capMana(before + 2);
+        manaEffects = applyTurnStartManaEffects(st, st.active) || { total: 0, entries: [] };
+      }
+    } catch (err) {
+      pushLog({ ev: 'endTurn:manaError', matchId, err: err?.message || String(err) });
+    }
+    if (manaEffects && manaEffects.total > 0) {
+      pushLog({ ev: 'endTurn:manaBonus', matchId, active: st.active, total: manaEffects.total, entries: manaEffects.entries });
+    }
 
     // Draw one card for new active if any
     try {

@@ -46,6 +46,7 @@ import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
 import * as CancelButton from './ui/cancelButton.js';
+import { initDebugControls } from './ui/debugControls.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -217,4 +218,6 @@ try {
 
 import * as UISync from './ui/sync.js';
 try { UISync.attachSocketUIRefresh(); if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.sync = UISync; } } catch {}
+
+try { initDebugControls(); } catch {}
 
