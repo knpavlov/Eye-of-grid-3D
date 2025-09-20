@@ -10,7 +10,7 @@ import {
   refreshBoardDodgeStates,
 } from '../src/core/rules.js';
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
-import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, activationCost } from '../src/core/abilities.js';
+import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, activationCost, hasInvisibility } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -1058,6 +1058,57 @@ describe('Water cards — добор и уклонения', () => {
     const dodgeState = state.board[2][2].unit.dodgeState;
     expect(dodgeState).toBeTruthy();
     expect(dodgeState?.remaining ?? 0).toBe(1);
+  });
+});
+
+describe('Новые способности существ', () => {
+  it('Juno Prisoner Trap лечит союзников при призыве врага рядом', () => {
+    const board = makeBoard();
+    const state = {
+      board,
+      players: [ { mana: 0 }, { mana: 0 } ],
+    };
+    board[1][1].element = 'FOREST';
+    board[1][1].unit = { owner: 0, tplId: 'WOOD_JUNO_PRISONER_TRAP', currentHP: 4, facing: 'N' };
+    board[0][1].element = 'FOREST';
+    board[0][1].unit = { owner: 0, tplId: 'FOREST_SWALLOW_NINJA', currentHP: 4, facing: 'S' };
+    board[1][2].element = 'FIRE';
+    board[1][2].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', currentHP: 1, facing: 'W' };
+
+    const events = applySummonAbilities(state, 1, 2);
+    expect(Array.isArray(events.heals)).toBe(true);
+    expect(events.heals.length).toBeGreaterThan(0);
+    expect(board[0][1].unit.currentHP).toBe(5);
+    expect(board[1][1].unit.currentHP).toBe(4);
+  });
+
+  it('Edin делает союзников на древесных полях невидимыми', () => {
+    const board = makeBoard();
+    const state = { board };
+    board[0][0].element = 'FOREST';
+    board[0][0].unit = { owner: 0, tplId: 'WOOD_EDIN_THE_PERSECUTED', facing: 'N' };
+    board[0][1].element = 'FOREST';
+    board[0][1].unit = { owner: 0, tplId: 'FOREST_ELVEN_DEATH_DANCER', facing: 'S' };
+    board[2][2].element = 'FIRE';
+    board[2][2].unit = { owner: 0, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'N' };
+
+    expect(hasInvisibility(state, 0, 0)).toBe(true);
+    expect(hasInvisibility(state, 0, 1)).toBe(true);
+    expect(hasInvisibility(state, 2, 2)).toBe(false);
+  });
+
+  it('Aegis Citadel даёт невидимость союзникам на полях той же стихии', () => {
+    const board = makeBoard();
+    const state = { board };
+    board[1][1].element = 'FIRE';
+    board[1][1].unit = { owner: 0, tplId: 'BIOLITH_AEGIS_CITADEL', facing: 'N' };
+    board[0][1].element = 'FIRE';
+    board[0][1].unit = { owner: 0, tplId: 'BIOLITH_BOMBER', facing: 'S' };
+    board[0][2].element = 'WATER';
+    board[0][2].unit = { owner: 0, tplId: 'BIOLITH_NINJA', facing: 'S' };
+
+    expect(hasInvisibility(state, 0, 1)).toBe(true);
+    expect(hasInvisibility(state, 0, 2)).toBe(false);
   });
 });
 

@@ -795,6 +795,19 @@ export function placeUnitWithDirection(direction) {
         }
       } catch {}
     }
+    if (Array.isArray(summonEvents?.heals) && summonEvents.heals.length) {
+      try {
+        const cards = window.CARDS || {};
+        for (const heal of summonEvents.heals) {
+          const tplSource = cards[heal?.source?.tplId];
+          const sourceName = tplSource?.name || 'Существо';
+          const totalHealed = Array.isArray(heal.healed)
+            ? heal.healed.reduce((acc, item) => acc + (item?.amount || 0), 0)
+            : heal.amount;
+          window.addLog?.(`${sourceName}: союзники восстанавливают ${totalHealed} HP.`);
+        }
+      } catch {}
+    }
     const gained = applyFreedonianAura(gameState, gameState.active);
     if (gained > 0) {
       window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
