@@ -25,6 +25,16 @@ function computeHandTransform(index, total) {
   return { position: pos, rotation: rot, scale };
 }
 
+// Предварительно вычисляет целиком раскладку руки для указанного количества карт
+function computeHandLayout(total) {
+  const layout = [];
+  const count = Math.max(0, total);
+  for (let i = 0; i < count; i++) {
+    layout.push(computeHandTransform(i, count));
+  }
+  return layout;
+}
+
 // Разворачивает карту так, чтобы её лицевая сторона была направлена прямо на камеру
 function orientCardFaceTowardCamera(card, camera) {
   if (!card || !camera) return;
@@ -73,11 +83,12 @@ function gatherMeshMaterials(root, sink = []) {
 }
 
 // Плавно перестраивает текущие карты в руке перед добавлением новой
-function relayoutHandDuringDraw(handMeshes, totalAfter, duration) {
+function relayoutHandDuringDraw(handMeshes, layoutAfterDraw, duration) {
   if (!Array.isArray(handMeshes) || handMeshes.length === 0) return;
 
   handMeshes.forEach((mesh, idx) => {
-    const t = computeHandTransform(idx, totalAfter);
+    const t = layoutAfterDraw?.[idx];
+    if (!t) return;
     gsap.to(mesh.position, {
       x: t.position.x,
       y: t.position.y,
@@ -228,20 +239,26 @@ export async function animateDrawnCardToHand(cardTpl) {
   const totalVisible = Math.max(0, handMeshes.length);
   const totalAfter = totalVisible + 1;
   const indexAfter = totalAfter - 1;
-  const target = computeHandTransform(indexAfter, totalAfter);
+  const layoutAfterDraw = computeHandLayout(totalAfter);
+  const target = layoutAfterDraw[indexAfter] || computeHandTransform(indexAfter, totalAfter);
 
   try {
-    relayoutHandDuringDraw(handMeshes, totalAfter, revealDuration);
+    relayoutHandDuringDraw(handMeshes, layoutAfterDraw, revealDuration);
   } catch {}
 
+  const arrivalRotation = target.rotation.clone();
   const flightRotation = target.rotation.clone();
   try {
+    // Небольшой наклон во время полёта (финальный угол берётся из раскладки руки)
     applyEulerDegreeOffsets(flightRotation, {
       pitchDeg: T.pitchDeg || 0,
       yawDeg: T.yawDeg || 0,
       rollDeg: T.rollDeg || 0
     });
   } catch {}
+
+  const approachDuration = Math.max(0, flightDuration * 0.7);
+  const settleDuration = Math.max(0, flightDuration - approachDuration);
 
   try {
     await new Promise(resolve => {
@@ -264,7 +281,7 @@ export async function animateDrawnCardToHand(cardTpl) {
           x: flightRotation.x,
           y: flightRotation.y,
           z: flightRotation.z,
-          duration: flightDuration,
+          duration: approachDuration || 0.0001,
           ease: 'power2.inOut'
         }, '<')
         .to(big.scale, {
@@ -274,6 +291,20 @@ export async function animateDrawnCardToHand(cardTpl) {
           duration: flightDuration,
           ease: 'power2.inOut'
         }, '<');
+
+      if (settleDuration > 0.0001) {
+        tl.to(big.rotation, {
+          x: arrivalRotation.x,
+          y: arrivalRotation.y,
+          z: arrivalRotation.z,
+          duration: settleDuration,
+          ease: 'power1.out'
+        });
+      } else {
+        tl.add(() => {
+          big.rotation.copy(arrivalRotation);
+        });
+      }
     });
   } catch {}
 
