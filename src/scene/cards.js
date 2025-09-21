@@ -48,6 +48,7 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   const px = (val) => Math.round(val * scaleX);
   const py = (val) => Math.round(val * scaleY);
   const ps = (val) => Math.max(1, Math.round(val * scale));
+  const layout = computeCardLayout(width, height, px, py, ps);
 
   // Фон карты (текстура или мягкий градиент в качестве запасного варианта)
   try {
@@ -65,21 +66,19 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
   }
 
-  // Цветная рамка в цвет стихии
-  const border = Math.max(2, ps(3));
-  ctx.strokeStyle = getElementColor(cardData.element);
-  ctx.lineWidth = border;
-  ctx.strokeRect(border / 2, border / 2, width - border, height - border);
+  // Небольшой цветовой акцент по стихии, чтобы подчёркнуть рамку из текстуры
+  drawElementAccent(ctx, layout.elementAccent, cardData.element);
 
   // Верхний блок: имя и короткая подпись
   const elementLabels = { FIRE: 'Fire', WATER: 'Water', EARTH: 'Earth', FOREST: 'Forest', BIOLITH: 'Biolith', NEUTRAL: 'Neutral' };
   ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
   ctx.fillStyle = '#f8fafc';
-  const nameMaxWidth = width - px(64);
+  const nameMaxWidth = layout.title.maxWidth;
   let displayName = (cardData.name || '').trim();
   if (displayName.length > 40) displayName = displayName.slice(0, 40) + '…';
-  const baseNameFont = 9 * 1.4;
-  const minNameFontValue = 7 * 1.4;
+  const baseNameFont = layout.title.baseSize;
+  const minNameFontValue = layout.title.minSize;
   let nameFont = Math.max(ps(baseNameFont), baseNameFont);
   const minNameFont = Math.max(ps(minNameFontValue), minNameFontValue);
   while (true) {
@@ -87,7 +86,7 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     if (ctx.measureText(displayName).width <= nameMaxWidth || nameFont <= minNameFont) break;
     nameFont = Math.max(minNameFont, nameFont - 1);
   }
-  ctx.fillText(displayName, width / 2, py(44));
+  ctx.fillText(displayName, layout.title.centerX, layout.title.centerY);
 
   const typeParts = [];
   const elementLabel = elementLabels[cardData.element] || elementLabels.NEUTRAL;
@@ -96,16 +95,17 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   else if (cardData.type === 'SPELL') typeParts.push('Spell');
   const typeLine = typeParts.join(' · ');
   if (typeLine) {
-    ctx.font = `500 ${Math.max(ps(7), 7)}px "Noto Sans", "Helvetica", sans-serif`;
+    ctx.textBaseline = 'top';
+    ctx.font = `500 ${layout.subtitle.fontSize}px "Noto Sans", "Helvetica", sans-serif`;
     ctx.fillStyle = 'rgba(226,232,240,0.82)';
-    ctx.fillText(typeLine, width / 2, py(62));
+    ctx.fillText(typeLine, layout.title.centerX, layout.subtitle.top);
   }
 
   // Рамка под иллюстрацию
-  const illX = px(24);
-  const illY = py(72);
-  const illW = width - px(48);
-  const illH = py(148);
+  const illX = layout.illustration.x;
+  const illY = layout.illustration.y;
+  const illW = layout.illustration.w;
+  const illH = layout.illustration.h;
   ctx.save();
   ctx.fillStyle = 'rgba(8, 15, 32, 0.55)';
   ctx.fillRect(illX, illY, illW, illH);
@@ -148,56 +148,27 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   // Текстовое поле (уменьшенный шрифт и контролируемая высота)
   const text = cardData.desc || cardData.text || (cardData.keywords ? cardData.keywords.join(', ') : '');
   ctx.fillStyle = '#cbd5e1';
-  ctx.font = `500 ${Math.max(ps(8.5), 9)}px "Noto Sans", "Helvetica", sans-serif`;
+  ctx.font = `500 ${layout.text.fontSize}px "Noto Sans", "Helvetica", sans-serif`;
   ctx.textAlign = 'left';
-  const textX = illX;
-  const textY = illY + illH + Math.max(ps(8), 6);
-  const textWidth = illW;
-
-  const footerHeight = Math.max(py(26), Math.round(20 * scaleY));
-  const footerBaseY = height - footerHeight;
-  let diagramTop = footerBaseY;
-  let diagramCell = null;
-  let diagramGap = null;
-
-  if (cardData.type === 'UNIT') {
-    diagramCell = Math.max(Math.round(ps(8)), 6);
-    diagramGap = Math.max(Math.round(ps(1.5)), 1);
-    const diagramHeight = diagramCell * 3 + diagramGap * 2;
-    const diagramSpacing = Math.max(py(10), 8);
-    diagramTop = footerBaseY - diagramSpacing - diagramHeight;
-    const minDiagramTop = illY + illH + Math.max(py(24), 20);
-    if (diagramTop < minDiagramTop) diagramTop = minDiagramTop;
+  ctx.textBaseline = 'top';
+  const textX = layout.text.x;
+  const textY = layout.text.y;
+  const textWidth = layout.text.width;
+  if (text && textY <= layout.text.maxY) {
+    wrapText(ctx, text, textX, textY, textWidth, layout.text.lineHeight, layout.text.maxY);
   }
 
-  const textMaxY = (cardData.type === 'UNIT')
-    ? diagramTop - Math.max(ps(6), 6)
-    : footerBaseY - Math.max(ps(6), 6);
-  wrapText(ctx, text, textX, textY, textWidth, Math.max(ps(11), 12), textMaxY);
-
-  // Нижний пояс карты с ресурсами
-  ctx.fillStyle = 'rgba(8, 12, 24, 0.58)';
-  ctx.fillRect(0, footerBaseY, width, footerHeight);
-
-  ctx.fillStyle = '#f1f5f9';
-  ctx.textAlign = 'left';
-  const iconSize = Math.max(ps(16), 14);
-  const footerCenterY = footerBaseY + footerHeight / 2;
-  const manaCenterX = px(28);
-  drawManaOrbIcon(ctx, manaCenterX, footerCenterY, iconSize);
-  const costTextX = manaCenterX + iconSize / 2 + Math.max(ps(6), 6);
-  const costBaseline = footerCenterY + Math.max(ps(2), 2);
-  const numberFontSize = Math.max(ps(11), 11);
-  ctx.font = `700 ${numberFontSize}px "Noto Sans", "Helvetica", sans-serif`;
+  // Числа ресурсов поверх декоративных сфер
   const costValue = String(cardData.cost ?? 0);
-  ctx.fillText(costValue, costTextX, costBaseline);
-  let inlineOffset = ctx.measureText(costValue).width;
+  drawTextWithOutline(ctx, costValue, layout.cost.cx, layout.cost.cy, {
+    fontSize: layout.cost.fontSize,
+    fillStyle: '#f8fafc',
+    strokeStyle: 'rgba(15,23,42,0.65)',
+    strokeWidth: layout.cost.strokeWidth,
+  });
 
   if (cardData.locked) {
-    const lockSize = Math.max(ps(14), 12);
-    const lockCenterX = costTextX + inlineOffset + lockSize / 2 + Math.max(ps(6), 4);
-    drawLockIcon(ctx, lockCenterX, footerCenterY, lockSize);
-    inlineOffset += lockSize + Math.max(ps(6), 4);
+    drawLockIcon(ctx, layout.lock.x, layout.lock.y, layout.lock.size);
   }
 
   if (cardData.type === 'UNIT') {
@@ -206,59 +177,50 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
       : ((opts && Object.prototype.hasOwnProperty.call(opts, 'activation')) ? opts.activation : null);
     const actBase = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
     const act = (activationOverride != null) ? activationOverride : actBase;
-    const playSize = Math.max(ps(15), 13);
-    const playCenterX = costTextX + inlineOffset + playSize / 2 + Math.max(ps(10), 8);
-    drawPlayIcon(ctx, playCenterX, footerCenterY, playSize);
-    ctx.fillText(String(act), playCenterX + playSize / 2 + Math.max(ps(4), 4), costBaseline);
-    const actWidth = ctx.measureText(String(act)).width;
-    inlineOffset += playSize + Math.max(ps(12), 10) + actWidth;
+    drawTextWithOutline(ctx, String(act), layout.activation.cx, layout.activation.cy, {
+      fontSize: layout.activation.fontSize,
+      fillStyle: '#f8fafc',
+      strokeStyle: 'rgba(15,23,42,0.6)',
+      strokeWidth: layout.activation.strokeWidth,
+    });
   }
 
   if (cardData.type === 'UNIT') {
     const hpToShow = (hpOverride != null) ? hpOverride : (cardData.hp || 0);
     const atkToShow = (atkOverride != null) ? atkOverride : (cardData.atk || 0);
-    const statIconSize = Math.max(ps(15), 13);
-    const statGap = Math.max(ps(4), 4);
-    const statSpacing = Math.max(ps(18), 14);
-    const statsRightPadding = Math.max(px(16), 14);
-    const hpText = String(hpToShow);
-    const atkText = String(atkToShow);
-    ctx.font = `700 ${numberFontSize}px "Noto Sans", "Helvetica", sans-serif`;
-    const hpWidth = ctx.measureText(hpText).width;
-    const atkWidth = ctx.measureText(atkText).width;
-    let cursorX = width - statsRightPadding;
+    drawTextWithOutline(ctx, String(hpToShow), layout.stats.hp.x, layout.stats.hp.y, {
+      fontSize: layout.stats.fontSize,
+      fillStyle: '#f4f4f5',
+      strokeStyle: 'rgba(15,23,42,0.7)',
+      strokeWidth: layout.stats.strokeWidth,
+    });
+    drawTextWithOutline(ctx, String(atkToShow), layout.stats.atk.x, layout.stats.atk.y, {
+      fontSize: layout.stats.fontSize,
+      fillStyle: '#f4f4f5',
+      strokeStyle: 'rgba(15,23,42,0.7)',
+      strokeWidth: layout.stats.strokeWidth,
+    });
 
-    const hpTextX = cursorX - hpWidth;
-    const hpIconCenterX = hpTextX - statGap - statIconSize / 2;
-    drawHeartIcon(ctx, hpIconCenterX, footerCenterY, statIconSize);
-    ctx.fillText(hpText, hpTextX, costBaseline);
-    cursorX = hpIconCenterX - statIconSize / 2 - statSpacing;
-
-    const atkTextX = cursorX - atkWidth;
-    const atkIconCenterX = atkTextX - statGap - statIconSize / 2;
-    drawSwordIcon(ctx, atkIconCenterX, footerCenterY, statIconSize);
-    ctx.fillText(atkText, atkTextX, costBaseline);
-
-    const cell = diagramCell ?? Math.max(Math.round(ps(8)), 6);
-    const gap = diagramGap ?? Math.max(Math.round(ps(1.5)), 1);
+    const cell = layout.diagram.cell;
+    const gap = layout.diagram.gap;
     const gridW = cell * 3 + gap * 2;
-    const spacing = Math.max(Math.round(ps(14)), 10);
+    const spacing = layout.diagram.spacing;
     const schemes = getAttackSchemes(cardData);
     const schemeCount = schemes.length;
     const columns = schemeCount + 1;
     const totalWidth = gridW * columns + spacing * (columns - 1);
     const startX = (width - totalWidth) / 2;
-    const gridY = diagramTop;
+    const gridY = layout.diagram.top;
     const gridHeight = cell * 3 + gap * 2;
     schemes.forEach((scheme, idx) => {
       const gridX = startX + idx * (gridW + spacing);
       drawAttackScheme(ctx, scheme, cardData, gridX, gridY, cell, gap);
       const labelRaw = scheme.label ?? (schemeCount > 1 ? (idx === 0 ? 'Base' : (idx === 1 ? 'Alt' : `Alt ${idx}`)) : '');
       if (labelRaw) {
-        ctx.font = `600 ${Math.max(ps(7), 7)}px "Noto Sans", "Helvetica", sans-serif`;
+        ctx.font = `600 ${layout.diagram.labelFont}px "Noto Sans", "Helvetica", sans-serif`;
         ctx.textAlign = 'center';
         ctx.fillStyle = '#e2e8f0';
-        ctx.fillText(labelRaw, gridX + gridW / 2, gridY + gridHeight + Math.max(ps(10), 8));
+        ctx.fillText(labelRaw, gridX + gridW / 2, gridY + gridHeight + layout.diagram.labelOffset);
       }
     });
     const blindspotX = startX + schemeCount * (gridW + spacing);
@@ -291,30 +253,185 @@ function getElementColor(element) {
   return colors[element] || '#64748b';
 }
 
-// Рисуем иконку орба маны
-function drawManaOrbIcon(ctx, x, y, size) {
-  const r = size / 2;
-  const grd = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r);
-  grd.addColorStop(0, '#ffffff');
-  grd.addColorStop(0.3, '#8bd5ff');
-  grd.addColorStop(0.7, '#1ea0ff');
-  grd.addColorStop(1, '#0a67b7');
-  ctx.fillStyle = grd;
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fill();
+function computeCardLayout(width, height, px, py, ps) {
+  const layout = {};
+
+  const topBandCenterY = py(56);
+  const illustrationMarginX = px(30);
+  const illustrationWidth = width - illustrationMarginX * 2;
+
+  layout.title = {
+    centerX: width / 2 + px(4),
+    centerY: topBandCenterY,
+    maxWidth: width - px(144),
+    baseSize: 13.2,
+    minSize: 10.2,
+  };
+
+  layout.subtitle = {
+    top: topBandCenterY + py(18),
+    fontSize: Math.max(ps(8.4), 7.2),
+  };
+
+  const illustrationHeight = py(148 * 0.9);
+  const subtitleBottom = layout.subtitle.top + layout.subtitle.fontSize;
+  const illustrationTop = subtitleBottom + Math.max(py(8), 6);
+
+  layout.illustration = {
+    x: illustrationMarginX,
+    y: illustrationTop,
+    w: illustrationWidth,
+    h: illustrationHeight,
+  };
+
+  layout.text = {
+    x: illustrationMarginX,
+    y: illustrationTop + illustrationHeight + Math.max(py(6), 5),
+    width: illustrationWidth,
+    fontSize: Math.max(ps(9.4), 9),
+    lineHeight: Math.max(ps(12), 11),
+    maxY: height - py(80),
+  };
+
+  layout.cost = {
+    cx: px(64),
+    cy: topBandCenterY,
+    fontSize: Math.max(ps(38), 28),
+    strokeWidth: Math.max(ps(4), 2.8),
+  };
+
+  layout.activation = {
+    cx: width - px(64),
+    cy: topBandCenterY - py(12),
+    fontSize: Math.max(ps(19), 15),
+    strokeWidth: Math.max(ps(2.6), 1.8),
+  };
+
+  const statsCenterY = height - Math.max(py(14), 12);
+  layout.stats = {
+    hp: { x: px(60), y: statsCenterY },
+    atk: { x: width - px(60), y: statsCenterY },
+    fontSize: Math.max(ps(24), 18),
+    strokeWidth: Math.max(ps(3), 2),
+  };
+
+  layout.lock = {
+    x: width - px(50),
+    y: layout.subtitle.top + Math.max(py(6), 5),
+    size: Math.max(ps(18), 14),
+  };
+
+  const statsAreaTop = statsCenterY - Math.max(py(8), 6);
+  const cell = Math.max(Math.round(ps(7.8)), 6);
+  const gap = Math.max(Math.round(ps(1.2)), 1);
+  const spacing = Math.max(px(18), 14);
+  const diagramHeight = cell * 3 + gap * 2;
+  const diagramSpacing = Math.max(py(5), 4);
+  let diagramTop = statsAreaTop - diagramSpacing - diagramHeight;
+  const desiredTextHeight = Math.max(layout.text.lineHeight * 5.5, py(64));
+  const minDiagramTop = layout.text.y + desiredTextHeight;
+  const maxDiagramTop = statsAreaTop - Math.max(py(3), 2) - diagramHeight;
+  if (diagramTop < minDiagramTop) diagramTop = minDiagramTop;
+  const minTextGap = layout.text.y + Math.max(py(16), 12);
+  if (diagramTop < minTextGap) diagramTop = minTextGap;
+  if (diagramTop > maxDiagramTop) diagramTop = maxDiagramTop;
+
+  layout.diagram = {
+    top: diagramTop,
+    cell,
+    gap,
+    spacing,
+    labelOffset: Math.max(py(12), 10),
+    labelFont: Math.max(ps(7.2), 7),
+  };
+
+  layout.text.maxY = Math.max(layout.text.y, diagramTop - Math.max(py(8), 6));
+
+  layout.elementAccent = {
+    centerX: width / 2 + px(4),
+    centerY: layout.illustration.y + layout.illustration.h * 0.32,
+    radiusX: width * 0.46,
+    radiusY: layout.illustration.h * 0.68,
+  };
+
+  return layout;
 }
 
-// Рисуем иконку play (треугольник)
-function drawPlayIcon(ctx, x, y, size) {
-  const r = size / 2;
-  ctx.fillStyle = '#f1f5f9';
+function drawElementAccent(ctx, accent, element) {
+  if (!accent) return;
+  const color = getElementColor(element);
+  const inner = hexToRgba(color, 0.18);
+  const outer = hexToRgba(color, 0);
+  ctx.save();
   ctx.beginPath();
-  ctx.moveTo(x - r * 0.6, y - r * 0.7);
-  ctx.lineTo(x - r * 0.6, y + r * 0.7);
-  ctx.lineTo(x + r * 0.8, y);
-  ctx.closePath();
+  ctx.ellipse(accent.centerX, accent.centerY, accent.radiusX, accent.radiusY, 0, 0, Math.PI * 2);
+  const gradient = ctx.createRadialGradient(accent.centerX, accent.centerY, accent.radiusY * 0.3, accent.centerX, accent.centerY, accent.radiusX);
+  gradient.addColorStop(0, inner);
+  gradient.addColorStop(1, outer);
+  ctx.fillStyle = gradient;
+  ctx.globalCompositeOperation = 'lighter';
   ctx.fill();
+  ctx.restore();
+}
+
+function drawTextWithOutline(ctx, text, x, y, options = {}) {
+  if (text == null || text === '') return;
+  const {
+    fontSize = 16,
+    fontFamily = '"Noto Sans", "Helvetica", sans-serif',
+    fontWeight = 700,
+    fillStyle = '#ffffff',
+    strokeStyle = null,
+    strokeWidth = Math.max(1, fontSize * 0.1),
+    align = 'center',
+    baseline = 'middle',
+    shadowColor = null,
+    shadowBlur = 0,
+    shadowOffsetX = 0,
+    shadowOffsetY = 0,
+  } = options;
+
+  ctx.save();
+  ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+  ctx.textAlign = align;
+  ctx.textBaseline = baseline;
+
+  if (shadowColor && shadowBlur > 0) {
+    ctx.shadowColor = shadowColor;
+    ctx.shadowBlur = shadowBlur;
+    ctx.shadowOffsetX = shadowOffsetX;
+    ctx.shadowOffsetY = shadowOffsetY;
+  } else {
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+  }
+
+  if (strokeStyle && strokeWidth > 0) {
+    ctx.lineWidth = strokeWidth;
+    ctx.strokeStyle = strokeStyle;
+    try { ctx.strokeText(text, x, y); } catch {}
+  }
+
+  ctx.fillStyle = fillStyle;
+  try { ctx.fillText(text, x, y); } catch {}
+  ctx.restore();
+}
+
+function hexToRgba(hex, alpha = 1) {
+  if (!hex) return `rgba(100,116,139,${alpha})`;
+  let normalized = hex.replace('#', '').trim();
+  if (normalized.length === 3) {
+    normalized = normalized.split('').map(ch => ch + ch).join('');
+  }
+  const value = parseInt(normalized, 16);
+  if (Number.isNaN(value)) return `rgba(100,116,139,${alpha})`;
+  const r = (value >> 16) & 0xff;
+  const g = (value >> 8) & 0xff;
+  const b = value & 0xff;
+  const clampedAlpha = Math.max(0, Math.min(1, alpha));
+  return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`;
 }
 
 // Рисуем иконку замка для Summoning Lock
@@ -533,86 +650,20 @@ function drawBlindspotGrid(ctx, cardData, x, y, cell, gap) {
   }
 }
 
-// Плоские иконки меча и сердца для панели статов
-function drawSwordIcon(ctx, x, y, size) {
-  const scale = size / 16;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(scale, scale);
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-
-  ctx.beginPath();
-  ctx.moveTo(0, -7);
-  ctx.lineTo(3, 6);
-  ctx.lineTo(0, 9);
-  ctx.lineTo(-3, 6);
-  ctx.closePath();
-  ctx.fillStyle = '#facc15';
-  ctx.fill();
-  ctx.strokeStyle = '#fde68a';
-  ctx.lineWidth = 1.6;
-  ctx.stroke();
-
-  ctx.strokeStyle = '#eab308';
-  ctx.lineWidth = 2.2;
-  ctx.beginPath();
-  ctx.moveTo(-5.2, 4);
-  ctx.lineTo(5.2, 4);
-  ctx.stroke();
-
-  ctx.strokeStyle = '#78350f';
-  ctx.lineWidth = 2.4;
-  ctx.beginPath();
-  ctx.moveTo(0, 6);
-  ctx.lineTo(0, 10);
-  ctx.stroke();
-
-  ctx.fillStyle = '#f59e0b';
-  ctx.beginPath();
-  ctx.arc(0, 11, 1.8, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.restore();
-}
-
-function drawHeartIcon(ctx, x, y, size) {
-  const scale = size / 16;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(scale, scale);
-
-  ctx.beginPath();
-  ctx.moveTo(0, 6);
-  ctx.bezierCurveTo(0, 0, -6.5, -2.5, -6.5, -6.2);
-  ctx.bezierCurveTo(-6.5, -9.2, -3.5, -10.5, 0, -7.8);
-  ctx.bezierCurveTo(3.5, -10.5, 6.5, -9.2, 6.5, -6.2);
-  ctx.bezierCurveTo(6.5, -2.5, 0, 0, 0, 6);
-  ctx.closePath();
-  ctx.fillStyle = '#f87171';
-  ctx.fill();
-  ctx.strokeStyle = '#fca5a5';
-  ctx.lineWidth = 1.6;
-  ctx.stroke();
-
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.beginPath();
-  ctx.moveTo(-1.5, -2);
-  ctx.quadraticCurveTo(-3.5, -3.5, -3.5, -5.8);
-  ctx.quadraticCurveTo(-1.6, -5.2, -0.6, -3.6);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.restore();
-}
-
 function attachIllustrationPlane(cardMesh, cardData) {
   const THREE = getTHREE();
   if (!cardMesh || !cardData) return;
   const prev = cardMesh.children?.find(ch => ch.userData && ch.userData.kind === 'illustrationPlane');
   if (prev) { try { cardMesh.remove(prev); } catch {} }
   const img = CARD_IMAGES[cardData.id] || CARD_IMAGES[cardData.id?.toLowerCase?.()] || CARD_IMAGES[(cardData.name||'').toLowerCase().replace(/[^a-z0-9\s_-]/g,'').replace(/\s+/g,'_')];
-  const W = 256, H = 356; const illX = 16, illY = 70, illW = W - 32, illH = 120;
+  const W = 256, H = 356;
+  const identity = (v) => v;
+  const layout = computeCardLayout(W, H, identity, identity, identity);
+  const { illustration: ill } = layout;
+  const illX = ill.x;
+  const illY = ill.y;
+  const illW = ill.w;
+  const illH = ill.h;
   const w = cardMesh.geometry.parameters.width; const t = cardMesh.geometry.parameters.height; const h = cardMesh.geometry.parameters.depth;
   const planeW = w * (illW / W); const planeH = h * (illH / H);
   const centerX = (illX + illW/2) / W; const centerY = (illY + illH/2) / H;
