@@ -24,6 +24,7 @@ const ctx = {
   // Textures cache
   TILE_TEXTURES: {},
   PROC_TILE_TEXTURES: {},
+  TILE_SIDE_TEXTURE: null,
 };
 
 export function getCtx() { return ctx; }

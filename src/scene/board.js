@@ -9,6 +9,14 @@ const BASE_MAP = {
   BIOLITH: './textures/tile_biolith.png',
 };
 
+const SIDE_TEXTURE_PATH = './textures/Field_side.PNG';
+const SIDE_TEXTURE_VERSION = '1';
+const SIDE_FACE_INDICES = [0, 1, 4, 5];
+const TOP_FACE_INDEX = 2;
+const BOTTOM_FACE_INDEX = 3;
+
+let isSideTextureLoading = false;
+
 function loadBaseTileTextures() {
   const ctx = getCtx();
   const { THREE, renderer, TILE_TEXTURES } = ctx;
@@ -35,6 +43,137 @@ function loadBaseTileTextures() {
         () => { /* ignore load error; procedural fallback handles it */ }
       );
     } catch {}
+  }
+}
+
+function configureSideTexture(tex) {
+  const ctx = getCtx();
+  const { THREE, renderer } = ctx;
+  if (!tex || !THREE) return;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, 1);
+  try { tex.anisotropy = renderer?.capabilities?.getMaxAnisotropy?.() || 1; } catch {}
+  if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+}
+
+function loadTileSideTexture() {
+  const ctx = getCtx();
+  const { THREE, TILE_SIDE_TEXTURE } = ctx;
+  if (!THREE) return null;
+  if (TILE_SIDE_TEXTURE && TILE_SIDE_TEXTURE.image && TILE_SIDE_TEXTURE.image.width) return TILE_SIDE_TEXTURE;
+  if (isSideTextureLoading) return TILE_SIDE_TEXTURE;
+  const loader = new THREE.TextureLoader();
+  const path = `${SIDE_TEXTURE_PATH}?v=${SIDE_TEXTURE_VERSION}`;
+  isSideTextureLoading = true;
+  const texture = loader.load(
+    path,
+    (tex) => {
+      try { configureSideTexture(tex); } catch {}
+      ctx.TILE_SIDE_TEXTURE = tex;
+      isSideTextureLoading = false;
+      try { refreshTileSideMaterials(); } catch {}
+    },
+    undefined,
+    () => { isSideTextureLoading = false; }
+  );
+  if (!ctx.TILE_SIDE_TEXTURE) ctx.TILE_SIDE_TEXTURE = texture;
+  return ctx.TILE_SIDE_TEXTURE;
+}
+
+function createSideMaterial() {
+  const ctx = getCtx();
+  const { THREE, TILE_SIDE_TEXTURE } = ctx;
+  if (!THREE) return null;
+  const ready = TILE_SIDE_TEXTURE && TILE_SIDE_TEXTURE.image && TILE_SIDE_TEXTURE.image.width;
+  if (ready) {
+    const mat = new THREE.MeshBasicMaterial({ map: TILE_SIDE_TEXTURE });
+    mat.needsUpdate = true;
+    return mat;
+  }
+  const fallback = new THREE.MeshBasicMaterial({ color: 0x1f2937 });
+  fallback.needsUpdate = true;
+  return fallback;
+}
+
+function createBottomMaterial() {
+  const ctx = getCtx();
+  const { THREE } = ctx;
+  if (!THREE) return null;
+  const mat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+  mat.needsUpdate = true;
+  return mat;
+}
+
+function disposeMaterialsAtIndices(materials, indices) {
+  const disposed = new Set();
+  for (const index of indices) {
+    const mat = materials[index];
+    if (!mat || disposed.has(mat)) continue;
+    try { mat.dispose && mat.dispose(); } catch {}
+    disposed.add(mat);
+  }
+}
+
+function buildTileMaterials(element) {
+  const topMaterial = getTileMaterial(element);
+  const sideMaterial = createSideMaterial();
+  const bottomMaterial = createBottomMaterial();
+  const materials = new Array(6);
+
+  const baseSide = sideMaterial;
+  SIDE_FACE_INDICES.forEach((faceIndex, idx) => {
+    if (!baseSide) return;
+    materials[faceIndex] = idx === 0 ? baseSide : baseSide.clone();
+    materials[faceIndex].needsUpdate = true;
+  });
+
+  if (topMaterial) {
+    materials[TOP_FACE_INDEX] = topMaterial;
+    materials[TOP_FACE_INDEX].needsUpdate = true;
+  }
+
+  if (bottomMaterial) {
+    materials[BOTTOM_FACE_INDEX] = bottomMaterial;
+    materials[BOTTOM_FACE_INDEX].needsUpdate = true;
+  } else if (baseSide) {
+    materials[BOTTOM_FACE_INDEX] = baseSide.clone();
+  }
+
+  // На случай отсутствия сайд-материала, заполняем базовым материалом
+  for (let i = 0; i < materials.length; i++) {
+    if (!materials[i] && topMaterial && topMaterial.clone) {
+      materials[i] = topMaterial.clone();
+      materials[i].needsUpdate = true;
+    } else if (!materials[i]) {
+      const fallback = createSideMaterial();
+      materials[i] = fallback;
+    }
+  }
+
+  return materials;
+}
+
+function refreshTileSideMaterials() {
+  const ctx = getCtx();
+  const { tileMeshes, TILE_SIDE_TEXTURE } = ctx;
+  if (!tileMeshes || !tileMeshes.length) return;
+  if (!TILE_SIDE_TEXTURE || !TILE_SIDE_TEXTURE.image || !TILE_SIDE_TEXTURE.image.width) return;
+  for (const row of tileMeshes) {
+    if (!row) continue;
+    for (const tile of row) {
+      if (!tile) continue;
+      const materials = Array.isArray(tile.material) ? tile.material : [tile.material];
+      disposeMaterialsAtIndices(materials, SIDE_FACE_INDICES);
+      const baseSide = createSideMaterial();
+      SIDE_FACE_INDICES.forEach((faceIndex, idx) => {
+        const mat = idx === 0 ? baseSide : baseSide.clone();
+        mat.needsUpdate = true;
+        materials[faceIndex] = mat;
+      });
+      tile.material = materials;
+    }
   }
 }
 
@@ -110,9 +249,17 @@ export function updateTileMaterialsFor(elementKey) {
       const tile = row[c]; if (!tile) continue;
       const el = tile.userData && tile.userData.element;
       if (el !== elementKey) continue;
-      try { tile.material.dispose && tile.material.dispose(); } catch {}
-      tile.material = new THREE.MeshBasicMaterial({ map: tex });
-      tile.material.needsUpdate = true;
+      if (!Array.isArray(tile.material) || tile.material.length < 6) {
+        try { tile.material && tile.material.dispose && tile.material.dispose(); } catch {}
+        tile.material = buildTileMaterials(el);
+        continue;
+      }
+      const materials = tile.material;
+      disposeMaterialsAtIndices(materials, [TOP_FACE_INDEX]);
+      const topMaterial = new THREE.MeshBasicMaterial({ map: tex });
+      topMaterial.needsUpdate = true;
+      materials[TOP_FACE_INDEX] = topMaterial;
+      tile.material = materials;
     }
   }
   try { renderer && renderer.render(scene, camera); } catch {}
@@ -133,13 +280,15 @@ export function createBoard(gameState) {
   const boardYOffset = 0.0;
   const boardZShift = -3.5;
 
+  loadTileSideTexture();
+
   for (let r = 0; r < 3; r++) {
     const row = []; const frameRow = [];
     for (let c = 0; c < 3; c++) {
       const cell = gameState.board[r][c];
       const geometry = new THREE.BoxGeometry(tileSize, tileHeight, tileSize);
-      const material = getTileMaterial(cell.element);
-      const tile = new THREE.Mesh(geometry, material);
+      const materials = buildTileMaterials(cell.element);
+      const tile = new THREE.Mesh(geometry, materials);
       const x = (c - 1) * (tileSize + spacing);
       const z = (r - 1) * (tileSize + spacing) + boardZShift;
       tile.position.set(x, tileHeight / 2 + boardYOffset, z);
