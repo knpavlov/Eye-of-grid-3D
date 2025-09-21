@@ -209,7 +209,7 @@ export async function animateDrawnCardToHand(cardTpl) {
   // Подготавливаем изначальный поворот, чтобы карта сразу смотрела на игрока
   orientCardFaceTowardCamera(big, camera);
   applyEulerDegreeOffsets(big.rotation, {
-    pitchDeg: T.initialPitchDeg ?? 0,
+    pitchDeg: T.initialPitchDeg ?? 30,
     yawDeg: T.initialYawDeg ?? 0,
     rollDeg: T.initialRollDeg ?? 0
   });
