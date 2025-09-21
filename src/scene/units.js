@@ -14,6 +14,65 @@ function getTHREE() {
   return THREE;
 }
 
+const TWO_PI = Math.PI * 2;
+const ROTATION_EPS = 1e-3;
+const UNIT_ROTATION_DURATION = 0.5;
+const UNIT_ROTATION_EASE = 'sine.inOut';
+
+// Нормализует угол в диапазон [0, 2π), чтобы легче отслеживать целевые значения
+function normalizeAngle(angle) {
+  if (!Number.isFinite(angle)) return 0;
+  let normalized = angle % TWO_PI;
+  if (normalized < 0) normalized += TWO_PI;
+  return normalized;
+}
+
+// Подбирает ближайший к текущему значению угол, чтобы избежать резких скачков через 2π
+function alignRotationImmediate(mesh, targetAngle) {
+  if (!mesh || !mesh.rotation) return;
+  const current = Number.isFinite(mesh.rotation.y) ? mesh.rotation.y : 0;
+  let adjusted = targetAngle;
+  while (adjusted - current > Math.PI) adjusted -= TWO_PI;
+  while (adjusted - current < -Math.PI) adjusted += TWO_PI;
+  mesh.rotation.y = adjusted;
+}
+
+// Плавно доворачивает карту до нужного угла, если доступен gsap
+function animateUnitRotation(mesh, targetAngle, { immediate = false } = {}) {
+  if (!mesh) return;
+  mesh.userData = mesh.userData || {};
+  const gsap = (typeof window !== 'undefined') ? window.gsap : null;
+
+  const existingTween = mesh.userData.__rotationTween;
+  if (existingTween && typeof existingTween.kill === 'function') {
+    existingTween.kill();
+  }
+  mesh.userData.__rotationTween = null;
+
+  if (immediate || !gsap) {
+    alignRotationImmediate(mesh, targetAngle);
+    return;
+  }
+
+  const current = Number.isFinite(mesh.rotation?.y) ? mesh.rotation.y : 0;
+  const diff = Math.atan2(Math.sin(targetAngle - current), Math.cos(targetAngle - current));
+  if (Math.abs(diff) < ROTATION_EPS) {
+    alignRotationImmediate(mesh, targetAngle);
+    return;
+  }
+
+  const end = current + diff;
+  mesh.userData.__rotationTween = gsap.to(mesh.rotation, {
+    y: end,
+    duration: UNIT_ROTATION_DURATION,
+    ease: UNIT_ROTATION_EASE,
+    onComplete: () => {
+      alignRotationImmediate(mesh, targetAngle);
+      if (mesh.userData) mesh.userData.__rotationTween = null;
+    },
+  });
+}
+
 function updateCardTexture(mesh, cardData, hpValue, atkValue, opts = {}) {
   try {
     const material = Array.isArray(mesh.material) ? mesh.material[2] : mesh.material;
@@ -202,7 +261,16 @@ export function updateUnits(gameState) {
       mesh.userData.lastActivation = activationValue;
 
       const targetRotation = (facingDeg[unit.facing] || 0) * Math.PI / 180;
-      mesh.rotation.y = targetRotation;
+      const normalizedTarget = normalizeAngle(targetRotation);
+      const prevTarget = mesh.userData.__rotationTarget;
+      const rotationChanged = prevTarget == null || Math.abs(prevTarget - normalizedTarget) > ROTATION_EPS;
+      mesh.userData.__rotationTarget = normalizedTarget;
+
+      if (rotationChanged) {
+        animateUnitRotation(mesh, targetRotation, { immediate: !existedBefore });
+      } else if (!mesh.userData.__rotationTween) {
+        alignRotationImmediate(mesh, targetRotation);
+      }
 
       const x = (c - 1) * (tileSize + spacing);
       const z = (r - 1) * (tileSize + spacing) + boardZShift + 0.0;
@@ -242,6 +310,13 @@ export function updateUnits(gameState) {
           mesh.userData.__moveTween.kill();
           mesh.userData.__moveTween = null;
         }
+      } catch {}
+      try {
+        const rotationTween = mesh.userData?.__rotationTween;
+        if (rotationTween && typeof rotationTween.kill === 'function') {
+          rotationTween.kill();
+        }
+        if (mesh?.userData) mesh.userData.__rotationTween = null;
       } catch {}
       try { if (mesh.parent) mesh.parent.remove(mesh); } catch {}
     }

@@ -112,6 +112,10 @@ function relayoutHandDuringDraw(handMeshes, layoutAfterDraw, duration) {
 // Базовые длительности показа и перелёта добираемой карты
 const DRAW_REVEAL_DURATION = 0.7;
 const DRAW_FLIGHT_DURATION = 0.7;
+// Дефолтный масштаб крупного отображения карты при доборе
+const DEFAULT_DRAW_CARD_SCALE = 1.5;
+// Сколько времени занимает финальное «досаживание» карты в руку
+const DEFAULT_ROTATION_LEAD = 0.4;
 
 export function setHandCardHoverVisual(mesh, hovered) {
   if (!mesh) return;
@@ -225,7 +229,8 @@ export async function animateDrawnCardToHand(cardTpl) {
     rollDeg: T.initialRollDeg ?? 0
   });
 
-  big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
+  const drawScale = (T.scale ?? DEFAULT_DRAW_CARD_SCALE);
+  big.scale.set(drawScale, drawScale, drawScale);
   big.renderOrder = 9000;
 
   const allMaterials = gatherMeshMaterials(big, []);
@@ -258,7 +263,7 @@ export async function animateDrawnCardToHand(cardTpl) {
   } catch {}
 
   // Запускаем финальное выравнивание угла заранее, чтобы оно шло в полёте
-  const rotationLead = Math.max(0, Math.min(flightDuration, (T.rotationLead ?? 0.5)));
+  const rotationLead = Math.max(0, Math.min(flightDuration, (T.rotationLead ?? DEFAULT_ROTATION_LEAD)));
   const settleStartTime = Math.max(0, flightDuration - rotationLead);
   const leanDuration = Math.max(0, settleStartTime);
 
