@@ -25,6 +25,16 @@ function computeHandTransform(index, total) {
   return { position: pos, rotation: rot, scale };
 }
 
+// Предварительно вычисляет целиком раскладку руки для указанного количества карт
+function computeHandLayout(total) {
+  const layout = [];
+  const count = Math.max(0, total);
+  for (let i = 0; i < count; i++) {
+    layout.push(computeHandTransform(i, count));
+  }
+  return layout;
+}
+
 // Разворачивает карту так, чтобы её лицевая сторона была направлена прямо на камеру
 function orientCardFaceTowardCamera(card, camera) {
   if (!card || !camera) return;
@@ -73,11 +83,12 @@ function gatherMeshMaterials(root, sink = []) {
 }
 
 // Плавно перестраивает текущие карты в руке перед добавлением новой
-function relayoutHandDuringDraw(handMeshes, totalAfter, duration) {
+function relayoutHandDuringDraw(handMeshes, layoutAfterDraw, duration) {
   if (!Array.isArray(handMeshes) || handMeshes.length === 0) return;
 
   handMeshes.forEach((mesh, idx) => {
-    const t = computeHandTransform(idx, totalAfter);
+    const t = layoutAfterDraw?.[idx];
+    if (!t) return;
     gsap.to(mesh.position, {
       x: t.position.x,
       y: t.position.y,
@@ -98,9 +109,12 @@ function relayoutHandDuringDraw(handMeshes, totalAfter, duration) {
   });
 }
 
-// Базовые длительности показа и перелёта добираемой карты
+// Базовые настройки показа и перелёта добираемой карты
 const DRAW_REVEAL_DURATION = 0.7;
 const DRAW_FLIGHT_DURATION = 0.7;
+const DRAW_CARD_BASE_SCALE = 1.5;
+const DRAW_ROTATION_LEAD_DEFAULT = 0.4;
+const DRAW_ROTATION_SETTLE_EASE = 'sine.inOut';
 
 export function setHandCardHoverVisual(mesh, hovered) {
   if (!mesh) return;
@@ -214,7 +228,7 @@ export async function animateDrawnCardToHand(cardTpl) {
     rollDeg: T.initialRollDeg ?? 0
   });
 
-  big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
+  big.scale.set((T.scale ?? DRAW_CARD_BASE_SCALE), (T.scale ?? DRAW_CARD_BASE_SCALE), (T.scale ?? DRAW_CARD_BASE_SCALE));
   big.renderOrder = 9000;
 
   const allMaterials = gatherMeshMaterials(big, []);
@@ -228,20 +242,29 @@ export async function animateDrawnCardToHand(cardTpl) {
   const totalVisible = Math.max(0, handMeshes.length);
   const totalAfter = totalVisible + 1;
   const indexAfter = totalAfter - 1;
-  const target = computeHandTransform(indexAfter, totalAfter);
+  const layoutAfterDraw = computeHandLayout(totalAfter);
+  const target = layoutAfterDraw[indexAfter] || computeHandTransform(indexAfter, totalAfter);
 
   try {
-    relayoutHandDuringDraw(handMeshes, totalAfter, revealDuration);
+    relayoutHandDuringDraw(handMeshes, layoutAfterDraw, revealDuration);
   } catch {}
 
+  const arrivalRotation = target.rotation.clone();
   const flightRotation = target.rotation.clone();
   try {
+    // Небольшой наклон во время полёта (финальный угол берётся из раскладки руки)
     applyEulerDegreeOffsets(flightRotation, {
       pitchDeg: T.pitchDeg || 0,
       yawDeg: T.yawDeg || 0,
       rollDeg: T.rollDeg || 0
     });
   } catch {}
+
+  // Запускаем финальное выравнивание угла заранее, чтобы оно шло в полёте
+  const rotationLead = Math.max(0, Math.min(flightDuration, (T.rotationLead ?? DRAW_ROTATION_LEAD_DEFAULT)));
+  const settleStartTime = Math.max(0, flightDuration - rotationLead);
+  const leanDuration = Math.max(0, settleStartTime);
+  const settleEase = T.rotationSettleEase || DRAW_ROTATION_SETTLE_EASE;
 
   try {
     await new Promise(resolve => {
@@ -253,27 +276,54 @@ export async function animateDrawnCardToHand(cardTpl) {
         ease: 'power2.out'
       });
 
+      tl.addLabel('flightMotion');
+
       tl.to(big.position, {
         x: target.position.x,
         y: target.position.y,
         z: target.position.z,
         duration: flightDuration,
         ease: 'power2.inOut'
-      })
-        .to(big.rotation, {
-          x: flightRotation.x,
-          y: flightRotation.y,
-          z: flightRotation.z,
-          duration: flightDuration,
-          ease: 'power2.inOut'
-        }, '<')
+      }, 'flightMotion')
         .to(big.scale, {
           x: target.scale.x,
           y: target.scale.y,
           z: target.scale.z,
           duration: flightDuration,
           ease: 'power2.inOut'
-        }, '<');
+        }, 'flightMotion');
+
+      if (leanDuration > 0.0001) {
+        tl.to(big.rotation, {
+          x: flightRotation.x,
+          y: flightRotation.y,
+          z: flightRotation.z,
+          duration: leanDuration,
+          ease: 'power2.inOut'
+        }, 'flightMotion');
+      } else {
+        tl.set(big.rotation, {
+          x: flightRotation.x,
+          y: flightRotation.y,
+          z: flightRotation.z
+        }, 'flightMotion');
+      }
+
+      if (rotationLead > 0.0001) {
+        tl.to(big.rotation, {
+          x: arrivalRotation.x,
+          y: arrivalRotation.y,
+          z: arrivalRotation.z,
+          duration: rotationLead,
+          ease: settleEase
+        }, `flightMotion+=${settleStartTime}`);
+      } else {
+        tl.set(big.rotation, {
+          x: arrivalRotation.x,
+          y: arrivalRotation.y,
+          z: arrivalRotation.z
+        }, `flightMotion+=${settleStartTime}`);
+      }
     });
   } catch {}
 
