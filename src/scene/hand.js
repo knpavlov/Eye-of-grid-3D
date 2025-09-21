@@ -25,6 +25,42 @@ function computeHandTransform(index, total) {
   return { position: pos, rotation: rot, scale };
 }
 
+// Отсортировать видимые карты в руке по индексу руки, чтобы заранее знать итоговую раскладку
+function sortHandMeshesByIndex(handMeshes) {
+  if (!Array.isArray(handMeshes) || handMeshes.length === 0) return [];
+  const sorted = handMeshes.slice();
+  sorted.sort((a, b) => {
+    const ai = (a?.userData && typeof a.userData.handIndex === 'number') ? a.userData.handIndex : Number.POSITIVE_INFINITY;
+    const bi = (b?.userData && typeof b.userData.handIndex === 'number') ? b.userData.handIndex : Number.POSITIVE_INFINITY;
+    if (ai !== bi) return ai - bi;
+    return 0;
+  });
+  return sorted;
+}
+
+// Подготовить целевую раскладку руки после добавления новых карт (используется и для существующих карт, и для прилетающей)
+function planHandLayoutAfterDraw(handMeshes, extraSlots = 1) {
+  const sortedMeshes = sortHandMeshesByIndex(handMeshes);
+  const additional = Math.max(0, extraSlots || 0);
+  const total = sortedMeshes.length + additional;
+  const layout = [];
+  for (let i = 0; i < total; i++) {
+    layout.push(computeHandTransform(i, total));
+  }
+  return { sortedMeshes, layout, total };
+}
+
+// Утилита для клонирования предрасчитанного трансформа, чтобы не портить оригинальные структуры
+function cloneTransform(target) {
+  if (!target) return null;
+  const THREE = getTHREE();
+  return {
+    position: target.position ? target.position.clone() : new THREE.Vector3(),
+    rotation: target.rotation ? target.rotation.clone() : new THREE.Euler(),
+    scale: target.scale ? target.scale.clone() : new THREE.Vector3(0.54, 1, 0.54)
+  };
+}
+
 // Разворачивает карту так, чтобы её лицевая сторона была направлена прямо на камеру
 function orientCardFaceTowardCamera(card, camera) {
   if (!card || !camera) return;
@@ -73,11 +109,12 @@ function gatherMeshMaterials(root, sink = []) {
 }
 
 // Плавно перестраивает текущие карты в руке перед добавлением новой
-function relayoutHandDuringDraw(handMeshes, totalAfter, duration) {
+function relayoutHandDuringDraw(handMeshes, layout, duration) {
   if (!Array.isArray(handMeshes) || handMeshes.length === 0) return;
 
   handMeshes.forEach((mesh, idx) => {
-    const t = computeHandTransform(idx, totalAfter);
+    const t = Array.isArray(layout) ? layout[idx] : null;
+    if (!t) return;
     gsap.to(mesh.position, {
       x: t.position.x,
       y: t.position.y,
@@ -92,7 +129,12 @@ function relayoutHandDuringDraw(handMeshes, totalAfter, duration) {
       duration,
       ease: 'power2.inOut'
     });
-    gsap.to(mesh.scale, { x: 0.54, y: 1, z: 0.54, duration: Math.min(0.2, duration * 0.3) });
+    gsap.to(mesh.scale, {
+      x: t.scale?.x ?? 0.54,
+      y: t.scale?.y ?? 1,
+      z: t.scale?.z ?? 0.54,
+      duration: Math.min(0.2, duration * 0.3)
+    });
     try { mesh.userData.originalPosition.copy(t.position); } catch {}
     try { mesh.userData.originalRotation.copy(t.rotation); } catch {}
   });
@@ -224,14 +266,16 @@ export async function animateDrawnCardToHand(cardTpl) {
   const revealDuration = DRAW_REVEAL_DURATION;
   const flightDuration = DRAW_FLIGHT_DURATION;
 
-  const handMeshes = (ctx.handCardMeshes || []).filter(m => m?.userData?.isInHand);
-  const totalVisible = Math.max(0, handMeshes.length);
-  const totalAfter = totalVisible + 1;
-  const indexAfter = totalAfter - 1;
-  const target = computeHandTransform(indexAfter, totalAfter);
+  const rawHandMeshes = (ctx.handCardMeshes || []).filter(m => m?.userData?.isInHand);
+  const { sortedMeshes: handMeshes, layout: plannedLayout, total: plannedTotal } = planHandLayoutAfterDraw(rawHandMeshes, 1);
+  const totalVisible = handMeshes.length;
+  const totalAfter = plannedTotal > 0 ? plannedTotal : totalVisible + 1;
+  const indexAfter = Math.max(0, totalAfter - 1);
+  const targetPlan = plannedLayout?.[indexAfter];
+  const target = cloneTransform(targetPlan) || computeHandTransform(indexAfter, totalAfter);
 
   try {
-    relayoutHandDuringDraw(handMeshes, totalAfter, revealDuration);
+    relayoutHandDuringDraw(handMeshes, plannedLayout, revealDuration);
   } catch {}
 
   const flightRotation = target.rotation.clone();
