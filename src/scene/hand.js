@@ -209,7 +209,7 @@ export async function animateDrawnCardToHand(cardTpl) {
   // Подготавливаем изначальный поворот, чтобы карта сразу смотрела на игрока
   orientCardFaceTowardCamera(big, camera);
   applyEulerDegreeOffsets(big.rotation, {
-    pitchDeg: T.initialPitchDeg ?? 0,
+    pitchDeg: T.initialPitchDeg ?? 30,
     yawDeg: T.initialYawDeg ?? 0,
     rollDeg: T.initialRollDeg ?? 0
   });
@@ -243,6 +243,12 @@ export async function animateDrawnCardToHand(cardTpl) {
     });
   } catch {}
 
+  const startQuaternion = big.quaternion.clone();
+  const targetQuaternion = new THREE.Quaternion().setFromEuler(flightRotation);
+  const rotationTweenState = { progress: 0 };
+  const rotationOrder = flightRotation.order || big.rotation.order || 'XYZ';
+  big.rotation.order = rotationOrder;
+
   try {
     await new Promise(resolve => {
       const tl = gsap.timeline({ onComplete: resolve });
@@ -260,12 +266,20 @@ export async function animateDrawnCardToHand(cardTpl) {
         duration: flightDuration,
         ease: 'power2.inOut'
       })
-        .to(big.rotation, {
-          x: flightRotation.x,
-          y: flightRotation.y,
-          z: flightRotation.z,
+        .to(rotationTweenState, {
+          // Плавно интерполируем ориентацию через кватернионы, чтобы исключить скачки по углам Эйлера
+          progress: 1,
           duration: flightDuration,
-          ease: 'power2.inOut'
+          ease: 'power2.inOut',
+          onUpdate: () => {
+            THREE.Quaternion.slerp(startQuaternion, targetQuaternion, big.quaternion, rotationTweenState.progress);
+            big.rotation.setFromQuaternion(big.quaternion, rotationOrder);
+          },
+          onComplete: () => {
+            big.quaternion.copy(targetQuaternion);
+            big.rotation.copy(flightRotation);
+            big.rotation.order = rotationOrder;
+          }
         }, '<')
         .to(big.scale, {
           x: target.scale.x,
