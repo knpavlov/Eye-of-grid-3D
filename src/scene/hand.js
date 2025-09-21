@@ -253,26 +253,40 @@ export async function animateDrawnCardToHand(cardTpl) {
         ease: 'power2.out'
       });
 
-      tl.to(big.position, {
-        x: target.position.x,
-        y: target.position.y,
-        z: target.position.z,
+      const startPos = big.position.clone();
+      const endPos = target.position.clone();
+      const startQuat = big.quaternion.clone();
+      const endQuat = new THREE.Quaternion().setFromEuler(flightRotation);
+      const flightState = { progress: 0 };
+      const lerpPos = new THREE.Vector3();
+      const lerpQuat = new THREE.Quaternion();
+
+      // Плавно интерполируем и позицию, и вращение при помощи единого таймлайна
+      tl.to(flightState, {
+        progress: 1,
         duration: flightDuration,
-        ease: 'power2.inOut'
+        ease: 'sine.inOut',
+        onUpdate: () => {
+          const t = flightState.progress;
+          lerpPos.copy(startPos).lerp(endPos, t);
+          big.position.copy(lerpPos);
+
+          lerpQuat.copy(startQuat).slerp(endQuat, t);
+          big.quaternion.copy(lerpQuat);
+          big.rotation.setFromQuaternion(big.quaternion);
+        },
+        onComplete: () => {
+          big.position.copy(endPos);
+          big.quaternion.copy(endQuat);
+          big.rotation.copy(flightRotation);
+        }
       })
-        .to(big.rotation, {
-          x: flightRotation.x,
-          y: flightRotation.y,
-          z: flightRotation.z,
-          duration: flightDuration,
-          ease: 'power2.inOut'
-        }, '<')
         .to(big.scale, {
           x: target.scale.x,
           y: target.scale.y,
           z: target.scale.z,
           duration: flightDuration,
-          ease: 'power2.inOut'
+          ease: 'sine.inOut'
         }, '<');
     });
   } catch {}
