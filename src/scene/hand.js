@@ -225,7 +225,7 @@ export async function animateDrawnCardToHand(cardTpl) {
     rollDeg: T.initialRollDeg ?? 0
   });
 
-  big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
+  big.scale.set((T.scale ?? 1.5), (T.scale ?? 1.5), (T.scale ?? 1.5));
   big.renderOrder = 9000;
 
   const allMaterials = gatherMeshMaterials(big, []);
@@ -258,7 +258,9 @@ export async function animateDrawnCardToHand(cardTpl) {
   } catch {}
 
   // Запускаем финальное выравнивание угла заранее, чтобы оно шло в полёте
-  const rotationLead = Math.max(0, Math.min(flightDuration, (T.rotationLead ?? 0.5)));
+  // По умолчанию запускаем финальное выравнивание за 0.4 с до окончания полёта,
+  // чтобы анимация длилась ровно до момента приземления карты в руку
+  const rotationLead = Math.max(0, Math.min(flightDuration, (T.rotationLead ?? 0.4)));
   const settleStartTime = Math.max(0, flightDuration - rotationLead);
   const leanDuration = Math.max(0, settleStartTime);
 
