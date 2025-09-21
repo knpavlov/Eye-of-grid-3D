@@ -112,6 +112,8 @@ function relayoutHandDuringDraw(handMeshes, layoutAfterDraw, duration) {
 // Базовые длительности показа и перелёта добираемой карты
 const DRAW_REVEAL_DURATION = 0.7;
 const DRAW_FLIGHT_DURATION = 0.7;
+const DRAW_FINAL_ALIGN_DURATION = 0.45; // Базовое время финального выравнивания позиции
+const DRAW_FINAL_ALIGN_PORTION = 0.2;   // Доля пути, оставляемая под финальное выравнивание
 
 export function setHandCardHoverVisual(mesh, hovered) {
   if (!mesh) return;
@@ -225,7 +227,7 @@ export async function animateDrawnCardToHand(cardTpl) {
     rollDeg: T.initialRollDeg ?? 0
   });
 
-  big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
+  big.scale.set((T.scale ?? 1.5), (T.scale ?? 1.5), (T.scale ?? 1.5));
   big.renderOrder = 9000;
 
   const allMaterials = gatherMeshMaterials(big, []);
@@ -234,6 +236,10 @@ export async function animateDrawnCardToHand(cardTpl) {
 
   const revealDuration = DRAW_REVEAL_DURATION;
   const flightDuration = DRAW_FLIGHT_DURATION;
+  const finalAlignDuration = Math.min(flightDuration, Math.max(0.2, T.finalAlignDuration ?? DRAW_FINAL_ALIGN_DURATION));
+  const finalAlignPortion = Math.min(0.6, Math.max(0.05, T.finalAlignPortion ?? DRAW_FINAL_ALIGN_PORTION));
+  const initialFlightDuration = Math.max(0, flightDuration - finalAlignDuration);
+  const usePreAlignStage = initialFlightDuration > 0.0001;
 
   const handMeshes = (ctx.handCardMeshes || []).filter(m => m?.userData?.isInHand);
   const totalVisible = Math.max(0, handMeshes.length);
@@ -241,6 +247,10 @@ export async function animateDrawnCardToHand(cardTpl) {
   const indexAfter = totalAfter - 1;
   const layoutAfterDraw = computeHandLayout(totalAfter);
   const target = layoutAfterDraw[indexAfter] || computeHandTransform(indexAfter, totalAfter);
+  const startPosition = big.position.clone();
+  const preTargetPosition = usePreAlignStage
+    ? target.position.clone().lerp(startPosition, finalAlignPortion)
+    : startPosition.clone();
 
   try {
     relayoutHandDuringDraw(handMeshes, layoutAfterDraw, revealDuration);
@@ -258,9 +268,12 @@ export async function animateDrawnCardToHand(cardTpl) {
   } catch {}
 
   // Запускаем финальное выравнивание угла заранее, чтобы оно шло в полёте
-  const rotationLead = Math.max(0, Math.min(flightDuration, (T.rotationLead ?? 0.5)));
+  const rotationLead = Math.max(
+    Math.min(flightDuration, T.rotationLead ?? 0.5),
+    Math.min(flightDuration, finalAlignDuration)
+  );
   const settleStartTime = Math.max(0, flightDuration - rotationLead);
-  const leanDuration = Math.max(0, settleStartTime);
+  const leanDuration = Math.max(0, Math.min(settleStartTime, initialFlightDuration));
 
   try {
     await new Promise(resolve => {
@@ -274,14 +287,39 @@ export async function animateDrawnCardToHand(cardTpl) {
 
       tl.addLabel('flightMotion');
 
-      tl.to(big.position, {
-        x: target.position.x,
-        y: target.position.y,
-        z: target.position.z,
-        duration: flightDuration,
-        ease: 'power2.inOut'
-      }, 'flightMotion')
-        .to(big.scale, {
+      if (usePreAlignStage) {
+        tl.to(big.position, {
+          x: preTargetPosition.x,
+          y: preTargetPosition.y,
+          z: preTargetPosition.z,
+          duration: initialFlightDuration,
+          ease: 'power2.inOut'
+        }, 'flightMotion');
+      } else {
+        tl.set(big.position, {
+          x: preTargetPosition.x,
+          y: preTargetPosition.y,
+          z: preTargetPosition.z
+        }, 'flightMotion');
+      }
+
+      if (finalAlignDuration > 0.0001) {
+        tl.to(big.position, {
+          x: target.position.x,
+          y: target.position.y,
+          z: target.position.z,
+          duration: finalAlignDuration,
+          ease: 'power1.out'
+        }, `flightMotion+=${initialFlightDuration}`);
+      } else {
+        tl.set(big.position, {
+          x: target.position.x,
+          y: target.position.y,
+          z: target.position.z
+        }, `flightMotion+=${initialFlightDuration}`);
+      }
+
+      tl.to(big.scale, {
           x: target.scale.x,
           y: target.scale.y,
           z: target.scale.z,
