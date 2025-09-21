@@ -224,6 +224,18 @@ export async function animateDrawnCardToHand(cardTpl) {
   const revealDuration = DRAW_REVEAL_DURATION;
   const flightDuration = DRAW_FLIGHT_DURATION;
 
+  // Даем возможность тонко настроить тайминги из окна отладки
+  const revealEase = T.revealEase || 'sine.out';
+  const flightEase = T.flightEase || 'power3.inOut';
+  const rotationEase = T.rotationEase || 'sine.inOut';
+  // Небольшой запас, чтобы движение началось ещё во время проявления карты
+  const flightStartDelay = Math.max(
+    0,
+    Math.min(revealDuration, T.flightStartDelay ?? revealDuration * 0.45)
+  );
+  // Поворот завершается одновременно с ключевой фазой полёта
+  const rotationDuration = Math.max(revealDuration, flightStartDelay + flightDuration);
+
   const handMeshes = (ctx.handCardMeshes || []).filter(m => m?.userData?.isInHand);
   const totalVisible = Math.max(0, handMeshes.length);
   const totalAfter = totalVisible + 1;
@@ -250,7 +262,7 @@ export async function animateDrawnCardToHand(cardTpl) {
       tl.to(allMaterials, {
         opacity: 1,
         duration: revealDuration,
-        ease: 'power2.out'
+        ease: revealEase
       });
 
       tl.to(big.position, {
@@ -258,22 +270,24 @@ export async function animateDrawnCardToHand(cardTpl) {
         y: target.position.y,
         z: target.position.z,
         duration: flightDuration,
-        ease: 'power2.inOut'
-      })
-        .to(big.rotation, {
-          x: flightRotation.x,
-          y: flightRotation.y,
-          z: flightRotation.z,
-          duration: flightDuration,
-          ease: 'power2.inOut'
-        }, '<')
+        ease: flightEase
+      }, flightStartDelay)
         .to(big.scale, {
           x: target.scale.x,
           y: target.scale.y,
           z: target.scale.z,
           duration: flightDuration,
-          ease: 'power2.inOut'
+          ease: flightEase
         }, '<');
+
+      // Поворот карты выполняем плавно на протяжении всей анимации
+      tl.to(big.rotation, {
+        x: flightRotation.x,
+        y: flightRotation.y,
+        z: flightRotation.z,
+        duration: rotationDuration,
+        ease: rotationEase
+      }, 0);
     });
   } catch {}
 
