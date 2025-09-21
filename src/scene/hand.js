@@ -71,6 +71,39 @@ function applyEulerDegreeOffsets(euler, { pitchDeg = 0, yawDeg = 0, rollDeg = 0 
   euler.z += THREE.MathUtils.degToRad(rollDeg || 0);
 }
 
+function clamp01(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 0;
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
+}
+
+function eulersDiffer(a, b, epsilon = 1e-4) {
+  if (!a || !b) return false;
+  return (
+    Math.abs(a.x - b.x) > epsilon ||
+    Math.abs(a.y - b.y) > epsilon ||
+    Math.abs(a.z - b.z) > epsilon
+  );
+}
+
+function slerpEuler(fromEuler, toEuler, ratio) {
+  const THREE = getTHREE();
+  if (!fromEuler && !toEuler) return new THREE.Euler();
+  if (!fromEuler) return toEuler.clone();
+  if (!toEuler) return fromEuler.clone();
+
+  const amount = clamp01(ratio);
+  if (amount <= 0) return fromEuler.clone();
+  if (amount >= 1) return toEuler.clone();
+
+  const fromQuat = new THREE.Quaternion().setFromEuler(fromEuler);
+  const toQuat = new THREE.Quaternion().setFromEuler(toEuler);
+  const blended = fromQuat.clone().slerp(toQuat, amount);
+  const order = fromEuler.order || toEuler.order || 'XYZ';
+  return new THREE.Euler().setFromQuaternion(blended, order);
+}
+
 // Собирает все материалы меша, чтобы управлять прозрачностью при анимациях
 function gatherMeshMaterials(root, sink = []) {
   if (!root) return sink;
@@ -96,12 +129,13 @@ function relayoutHandDuringDraw(handMeshes, layoutAfterDraw, duration) {
       duration,
       ease: 'power2.inOut'
     });
+    const rotationDuration = duration > 0 ? duration * HAND_ROTATION_DURATION_MULTIPLIER : duration;
     gsap.to(mesh.rotation, {
       x: t.rotation.x,
       y: t.rotation.y,
       z: t.rotation.z,
-      duration,
-      ease: 'power2.inOut'
+      duration: rotationDuration,
+      ease: HAND_ROTATION_EASE
     });
     gsap.to(mesh.scale, { x: 0.54, y: 1, z: 0.54, duration: Math.min(0.2, duration * 0.3) });
     try { mesh.userData.originalPosition.copy(t.position); } catch {}
@@ -112,6 +146,21 @@ function relayoutHandDuringDraw(handMeshes, layoutAfterDraw, duration) {
 // Базовые длительности показа и перелёта добираемой карты
 const DRAW_REVEAL_DURATION = 0.7;
 const DRAW_FLIGHT_DURATION = 0.7;
+// Дефолтный масштаб крупного отображения карты при доборе
+const DEFAULT_DRAW_CARD_SCALE = 1.5;
+// Сколько времени занимает финальное «досаживание» карты в руку
+const DEFAULT_ROTATION_LEAD = 0.4;
+// Какую долю «поворота» добираемой карты выполняем до финальной досадки
+const DEFAULT_DRAW_ROTATION_LEAN_FRACTION = 0.6;
+// Какая часть финального промежутка отводится на удержание полётного наклона
+const DEFAULT_DRAW_ROTATION_TILT_SHARE = 0.5;
+// Плавные кривые для фаз поворота добираемой карты
+const DRAW_ROTATION_LEAN_EASE = 'sine.inOut';
+const DRAW_ROTATION_TILT_EASE = 'sine.inOut';
+const DRAW_ROTATION_SETTLE_EASE = 'sine.inOut';
+// Параметры плавности поворота карт, уже лежащих в руке
+const HAND_ROTATION_DURATION_MULTIPLIER = 1.15;
+const HAND_ROTATION_EASE = 'sine.inOut';
 
 export function setHandCardHoverVisual(mesh, hovered) {
   if (!mesh) return;
@@ -225,7 +274,10 @@ export async function animateDrawnCardToHand(cardTpl) {
     rollDeg: T.initialRollDeg ?? 0
   });
 
-  big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
+  const initialRotation = big.rotation.clone();
+
+  const drawScale = (T.scale ?? DEFAULT_DRAW_CARD_SCALE);
+  big.scale.set(drawScale, drawScale, drawScale);
   big.renderOrder = 9000;
 
   const allMaterials = gatherMeshMaterials(big, []);
@@ -258,9 +310,14 @@ export async function animateDrawnCardToHand(cardTpl) {
   } catch {}
 
   // Запускаем финальное выравнивание угла заранее, чтобы оно шло в полёте
-  const rotationLead = Math.max(0, Math.min(flightDuration, (T.rotationLead ?? 0.5)));
+  const rotationLead = Math.max(0, Math.min(flightDuration, (T.rotationLead ?? DEFAULT_ROTATION_LEAD)));
   const settleStartTime = Math.max(0, flightDuration - rotationLead);
   const leanDuration = Math.max(0, settleStartTime);
+  const rotationLeanFraction = clamp01(T.rotationLeanFraction ?? DEFAULT_DRAW_ROTATION_LEAN_FRACTION);
+  const rotationTiltShare = clamp01(T.rotationTiltShare ?? DEFAULT_DRAW_ROTATION_TILT_SHARE);
+  const leanRotation = slerpEuler(initialRotation, flightRotation, rotationLeanFraction);
+  const tiltDuration = rotationLead * rotationTiltShare;
+  const settleDuration = Math.max(0, rotationLead - tiltDuration);
 
   try {
     await new Promise(resolve => {
@@ -289,36 +346,54 @@ export async function animateDrawnCardToHand(cardTpl) {
           ease: 'power2.inOut'
         }, 'flightMotion');
 
-      if (leanDuration > 0.0001) {
+      if (leanDuration > 0.0001 && eulersDiffer(initialRotation, leanRotation)) {
+        tl.to(big.rotation, {
+          x: leanRotation.x,
+          y: leanRotation.y,
+          z: leanRotation.z,
+          duration: leanDuration,
+          ease: DRAW_ROTATION_LEAN_EASE
+        }, 'flightMotion');
+      } else {
+        tl.set(big.rotation, {
+          x: leanRotation.x,
+          y: leanRotation.y,
+          z: leanRotation.z
+        }, 'flightMotion');
+      }
+
+      const tiltStart = `flightMotion+=${settleStartTime}`;
+      if (tiltDuration > 0.0001 && eulersDiffer(leanRotation, flightRotation)) {
         tl.to(big.rotation, {
           x: flightRotation.x,
           y: flightRotation.y,
           z: flightRotation.z,
-          duration: leanDuration,
-          ease: 'power2.inOut'
-        }, 'flightMotion');
-      } else {
+          duration: tiltDuration,
+          ease: DRAW_ROTATION_TILT_EASE
+        }, tiltStart);
+      } else if (rotationLead > 0.0001 && eulersDiffer(leanRotation, flightRotation)) {
         tl.set(big.rotation, {
           x: flightRotation.x,
           y: flightRotation.y,
           z: flightRotation.z
-        }, 'flightMotion');
+        }, tiltStart);
       }
 
-      if (rotationLead > 0.0001) {
+      const settleStart = `flightMotion+=${settleStartTime + Math.max(tiltDuration, 0)}`;
+      if (settleDuration > 0.0001 && eulersDiffer(flightRotation, arrivalRotation)) {
         tl.to(big.rotation, {
           x: arrivalRotation.x,
           y: arrivalRotation.y,
           z: arrivalRotation.z,
-          duration: rotationLead,
-          ease: 'power1.out'
-        }, `flightMotion+=${settleStartTime}`);
+          duration: settleDuration,
+          ease: DRAW_ROTATION_SETTLE_EASE
+        }, settleStart);
       } else {
         tl.set(big.rotation, {
           x: arrivalRotation.x,
           y: arrivalRotation.y,
           z: arrivalRotation.z
-        }, `flightMotion+=${settleStartTime}`);
+        }, settleStart);
       }
     });
   } catch {}
