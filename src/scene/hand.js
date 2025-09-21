@@ -223,6 +223,7 @@ export async function animateDrawnCardToHand(cardTpl) {
 
   const revealDuration = DRAW_REVEAL_DURATION;
   const flightDuration = DRAW_FLIGHT_DURATION;
+  const totalDuration = revealDuration + flightDuration;
 
   const handMeshes = (ctx.handCardMeshes || []).filter(m => m?.userData?.isInHand);
   const totalVisible = Math.max(0, handMeshes.length);
@@ -247,33 +248,36 @@ export async function animateDrawnCardToHand(cardTpl) {
     await new Promise(resolve => {
       const tl = gsap.timeline({ onComplete: resolve });
 
+      // Плавно проявляем карту, пока остальные смещения уже начинают отрабатываться
       tl.to(allMaterials, {
         opacity: 1,
         duration: revealDuration,
-        ease: 'power2.out'
+        ease: 'sine.out'
       });
 
+      // Позиция, поворот и масштаб теперь меняются в течение всей анимации,
+      // чтобы влет и крен ощущались более плавными
       tl.to(big.position, {
         x: target.position.x,
         y: target.position.y,
         z: target.position.z,
-        duration: flightDuration,
-        ease: 'power2.inOut'
-      })
+        duration: totalDuration,
+        ease: 'sine.inOut'
+      }, 0)
         .to(big.rotation, {
           x: flightRotation.x,
           y: flightRotation.y,
           z: flightRotation.z,
-          duration: flightDuration,
-          ease: 'power2.inOut'
-        }, '<')
+          duration: totalDuration,
+          ease: 'sine.inOut'
+        }, 0)
         .to(big.scale, {
           x: target.scale.x,
           y: target.scale.y,
           z: target.scale.z,
-          duration: flightDuration,
-          ease: 'power2.inOut'
-        }, '<');
+          duration: totalDuration,
+          ease: 'sine.inOut'
+        }, 0);
     });
   } catch {}
 
