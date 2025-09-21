@@ -49,33 +49,57 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   const py = (val) => Math.round(val * scaleY);
   const ps = (val) => Math.max(1, Math.round(val * scale));
 
-  // Фон карты (текстура или мягкий градиент в качестве запасного варианта)
+  const hasFrontTexture = !!(CARD_TEX.front && CARD_TEX.front.image && CARD_TEX.front.image.width && CARD_TEX.front.image.height);
+
+  // Фон карты: сначала пробуем текстуру, иначе мягкий градиент
   try {
-    const imgFront = CARD_TEX.front && CARD_TEX.front.image ? CARD_TEX.front.image : null;
-    if (imgFront && imgFront.width && imgFront.height) {
-      ctx.drawImage(imgFront, 0, 0, width, height);
+    if (hasFrontTexture) {
+      ctx.drawImage(CARD_TEX.front.image, 0, 0, width, height);
     } else {
       const gradient = ctx.createLinearGradient(0, 0, 0, height);
-      gradient.addColorStop(0, '#1e293b'); gradient.addColorStop(1, '#0f172a');
-      ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
+      gradient.addColorStop(0, '#1e293b');
+      gradient.addColorStop(1, '#0f172a');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
     }
   } catch {
     const gradient = ctx.createLinearGradient(0, 0, 0, height);
-    gradient.addColorStop(0, '#1e293b'); gradient.addColorStop(1, '#0f172a');
-    ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
+    gradient.addColorStop(0, '#1e293b');
+    gradient.addColorStop(1, '#0f172a');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
   }
 
-  // Цветная рамка в цвет стихии
+  // Цветная рамка в цвет стихии, чтобы сохранить читабельность
   const border = Math.max(2, ps(3));
   ctx.strokeStyle = getElementColor(cardData.element);
   ctx.lineWidth = border;
   ctx.strokeRect(border / 2, border / 2, width - border, height - border);
 
-  // Верхний блок: имя и короткая подпись
+  // Позиции основных элементов нового шаблона
+  const layout = {
+    summon: { x: px(64), y: py(64), font: Math.max(ps(26), 24) },
+    activation: { x: px(120), y: py(38), font: Math.max(ps(18), 17) },
+    hp: { x: px(60), y: height - py(36), font: Math.max(ps(20), 19) },
+    atk: { x: width - px(60), y: height - py(36), font: Math.max(ps(20), 19) },
+    lock: { x: width - px(42), y: py(66), size: Math.max(ps(18), 16) }
+  };
+
+  // Если текстуры нет — рисуем простые формы для сфер и кристаллов, чтобы цифры не повисали в воздухе
+  if (!hasFrontTexture) {
+    drawManaOrbIcon(ctx, layout.summon.x, layout.summon.y, Math.max(ps(52), 44));
+    if (cardData.type === 'UNIT') {
+      drawManaOrbIcon(ctx, layout.activation.x, layout.activation.y, Math.max(ps(36), 30));
+      drawCrystalIcon(ctx, layout.hp.x, layout.hp.y, Math.max(ps(36), 30), 'HP');
+      drawCrystalIcon(ctx, layout.atk.x, layout.atk.y, Math.max(ps(36), 30), 'ATK');
+    }
+  }
+
+  // Верхний блок: название и подзаголовок
   const elementLabels = { FIRE: 'Fire', WATER: 'Water', EARTH: 'Earth', FOREST: 'Forest', BIOLITH: 'Biolith', NEUTRAL: 'Neutral' };
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f8fafc';
-  const nameMaxWidth = width - px(64);
+  const nameMaxWidth = width - px(70);
   let displayName = (cardData.name || '').trim();
   if (displayName.length > 40) displayName = displayName.slice(0, 40) + '…';
   const baseNameFont = 9 * 1.4;
@@ -87,7 +111,8 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     if (ctx.measureText(displayName).width <= nameMaxWidth || nameFont <= minNameFont) break;
     nameFont = Math.max(minNameFont, nameFont - 1);
   }
-  ctx.fillText(displayName, width / 2, py(44));
+  const nameY = py(86);
+  drawValueWithOutline(ctx, displayName, width / 2, nameY, { font: ctx.font, fill: '#f8fafc', align: 'center', baseline: 'middle' });
 
   const typeParts = [];
   const elementLabel = elementLabels[cardData.element] || elementLabels.NEUTRAL;
@@ -96,16 +121,15 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   else if (cardData.type === 'SPELL') typeParts.push('Spell');
   const typeLine = typeParts.join(' · ');
   if (typeLine) {
-    ctx.font = `500 ${Math.max(ps(7), 7)}px "Noto Sans", "Helvetica", sans-serif`;
-    ctx.fillStyle = 'rgba(226,232,240,0.82)';
-    ctx.fillText(typeLine, width / 2, py(62));
+    ctx.font = `500 ${Math.max(ps(7.2), 7)}px "Noto Sans", "Helvetica", sans-serif`;
+    drawValueWithOutline(ctx, typeLine, width / 2, py(104), { fill: 'rgba(226,232,240,0.88)', align: 'center', baseline: 'middle', shadow: false, stroke: 'rgba(15,23,42,0.55)', strokeWidth: Math.max(1, ps(0.8)) });
   }
 
   // Рамка под иллюстрацию
   const illX = px(24);
-  const illY = py(72);
+  const illY = py(110);
   const illW = width - px(48);
-  const illH = py(148);
+  const illH = py(150);
   ctx.save();
   ctx.fillStyle = 'rgba(8, 15, 32, 0.55)';
   ctx.fillRect(illX, illY, illW, illH);
@@ -142,21 +166,22 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   } else {
     ctx.fillStyle = '#94a3b8';
     ctx.font = `500 ${Math.max(ps(7.5), 8)}px "Noto Sans", "Helvetica", sans-serif`;
+    ctx.textAlign = 'center';
     ctx.fillText('Illustration', width / 2, illY + Math.round(illH / 2));
   }
 
-  // Текстовое поле (уменьшенный шрифт и контролируемая высота)
+  // Текстовое поле
   const text = cardData.desc || cardData.text || (cardData.keywords ? cardData.keywords.join(', ') : '');
   ctx.fillStyle = '#cbd5e1';
   ctx.font = `500 ${Math.max(ps(8.5), 9)}px "Noto Sans", "Helvetica", sans-serif`;
   ctx.textAlign = 'left';
   const textX = illX;
-  const textY = illY + illH + Math.max(ps(8), 6);
+  const textY = illY + illH + Math.max(ps(10), 8);
   const textWidth = illW;
 
-  const footerHeight = Math.max(py(26), Math.round(20 * scaleY));
-  const footerBaseY = height - footerHeight;
-  let diagramTop = footerBaseY;
+  const statAreaHeight = Math.max(py(82), Math.round(64 * scaleY));
+  const statsTopY = height - statAreaHeight;
+  let diagramTop = statsTopY;
   let diagramCell = null;
   let diagramGap = null;
 
@@ -164,81 +189,18 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     diagramCell = Math.max(Math.round(ps(8)), 6);
     diagramGap = Math.max(Math.round(ps(1.5)), 1);
     const diagramHeight = diagramCell * 3 + diagramGap * 2;
-    const diagramSpacing = Math.max(py(10), 8);
-    diagramTop = footerBaseY - diagramSpacing - diagramHeight;
-    const minDiagramTop = illY + illH + Math.max(py(24), 20);
+    const diagramSpacing = Math.max(py(12), 10);
+    diagramTop = statsTopY - diagramSpacing - diagramHeight;
+    const minDiagramTop = illY + illH + Math.max(py(28), 22);
     if (diagramTop < minDiagramTop) diagramTop = minDiagramTop;
   }
 
   const textMaxY = (cardData.type === 'UNIT')
-    ? diagramTop - Math.max(ps(6), 6)
-    : footerBaseY - Math.max(ps(6), 6);
+    ? diagramTop - Math.max(ps(8), 6)
+    : statsTopY - Math.max(ps(8), 6);
   wrapText(ctx, text, textX, textY, textWidth, Math.max(ps(11), 12), textMaxY);
 
-  // Нижний пояс карты с ресурсами
-  ctx.fillStyle = 'rgba(8, 12, 24, 0.58)';
-  ctx.fillRect(0, footerBaseY, width, footerHeight);
-
-  ctx.fillStyle = '#f1f5f9';
-  ctx.textAlign = 'left';
-  const iconSize = Math.max(ps(16), 14);
-  const footerCenterY = footerBaseY + footerHeight / 2;
-  const manaCenterX = px(28);
-  drawManaOrbIcon(ctx, manaCenterX, footerCenterY, iconSize);
-  const costTextX = manaCenterX + iconSize / 2 + Math.max(ps(6), 6);
-  const costBaseline = footerCenterY + Math.max(ps(2), 2);
-  const numberFontSize = Math.max(ps(11), 11);
-  ctx.font = `700 ${numberFontSize}px "Noto Sans", "Helvetica", sans-serif`;
-  const costValue = String(cardData.cost ?? 0);
-  ctx.fillText(costValue, costTextX, costBaseline);
-  let inlineOffset = ctx.measureText(costValue).width;
-
-  if (cardData.locked) {
-    const lockSize = Math.max(ps(14), 12);
-    const lockCenterX = costTextX + inlineOffset + lockSize / 2 + Math.max(ps(6), 4);
-    drawLockIcon(ctx, lockCenterX, footerCenterY, lockSize);
-    inlineOffset += lockSize + Math.max(ps(6), 4);
-  }
-
   if (cardData.type === 'UNIT') {
-    const activationOverride = (opts && Object.prototype.hasOwnProperty.call(opts, 'activationOverride'))
-      ? opts.activationOverride
-      : ((opts && Object.prototype.hasOwnProperty.call(opts, 'activation')) ? opts.activation : null);
-    const actBase = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
-    const act = (activationOverride != null) ? activationOverride : actBase;
-    const playSize = Math.max(ps(15), 13);
-    const playCenterX = costTextX + inlineOffset + playSize / 2 + Math.max(ps(10), 8);
-    drawPlayIcon(ctx, playCenterX, footerCenterY, playSize);
-    ctx.fillText(String(act), playCenterX + playSize / 2 + Math.max(ps(4), 4), costBaseline);
-    const actWidth = ctx.measureText(String(act)).width;
-    inlineOffset += playSize + Math.max(ps(12), 10) + actWidth;
-  }
-
-  if (cardData.type === 'UNIT') {
-    const hpToShow = (hpOverride != null) ? hpOverride : (cardData.hp || 0);
-    const atkToShow = (atkOverride != null) ? atkOverride : (cardData.atk || 0);
-    const statIconSize = Math.max(ps(15), 13);
-    const statGap = Math.max(ps(4), 4);
-    const statSpacing = Math.max(ps(18), 14);
-    const statsRightPadding = Math.max(px(16), 14);
-    const hpText = String(hpToShow);
-    const atkText = String(atkToShow);
-    ctx.font = `700 ${numberFontSize}px "Noto Sans", "Helvetica", sans-serif`;
-    const hpWidth = ctx.measureText(hpText).width;
-    const atkWidth = ctx.measureText(atkText).width;
-    let cursorX = width - statsRightPadding;
-
-    const hpTextX = cursorX - hpWidth;
-    const hpIconCenterX = hpTextX - statGap - statIconSize / 2;
-    drawHeartIcon(ctx, hpIconCenterX, footerCenterY, statIconSize);
-    ctx.fillText(hpText, hpTextX, costBaseline);
-    cursorX = hpIconCenterX - statIconSize / 2 - statSpacing;
-
-    const atkTextX = cursorX - atkWidth;
-    const atkIconCenterX = atkTextX - statGap - statIconSize / 2;
-    drawSwordIcon(ctx, atkIconCenterX, footerCenterY, statIconSize);
-    ctx.fillText(atkText, atkTextX, costBaseline);
-
     const cell = diagramCell ?? Math.max(Math.round(ps(8)), 6);
     const gap = diagramGap ?? Math.max(Math.round(ps(1.5)), 1);
     const gridW = cell * 3 + gap * 2;
@@ -263,6 +225,35 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     });
     const blindspotX = startX + schemeCount * (gridW + spacing);
     drawBlindspotGrid(ctx, cardData, blindspotX, gridY, cell, gap);
+  }
+
+  // Цифры по новому макету
+  const summonCost = String(cardData.cost ?? 0);
+  ctx.font = `700 ${layout.summon.font}px "Noto Sans", "Helvetica", sans-serif`;
+  drawValueWithOutline(ctx, summonCost, layout.summon.x, layout.summon.y, { align: 'center', baseline: 'middle' });
+
+  if (cardData.locked) {
+    drawLockIcon(ctx, layout.lock.x, layout.lock.y, layout.lock.size);
+  }
+
+  const activationOverride = (opts && Object.prototype.hasOwnProperty.call(opts, 'activationOverride'))
+    ? opts.activationOverride
+    : ((opts && Object.prototype.hasOwnProperty.call(opts, 'activation')) ? opts.activation : null);
+  const actBase = (cardData.activation != null) ? cardData.activation : Math.max(0, (cardData.cost || 0) - 1);
+  const act = (activationOverride != null) ? activationOverride : actBase;
+  if (cardData.type === 'UNIT') {
+    ctx.font = `700 ${layout.activation.font}px "Noto Sans", "Helvetica", sans-serif`;
+    drawValueWithOutline(ctx, String(act), layout.activation.x, layout.activation.y, { align: 'center', baseline: 'middle' });
+  }
+
+  if (cardData.type === 'UNIT') {
+    const hpToShow = (hpOverride != null) ? hpOverride : (cardData.hp || 0);
+    const atkToShow = (atkOverride != null) ? atkOverride : (cardData.atk || 0);
+    ctx.font = `700 ${layout.hp.font}px "Noto Sans", "Helvetica", sans-serif`;
+    drawValueWithOutline(ctx, String(hpToShow), layout.hp.x, layout.hp.y, { align: 'center', baseline: 'middle' });
+    ctx.font = `700 ${layout.atk.font}px "Noto Sans", "Helvetica", sans-serif`;
+    drawValueWithOutline(ctx, String(atkToShow), layout.atk.x, layout.atk.y, { align: 'center', baseline: 'middle' });
+
   }
 }
 
@@ -291,6 +282,49 @@ function getElementColor(element) {
   return colors[element] || '#64748b';
 }
 
+// Универсальный помощник для отрисовки цифр с мягким обводом
+function drawValueWithOutline(ctx, text, x, y, options = {}) {
+  const {
+    font = ctx.font,
+    fill = '#f8fafc',
+    align = 'center',
+    baseline = 'alphabetic',
+    stroke = 'rgba(15,23,42,0.75)',
+    strokeWidth,
+    shadow = true
+  } = options;
+
+  ctx.save();
+  if (font) ctx.font = font;
+  ctx.textAlign = align;
+  ctx.textBaseline = baseline;
+  ctx.fillStyle = fill;
+
+  const sizeMatch = /([0-9]+(?:\.[0-9]+)?)px/.exec(ctx.font || '');
+  const fontSize = sizeMatch ? parseFloat(sizeMatch[1]) : 16;
+  const lineWidth = strokeWidth != null ? strokeWidth : Math.max(1, Math.round(fontSize * 0.14));
+  const shadowBlur = shadow ? Math.max(2, Math.round(fontSize * 0.28)) : 0;
+
+  if (shadow) {
+    ctx.shadowColor = 'rgba(15,23,42,0.55)';
+    ctx.shadowBlur = shadowBlur;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+  } else {
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+  }
+
+  if (stroke) {
+    ctx.lineWidth = lineWidth;
+    ctx.strokeStyle = stroke;
+    try { ctx.strokeText(text, x, y); } catch {}
+  }
+
+  try { ctx.fillText(text, x, y); } catch {}
+  ctx.restore();
+}
+
 // Рисуем иконку орба маны
 function drawManaOrbIcon(ctx, x, y, size) {
   const r = size / 2;
@@ -305,16 +339,35 @@ function drawManaOrbIcon(ctx, x, y, size) {
   ctx.fill();
 }
 
-// Рисуем иконку play (треугольник)
-function drawPlayIcon(ctx, x, y, size) {
-  const r = size / 2;
-  ctx.fillStyle = '#f1f5f9';
+// Простейший ромбовидный кристалл, чтобы fallback выглядел опрятно
+function drawCrystalIcon(ctx, x, y, size, kind) {
+  const half = size / 2;
+  ctx.save();
+  ctx.translate(x, y);
   ctx.beginPath();
-  ctx.moveTo(x - r * 0.6, y - r * 0.7);
-  ctx.lineTo(x - r * 0.6, y + r * 0.7);
-  ctx.lineTo(x + r * 0.8, y);
+  ctx.moveTo(0, -half);
+  ctx.lineTo(half * 0.78, 0);
+  ctx.lineTo(0, half);
+  ctx.lineTo(-half * 0.78, 0);
   ctx.closePath();
+
+  const gradient = ctx.createLinearGradient(-half, -half, half, half);
+  if (kind === 'HP') {
+    gradient.addColorStop(0, '#dcfce7');
+    gradient.addColorStop(0.4, '#4ade80');
+    gradient.addColorStop(1, '#166534');
+  } else {
+    gradient.addColorStop(0, '#fee2e2');
+    gradient.addColorStop(0.4, '#f87171');
+    gradient.addColorStop(1, '#b91c1c');
+  }
+
+  ctx.fillStyle = gradient;
   ctx.fill();
+  ctx.lineWidth = Math.max(1, size * 0.08);
+  ctx.strokeStyle = 'rgba(15,23,42,0.75)';
+  ctx.stroke();
+  ctx.restore();
 }
 
 // Рисуем иконку замка для Summoning Lock
@@ -531,79 +584,6 @@ function drawBlindspotGrid(ctx, cardData, x, y, cell, gap) {
       }
     }
   }
-}
-
-// Плоские иконки меча и сердца для панели статов
-function drawSwordIcon(ctx, x, y, size) {
-  const scale = size / 16;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(scale, scale);
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-
-  ctx.beginPath();
-  ctx.moveTo(0, -7);
-  ctx.lineTo(3, 6);
-  ctx.lineTo(0, 9);
-  ctx.lineTo(-3, 6);
-  ctx.closePath();
-  ctx.fillStyle = '#facc15';
-  ctx.fill();
-  ctx.strokeStyle = '#fde68a';
-  ctx.lineWidth = 1.6;
-  ctx.stroke();
-
-  ctx.strokeStyle = '#eab308';
-  ctx.lineWidth = 2.2;
-  ctx.beginPath();
-  ctx.moveTo(-5.2, 4);
-  ctx.lineTo(5.2, 4);
-  ctx.stroke();
-
-  ctx.strokeStyle = '#78350f';
-  ctx.lineWidth = 2.4;
-  ctx.beginPath();
-  ctx.moveTo(0, 6);
-  ctx.lineTo(0, 10);
-  ctx.stroke();
-
-  ctx.fillStyle = '#f59e0b';
-  ctx.beginPath();
-  ctx.arc(0, 11, 1.8, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.restore();
-}
-
-function drawHeartIcon(ctx, x, y, size) {
-  const scale = size / 16;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(scale, scale);
-
-  ctx.beginPath();
-  ctx.moveTo(0, 6);
-  ctx.bezierCurveTo(0, 0, -6.5, -2.5, -6.5, -6.2);
-  ctx.bezierCurveTo(-6.5, -9.2, -3.5, -10.5, 0, -7.8);
-  ctx.bezierCurveTo(3.5, -10.5, 6.5, -9.2, 6.5, -6.2);
-  ctx.bezierCurveTo(6.5, -2.5, 0, 0, 0, 6);
-  ctx.closePath();
-  ctx.fillStyle = '#f87171';
-  ctx.fill();
-  ctx.strokeStyle = '#fca5a5';
-  ctx.lineWidth = 1.6;
-  ctx.stroke();
-
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.beginPath();
-  ctx.moveTo(-1.5, -2);
-  ctx.quadraticCurveTo(-3.5, -3.5, -3.5, -5.8);
-  ctx.quadraticCurveTo(-1.6, -5.2, -0.6, -3.6);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.restore();
 }
 
 function attachIllustrationPlane(cardMesh, cardData) {
