@@ -112,7 +112,10 @@ function relayoutHandDuringDraw(handMeshes, layoutAfterDraw, duration) {
 // Базовые длительности показа и перелёта добираемой карты
 const DRAW_REVEAL_DURATION = 0.7;
 const DRAW_FLIGHT_DURATION = 0.7;
-const DRAW_ROTATION_SETTLE_LEAD = 0.5; // За сколько секунд до посадки начинаем выравнивание угла
+const DRAW_FINAL_ALIGNMENT_DURATION = 0.45; // Сколько времени уделяем плавной доводке до целевой позы
+const DRAW_FINAL_ALIGNMENT_DISTANCE_RATIO = 0.18; // Доля пути, которую карта проходит уже в режиме выравнивания
+const DRAW_FINAL_ALIGNMENT_EASE = 'sine.out';
+const DRAW_ROTATION_APPROACH_PORTION = 0.65; // Какая часть полёта отводится под приближение к полётному углу
 
 export function setHandCardHoverVisual(mesh, hovered) {
   if (!mesh) return;
@@ -226,7 +229,7 @@ export async function animateDrawnCardToHand(cardTpl) {
     rollDeg: T.initialRollDeg ?? 0
   });
 
-  big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
+  big.scale.set((T.scale ?? 1.5), (T.scale ?? 1.5), (T.scale ?? 1.5));
   big.renderOrder = 9000;
 
   const allMaterials = gatherMeshMaterials(big, []);
@@ -258,9 +261,13 @@ export async function animateDrawnCardToHand(cardTpl) {
     });
   } catch {}
 
-  const settleLead = Math.min(flightDuration, DRAW_ROTATION_SETTLE_LEAD);
-  const approachDuration = Math.max(0, flightDuration - settleLead);
-  const settleDuration = Math.max(0, settleLead);
+  const finalAlignmentDuration = Math.max(0.2, T.finalAlignmentDuration ?? DRAW_FINAL_ALIGNMENT_DURATION);
+  const finalAlignmentRatio = THREE.MathUtils.clamp(T.finalAlignmentDistanceRatio ?? DRAW_FINAL_ALIGNMENT_DISTANCE_RATIO, 0, 0.6);
+  const preAlignPosition = new THREE.Vector3().lerpVectors(target.position, big.position, finalAlignmentRatio);
+  const rotationApproachDuration = Math.min(
+    flightDuration,
+    Math.max(0.15, flightDuration * (T.rotationApproachPortion ?? DRAW_ROTATION_APPROACH_PORTION))
+  );
 
   try {
     await new Promise(resolve => {
@@ -273,26 +280,20 @@ export async function animateDrawnCardToHand(cardTpl) {
       });
 
       tl.to(big.position, {
-        x: target.position.x,
-        y: target.position.y,
-        z: target.position.z,
+        x: preAlignPosition.x,
+        y: preAlignPosition.y,
+        z: preAlignPosition.z,
         duration: flightDuration,
-        ease: 'power2.inOut'
+        ease: 'power2.out'
       });
 
-      if (approachDuration > 0.0001) {
-        tl.to(big.rotation, {
-          x: flightRotation.x,
-          y: flightRotation.y,
-          z: flightRotation.z,
-          duration: approachDuration,
-          ease: 'power2.inOut'
-        }, '<');
-      } else {
-        tl.add(() => {
-          big.rotation.copy(flightRotation);
-        }, '<');
-      }
+      tl.to(big.rotation, {
+        x: flightRotation.x,
+        y: flightRotation.y,
+        z: flightRotation.z,
+        duration: rotationApproachDuration,
+        ease: 'power2.out'
+      }, '<');
 
       tl.to(big.scale, {
         x: target.scale.x,
@@ -302,19 +303,21 @@ export async function animateDrawnCardToHand(cardTpl) {
         ease: 'power2.inOut'
       }, '<');
 
-      if (settleDuration > 0.0001) {
-        tl.to(big.rotation, {
-          x: arrivalRotation.x,
-          y: arrivalRotation.y,
-          z: arrivalRotation.z,
-          duration: settleDuration,
-          ease: 'power1.out'
-        }, `-=${settleDuration}`);
-      } else {
-        tl.add(() => {
-          big.rotation.copy(arrivalRotation);
-        });
-      }
+      tl.to(big.position, {
+        x: target.position.x,
+        y: target.position.y,
+        z: target.position.z,
+        duration: finalAlignmentDuration,
+        ease: DRAW_FINAL_ALIGNMENT_EASE
+      });
+
+      tl.to(big.rotation, {
+        x: arrivalRotation.x,
+        y: arrivalRotation.y,
+        z: arrivalRotation.z,
+        duration: finalAlignmentDuration,
+        ease: DRAW_FINAL_ALIGNMENT_EASE
+      }, '<');
     });
   } catch {}
 
