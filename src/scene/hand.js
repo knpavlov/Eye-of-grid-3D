@@ -61,6 +61,31 @@ function applyEulerDegreeOffsets(euler, { pitchDeg = 0, yawDeg = 0, rollDeg = 0 
   euler.z += THREE.MathUtils.degToRad(rollDeg || 0);
 }
 
+// Запускает плавный поворот меша через сферическую интерполяцию к целевым углам
+function queueQuaternionRotation(timeline, mesh, targetEuler, duration, ease = 'power2.inOut') {
+  if (!timeline || !mesh || !targetEuler || typeof gsap === 'undefined') return timeline;
+  const THREE = getTHREE();
+  const startQuat = mesh.quaternion.clone();
+  const endQuat = new THREE.Quaternion().setFromEuler(targetEuler);
+  const driver = { progress: 0 };
+
+  timeline.to(driver, {
+    progress: 1,
+    duration,
+    ease,
+    onUpdate: () => {
+      THREE.Quaternion.slerp(startQuat, endQuat, mesh.quaternion, driver.progress);
+      mesh.rotation.setFromQuaternion(mesh.quaternion);
+    },
+    onComplete: () => {
+      mesh.quaternion.copy(endQuat);
+      mesh.rotation.setFromQuaternion(mesh.quaternion);
+    }
+  }, '<');
+
+  return timeline;
+}
+
 // Собирает все материалы меша, чтобы управлять прозрачностью при анимациях
 function gatherMeshMaterials(root, sink = []) {
   if (!root) return sink;
@@ -209,7 +234,7 @@ export async function animateDrawnCardToHand(cardTpl) {
   // Подготавливаем изначальный поворот, чтобы карта сразу смотрела на игрока
   orientCardFaceTowardCamera(big, camera);
   applyEulerDegreeOffsets(big.rotation, {
-    pitchDeg: T.initialPitchDeg ?? 0,
+    pitchDeg: T.initialPitchDeg ?? 30,
     yawDeg: T.initialYawDeg ?? 0,
     rollDeg: T.initialRollDeg ?? 0
   });
@@ -259,21 +284,17 @@ export async function animateDrawnCardToHand(cardTpl) {
         z: target.position.z,
         duration: flightDuration,
         ease: 'power2.inOut'
-      })
-        .to(big.rotation, {
-          x: flightRotation.x,
-          y: flightRotation.y,
-          z: flightRotation.z,
-          duration: flightDuration,
-          ease: 'power2.inOut'
-        }, '<')
-        .to(big.scale, {
-          x: target.scale.x,
-          y: target.scale.y,
-          z: target.scale.z,
-          duration: flightDuration,
-          ease: 'power2.inOut'
-        }, '<');
+      });
+
+      queueQuaternionRotation(tl, big, flightRotation, flightDuration, 'power2.inOut');
+
+      tl.to(big.scale, {
+        x: target.scale.x,
+        y: target.scale.y,
+        z: target.scale.z,
+        duration: flightDuration,
+        ease: 'power2.inOut'
+      }, '<');
     });
   } catch {}
 
