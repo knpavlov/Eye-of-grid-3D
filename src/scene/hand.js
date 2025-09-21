@@ -209,7 +209,7 @@ export async function animateDrawnCardToHand(cardTpl) {
   // Подготавливаем изначальный поворот, чтобы карта сразу смотрела на игрока
   orientCardFaceTowardCamera(big, camera);
   applyEulerDegreeOffsets(big.rotation, {
-    pitchDeg: T.initialPitchDeg ?? 0,
+    pitchDeg: T.initialPitchDeg ?? 30,
     yawDeg: T.initialYawDeg ?? 0,
     rollDeg: T.initialRollDeg ?? 0
   });
@@ -243,6 +243,11 @@ export async function animateDrawnCardToHand(cardTpl) {
     });
   } catch {}
 
+  // Подготовка плавного поворота через кватернионы, чтобы избежать рывка перед установкой карты в руку
+  const targetQuaternion = new THREE.Quaternion().setFromEuler(flightRotation);
+  const initialQuaternion = big.quaternion.clone();
+  const rotationTweenState = { progress: 0 };
+
   try {
     await new Promise(resolve => {
       const tl = gsap.timeline({ onComplete: resolve });
@@ -260,12 +265,19 @@ export async function animateDrawnCardToHand(cardTpl) {
         duration: flightDuration,
         ease: 'power2.inOut'
       })
-        .to(big.rotation, {
-          x: flightRotation.x,
-          y: flightRotation.y,
-          z: flightRotation.z,
+        .to(rotationTweenState, {
+          progress: 1,
           duration: flightDuration,
-          ease: 'power2.inOut'
+          ease: 'power2.inOut',
+          // Постепенно интерполируем кватернион, чтобы карта приземлялась уже с финальным наклоном
+          onUpdate: () => {
+            THREE.Quaternion.slerp(initialQuaternion, targetQuaternion, big.quaternion, rotationTweenState.progress);
+            big.rotation.setFromQuaternion(big.quaternion);
+          },
+          onComplete: () => {
+            big.quaternion.copy(targetQuaternion);
+            big.rotation.copy(flightRotation);
+          }
         }, '<')
         .to(big.scale, {
           x: target.scale.x,
