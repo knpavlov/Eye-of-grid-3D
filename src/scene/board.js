@@ -1,6 +1,9 @@
 // Board construction and materials
 import { getCtx } from './context.js';
 
+const ASSET_VERSION = '2';
+const SIDE_TEXTURE_PATH = './textures/Field_side.PNG';
+
 const BASE_MAP = {
   FIRE: './textures/tile_fire.png',
   WATER: './textures/tile_water.png',
@@ -9,12 +12,25 @@ const BASE_MAP = {
   BIOLITH: './textures/tile_biolith.png',
 };
 
+function applyTileTextureSettings(tex) {
+  const ctx = getCtx();
+  const { THREE, renderer } = ctx;
+  if (!tex || !THREE) return;
+  try {
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(1, 1);
+    tex.anisotropy = renderer?.capabilities?.getMaxAnisotropy?.() || 1;
+    if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+    tex.needsUpdate = true;
+  } catch {}
+}
+
 function loadBaseTileTextures() {
   const ctx = getCtx();
-  const { THREE, renderer, TILE_TEXTURES } = ctx;
+  const { THREE, TILE_TEXTURES } = ctx;
   if (!THREE) return;
   const loader = new THREE.TextureLoader();
-  const ASSET_VERSION = '2';
   for (const k in BASE_MAP) {
     if (TILE_TEXTURES[k]) continue;
     const path = `${BASE_MAP[k]}?v=${ASSET_VERSION}`;
@@ -23,9 +39,7 @@ function loadBaseTileTextures() {
         path,
         (tex) => {
           try {
-            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(1, 1);
-            tex.anisotropy = renderer?.capabilities?.getMaxAnisotropy?.() || 1;
-            if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+            applyTileTextureSettings(tex);
             ctx.TILE_TEXTURES[k] = tex; tex.needsUpdate = true;
             // Update any tiles of this element key once the texture is ready
             try { updateTileMaterialsFor(k); } catch {}
@@ -72,6 +86,92 @@ export function createProceduralTileTexture(element) {
   return tex;
 }
 
+function ensureTileSideTexture() {
+  const ctx = getCtx();
+  const { THREE, TILE_SIDE_TEXTURE } = ctx;
+  if (!THREE) return null;
+  if (TILE_SIDE_TEXTURE) return TILE_SIDE_TEXTURE;
+  const loader = new THREE.TextureLoader();
+  const path = `${SIDE_TEXTURE_PATH}?v=${ASSET_VERSION}`;
+  try {
+    const texture = loader.load(
+      path,
+      (loaded) => {
+        // Применяем настройки повторно после полной загрузки
+        applyTileTextureSettings(loaded);
+        ctx.TILE_SIDE_TEXTURE = loaded;
+      },
+      undefined,
+      () => { /* игнорируем ошибку загрузки, будет запасной материал */ },
+    );
+    applyTileTextureSettings(texture);
+    ctx.TILE_SIDE_TEXTURE = texture;
+    return texture;
+  } catch {
+    return null;
+  }
+}
+
+function getTileSideMaterial() {
+  const ctx = getCtx();
+  const { THREE, TILE_SIDE_MATERIAL } = ctx;
+  if (!THREE) return null;
+  if (TILE_SIDE_MATERIAL) return TILE_SIDE_MATERIAL;
+  const sideTexture = ensureTileSideTexture();
+  if (sideTexture) {
+    ctx.TILE_SIDE_MATERIAL = new THREE.MeshBasicMaterial({ map: sideTexture });
+  } else {
+    ctx.TILE_SIDE_MATERIAL = new THREE.MeshStandardMaterial({
+      color: 0x4b5563,
+      metalness: 0.12,
+      roughness: 0.7,
+    });
+  }
+  return ctx.TILE_SIDE_MATERIAL;
+}
+
+function disposeMaterial(material) {
+  if (!material) return;
+  if (Array.isArray(material)) {
+    for (const mat of material) {
+      try { mat?.dispose?.(); } catch {}
+    }
+    return;
+  }
+  try { material.dispose?.(); } catch {}
+}
+
+function markMaterialsForUpdate(material) {
+  if (!material) return;
+  if (Array.isArray(material)) {
+    for (const mat of material) {
+      if (mat) mat.needsUpdate = true;
+    }
+    return;
+  }
+  material.needsUpdate = true;
+}
+
+function createTileMaterials(element) {
+  const topMaterial = getTileMaterial(element);
+  const sideTemplate = getTileSideMaterial();
+  if (!topMaterial) return null;
+  if (!sideTemplate) {
+    markMaterialsForUpdate(topMaterial);
+    return topMaterial;
+  }
+  const materials = [
+    sideTemplate.clone(),
+    sideTemplate.clone(),
+    topMaterial,
+    sideTemplate.clone(),
+    sideTemplate.clone(),
+    sideTemplate.clone(),
+  ];
+  markMaterialsForUpdate(materials);
+  return materials;
+}
+
 const ELEMENT_BASE_COLORS = {
   FIRE: 0xdc2626,
   WATER: 0x0369a1,
@@ -101,7 +201,7 @@ export function getTileMaterial(element) {
 
 export function updateTileMaterialsFor(elementKey) {
   const ctx = getCtx();
-  const { TILE_TEXTURES, tileMeshes, THREE, renderer, scene, camera } = ctx;
+  const { TILE_TEXTURES, tileMeshes, renderer, scene, camera } = ctx;
   if (!tileMeshes || !tileMeshes.length) return;
   const tex = TILE_TEXTURES[elementKey]; if (!tex) return;
   for (let r = 0; r < tileMeshes.length; r++) {
@@ -110,9 +210,11 @@ export function updateTileMaterialsFor(elementKey) {
       const tile = row[c]; if (!tile) continue;
       const el = tile.userData && tile.userData.element;
       if (el !== elementKey) continue;
-      try { tile.material.dispose && tile.material.dispose(); } catch {}
-      tile.material = new THREE.MeshBasicMaterial({ map: tex });
-      tile.material.needsUpdate = true;
+      disposeMaterial(tile.material);
+      const updatedMaterials = createTileMaterials(el);
+      if (!updatedMaterials) continue;
+      tile.material = updatedMaterials;
+      markMaterialsForUpdate(tile.material);
     }
   }
   try { renderer && renderer.render(scene, camera); } catch {}
@@ -138,8 +240,8 @@ export function createBoard(gameState) {
     for (let c = 0; c < 3; c++) {
       const cell = gameState.board[r][c];
       const geometry = new THREE.BoxGeometry(tileSize, tileHeight, tileSize);
-      const material = getTileMaterial(cell.element);
-      const tile = new THREE.Mesh(geometry, material);
+      const materials = createTileMaterials(cell.element) || getTileMaterial(cell.element);
+      const tile = new THREE.Mesh(geometry, materials);
       const x = (c - 1) * (tileSize + spacing);
       const z = (r - 1) * (tileSize + spacing) + boardZShift;
       tile.position.set(x, tileHeight / 2 + boardYOffset, z);

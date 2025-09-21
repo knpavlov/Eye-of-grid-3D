@@ -24,6 +24,9 @@ const ctx = {
   // Textures cache
   TILE_TEXTURES: {},
   PROC_TILE_TEXTURES: {},
+  // Кэш боковой текстуры и материала тайлов поля
+  TILE_SIDE_TEXTURE: null,
+  TILE_SIDE_MATERIAL: null,
 };
 
 export function getCtx() { return ctx; }
