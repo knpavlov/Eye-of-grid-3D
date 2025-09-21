@@ -25,6 +25,123 @@ function computeHandTransform(index, total) {
   return { position: pos, rotation: rot, scale };
 }
 
+// Собирает заранее все положения руки для указанного количества слотов
+function buildHandLayout(totalSlots) {
+  const layout = [];
+  const count = Math.max(0, totalSlots);
+  for (let i = 0; i < count; i++) {
+    layout.push(computeHandTransform(i, count));
+  }
+  return layout;
+}
+
+// Простейшая стратегия на случай отсутствия данных об игровом состоянии
+function createFallbackLayout(handMeshes) {
+  const currentCount = Array.isArray(handMeshes) ? handMeshes.length : 0;
+  const totalSlots = Math.max(1, currentCount + 1);
+  const layout = buildHandLayout(totalSlots);
+  const indexByHandIndex = new Map();
+
+  if (Array.isArray(handMeshes)) {
+    handMeshes.forEach((mesh, orderIdx) => {
+      const handIdx = (mesh?.userData && typeof mesh.userData.handIndex === 'number')
+        ? mesh.userData.handIndex
+        : orderIdx;
+      if (!indexByHandIndex.has(handIdx)) {
+        indexByHandIndex.set(handIdx, Math.min(orderIdx, Math.max(0, layout.length - 1)));
+      }
+    });
+  }
+
+  const newCardLayoutIndex = Math.max(0, Math.min(layout.length - 1, totalSlots - 1));
+  const targetTransform = layout[newCardLayoutIndex] || computeHandTransform(newCardLayoutIndex, totalSlots);
+
+  return {
+    layout,
+    indexByHandIndex,
+    newCardLayoutIndex,
+    newCardHandIndex: null,
+    targetTransform,
+  };
+}
+
+// Рассчитывает предстоящее расположение всех карт в руке после добора новой
+function predictHandLayoutAfterDraw(cardTpl, handMeshes) {
+  const fallback = createFallbackLayout(handMeshes);
+  const w = (typeof window !== 'undefined') ? window : null;
+  const gs = w?.gameState;
+  const players = gs?.players;
+  const viewerSeat = (typeof w?.MY_SEAT === 'number')
+    ? w.MY_SEAT
+    : ((gs && typeof gs.active === 'number') ? gs.active : null);
+
+  if (viewerSeat == null || !players || !Array.isArray(players[viewerSeat]?.hand)) {
+    return fallback;
+  }
+
+  const playerHand = players[viewerSeat].hand.slice();
+  let cardHandIndex = playerHand.findIndex(card => card === cardTpl);
+  if (cardHandIndex === -1) {
+    playerHand.push(cardTpl);
+    cardHandIndex = playerHand.length - 1;
+  }
+
+  const pendingRawNum = Number(w?.pendingDrawCount ?? 0);
+  const safePendingRaw = Number.isFinite(pendingRawNum) ? Math.max(0, Math.floor(pendingRawNum)) : 0;
+  const pendingAfter = Math.max(0, safePendingRaw - 1);
+  const sliceTo = Math.max(0, playerHand.length - pendingAfter);
+  const visibleHand = playerHand.slice(0, sliceTo);
+
+  const hiddenSet = new Set(
+    Array.isArray(w?.PENDING_HIDE_HAND_CARDS)
+      ? w.PENDING_HIDE_HAND_CARDS.filter(i => Number.isInteger(i))
+      : []
+  );
+
+  const ritualIndex = (viewerSeat === gs?.active && typeof w?.pendingRitualSpellHandIndex === 'number')
+    ? w.pendingRitualSpellHandIndex
+    : null;
+
+  const visibleIndices = [];
+  for (let i = 0; i < visibleHand.length; i++) {
+    if (ritualIndex != null && i === ritualIndex) continue;
+    if (hiddenSet.has(i)) continue;
+    visibleIndices.push(i);
+  }
+
+  if (visibleIndices.length === 0) {
+    const layout = buildHandLayout(1);
+    const targetTransform = layout[0] || computeHandTransform(0, 1);
+    const indexByHandIndex = new Map([[cardHandIndex, 0]]);
+    return {
+      layout,
+      indexByHandIndex,
+      newCardLayoutIndex: 0,
+      newCardHandIndex: cardHandIndex,
+      targetTransform,
+    };
+  }
+
+  const layout = visibleIndices.map((_, orderIdx) => computeHandTransform(orderIdx, visibleIndices.length));
+  const indexByHandIndex = new Map();
+  visibleIndices.forEach((handIdx, orderIdx) => {
+    indexByHandIndex.set(handIdx, orderIdx);
+  });
+
+  const newCardLayoutIndex = indexByHandIndex.get(cardHandIndex);
+  if (newCardLayoutIndex == null || !layout[newCardLayoutIndex]) {
+    return fallback;
+  }
+
+  return {
+    layout,
+    indexByHandIndex,
+    newCardLayoutIndex,
+    newCardHandIndex: cardHandIndex,
+    targetTransform: layout[newCardLayoutIndex],
+  };
+}
+
 // Разворачивает карту так, чтобы её лицевая сторона была направлена прямо на камеру
 function orientCardFaceTowardCamera(card, camera) {
   if (!card || !camera) return;
@@ -73,11 +190,22 @@ function gatherMeshMaterials(root, sink = []) {
 }
 
 // Плавно перестраивает текущие карты в руке перед добавлением новой
-function relayoutHandDuringDraw(handMeshes, totalAfter, duration) {
+function relayoutHandDuringDraw(handMeshes, layoutInfo, duration) {
   if (!Array.isArray(handMeshes) || handMeshes.length === 0) return;
 
+  if (!layoutInfo || !Array.isArray(layoutInfo.layout) || layoutInfo.layout.length === 0) return;
+
+  const { layout, indexByHandIndex } = layoutInfo;
+
   handMeshes.forEach((mesh, idx) => {
-    const t = computeHandTransform(idx, totalAfter);
+    if (!mesh) return;
+    const handIdx = (mesh.userData && typeof mesh.userData.handIndex === 'number')
+      ? mesh.userData.handIndex
+      : idx;
+    const orderIdx = indexByHandIndex.has(handIdx) ? indexByHandIndex.get(handIdx) : idx;
+    const safeIdx = Math.max(0, Math.min(layout.length - 1, orderIdx));
+    const t = layout[safeIdx];
+    if (!t) return;
     gsap.to(mesh.position, {
       x: t.position.x,
       y: t.position.y,
@@ -225,13 +353,15 @@ export async function animateDrawnCardToHand(cardTpl) {
   const flightDuration = DRAW_FLIGHT_DURATION;
 
   const handMeshes = (ctx.handCardMeshes || []).filter(m => m?.userData?.isInHand);
-  const totalVisible = Math.max(0, handMeshes.length);
-  const totalAfter = totalVisible + 1;
-  const indexAfter = totalAfter - 1;
-  const target = computeHandTransform(indexAfter, totalAfter);
+  const layoutInfo = predictHandLayoutAfterDraw(cardTpl, handMeshes);
+  const fallbackTarget = computeHandTransform(
+    Math.max(0, handMeshes.length),
+    Math.max(1, handMeshes.length + 1)
+  );
+  const target = layoutInfo?.targetTransform || fallbackTarget;
 
   try {
-    relayoutHandDuringDraw(handMeshes, totalAfter, revealDuration);
+    relayoutHandDuringDraw(handMeshes, layoutInfo, revealDuration);
   } catch {}
 
   const flightRotation = target.rotation.clone();
