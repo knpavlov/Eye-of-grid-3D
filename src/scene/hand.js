@@ -82,6 +82,11 @@ function gatherMeshMaterials(root, sink = []) {
   return sink;
 }
 
+// Базовый clamp, чтобы аккуратно ограничивать параметры анимаций
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
 // Плавно перестраивает текущие карты в руке перед добавлением новой
 function relayoutHandDuringDraw(handMeshes, layoutAfterDraw, duration) {
   if (!Array.isArray(handMeshes) || handMeshes.length === 0) return;
@@ -112,6 +117,8 @@ function relayoutHandDuringDraw(handMeshes, layoutAfterDraw, duration) {
 // Базовые длительности показа и перелёта добираемой карты
 const DRAW_REVEAL_DURATION = 0.7;
 const DRAW_FLIGHT_DURATION = 0.7;
+const DRAW_FINAL_SETTLE_DURATION = 0.32;
+const DRAW_FINAL_APPROACH_RATIO = 0.82;
 
 export function setHandCardHoverVisual(mesh, hovered) {
   if (!mesh) return;
@@ -225,7 +232,7 @@ export async function animateDrawnCardToHand(cardTpl) {
     rollDeg: T.initialRollDeg ?? 0
   });
 
-  big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
+  big.scale.set((T.scale ?? 1.5), (T.scale ?? 1.5), (T.scale ?? 1.5));
   big.renderOrder = 9000;
 
   const allMaterials = gatherMeshMaterials(big, []);
@@ -234,6 +241,9 @@ export async function animateDrawnCardToHand(cardTpl) {
 
   const revealDuration = DRAW_REVEAL_DURATION;
   const flightDuration = DRAW_FLIGHT_DURATION;
+  const settleDurationRaw = clamp(T.settleDuration ?? DRAW_FINAL_SETTLE_DURATION, 0, 1.5);
+  const hasSettleStage = settleDurationRaw > 0.0001;
+  const settleDuration = hasSettleStage ? settleDurationRaw : 0;
 
   const handMeshes = (ctx.handCardMeshes || []).filter(m => m?.userData?.isInHand);
   const totalVisible = Math.max(0, handMeshes.length);
@@ -241,6 +251,18 @@ export async function animateDrawnCardToHand(cardTpl) {
   const indexAfter = totalAfter - 1;
   const layoutAfterDraw = computeHandLayout(totalAfter);
   const target = layoutAfterDraw[indexAfter] || computeHandTransform(indexAfter, totalAfter);
+
+  const startPosition = big.position.clone();
+  const startScale = big.scale.clone();
+  const targetScale = target?.scale ? target.scale.clone() : new THREE.Vector3(0.54, 1, 0.54);
+  const approachRatio = hasSettleStage ? clamp(T.settleApproachRatio ?? DRAW_FINAL_APPROACH_RATIO, 0.4, 0.98) : 1;
+  const approachPosition = hasSettleStage
+    ? startPosition.clone().lerp(target.position, approachRatio)
+    : target.position.clone();
+  const approachScale = hasSettleStage
+    ? startScale.clone().lerp(targetScale, approachRatio)
+    : targetScale.clone();
+  const totalFlightDuration = flightDuration + settleDuration;
 
   try {
     relayoutHandDuringDraw(handMeshes, layoutAfterDraw, revealDuration);
@@ -258,8 +280,8 @@ export async function animateDrawnCardToHand(cardTpl) {
   } catch {}
 
   // Запускаем финальное выравнивание угла заранее, чтобы оно шло в полёте
-  const rotationLead = Math.max(0, Math.min(flightDuration, (T.rotationLead ?? 0.5)));
-  const settleStartTime = Math.max(0, flightDuration - rotationLead);
+  const rotationLead = clamp(T.rotationLead ?? 0.5, 0, totalFlightDuration);
+  const settleStartTime = Math.max(0, totalFlightDuration - rotationLead);
   const leanDuration = Math.max(0, settleStartTime);
 
   try {
@@ -275,19 +297,36 @@ export async function animateDrawnCardToHand(cardTpl) {
       tl.addLabel('flightMotion');
 
       tl.to(big.position, {
-        x: target.position.x,
-        y: target.position.y,
-        z: target.position.z,
+        x: approachPosition.x,
+        y: approachPosition.y,
+        z: approachPosition.z,
         duration: flightDuration,
         ease: 'power2.inOut'
       }, 'flightMotion')
         .to(big.scale, {
-          x: target.scale.x,
-          y: target.scale.y,
-          z: target.scale.z,
+          x: approachScale.x,
+          y: approachScale.y,
+          z: approachScale.z,
           duration: flightDuration,
           ease: 'power2.inOut'
         }, 'flightMotion');
+
+      if (hasSettleStage) {
+        tl.to(big.position, {
+          x: target.position.x,
+          y: target.position.y,
+          z: target.position.z,
+          duration: settleDuration,
+          ease: 'power1.out'
+        }, `flightMotion+=${flightDuration}`)
+          .to(big.scale, {
+            x: targetScale.x,
+            y: targetScale.y,
+            z: targetScale.z,
+            duration: settleDuration,
+            ease: 'power1.out'
+          }, `flightMotion+=${flightDuration}`);
+      }
 
       if (leanDuration > 0.0001) {
         tl.to(big.rotation, {
