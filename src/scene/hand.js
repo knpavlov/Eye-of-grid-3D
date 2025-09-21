@@ -112,7 +112,9 @@ function relayoutHandDuringDraw(handMeshes, layoutAfterDraw, duration) {
 // Базовые длительности показа и перелёта добираемой карты
 const DRAW_REVEAL_DURATION = 0.7;
 const DRAW_FLIGHT_DURATION = 0.7;
-const DRAW_ROTATION_SETTLE_LEAD = 0.5; // За сколько секунд до посадки начинаем выравнивание угла
+// Длительность и опережение финального выравнивания, чтобы посадка карты выглядела мягче
+const DRAW_ROTATION_SETTLE_LEAD = 0.18; // За сколько секунд до посадки стартуем мягкое выравнивание
+const DRAW_ROTATION_SETTLE_DURATION = 0.65; // Сколько в сумме времени отдаём на мягкое выравнивание
 
 export function setHandCardHoverVisual(mesh, hovered) {
   if (!mesh) return;
@@ -226,7 +228,7 @@ export async function animateDrawnCardToHand(cardTpl) {
     rollDeg: T.initialRollDeg ?? 0
   });
 
-  big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
+  big.scale.set((T.scale ?? 1.5), (T.scale ?? 1.5), (T.scale ?? 1.5));
   big.renderOrder = 9000;
 
   const allMaterials = gatherMeshMaterials(big, []);
@@ -259,8 +261,8 @@ export async function animateDrawnCardToHand(cardTpl) {
   } catch {}
 
   const settleLead = Math.min(flightDuration, DRAW_ROTATION_SETTLE_LEAD);
+  const settleDuration = Math.max(DRAW_ROTATION_SETTLE_DURATION, settleLead);
   const approachDuration = Math.max(0, flightDuration - settleLead);
-  const settleDuration = Math.max(0, settleLead);
 
   try {
     await new Promise(resolve => {
@@ -277,7 +279,7 @@ export async function animateDrawnCardToHand(cardTpl) {
         y: target.position.y,
         z: target.position.z,
         duration: flightDuration,
-        ease: 'power2.inOut'
+        ease: 'power3.out'
       });
 
       if (approachDuration > 0.0001) {
@@ -299,7 +301,7 @@ export async function animateDrawnCardToHand(cardTpl) {
         y: target.scale.y,
         z: target.scale.z,
         duration: flightDuration,
-        ease: 'power2.inOut'
+        ease: 'power3.out'
       }, '<');
 
       if (settleDuration > 0.0001) {
@@ -308,8 +310,8 @@ export async function animateDrawnCardToHand(cardTpl) {
           y: arrivalRotation.y,
           z: arrivalRotation.z,
           duration: settleDuration,
-          ease: 'power1.out'
-        }, `-=${settleDuration}`);
+          ease: 'sine.out'
+        }, `-=${settleLead}`);
       } else {
         tl.add(() => {
           big.rotation.copy(arrivalRotation);
