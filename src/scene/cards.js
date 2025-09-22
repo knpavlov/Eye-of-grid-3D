@@ -15,9 +15,11 @@ const ELEMENT_FRONT_PATHS = {
 const CARD_TEX = { front: null, fronts: {}, back: null, deckSide: null };
 
 // Базовое расположение ключевых элементов на карточке в координатах оригинального дизайна (832x1248)
+export const CARD_TEXTURE_SIZE = Object.freeze({ width: 256, height: 356 });
+
 const CARD_FACE_LAYOUT = {
   // Центры сфер и кристаллов, измеренные по финальной текстуре 832x1248
-  cost: { x: 76, y: 91 },
+  cost: { x: 86, y: 86 },
   activation: { x: 184, y: 56 },
   hp: { x: 66, y: 1158 },
   atk: { x: 770, y: 1158 },
@@ -29,9 +31,13 @@ const CARD_FACE_LAYOUT = {
   textPaddingTop: 50,
   textGap: 36,
   textBottomGap: 22,
-  diagramsBottom: 1148,
+  diagramsBottom: 1138,
   diagramLabelGap: 26,
-  statsBaseline: 1158
+  statsBaseline: 1158,
+  diagramCellBase: 21,
+  diagramGapBase: 4,
+  diagramSpacingBase: 38,
+  diagramScale: 1.15
 };
 const CARD_IMAGES = {};
 const CARD_PENDING = {};
@@ -119,6 +125,10 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
 
   // Геометрия ключевых зон интерфейса в координатах исходного дизайна
   const layout = CARD_FACE_LAYOUT;
+  const diagramCellBase = layout.diagramCellBase ?? 21;
+  const diagramGapBase = layout.diagramGapBase ?? 4;
+  const diagramSpacingBase = layout.diagramSpacingBase ?? 38;
+  const diagramScale = layout.diagramScale ?? 1;
 
   const elementLabels = { FIRE: 'Fire', WATER: 'Water', EARTH: 'Earth', FOREST: 'Forest', BIOLITH: 'Biolith', NEUTRAL: 'Neutral' };
 
@@ -228,8 +238,10 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   let diagramHeight = 0;
 
   if (cardData.type === 'UNIT') {
-    diagramCell = Math.max(Math.round(ps(21)), 7);
-    diagramGap = Math.max(Math.round(ps(4)), 2);
+    const scaledCellBase = diagramCellBase * diagramScale;
+    const scaledGapBase = diagramGapBase * diagramScale;
+    diagramCell = Math.max(Math.round(ps(scaledCellBase)), 7);
+    diagramGap = Math.max(Math.round(ps(scaledGapBase)), 2);
     diagramHeight = diagramCell * 3 + diagramGap * 2;
     const diagramsBottom = py(layout.diagramsBottom);
     diagramTop = diagramsBottom - diagramHeight;
@@ -278,10 +290,11 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     drawOrbNumber(String(hpToShow), layout.hp, 50, 'Noto Sans', '800', 12);
     drawOrbNumber(String(atkToShow), layout.atk, 50, 'Noto Sans', '800', 12);
 
-    const cell = diagramCell ?? Math.max(Math.round(ps(21)), 7);
-    const gap = diagramGap ?? Math.max(Math.round(ps(4)), 2);
+    const cell = diagramCell ?? Math.max(Math.round(ps(diagramCellBase * diagramScale)), 7);
+    const gap = diagramGap ?? Math.max(Math.round(ps(diagramGapBase * diagramScale)), 2);
     const gridW = cell * 3 + gap * 2;
-    const spacing = Math.max(Math.round(ps(38)), 12);
+    const spacingBase = diagramSpacingBase * diagramScale;
+    const spacing = Math.max(Math.round(ps(spacingBase)), 12);
     const schemes = getAttackSchemes(cardData);
     const schemeCount = schemes.length;
     const columns = schemeCount + 1;
@@ -551,7 +564,8 @@ function attachIllustrationPlane(cardMesh, cardData) {
   if (prev) { try { cardMesh.remove(prev); } catch {} }
   const img = CARD_IMAGES[cardData.id] || CARD_IMAGES[cardData.id?.toLowerCase?.()] || CARD_IMAGES[(cardData.name||'').toLowerCase().replace(/[^a-z0-9\s_-]/g,'').replace(/\s+/g,'_')];
   const DESIGN_W = 832, DESIGN_H = 1248;
-  const W = 256, H = 356;
+  const W = CARD_TEXTURE_SIZE.width;
+  const H = CARD_TEXTURE_SIZE.height;
   const illDesign = CARD_FACE_LAYOUT.art;
   const illX = (illDesign.x / DESIGN_W) * W;
   const illY = (illDesign.y / DESIGN_H) * H;
@@ -591,7 +605,8 @@ export function createCard3D(cardData, isInHand = false, hpOverride = null, atkO
   const { renderer, cardGroup } = getCtx();
   const cardWidth = 4.8; const cardHeight = 5.6; const cardThickness = 0.12;
   const geometry = new THREE.BoxGeometry(cardWidth, cardThickness, cardHeight);
-  const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 356;
+  const { width: texWidth, height: texHeight } = CARD_TEXTURE_SIZE;
+  const canvas = document.createElement('canvas'); canvas.width = texWidth; canvas.height = texHeight;
   const ctx2d = canvas.getContext('2d'); drawCardFace(ctx2d, cardData, canvas.width, canvas.height, hpOverride, atkOverride);
   const texture = new THREE.CanvasTexture(canvas); try { texture.anisotropy = renderer?.capabilities?.getMaxAnisotropy?.() || 1; } catch {}
   if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;

@@ -6,7 +6,7 @@ import { upsertDeck } from '../core/decks.js';
 import { saveDeck as saveDeckRemote } from '../net/decks.js';
 import { show as showNotification } from './notifications.js';
 // Используем генератор карт из игрового рендера, чтобы показать карты целиком
-import { drawCardFace, preloadCardTextures } from '../scene/cards.js';
+import { drawCardFace, preloadCardTextures, CARD_TEXTURE_SIZE } from '../scene/cards.js';
 
 // Генерация ID новой колоды
 function makeId() {
@@ -40,8 +40,8 @@ const STRIP_OVERRIDES = {
   // Пример: FIRE_FLAME_MAGUS: 42,
 };
 // Размеры превью карты в каталоге
-const PREVIEW_W = 200;
-const PREVIEW_H = 300;
+const PREVIEW_W = CARD_TEXTURE_SIZE.width;
+const PREVIEW_H = CARD_TEXTURE_SIZE.height;
 
 export function open(deck = null, onDone) {
   if (typeof document === 'undefined') return;
@@ -199,7 +199,7 @@ export function open(deck = null, onDone) {
   // === Каталог карт ===
   const catalog = document.createElement('div');
   // Сетка 5x2 с собственной полосой прокрутки (строки добавляются по мере необходимости)
-  catalog.className = 'flex-1 overflow-y-auto grid grid-cols-5 gap-4 deck-scroll catalog-grid';
+  catalog.className = 'flex-1 overflow-y-auto grid gap-4 deck-scroll catalog-grid';
   right.appendChild(catalog);
 
   const scheduleCatalogRedraw = (() => {
@@ -551,10 +551,13 @@ export function open(deck = null, onDone) {
       item.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', card.id));
       item.addEventListener('click', () => addCard(card));
       const canvas = document.createElement('canvas');
-      canvas.width = PREVIEW_W; canvas.height = PREVIEW_H;
+      canvas.width = PREVIEW_W;
+      canvas.height = PREVIEW_H;
+      canvas.style.width = `${PREVIEW_W}px`;
+      canvas.style.height = `${PREVIEW_H}px`;
       canvas.__cardData = card;
       drawCardFace(canvas.getContext('2d'), card, PREVIEW_W, PREVIEW_H);
-      canvas.className = 'w-full h-auto';
+      canvas.className = 'block';
       item.appendChild(canvas);
       catalog.appendChild(item);
     });

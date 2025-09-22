@@ -163,12 +163,14 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
   align-content: start;
   justify-items: center;
   padding-bottom: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(272px, 1fr));
   grid-template-rows: repeat(2, max-content);
   grid-auto-rows: max-content;
 }
 
 #deck-builder-overlay .catalog-card {
   width: 100%;
+  max-width: 272px;
   padding: 6px;
   border-radius: 18px;
   background: rgba(15,23,42,0.65);
