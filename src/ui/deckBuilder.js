@@ -40,8 +40,9 @@ const STRIP_OVERRIDES = {
   // Пример: FIRE_FLAME_MAGUS: 42,
 };
 // Размеры превью карты в каталоге
-const PREVIEW_W = 200;
-const PREVIEW_H = 300;
+// Разрешение превью карт синхронизируем с игровым рендером (см. createCard3D)
+const PREVIEW_W = 256;
+const PREVIEW_H = 356;
 
 export function open(deck = null, onDone) {
   if (typeof document === 'undefined') return;
@@ -552,9 +553,11 @@ export function open(deck = null, onDone) {
       item.addEventListener('click', () => addCard(card));
       const canvas = document.createElement('canvas');
       canvas.width = PREVIEW_W; canvas.height = PREVIEW_H;
+      // Жёстко задаём CSS-размер, чтобы превью 1:1 совпадало с игровым холстом
+      canvas.style.width = `${PREVIEW_W}px`;
+      canvas.style.height = `${PREVIEW_H}px`;
       canvas.__cardData = card;
       drawCardFace(canvas.getContext('2d'), card, PREVIEW_W, PREVIEW_H);
-      canvas.className = 'w-full h-auto';
       item.appendChild(canvas);
       catalog.appendChild(item);
     });

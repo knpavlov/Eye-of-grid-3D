@@ -17,7 +17,7 @@ const CARD_TEX = { front: null, fronts: {}, back: null, deckSide: null };
 // Базовое расположение ключевых элементов на карточке в координатах оригинального дизайна (832x1248)
 const CARD_FACE_LAYOUT = {
   // Центры сфер и кристаллов, измеренные по финальной текстуре 832x1248
-  cost: { x: 76, y: 91 },
+  cost: { x: 86, y: 86 },
   activation: { x: 184, y: 56 },
   hp: { x: 66, y: 1158 },
   atk: { x: 770, y: 1158 },
@@ -29,10 +29,15 @@ const CARD_FACE_LAYOUT = {
   textPaddingTop: 50,
   textGap: 36,
   textBottomGap: 22,
-  diagramsBottom: 1148,
+  diagramsBottom: 1138,
   diagramLabelGap: 26,
   statsBaseline: 1158
 };
+// Масштаб схем атак относительно оригинального макета (15% увеличение)
+const ATTACK_DIAGRAM_SCALE = 1.15;
+const ATTACK_DIAGRAM_BASE_CELL = 21 * ATTACK_DIAGRAM_SCALE;
+const ATTACK_DIAGRAM_BASE_GAP = 4 * ATTACK_DIAGRAM_SCALE;
+const ATTACK_DIAGRAM_BASE_SPACING = 38 * ATTACK_DIAGRAM_SCALE;
 const CARD_IMAGES = {};
 const CARD_PENDING = {};
 
@@ -228,8 +233,8 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   let diagramHeight = 0;
 
   if (cardData.type === 'UNIT') {
-    diagramCell = Math.max(Math.round(ps(21)), 7);
-    diagramGap = Math.max(Math.round(ps(4)), 2);
+    diagramCell = Math.max(Math.round(ps(ATTACK_DIAGRAM_BASE_CELL)), 7);
+    diagramGap = Math.max(Math.round(ps(ATTACK_DIAGRAM_BASE_GAP)), 2);
     diagramHeight = diagramCell * 3 + diagramGap * 2;
     const diagramsBottom = py(layout.diagramsBottom);
     diagramTop = diagramsBottom - diagramHeight;
@@ -278,10 +283,10 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
     drawOrbNumber(String(hpToShow), layout.hp, 50, 'Noto Sans', '800', 12);
     drawOrbNumber(String(atkToShow), layout.atk, 50, 'Noto Sans', '800', 12);
 
-    const cell = diagramCell ?? Math.max(Math.round(ps(21)), 7);
-    const gap = diagramGap ?? Math.max(Math.round(ps(4)), 2);
+    const cell = diagramCell ?? Math.max(Math.round(ps(ATTACK_DIAGRAM_BASE_CELL)), 7);
+    const gap = diagramGap ?? Math.max(Math.round(ps(ATTACK_DIAGRAM_BASE_GAP)), 2);
     const gridW = cell * 3 + gap * 2;
-    const spacing = Math.max(Math.round(ps(38)), 12);
+    const spacing = Math.max(Math.round(ps(ATTACK_DIAGRAM_BASE_SPACING)), 12);
     const schemes = getAttackSchemes(cardData);
     const schemeCount = schemes.length;
     const columns = schemeCount + 1;
