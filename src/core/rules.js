@@ -20,7 +20,7 @@ import {
   resolveAttackProfile,
   refreshBoardDodgeStates,
 } from './abilities.js';
-import { countUnits } from './board.js';
+import { computeDynamicAttackBonuses } from './abilityHandlers/dynamicAttack.js';
 import { computeCellBuff } from './fieldEffects.js';
 import { normalizeElementName } from './utils/elements.js';
 
@@ -288,34 +288,13 @@ export function stagedAttack(state, r, c, opts = {}) {
   const hitsRaw = computeHits(base, r, c, { ...opts, profile });
   if (!hitsRaw.length) return { empty: true };
 
-  if (tplA.dynamicAtk === 'OTHERS_ON_BOARD') {
-    const others = countUnits(base) - 1;
-    atk += others;
-    logLines.push(`${tplA.name}: атака увеличена на ${others}`);
-  }
-  if (tplA.dynamicAtk === 'FIRE_CREATURES') {
-    let cnt = 0;
-    for (let rr = 0; rr < 3; rr++) {
-      for (let cc = 0; cc < 3; cc++) {
-        if (rr === r && cc === c) continue;
-        const u = base.board[rr][cc]?.unit;
-        if (u && CARDS[u.tplId]?.element === 'FIRE') cnt++;
-      }
-    }
-    atk += cnt;
-    logLines.push(`${tplA.name}: атака увеличена на ${cnt}`);
-  }
-  if (tplA.dynamicAtk === 'FOREST_CREATURES') {
-    let cnt = 0;
-    for (let rr = 0; rr < 3; rr++) {
-      for (let cc = 0; cc < 3; cc++) {
-        if (rr === r && cc === c) continue;
-        const u = base.board[rr][cc]?.unit;
-        if (u && CARDS[u.tplId]?.element === 'FOREST') cnt++;
-      }
-    }
-    atk += cnt;
-    logLines.push(`${tplA.name}: атака увеличена на ${cnt}`);
+  const dynamicBonuses = computeDynamicAttackBonuses(base, r, c, tplA);
+  for (const bonus of dynamicBonuses) {
+    if (!bonus || typeof bonus.amount !== 'number') continue;
+    const amount = Math.floor(bonus.amount);
+    if (!Number.isFinite(amount) || amount === 0) continue;
+    atk += amount;
+    logLines.push(`${tplA.name}: атака увеличена на ${amount}`);
   }
   const targetBonus = getTargetElementBonus(tplA, base, hitsRaw);
   const plusCfg = tplA.plusAtkIfTargetOnElement || (tplA.plus1IfTargetOnElement ? { element: tplA.plus1IfTargetOnElement, amount: 1 } : null);

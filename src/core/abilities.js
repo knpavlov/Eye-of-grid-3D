@@ -24,6 +24,7 @@ import {
   refreshContinuousPossessions as refreshContinuousPossessionsInternal,
 } from './abilityHandlers/possession.js';
 import { applySummonDraw } from './abilityHandlers/draw.js';
+import { applyAdjacentAllySummonDraw } from './abilityHandlers/allySummon.js';
 import { transformAttackProfile } from './abilityHandlers/attackTransforms.js';
 import { cloneAttackEntry } from './utils/attacks.js';
 import {
@@ -605,14 +606,80 @@ export function applySummonAbilities(state, r, c) {
   const tpl = getUnitTemplate(unit);
   if (!tpl) return events;
 
+  const drawEvents = [];
+
   const drawRes = applySummonDraw(state, r, c, unit, tpl);
   if (drawRes.drawn > 0) {
-    events.draw = {
-      player: unit.owner,
-      count: drawRes.drawn,
-      cards: drawRes.cards,
-      element: cell.element || null,
-    };
+    const details = Array.isArray(drawRes.details) && drawRes.details.length
+      ? drawRes.details
+      : [ {
+        amount: drawRes.drawn,
+        cards: drawRes.cards,
+        element: cell.element || null,
+        source: { type: 'SELF_SUMMON', r, c, tplId: tpl?.id || unit.tplId },
+      } ];
+    for (const detail of details) {
+      drawEvents.push({
+        player: unit.owner,
+        amount: detail.amount || (detail.cards?.length ?? 0),
+        cards: detail.cards || [],
+        element: detail.element ?? (cell.element || null),
+        source: detail.source || { type: 'SELF_SUMMON', r, c, tplId: tpl?.id || unit.tplId },
+        reason: detail.reason || null,
+      });
+    }
+  }
+
+  const adjacentDraw = applyAdjacentAllySummonDraw(state, { r, c, unit, tpl });
+  if (adjacentDraw.total > 0) {
+    for (const detail of adjacentDraw.details) {
+      drawEvents.push({
+        player: unit.owner,
+        amount: detail.amount || (detail.cards?.length ?? 0),
+        cards: detail.cards || [],
+        element: detail.element ?? null,
+        source: detail.source,
+        reason: detail.reason || 'ADJACENT_ALLY_SUMMON',
+      });
+    }
+  }
+
+  if (drawEvents.length) {
+    const grouped = new Map();
+    for (const info of drawEvents) {
+      if (info.player == null) continue;
+      if (!grouped.has(info.player)) {
+        grouped.set(info.player, {
+          player: info.player,
+          count: 0,
+          cards: [],
+          element: info.element ?? null,
+          sources: [],
+        });
+      }
+      const bucket = grouped.get(info.player);
+      const amount = info.amount || (info.cards?.length ?? 0);
+      if (amount <= 0 && (!info.cards || !info.cards.length)) continue;
+      bucket.count += amount;
+      if (info.element && bucket.element == null) {
+        bucket.element = info.element;
+      }
+      if (Array.isArray(info.cards) && info.cards.length) {
+        bucket.cards.push(...info.cards);
+      }
+      const sourceEntry = {
+        ...(info.source || {}),
+        amount,
+        element: info.element ?? null,
+      };
+      if (info.reason) sourceEntry.reason = info.reason;
+      bucket.sources.push(sourceEntry);
+    }
+    const aggregates = Array.from(grouped.values()).filter(item => (item.count || item.cards.length));
+    if (aggregates.length) {
+      events.draws = aggregates;
+      events.draw = aggregates[0];
+    }
   }
 
   const possessionCfg = normalizeElementConfig(

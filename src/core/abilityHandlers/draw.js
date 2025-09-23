@@ -2,7 +2,8 @@
 // Вся логика изолирована от визуального слоя, чтобы облегчить перенос на другие движки
 import { drawOneNoAdd } from '../board.js';
 
-function normalizeConfig(raw) {
+// Нормализация конфигурации добора по количеству полей определённой стихии
+function normalizeFieldConfig(raw) {
   if (!raw) return null;
   if (typeof raw === 'string') {
     return { element: raw.toUpperCase() };
@@ -24,6 +25,35 @@ function normalizeConfig(raw) {
   return null;
 }
 
+function safeElement(value) {
+  if (!value) return null;
+  return String(value).toUpperCase();
+}
+
+// Упрощённый добор по условию клетки призыва
+function normalizeDirectConfig(raw) {
+  if (!raw) return null;
+  if (raw === true) {
+    return { amount: 1 };
+  }
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return { amount: Math.max(0, Math.floor(raw)) };
+  }
+  if (typeof raw === 'object') {
+    const amountRaw = raw.amount ?? raw.count ?? 1;
+    const requireField = raw.requireField ?? raw.requireElement ?? raw.field;
+    const forbidField = raw.requireFieldNot ?? raw.excludeField ?? raw.forbidField ?? raw.forbidElement;
+    const result = {
+      amount: Math.max(0, Math.floor(typeof amountRaw === 'number' && Number.isFinite(amountRaw) ? amountRaw : 1)),
+      requireField: safeElement(requireField),
+      forbidField: safeElement(forbidField),
+    };
+    if (raw.reason) result.reason = String(raw.reason);
+    return result;
+  }
+  return null;
+}
+
 function countMatchingFields(state, cfg) {
   if (!state?.board) return 0;
   const element = cfg?.element || null;
@@ -40,30 +70,80 @@ function countMatchingFields(state, cfg) {
   return count;
 }
 
+// Подсчёт эффектов добора при призыве конкретного существа
 export function computeSummonDraw(state, r, c, tpl) {
-  if (!tpl) return null;
-  const cfgRaw = tpl.drawOnSummonByElementFields || tpl.drawCardsOnSummon;
-  const cfg = normalizeConfig(cfgRaw);
-  if (!cfg || !cfg.element) return null;
-  const count = countMatchingFields(state, { ...cfg, self: { r, c } });
-  const limited = cfg.limit != null ? Math.min(cfg.limit, count) : count;
-  const amount = Math.max(cfg.min || 0, limited);
-  if (amount <= 0) return null;
-  return { element: cfg.element, amount };
+  const effects = [];
+  if (!tpl) return effects;
+
+  const cfgFields = normalizeFieldConfig(tpl.drawOnSummonByElementFields);
+  if (cfgFields?.element) {
+    const count = countMatchingFields(state, { ...cfgFields, self: { r, c } });
+    const limited = cfgFields.limit != null ? Math.min(cfgFields.limit, count) : count;
+    const amount = Math.max(cfgFields.min || 0, limited);
+    if (amount > 0) {
+      effects.push({
+        amount,
+        element: cfgFields.element,
+        reason: 'FIELD_COUNT',
+        source: { type: 'SELF_SUMMON', r, c, tplId: tpl?.id || null },
+      });
+    }
+  }
+
+  const cellElement = state?.board?.[r]?.[c]?.element || null;
+  const cfgDirect = normalizeDirectConfig(tpl.drawCardsOnSummon);
+  if (cfgDirect && cfgDirect.amount > 0) {
+    if ((!cfgDirect.requireField || cfgDirect.requireField === cellElement)
+      && (!cfgDirect.forbidField || cfgDirect.forbidField !== cellElement)) {
+      effects.push({
+        amount: cfgDirect.amount,
+        element: cellElement,
+        reason: cfgDirect.reason || 'FIELD_CONDITION',
+        source: { type: 'SELF_SUMMON', r, c, tplId: tpl?.id || null },
+      });
+    }
+  }
+
+  return effects;
 }
 
-export function applySummonDraw(state, r, c, unit, tpl) {
-  const info = computeSummonDraw(state, r, c, tpl);
-  if (!info || !unit) return { drawn: 0, cards: [] };
-  const owner = unit.owner;
-  if (owner == null || !state?.players?.[owner]) return { drawn: 0, cards: [] };
+// Общая утилита добора карт без привязки к визуальному слою
+export function drawCards(state, owner, amount) {
+  const result = { drawn: 0, cards: [] };
+  const safeAmount = Math.max(0, Math.floor(amount || 0));
+  if (safeAmount <= 0) return result;
+  if (!state?.players?.[owner]) return result;
   const player = state.players[owner];
-  const drawn = [];
-  for (let i = 0; i < info.amount; i++) {
+  for (let i = 0; i < safeAmount; i++) {
     const card = drawOneNoAdd(state, owner);
     if (!card) break;
     player.hand.push(card);
-    drawn.push(card);
+    result.drawn += 1;
+    result.cards.push(card);
   }
-  return { drawn: drawn.length, cards: drawn };
+  return result;
+}
+
+export function applySummonDraw(state, r, c, unit, tpl) {
+  const owner = unit?.owner;
+  if (owner == null) return { drawn: 0, cards: [], details: [] };
+  const effects = computeSummonDraw(state, r, c, tpl);
+  if (!effects.length) return { drawn: 0, cards: [], details: [] };
+
+  const aggregate = { drawn: 0, cards: [], details: [] };
+  for (const eff of effects) {
+    const draw = drawCards(state, owner, eff.amount);
+    if (!draw.drawn) continue;
+    aggregate.drawn += draw.drawn;
+    aggregate.cards.push(...draw.cards);
+    aggregate.details.push({
+      amount: draw.drawn,
+      cards: draw.cards,
+      element: eff.element ?? (state?.board?.[r]?.[c]?.element || null),
+      reason: eff.reason,
+      source: eff.source || { type: 'SELF_SUMMON', r, c, tplId: tpl?.id || null },
+    });
+  }
+
+  return aggregate;
 }
