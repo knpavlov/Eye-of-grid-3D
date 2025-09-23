@@ -165,10 +165,11 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
   padding-bottom: 1rem;
   grid-template-rows: repeat(2, max-content);
   grid-auto-rows: max-content;
+  grid-template-columns: repeat(auto-fit, minmax(var(--card-min-width, 220px), 1fr));
 }
 
 #deck-builder-overlay .catalog-card {
-  width: 100%;
+  width: min(100%, var(--card-max-width, 256px));
   padding: 6px;
   border-radius: 18px;
   background: rgba(15,23,42,0.65);
@@ -181,7 +182,17 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
   box-shadow: 0 12px 28px rgba(8,11,20,0.48);
 }
 
-#deck-builder-overlay .catalog-card canvas {
+#deck-builder-overlay .catalog-preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 256 / 356;
+}
+
+#deck-builder-overlay .catalog-preview canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   display: block;
   border-radius: 14px;
 }

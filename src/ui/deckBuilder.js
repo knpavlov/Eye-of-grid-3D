@@ -42,6 +42,74 @@ const STRIP_OVERRIDES = {
 // Размеры превью карты в каталоге: совпадают с игровым канвасом (для визуального соответствия)
 const PREVIEW_W = 256;
 const PREVIEW_H = 356;
+// Соотношение сторон и ограничения ширины для адаптивной сетки
+const CARD_ASPECT_RATIO = PREVIEW_H / PREVIEW_W;
+const CATALOG_MIN_CARD_WIDTH = 220;
+const CATALOG_MAX_CARD_WIDTH = PREVIEW_W;
+
+// Обработчик изменения размеров превью, чтобы масштабировать карты без искажений
+function createCardPreviewResizer({ drawCard }) {
+  const hasResizeObserver = typeof ResizeObserver === 'function';
+  const observer = hasResizeObserver
+    ? new ResizeObserver(entries => {
+      entries.forEach(entry => {
+        const payload = entry.target.__cardPreviewPayload;
+        if (!payload || !payload.canvas || !payload.card) return;
+        const width = entry.contentRect?.width || 0;
+        render(payload.canvas, payload.card, width);
+      });
+    })
+    : null;
+
+  function getDevicePixelRatio() {
+    if (typeof window === 'undefined') return 1;
+    return window.devicePixelRatio || 1;
+  }
+
+  function resolveDisplayWidth(canvas, explicitWidth = 0) {
+    if (explicitWidth > 0) return explicitWidth;
+    const wrap = canvas.__previewWrapper;
+    if (wrap && typeof wrap.getBoundingClientRect === 'function') {
+      const rect = wrap.getBoundingClientRect();
+      if (rect.width > 0) return rect.width;
+    }
+    if (canvas.clientWidth > 0) return canvas.clientWidth;
+    return PREVIEW_W;
+  }
+
+  function render(canvas, card, explicitWidth = 0) {
+    if (!canvas || !card) return;
+    const displayWidth = resolveDisplayWidth(canvas, explicitWidth);
+    if (!displayWidth) return;
+    const dpr = getDevicePixelRatio();
+    const pixelWidth = Math.max(Math.round(displayWidth * dpr), 1);
+    const pixelHeight = Math.max(Math.round(pixelWidth * CARD_ASPECT_RATIO), 1);
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    drawCard(ctx, card, canvas.width, canvas.height);
+  }
+
+  function observe(wrapper, canvas, card) {
+    if (!wrapper || !canvas || !card) return;
+    wrapper.__cardPreviewPayload = { canvas, card };
+    canvas.__previewWrapper = wrapper;
+    if (observer) observer.observe(wrapper);
+  }
+
+  function redraw(canvas, card) {
+    render(canvas, card);
+  }
+
+  function disconnect() {
+    if (observer) observer.disconnect();
+  }
+
+  return { observe, redraw, disconnect };
+}
 
 export function open(deck = null, onDone) {
   if (typeof document === 'undefined') return;
@@ -198,9 +266,13 @@ export function open(deck = null, onDone) {
 
   // === Каталог карт ===
   const catalog = document.createElement('div');
-  // Сетка 5x2 с собственной полосой прокрутки (строки добавляются по мере необходимости)
-  catalog.className = 'flex-1 overflow-y-auto grid grid-cols-5 gap-4 deck-scroll catalog-grid';
+  // Адаптивная сетка каталога с собственной полосой прокрутки (строки добавляются по мере необходимости)
+  catalog.className = 'flex-1 overflow-y-auto grid gap-4 deck-scroll catalog-grid';
+  catalog.style.setProperty('--card-min-width', `${CATALOG_MIN_CARD_WIDTH}px`);
+  catalog.style.setProperty('--card-max-width', `${CATALOG_MAX_CARD_WIDTH}px`);
   right.appendChild(catalog);
+
+  const previewResizer = createCardPreviewResizer({ drawCard: drawCardFace });
 
   const scheduleCatalogRedraw = (() => {
     let pending = false;
@@ -215,13 +287,18 @@ export function open(deck = null, onDone) {
         catalog.querySelectorAll('canvas').forEach(canvas => {
           const cardData = canvas.__cardData;
           if (!cardData) return;
-          const ctx2d = canvas.getContext('2d');
-          if (!ctx2d) return;
-          drawCardFace(ctx2d, cardData, canvas.width, canvas.height);
+          previewResizer.redraw(canvas, cardData);
         });
       });
     };
   })();
+
+  const handleWindowResize = () => {
+    scheduleCatalogRedraw();
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', handleWindowResize);
+  }
 
   let prevRequestCardsRedraw = null;
   function installCardsRedrawBridge() {
@@ -531,6 +608,8 @@ export function open(deck = null, onDone) {
 
   // Отрисовка каталога с учётом фильтров
   function renderCatalog() {
+    // Перед пересборкой каталога сбрасываем наблюдателей ResizeObserver
+    previewResizer.disconnect();
     catalog.innerHTML = '';
     const query = searchInput.value.toLowerCase();
     const cards = Object.values(CARDS).filter(c => {
@@ -550,18 +629,15 @@ export function open(deck = null, onDone) {
       item.draggable = true;
       item.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', card.id));
       item.addEventListener('click', () => addCard(card));
+      const previewWrap = document.createElement('div');
+      previewWrap.className = 'catalog-preview';
       const canvas = document.createElement('canvas');
-      canvas.width = PREVIEW_W; canvas.height = PREVIEW_H;
       canvas.__cardData = card;
-      drawCardFace(canvas.getContext('2d'), card, PREVIEW_W, PREVIEW_H);
-      canvas.className = 'block';
-      // Фиксированный CSS‑размер не даёт превью масштабироваться сильнее, чем в игре
-      canvas.style.width = PREVIEW_W + 'px';
-      canvas.style.height = PREVIEW_H + 'px';
-      canvas.style.maxWidth = '100%';
-      canvas.style.margin = '0 auto';
-      item.appendChild(canvas);
+      previewWrap.appendChild(canvas);
+      item.appendChild(previewWrap);
       catalog.appendChild(item);
+      previewResizer.observe(previewWrap, canvas, card);
+      previewResizer.redraw(canvas, card);
     });
     scheduleCatalogRedraw();
   }
@@ -607,6 +683,10 @@ export function open(deck = null, onDone) {
   function cleanup() {
     document.body.removeChild(overlay);
     hiddenEls.forEach(({el, display}) => { el.style.display = display; });
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('resize', handleWindowResize);
+    }
+    previewResizer.disconnect();
     restoreCardsRedrawBridge();
   }
 
