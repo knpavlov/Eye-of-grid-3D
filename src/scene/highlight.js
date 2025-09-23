@@ -10,13 +10,16 @@ const state = {
   rafId: 0,
 };
 
-// Создаёт материал с пульсирующим водным эффектом на основе исходного
-// материала клетки. За счёт этого текстура клетки остаётся видимой, а сверху
-// накладывается анимированная подсветка.
-function createPulseMaterial(origMat, THREE) {
-  const mat = origMat.clone();
-  mat.transparent = true;
-  mat.onBeforeCompile = (shader) => {
+// Дополнительная настройка материала: подключаем uniform и шейдерные вставки
+// для пульсации. Вынесено в отдельную функцию, чтобы переиспользовать и для
+// одиночных материалов, и для массивов (например, у боковых граней тайла).
+function decorateWithPulse(mat) {
+  if (!mat || typeof mat.onBeforeCompile !== 'function') return null;
+  const copy = typeof mat.clone === 'function' ? mat.clone() : null;
+  if (!copy) return null;
+  copy.transparent = true;
+  copy.needsUpdate = true;
+  copy.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = { value: 0 };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec2 vUv;')
@@ -37,11 +40,32 @@ function createPulseMaterial(origMat, THREE) {
       );
     state.uniforms.push(shader.uniforms.uTime);
   };
-  return mat;
+  return copy;
+}
+
+// Создаёт материал или массив материалов с пульсирующим водным эффектом.
+// Поддерживает многослойные материалы (например, боковые и верхние грани),
+// что важно для актуальной версии тайлов поля.
+function createPulseMaterial(origMat) {
+  if (Array.isArray(origMat)) {
+    let changed = false;
+    const result = origMat.map((mat) => {
+      const decorated = decorateWithPulse(mat);
+      if (decorated) {
+        changed = true;
+        return decorated;
+      }
+      return mat;
+    });
+    return changed ? result : null;
+  }
+  const decorated = decorateWithPulse(origMat);
+  return decorated || null;
 }
 
 // Запускает анимацию uniform uTime
 function startAnim() {
+  if (state.rafId) return;
   const start = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   function tick() {
     const t = ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - start) / 1000;
@@ -56,21 +80,24 @@ function startAnim() {
 // Подсветка переданных координат {r,c}
 export function highlightTiles(cells = []) {
   const ctx = getCtx();
-  const { tileMeshes, THREE } = ctx;
-  if (!tileMeshes || !THREE) return;
+  const { tileMeshes } = ctx;
+  if (!tileMeshes) return;
 
   clearHighlights();
 
   for (const { r, c } of cells) {
     const tile = tileMeshes?.[r]?.[c];
     if (!tile) continue;
+    let modified = false;
     tile.traverse(obj => {
-      if (obj.isMesh) {
-        obj.userData._origMat = obj.material;
-        obj.material = createPulseMaterial(obj.material, THREE);
-      }
+      if (!obj.isMesh || !obj.material) return;
+      const newMaterial = createPulseMaterial(obj.material);
+      if (!newMaterial) return;
+      obj.userData._origMat = obj.material;
+      obj.material = newMaterial;
+      modified = true;
     });
-    state.tiles.push(tile);
+    if (modified) state.tiles.push(tile);
   }
   if (state.tiles.length) startAnim();
 }
@@ -85,11 +112,21 @@ export function clearHighlights() {
   state.uniforms = [];
   state.tiles.forEach(tile => {
     tile.traverse(obj => {
-      if (obj.isMesh && obj.userData._origMat) {
-        try { obj.material.dispose(); } catch {}
-        obj.material = obj.userData._origMat;
+      if (!obj.isMesh || !obj.userData._origMat) return;
+      const mat = obj.material;
+      if (mat && mat === obj.userData._origMat) {
         delete obj.userData._origMat;
+        return;
       }
+      if (Array.isArray(mat)) {
+        for (const m of mat) {
+          try { m?.dispose?.(); } catch {}
+        }
+      } else {
+        try { mat?.dispose?.(); } catch {}
+      }
+      obj.material = obj.userData._origMat;
+      delete obj.userData._origMat;
     });
   });
   state.tiles = [];
