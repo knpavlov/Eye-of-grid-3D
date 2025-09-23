@@ -23,7 +23,7 @@ import {
   applyElementalPossession,
   refreshContinuousPossessions as refreshContinuousPossessionsInternal,
 } from './abilityHandlers/possession.js';
-import { applySummonDraw } from './abilityHandlers/draw.js';
+import { applySummonDraw, applyAdjacentSummonDraws } from './abilityHandlers/draw.js';
 import { transformAttackProfile } from './abilityHandlers/attackTransforms.js';
 import { cloneAttackEntry } from './utils/attacks.js';
 import {
@@ -606,13 +606,19 @@ export function applySummonAbilities(state, r, c) {
   if (!tpl) return events;
 
   const drawRes = applySummonDraw(state, r, c, unit, tpl);
-  if (drawRes.drawn > 0) {
-    events.draw = {
-      player: unit.owner,
-      count: drawRes.drawn,
-      cards: drawRes.cards,
-      element: cell.element || null,
-    };
+  if (Array.isArray(drawRes?.events) && drawRes.events.length) {
+    events.draws = [...drawRes.events];
+    if (!events.draw) {
+      events.draw = drawRes.events[0];
+    }
+  }
+
+  const extraDraws = applyAdjacentSummonDraws(state, { r, c, unit, tpl, cell });
+  if (Array.isArray(extraDraws) && extraDraws.length) {
+    events.draws = [...(events.draws || []), ...extraDraws];
+    if (!events.draw) {
+      events.draw = extraDraws[0];
+    }
   }
 
   const possessionCfg = normalizeElementConfig(

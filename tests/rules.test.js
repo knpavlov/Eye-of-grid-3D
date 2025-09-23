@@ -952,10 +952,136 @@ describe('Water cards — добор и уклонения', () => {
     expect(events.draw.count).toBe(waterTiles.length);
     expect(events.draw.player).toBe(0);
     expect(events.draw.element).toBe('WATER');
+    expect(Array.isArray(events.draws)).toBe(true);
+    expect(events.draws[0]?.reason?.type).toBe('FIELD_COUNT');
     expect(state.players[0].hand).toHaveLength(waterTiles.length);
     const drawnIds = events.draw.cards.map(card => card.id);
     expect(drawnIds).toEqual(state.players[0].hand.map(card => card.id));
     expect(events.dodgeUpdates.some(u => u.r === r && u.c === c && (u.attempts ?? 0) >= 1)).toBe(true);
+  });
+
+  it('Tritonan Ice Guard добирает карту на чужом поле', () => {
+    const { state } = prepareStateForSummon();
+    const r = 2; const c = 1;
+    expect(state.board[r][c].element).not.toBe('WATER');
+    state.board[r][c].unit = {
+      tplId: 'WATER_TRITONAN_ICE_GUARD',
+      owner: 0,
+      facing: 'N',
+      currentHP: CARDS.WATER_TRITONAN_ICE_GUARD.hp,
+    };
+
+    const events = applySummonAbilities(state, r, c);
+    expect(state.players[0].hand).toHaveLength(1);
+    expect(events.draw).toBeTruthy();
+    expect(events.draw.count).toBe(1);
+    expect(events.draws[0]?.reason?.type).toBe('FIELD_MISMATCH');
+  });
+
+  it('Tritonan Ice Guard не добирает карту на воде', () => {
+    const { state } = prepareStateForSummon();
+    const r = 0; const c = 0;
+    expect(state.board[r][c].element).toBe('WATER');
+    state.board[r][c].unit = {
+      tplId: 'WATER_TRITONAN_ICE_GUARD',
+      owner: 0,
+      facing: 'N',
+      currentHP: CARDS.WATER_TRITONAN_ICE_GUARD.hp,
+    };
+
+    const events = applySummonAbilities(state, r, c);
+    expect(events.draw).toBeFalsy();
+    expect(state.players[0].hand).toHaveLength(0);
+  });
+
+  it('Dragon of Voice Sea получает бонус к атаке от других существ воды', () => {
+    const board = makeBoard();
+    board[2][1].element = 'WATER';
+    const state = { board, players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].unit = {
+      tplId: 'WATER_DRAGON_OF_VOICE_SEA',
+      owner: 0,
+      facing: 'N',
+      currentHP: CARDS.WATER_DRAGON_OF_VOICE_SEA.hp,
+    };
+    state.board[0][0].unit = { tplId: 'WATER_TENTACLES_OF_POSSESSION', owner: 1, facing: 'S' };
+    state.board[2][0].unit = { tplId: 'WATER_CLOUD_RUNNER', owner: 0, facing: 'E' };
+    state.board[1][1].unit = {
+      tplId: 'FIRE_PARTMOLE_FLAME_LIZARD',
+      owner: 1,
+      facing: 'S',
+      currentHP: 12,
+    };
+
+    const res = stagedAttack(state, 2, 1);
+    const fin = res.finish();
+    const enemy = fin.n1.board[1][1].unit;
+    expect(enemy).toBeTruthy();
+    expect(enemy.currentHP).toBe(5); // 12 - (5 базовых + 2 существа воды)
+  });
+
+  it('Dragon of Voice Sea добирает карту при призыве союзника рядом на воде', () => {
+    const board = makeBoard();
+    board[1][0].element = 'WATER';
+    const deck = [
+      cloneCard('FIRE_FLAME_MAGUS'),
+      cloneCard('FIRE_HELLFIRE_SPITTER'),
+    ];
+    const state = {
+      board,
+      players: [
+        { deck, hand: [], discard: [], graveyard: [], mana: 0 },
+        { deck: [], hand: [], discard: [], graveyard: [], mana: 0 },
+      ],
+      active: 0,
+      turn: 1,
+    };
+    state.board[1][0].unit = {
+      tplId: 'WATER_DRAGON_OF_VOICE_SEA',
+      owner: 0,
+      facing: 'N',
+      currentHP: CARDS.WATER_DRAGON_OF_VOICE_SEA.hp,
+    };
+    state.board[1][1].unit = {
+      tplId: 'FIRE_FLAME_MAGUS',
+      owner: 0,
+      facing: 'N',
+      currentHP: CARDS.FIRE_FLAME_MAGUS.hp,
+    };
+
+    const events = applySummonAbilities(state, 1, 1);
+    expect(state.players[0].hand).toHaveLength(1);
+    expect(events.draws?.some(ev => ev.source?.tplId === 'WATER_DRAGON_OF_VOICE_SEA')).toBe(true);
+  });
+
+  it('Dragon of Voice Sea не добирает карту вне воды', () => {
+    const board = makeBoard();
+    board[1][0].element = 'FIRE';
+    const deck = [cloneCard('FIRE_FLAME_MAGUS')];
+    const state = {
+      board,
+      players: [
+        { deck, hand: [], discard: [], graveyard: [], mana: 0 },
+        { deck: [], hand: [], discard: [], graveyard: [], mana: 0 },
+      ],
+      active: 0,
+      turn: 1,
+    };
+    state.board[1][0].unit = {
+      tplId: 'WATER_DRAGON_OF_VOICE_SEA',
+      owner: 0,
+      facing: 'N',
+      currentHP: CARDS.WATER_DRAGON_OF_VOICE_SEA.hp,
+    };
+    state.board[1][1].unit = {
+      tplId: 'FIRE_FLAME_MAGUS',
+      owner: 0,
+      facing: 'N',
+    };
+
+    const events = applySummonAbilities(state, 1, 1);
+    expect(events.draws).toBeFalsy();
+    expect(state.players[0].hand).toHaveLength(0);
   });
 
   it('refreshBoardDodgeStates суммирует ауру Лату и бонусы Дона', () => {
