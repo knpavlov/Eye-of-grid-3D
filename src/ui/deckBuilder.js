@@ -43,6 +43,101 @@ const STRIP_OVERRIDES = {
 const PREVIEW_W = 256;
 const PREVIEW_H = 356;
 
+// Настройки адаптивной сетки каталога
+const CATALOG_LAYOUT = {
+  maxColumns: 5,
+  // Ширина содержимого карты без внутренних отступов контейнера
+  cardContentWidth: PREVIEW_W,
+  // Горизонтальные отступы (padding-left + padding-right) для .catalog-card
+  cardHorizontalPadding: 12,
+  // Стандартный промежуток между колонками (fallback на случай недоступности computed style)
+  defaultGap: 16,
+};
+
+function setupCatalogResponsiveLayout(catalogEl) {
+  if (typeof window === 'undefined' || !catalogEl) {
+    return { update() {}, dispose() {} };
+  }
+
+  const {
+    maxColumns,
+    cardContentWidth,
+    cardHorizontalPadding,
+    defaultGap,
+  } = CATALOG_LAYOUT;
+
+  const cardOuterWidth = cardContentWidth + cardHorizontalPadding;
+
+  const ensureLayoutVariables = () => {
+    catalogEl.style.setProperty('--deck-card-width', cardContentWidth + 'px');
+    catalogEl.style.setProperty('--deck-card-horizontal-padding', cardHorizontalPadding + 'px');
+    catalogEl.style.setProperty('--deck-card-aspect', `${PREVIEW_W} / ${PREVIEW_H}`);
+  };
+
+  const applyLayout = () => {
+    const availableWidth = catalogEl.clientWidth;
+    if (!availableWidth) {
+      return;
+    }
+    let gap = defaultGap;
+    try {
+      const styles = window.getComputedStyle(catalogEl);
+      const parsedGap = parseFloat(styles.columnGap);
+      if (!Number.isNaN(parsedGap)) {
+        gap = parsedGap;
+      }
+    } catch {}
+
+    let columns = Math.floor((availableWidth + gap) / (cardOuterWidth + gap));
+    columns = Math.max(1, Math.min(maxColumns, columns));
+
+    const trackWidth = columns > 0
+      ? (availableWidth - gap * (columns - 1)) / columns
+      : availableWidth;
+    const scale = trackWidth > 0 ? Math.min(1, trackWidth / cardOuterWidth) : 1;
+
+    catalogEl.style.setProperty('--deck-catalog-columns', String(columns));
+    catalogEl.style.setProperty('--deck-card-scale', scale.toFixed(3));
+  };
+
+  ensureLayoutVariables();
+
+  const scheduleInitialLayout = () => {
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(applyLayout);
+    } else {
+      setTimeout(applyLayout, 0);
+    }
+  };
+
+  let resizeObserver = null;
+  let usingWindowListener = false;
+
+  if (typeof window.ResizeObserver === 'function') {
+    resizeObserver = new window.ResizeObserver(() => applyLayout());
+    try { resizeObserver.observe(catalogEl); } catch {}
+  } else {
+    window.addEventListener('resize', applyLayout);
+    usingWindowListener = true;
+  }
+
+  scheduleInitialLayout();
+
+  return {
+    update: applyLayout,
+    dispose() {
+      if (resizeObserver) {
+        try { resizeObserver.disconnect(); } catch {}
+        resizeObserver = null;
+      }
+      if (usingWindowListener) {
+        window.removeEventListener('resize', applyLayout);
+        usingWindowListener = false;
+      }
+    },
+  };
+}
+
 export function open(deck = null, onDone) {
   if (typeof document === 'undefined') return;
 
@@ -198,9 +293,12 @@ export function open(deck = null, onDone) {
 
   // === Каталог карт ===
   const catalog = document.createElement('div');
-  // Сетка 5x2 с собственной полосой прокрутки (строки добавляются по мере необходимости)
-  catalog.className = 'flex-1 overflow-y-auto grid grid-cols-5 gap-4 deck-scroll catalog-grid';
+  // Сетка с автоматической адаптацией количества колонок и масштабирования
+  catalog.className = 'flex-1 overflow-y-auto grid gap-4 deck-scroll catalog-grid';
   right.appendChild(catalog);
+
+  let catalogLayout = { update() {}, dispose() {} };
+  catalogLayout = setupCatalogResponsiveLayout(catalog);
 
   const scheduleCatalogRedraw = (() => {
     let pending = false;
@@ -554,16 +652,11 @@ export function open(deck = null, onDone) {
       canvas.width = PREVIEW_W; canvas.height = PREVIEW_H;
       canvas.__cardData = card;
       drawCardFace(canvas.getContext('2d'), card, PREVIEW_W, PREVIEW_H);
-      canvas.className = 'block';
-      // Фиксированный CSS‑размер не даёт превью масштабироваться сильнее, чем в игре
-      canvas.style.width = PREVIEW_W + 'px';
-      canvas.style.height = PREVIEW_H + 'px';
-      canvas.style.maxWidth = '100%';
-      canvas.style.margin = '0 auto';
       item.appendChild(canvas);
       catalog.appendChild(item);
     });
     scheduleCatalogRedraw();
+    catalogLayout.update();
   }
 
   searchInput.addEventListener('input', renderCatalog);
@@ -608,6 +701,7 @@ export function open(deck = null, onDone) {
     document.body.removeChild(overlay);
     hiddenEls.forEach(({el, display}) => { el.style.display = display; });
     restoreCardsRedrawBridge();
+    try { catalogLayout.dispose(); } catch {}
   }
 
   nameInput.value = working.name;
@@ -617,6 +711,7 @@ export function open(deck = null, onDone) {
   updateFiltersBtn();
 
   document.body.appendChild(overlay);
+  try { catalogLayout.update(); } catch {}
 }
 
 const api = { open };
