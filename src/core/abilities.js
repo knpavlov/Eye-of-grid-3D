@@ -23,7 +23,7 @@ import {
   applyElementalPossession,
   refreshContinuousPossessions as refreshContinuousPossessionsInternal,
 } from './abilityHandlers/possession.js';
-import { applySummonDraw } from './abilityHandlers/draw.js';
+import { applySummonDraw, applyAdjacentAllySummonDraws } from './abilityHandlers/draw.js';
 import { transformAttackProfile } from './abilityHandlers/attackTransforms.js';
 import { cloneAttackEntry } from './utils/attacks.js';
 import {
@@ -34,6 +34,7 @@ import { hasAuraInvisibility } from './abilityHandlers/invisibilityAura.js';
 import { applyEnemySummonReactions } from './abilityHandlers/summonReactions.js';
 import { applyTurnStartManaEffects as applyTurnStartManaEffectsInternal } from './abilityHandlers/startPhase.js';
 import { normalizeElementName } from './utils/elements.js';
+import { computeDynamicAttackBonus as computeDynamicAttackBonusInternal } from './abilityHandlers/attackScaling.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -605,14 +606,28 @@ export function applySummonAbilities(state, r, c) {
   const tpl = getUnitTemplate(unit);
   if (!tpl) return events;
 
+  const drawEvents = [];
   const drawRes = applySummonDraw(state, r, c, unit, tpl);
   if (drawRes.drawn > 0) {
-    events.draw = {
+    drawEvents.push({
       player: unit.owner,
       count: drawRes.drawn,
       cards: drawRes.cards,
       element: cell.element || null,
-    };
+      source: { type: 'SELF_SUMMON', r, c, tplId: tpl.id },
+    });
+  }
+
+  const adjacentDraws = applyAdjacentAllySummonDraws(state, { r, c, unit, tpl });
+  if (Array.isArray(adjacentDraws?.draws) && adjacentDraws.draws.length) {
+    drawEvents.push(...adjacentDraws.draws);
+  }
+
+  if (drawEvents.length) {
+    events.draws = drawEvents;
+    if (!events.draw) {
+      events.draw = drawEvents[0];
+    }
   }
 
   const possessionCfg = normalizeElementConfig(
@@ -769,6 +784,7 @@ export const attemptUnitDodge = attemptDodgeInternal;
 export const refreshContinuousPossessions = refreshContinuousPossessionsInternal;
 export { refreshBoardDodgeStates };
 export const applyTurnStartManaEffects = applyTurnStartManaEffectsInternal;
+export const computeDynamicAttackBonus = computeDynamicAttackBonusInternal;
 
 export function collectUnitActions(state, r, c) {
   const actions = [];

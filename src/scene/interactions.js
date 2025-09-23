@@ -754,21 +754,27 @@ export function placeUnitWithDirection(direction) {
   }
   if (gameState.board[row][col].unit) {
     const summonEvents = applySummonAbilities(gameState, row, col);
-    if (summonEvents?.draw?.count > 0) {
-      const drawInfo = summonEvents.draw;
-      const ownerIdx = typeof drawInfo.player === 'number' ? drawInfo.player : gameState.active;
-      const cards = Array.isArray(drawInfo.cards) ? drawInfo.cards : [];
-      const name = cardData?.name || 'Существо';
-      window.__ui?.log?.add?.(`${name}: игрок ${ownerIdx + 1} добирает ${drawInfo.count} карт(ы).`);
-      (async () => {
-        const animate = window.animateDrawnCardToHand;
-        if (typeof animate === 'function') {
-          for (const tplDrawn of cards) {
-            try { await animate(tplDrawn); } catch (err) { console.warn('[summonDraw] animation failed', err); }
+    const drawEntries = Array.isArray(summonEvents?.draws) ? summonEvents.draws.filter(Boolean) : [];
+    if (!drawEntries.length && summonEvents?.draw?.count > 0) {
+      drawEntries.push(summonEvents.draw);
+    }
+    if (drawEntries.length) {
+      for (const drawInfo of drawEntries) {
+        if (!drawInfo || drawInfo.count <= 0) continue;
+        const ownerIdx = typeof drawInfo.player === 'number' ? drawInfo.player : gameState.active;
+        const cards = Array.isArray(drawInfo.cards) ? drawInfo.cards : [];
+        const name = cardData?.name || 'Существо';
+        window.__ui?.log?.add?.(`${name}: игрок ${ownerIdx + 1} добирает ${drawInfo.count} карт(ы).`);
+        (async () => {
+          const animate = window.animateDrawnCardToHand;
+          if (typeof animate === 'function') {
+            for (const tplDrawn of cards) {
+              try { await animate(tplDrawn); } catch (err) { console.warn('[summonDraw] animation failed', err); }
+            }
           }
-        }
-        window.updateHand?.(gameState);
-      })();
+          window.updateHand?.(gameState);
+        })();
+      }
     }
     if (Array.isArray(summonEvents?.dodgeUpdates) && summonEvents.dodgeUpdates.length) {
       logDodgeUpdates(summonEvents.dodgeUpdates, gameState, cardData?.name || null);

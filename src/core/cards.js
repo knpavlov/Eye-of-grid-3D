@@ -205,6 +205,27 @@ export const CARDS = {
     desc: 'Dodge attempt. When Cloud Runner is summoned, draw cards equal to the number of Water fields.'
   },
 
+  WATER_TRITONAN_ICE_GUARD: {
+    id: 'WATER_TRITONAN_ICE_GUARD', name: 'Tritonan Ice Guard', type: 'UNIT', cost: 1, activation: 1,
+    element: 'WATER', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    drawCardsOnSummon: { amount: 1, condition: { cellElementNot: 'WATER' } },
+    desc: 'When Tritonan Ice Guard is summoned to a non-Water field, draw a card.'
+  },
+
+  WATER_DRAGON_OF_VOICE_SEA: {
+    id: 'WATER_DRAGON_OF_VOICE_SEA', name: 'Dragon of Voice Sea', type: 'UNIT', cost: 7, activation: 4,
+    element: 'WATER', atk: 5, hp: 8,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY', ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    dynamicAtk: 'WATER_CREATURES',
+    drawOnAdjacentAllySummon: { amount: 1, sourceElement: 'WATER' },
+    desc: 'Attack equals 5 plus the number of other Water creatures on the board. While on a Water field, when you summon an allied creature to an adjacent field, draw a card.'
+  },
+
   WATER_DON_OF_VENOA: {
     id: 'WATER_DON_OF_VENOA', name: 'Don of Venoa', type: 'UNIT', cost: 5, activation: 3,
     element: 'WATER', atk: 2, hp: 3,

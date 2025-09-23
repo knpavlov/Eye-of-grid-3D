@@ -805,6 +805,90 @@ describe('новые механики', () => {
     expect(defender.currentHP).toBe(5);
   });
 
+  it('Dragon of Voice Sea учитывает других водных существ на поле', () => {
+    if (!CARDS.TEST_DUMMY) {
+      CARDS.TEST_DUMMY = { id: 'TEST_DUMMY', name: 'Dummy', type: 'UNIT', element: 'WATER', atk: 0, hp: 10, attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [1] } ] };
+    }
+    const state = makeState();
+    state.board[2][1].element = 'WATER';
+    state.board[2][1].unit = { owner: 0, tplId: 'WATER_DRAGON_OF_VOICE_SEA', facing: 'N', currentHP: 8 };
+    state.board[2][0].unit = { owner: 0, tplId: 'WATER_MERCENARY_SAVIOR_LATOO', facing: 'N' };
+    state.board[0][2].unit = { owner: 1, tplId: 'WATER_TRITONAN_HARPOONSMAN', facing: 'S' };
+    state.board[1][1].unit = { owner: 1, tplId: 'TEST_DUMMY', facing: 'S', currentHP: 10 };
+    const res = stagedAttack(state, 2, 1, { chosenDir: 'N', rangeChoices: { N: 1 } });
+    expect(res).toBeTruthy();
+    const fin = res.finish();
+    const defender = fin.n1.board[1][1].unit;
+    expect(defender.currentHP).toBe(2);
+  });
+
+  it('Dragon of Voice Sea добирает карту при призыве союзника рядом на водном поле', () => {
+    const state = {
+      board: makeBoard(),
+      players: [
+        { deck: [cloneCard('FIRE_FLAME_MAGUS'), cloneCard('FIRE_PARTMOLE_FLAME_LIZARD')], hand: [], discard: [], graveyard: [], mana: 0 },
+        { deck: [], hand: [], discard: [], graveyard: [], mana: 0 },
+      ],
+      active: 0,
+      turn: 1,
+    };
+    state.board[1][1].element = 'WATER';
+    state.board[1][1].unit = { owner: 0, tplId: 'WATER_DRAGON_OF_VOICE_SEA', facing: 'N', currentHP: 8 };
+    state.board[1][2].element = 'FIRE';
+    state.board[1][2].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'W', currentHP: CARDS.FIRE_FLAME_MAGUS.hp };
+    const events = applySummonAbilities(state, 1, 2);
+    expect(Array.isArray(events.draws)).toBe(true);
+    const trigger = events.draws.find(ev => ev?.source?.type === 'ADJACENT_ALLY_SUMMON');
+    expect(trigger?.count).toBe(1);
+    expect(state.players[0].hand).toHaveLength(1);
+  });
+
+  it('Dragon of Voice Sea не добирает карты, если стоит не на воде', () => {
+    const state = {
+      board: makeBoard(),
+      players: [
+        { deck: [cloneCard('FIRE_FLAME_MAGUS')], hand: [], discard: [], graveyard: [], mana: 0 },
+        { deck: [], hand: [], discard: [], graveyard: [], mana: 0 },
+      ],
+      active: 0,
+      turn: 1,
+    };
+    state.board[1][1].element = 'FIRE';
+    state.board[1][1].unit = { owner: 0, tplId: 'WATER_DRAGON_OF_VOICE_SEA', facing: 'N', currentHP: 8 };
+    state.board[1][2].element = 'WATER';
+    state.board[1][2].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'W', currentHP: CARDS.FIRE_FLAME_MAGUS.hp };
+    const events = applySummonAbilities(state, 1, 2);
+    expect(events.draws || []).toHaveLength(0);
+    expect(events.draw).toBeUndefined();
+    expect(state.players[0].hand).toHaveLength(0);
+  });
+
+  it('Tritonan Ice Guard добирает карту только на неводном поле', () => {
+    const makePlayerState = () => ({
+      board: makeBoard(),
+      players: [
+        { deck: [cloneCard('FIRE_FLAME_MAGUS')], hand: [], discard: [], graveyard: [], mana: 0 },
+        { deck: [], hand: [], discard: [], graveyard: [], mana: 0 },
+      ],
+      active: 0,
+      turn: 1,
+    });
+
+    const stateNonWater = makePlayerState();
+    stateNonWater.board[0][0].element = 'FIRE';
+    stateNonWater.board[0][0].unit = { owner: 0, tplId: 'WATER_TRITONAN_ICE_GUARD', facing: 'N', currentHP: CARDS.WATER_TRITONAN_ICE_GUARD.hp };
+    const eventsNonWater = applySummonAbilities(stateNonWater, 0, 0);
+    expect(eventsNonWater.draw?.count).toBe(1);
+    expect(stateNonWater.players[0].hand).toHaveLength(1);
+
+    const stateWater = makePlayerState();
+    stateWater.board[0][0].element = 'WATER';
+    stateWater.board[0][0].unit = { owner: 0, tplId: 'WATER_TRITONAN_ICE_GUARD', facing: 'N', currentHP: CARDS.WATER_TRITONAN_ICE_GUARD.hp };
+    const eventsWater = applySummonAbilities(stateWater, 0, 0);
+    expect(eventsWater.draw).toBeUndefined();
+    expect(stateWater.players[0].hand).toHaveLength(0);
+  });
+
   it('Sleeptrap увеличивает стоимость активации врагов рядом', () => {
     const state = makeState();
     state.board[1][1].element = 'FOREST';
