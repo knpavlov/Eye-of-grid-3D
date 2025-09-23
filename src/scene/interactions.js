@@ -935,6 +935,8 @@ export function placeUnitWithDirection(direction) {
           interactionState.magicFrom = { r: row, c: col, cancelMode: 'summon', owner: unit.owner };
           interactionState.autoEndTurnAfterAttack = true;
           highlightTiles(cells);
+          // Показываем явное уведомление, чтобы игрок понимал, что нужно выбрать цель
+          window.__ui?.notifications?.show('Select a target', 'info');
           window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
           if (unlockTriggered) {
             const delay = 1200;

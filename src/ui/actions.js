@@ -121,6 +121,8 @@ export function performUnitAttack(unitMesh) {
       if (iState) {
         iState.magicFrom = { r, c, cancelMode: 'attack', owner: unit.owner, spentMana: cost };
         highlightTiles(cells);
+        // Подсказка игроку о необходимости выбрать цель
+        window.__ui?.notifications?.show('Select a target', 'info');
         try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
       }
       window.__ui?.log?.add?.(`${tpl.name}: select a target for the magical attack.`);
