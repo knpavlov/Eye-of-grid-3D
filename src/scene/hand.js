@@ -25,6 +25,16 @@ function computeHandTransform(index, total) {
   return { position: pos, rotation: rot, scale };
 }
 
+// Собирает предрасчётную раскладку руки для всех индексов
+function computeHandLayout(total) {
+  const transforms = [];
+  const cappedTotal = Math.max(0, total | 0);
+  for (let i = 0; i < cappedTotal; i++) {
+    transforms.push(computeHandTransform(i, cappedTotal));
+  }
+  return transforms;
+}
+
 // Разворачивает карту так, чтобы её лицевая сторона была направлена прямо на камеру
 function orientCardFaceTowardCamera(card, camera) {
   if (!card || !camera) return;
@@ -61,6 +71,75 @@ function applyEulerDegreeOffsets(euler, { pitchDeg = 0, yawDeg = 0, rollDeg = 0 
   euler.z += THREE.MathUtils.degToRad(rollDeg || 0);
 }
 
+function clamp01(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 0;
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
+}
+
+// Плавно переводит значение в диапазоне [0, 1], чтобы убрать резкие границы
+function smoothstep01(value) {
+  const t = clamp01(value);
+  return t * t * (3 - 2 * t);
+}
+
+function eulersDiffer(a, b, epsilon = 1e-4) {
+  if (!a || !b) return false;
+  return (
+    Math.abs(a.x - b.x) > epsilon ||
+    Math.abs(a.y - b.y) > epsilon ||
+    Math.abs(a.z - b.z) > epsilon
+  );
+}
+
+function slerpEuler(fromEuler, toEuler, ratio) {
+  const THREE = getTHREE();
+  if (!fromEuler && !toEuler) return new THREE.Euler();
+  if (!fromEuler) return toEuler.clone();
+  if (!toEuler) return fromEuler.clone();
+
+  const amount = clamp01(ratio);
+  if (amount <= 0) return fromEuler.clone();
+  if (amount >= 1) return toEuler.clone();
+
+  const fromQuat = new THREE.Quaternion().setFromEuler(fromEuler);
+  const toQuat = new THREE.Quaternion().setFromEuler(toEuler);
+  const blended = fromQuat.clone().slerp(toQuat, amount);
+  const order = fromEuler.order || toEuler.order || 'XYZ';
+  return new THREE.Euler().setFromQuaternion(blended, order);
+}
+
+// Вычисляет тайминги фаз поворота добираемой карты для разнесения визуальных шагов
+function computeRotationPhaseTimings(flightDuration, tune = {}) {
+  const flight = Math.max(0, typeof flightDuration === 'number' ? flightDuration : 0);
+  const rotationLeadOverride = Number.isFinite(tune.rotationLead) ? tune.rotationLead : undefined;
+  const rotationLeadShare = clamp01(Number.isFinite(tune.rotationLeadShare) ? tune.rotationLeadShare : DEFAULT_ROTATION_LEAD_SHARE);
+  const rotationLead = Math.max(0, Math.min(flight, rotationLeadOverride ?? (flight * rotationLeadShare)));
+
+  const settleStartTime = Math.max(0, flight - rotationLead);
+  const rotationLeanDelayRaw = Number.isFinite(tune.rotationLeanDelay) ? tune.rotationLeanDelay : DEFAULT_ROTATION_LEAN_DELAY;
+  const rotationLeanDelay = Math.max(0, Math.min(settleStartTime, rotationLeanDelayRaw));
+  const leanStartTime = Math.max(0, Math.min(rotationLeanDelay, settleStartTime));
+  const leanDuration = Math.max(0, settleStartTime - leanStartTime);
+
+  const rotationLeanFraction = clamp01(tune.rotationLeanFraction ?? DEFAULT_DRAW_ROTATION_LEAN_FRACTION);
+  const rotationTiltShare = clamp01(tune.rotationTiltShare ?? DEFAULT_DRAW_ROTATION_TILT_SHARE);
+  const tiltDuration = rotationLead * smoothstep01(rotationTiltShare);
+  const settleDuration = Math.max(0, rotationLead - tiltDuration);
+
+  return {
+    rotationLead,
+    settleStartTime,
+    leanStartTime,
+    leanDuration,
+    rotationLeanFraction,
+    rotationTiltShare,
+    tiltDuration,
+    settleDuration
+  };
+}
+
 // Собирает все материалы меша, чтобы управлять прозрачностью при анимациях
 function gatherMeshMaterials(root, sink = []) {
   if (!root) return sink;
@@ -73,11 +152,12 @@ function gatherMeshMaterials(root, sink = []) {
 }
 
 // Плавно перестраивает текущие карты в руке перед добавлением новой
-function relayoutHandDuringDraw(handMeshes, totalAfter, duration) {
+function relayoutHandDuringDraw(handMeshes, layoutAfterDraw, duration) {
   if (!Array.isArray(handMeshes) || handMeshes.length === 0) return;
 
   handMeshes.forEach((mesh, idx) => {
-    const t = computeHandTransform(idx, totalAfter);
+    const t = layoutAfterDraw?.[idx];
+    if (!t) return;
     gsap.to(mesh.position, {
       x: t.position.x,
       y: t.position.y,
@@ -85,12 +165,13 @@ function relayoutHandDuringDraw(handMeshes, totalAfter, duration) {
       duration,
       ease: 'power2.inOut'
     });
+    const rotationDuration = duration > 0 ? duration * HAND_ROTATION_DURATION_MULTIPLIER : duration;
     gsap.to(mesh.rotation, {
       x: t.rotation.x,
       y: t.rotation.y,
       z: t.rotation.z,
-      duration,
-      ease: 'power2.inOut'
+      duration: rotationDuration,
+      ease: HAND_ROTATION_EASE
     });
     gsap.to(mesh.scale, { x: 0.54, y: 1, z: 0.54, duration: Math.min(0.2, duration * 0.3) });
     try { mesh.userData.originalPosition.copy(t.position); } catch {}
@@ -101,6 +182,27 @@ function relayoutHandDuringDraw(handMeshes, totalAfter, duration) {
 // Базовые длительности показа и перелёта добираемой карты
 const DRAW_REVEAL_DURATION = 0.7;
 const DRAW_FLIGHT_DURATION = 0.7;
+// Дефолтный масштаб крупного отображения карты при доборе
+const DEFAULT_DRAW_CARD_SCALE = 1.5;
+// Сколько долей от длительности полёта занимает досаживание поворота
+const DEFAULT_ROTATION_LEAD_SHARE = 0.64;
+// Насколько долго карта держит исходный наклон перед началом плавного поворота в полёте
+const DEFAULT_ROTATION_LEAN_DELAY = 0.02;
+// Какую долю «поворота» добираемой карты выполняем до финальной досадки
+const DEFAULT_DRAW_ROTATION_LEAN_FRACTION = 0.72;
+// Какая часть финального промежутка отводится на удержание полётного наклона
+const DEFAULT_DRAW_ROTATION_TILT_SHARE = 0.3;
+// Плавные кривые для фаз появления и движения добираемой карты
+const DRAW_REVEAL_EASE = 'sine.out';
+const DRAW_FLIGHT_EASE = 'sine.inOut';
+const DRAW_SCALE_EASE = 'sine.inOut';
+// Плавные кривые для фаз поворота добираемой карты
+const DRAW_ROTATION_LEAN_EASE = 'sine.inOut';
+const DRAW_ROTATION_TILT_EASE = 'sine.inOut';
+const DRAW_ROTATION_SETTLE_EASE = 'sine.inOut';
+// Параметры плавности поворота карт, уже лежащих в руке
+const HAND_ROTATION_DURATION_MULTIPLIER = 1.15;
+const HAND_ROTATION_EASE = 'sine.inOut';
 
 export function setHandCardHoverVisual(mesh, hovered) {
   if (!mesh) return;
@@ -214,7 +316,10 @@ export async function animateDrawnCardToHand(cardTpl) {
     rollDeg: T.initialRollDeg ?? 0
   });
 
-  big.scale.set((T.scale ?? 1.7), (T.scale ?? 1.7), (T.scale ?? 1.7));
+  const initialRotation = big.rotation.clone();
+
+  const drawScale = (T.scale ?? DEFAULT_DRAW_CARD_SCALE);
+  big.scale.set(drawScale, drawScale, drawScale);
   big.renderOrder = 9000;
 
   const allMaterials = gatherMeshMaterials(big, []);
@@ -228,12 +333,14 @@ export async function animateDrawnCardToHand(cardTpl) {
   const totalVisible = Math.max(0, handMeshes.length);
   const totalAfter = totalVisible + 1;
   const indexAfter = totalAfter - 1;
-  const target = computeHandTransform(indexAfter, totalAfter);
+  const layoutAfterDraw = computeHandLayout(totalAfter);
+  const target = layoutAfterDraw[indexAfter] || computeHandTransform(indexAfter, totalAfter);
 
   try {
-    relayoutHandDuringDraw(handMeshes, totalAfter, revealDuration);
+    relayoutHandDuringDraw(handMeshes, layoutAfterDraw, revealDuration);
   } catch {}
 
+  const arrivalRotation = target.rotation.clone();
   const flightRotation = target.rotation.clone();
   try {
     applyEulerDegreeOffsets(flightRotation, {
@@ -243,6 +350,19 @@ export async function animateDrawnCardToHand(cardTpl) {
     });
   } catch {}
 
+  // Запускаем финальное выравнивание угла заранее, чтобы оно шло в полёте
+  const rotationPlan = computeRotationPhaseTimings(flightDuration, T);
+  const {
+    rotationLead,
+    settleStartTime,
+    leanStartTime,
+    leanDuration,
+    rotationLeanFraction,
+    tiltDuration,
+    settleDuration
+  } = rotationPlan;
+  const leanRotation = slerpEuler(initialRotation, flightRotation, smoothstep01(rotationLeanFraction));
+
   try {
     await new Promise(resolve => {
       const tl = gsap.timeline({ onComplete: resolve });
@@ -250,30 +370,77 @@ export async function animateDrawnCardToHand(cardTpl) {
       tl.to(allMaterials, {
         opacity: 1,
         duration: revealDuration,
-        ease: 'power2.out'
+        ease: DRAW_REVEAL_EASE
       });
+
+      tl.addLabel('flightMotion');
 
       tl.to(big.position, {
         x: target.position.x,
         y: target.position.y,
         z: target.position.z,
         duration: flightDuration,
-        ease: 'power2.inOut'
-      })
-        .to(big.rotation, {
-          x: flightRotation.x,
-          y: flightRotation.y,
-          z: flightRotation.z,
-          duration: flightDuration,
-          ease: 'power2.inOut'
-        }, '<')
+        ease: DRAW_FLIGHT_EASE
+      }, 'flightMotion')
         .to(big.scale, {
           x: target.scale.x,
           y: target.scale.y,
           z: target.scale.z,
           duration: flightDuration,
-          ease: 'power2.inOut'
-        }, '<');
+          ease: DRAW_SCALE_EASE
+        }, 'flightMotion');
+
+      const leanStartLabel = `flightMotion+=${leanStartTime}`;
+      const leanFinishLabel = `flightMotion+=${settleStartTime}`;
+      if (leanDuration > 0.0001 && eulersDiffer(initialRotation, leanRotation)) {
+        tl.to(big.rotation, {
+          x: leanRotation.x,
+          y: leanRotation.y,
+          z: leanRotation.z,
+          duration: leanDuration,
+          ease: DRAW_ROTATION_LEAN_EASE
+        }, leanStartLabel);
+      } else if (eulersDiffer(initialRotation, leanRotation)) {
+        tl.set(big.rotation, {
+          x: leanRotation.x,
+          y: leanRotation.y,
+          z: leanRotation.z
+        }, leanFinishLabel);
+      }
+
+      const tiltStart = `flightMotion+=${settleStartTime}`;
+      if (tiltDuration > 0.0001 && eulersDiffer(leanRotation, flightRotation)) {
+        tl.to(big.rotation, {
+          x: flightRotation.x,
+          y: flightRotation.y,
+          z: flightRotation.z,
+          duration: tiltDuration,
+          ease: DRAW_ROTATION_TILT_EASE
+        }, tiltStart);
+      } else if (rotationLead > 0.0001 && eulersDiffer(leanRotation, flightRotation)) {
+        tl.set(big.rotation, {
+          x: flightRotation.x,
+          y: flightRotation.y,
+          z: flightRotation.z
+        }, tiltStart);
+      }
+
+      const settleStart = `flightMotion+=${settleStartTime + tiltDuration}`;
+      if (settleDuration > 0.0001 && eulersDiffer(flightRotation, arrivalRotation)) {
+        tl.to(big.rotation, {
+          x: arrivalRotation.x,
+          y: arrivalRotation.y,
+          z: arrivalRotation.z,
+          duration: settleDuration,
+          ease: DRAW_ROTATION_SETTLE_EASE
+        }, settleStart);
+      } else {
+        tl.set(big.rotation, {
+          x: arrivalRotation.x,
+          y: arrivalRotation.y,
+          z: arrivalRotation.z
+        }, settleStart);
+      }
     });
   } catch {}
 
