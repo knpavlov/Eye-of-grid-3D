@@ -140,6 +140,11 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
 }
 
 /* Кастомный скроллбар для редактора колод */
+#deck-builder-overlay {
+  --deck-card-min-width: 200px;
+  --deck-card-max-width: 256px;
+}
+
 #deck-builder-overlay .deck-scroll {
   scrollbar-width: thin;
   scrollbar-color: #475569 rgba(30,41,59,0.7);
@@ -167,8 +172,15 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
   grid-auto-rows: max-content;
 }
 
+#deck-builder-overlay .deck-catalog-responsive {
+  display: grid;
+  gap: clamp(0.75rem, 1vw, 1rem);
+  grid-template-columns: repeat(auto-fit, minmax(var(--deck-card-min-width), 1fr));
+}
+
 #deck-builder-overlay .catalog-card {
-  width: 100%;
+  width: min(100%, var(--deck-card-max-width));
+  margin: 0 auto;
   padding: 6px;
   border-radius: 18px;
   background: rgba(15,23,42,0.65);
@@ -181,7 +193,12 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
   box-shadow: 0 12px 28px rgba(8,11,20,0.48);
 }
 
-#deck-builder-overlay .catalog-card canvas {
+#deck-builder-overlay .deck-card-canvas {
   display: block;
+  width: 100%;
+  max-width: var(--deck-card-max-width);
+  height: auto;
+  aspect-ratio: 256 / 356;
+  margin: 0 auto;
   border-radius: 14px;
 }

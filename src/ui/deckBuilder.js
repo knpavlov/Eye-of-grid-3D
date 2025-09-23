@@ -42,6 +42,7 @@ const STRIP_OVERRIDES = {
 // Размеры превью карты в каталоге: совпадают с игровым канвасом (для визуального соответствия)
 const PREVIEW_W = 256;
 const PREVIEW_H = 356;
+const PREVIEW_ASPECT = PREVIEW_H / PREVIEW_W;
 
 export function open(deck = null, onDone) {
   if (typeof document === 'undefined') return;
@@ -198,8 +199,8 @@ export function open(deck = null, onDone) {
 
   // === Каталог карт ===
   const catalog = document.createElement('div');
-  // Сетка 5x2 с собственной полосой прокрутки (строки добавляются по мере необходимости)
-  catalog.className = 'flex-1 overflow-y-auto grid grid-cols-5 gap-4 deck-scroll catalog-grid';
+  // Адаптивная сетка карточек: количество колонок меняется в зависимости от ширины панели
+  catalog.className = 'flex-1 overflow-y-auto deck-scroll catalog-grid deck-catalog-responsive';
   right.appendChild(catalog);
 
   const scheduleCatalogRedraw = (() => {
@@ -217,11 +218,25 @@ export function open(deck = null, onDone) {
           if (!cardData) return;
           const ctx2d = canvas.getContext('2d');
           if (!ctx2d) return;
+          const clientWidth = Math.max(1, canvas.clientWidth || PREVIEW_W);
+          const clientHeight = Math.max(1, canvas.clientHeight || Math.round(clientWidth * PREVIEW_ASPECT));
+          const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+          const targetWidth = Math.max(1, Math.round(clientWidth * dpr));
+          const targetHeight = Math.max(1, Math.round(clientHeight * dpr));
+          if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+          }
           drawCardFace(ctx2d, cardData, canvas.width, canvas.height);
         });
       });
     };
   })();
+
+  const handleWindowResize = () => scheduleCatalogRedraw();
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', handleWindowResize);
+  }
 
   let prevRequestCardsRedraw = null;
   function installCardsRedrawBridge() {
@@ -554,12 +569,7 @@ export function open(deck = null, onDone) {
       canvas.width = PREVIEW_W; canvas.height = PREVIEW_H;
       canvas.__cardData = card;
       drawCardFace(canvas.getContext('2d'), card, PREVIEW_W, PREVIEW_H);
-      canvas.className = 'block';
-      // Фиксированный CSS‑размер не даёт превью масштабироваться сильнее, чем в игре
-      canvas.style.width = PREVIEW_W + 'px';
-      canvas.style.height = PREVIEW_H + 'px';
-      canvas.style.maxWidth = '100%';
-      canvas.style.margin = '0 auto';
+      canvas.className = 'deck-card-canvas';
       item.appendChild(canvas);
       catalog.appendChild(item);
     });
@@ -608,6 +618,9 @@ export function open(deck = null, onDone) {
     document.body.removeChild(overlay);
     hiddenEls.forEach(({el, display}) => { el.style.display = display; });
     restoreCardsRedrawBridge();
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('resize', handleWindowResize);
+    }
   }
 
   nameInput.value = working.name;
