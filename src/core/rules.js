@@ -20,9 +20,9 @@ import {
   resolveAttackProfile,
   refreshBoardDodgeStates,
 } from './abilities.js';
-import { countUnits } from './board.js';
 import { computeCellBuff } from './fieldEffects.js';
 import { normalizeElementName } from './utils/elements.js';
+import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -288,34 +288,14 @@ export function stagedAttack(state, r, c, opts = {}) {
   const hitsRaw = computeHits(base, r, c, { ...opts, profile });
   if (!hitsRaw.length) return { empty: true };
 
-  if (tplA.dynamicAtk === 'OTHERS_ON_BOARD') {
-    const others = countUnits(base) - 1;
-    atk += others;
-    logLines.push(`${tplA.name}: атака увеличена на ${others}`);
-  }
-  if (tplA.dynamicAtk === 'FIRE_CREATURES') {
-    let cnt = 0;
-    for (let rr = 0; rr < 3; rr++) {
-      for (let cc = 0; cc < 3; cc++) {
-        if (rr === r && cc === c) continue;
-        const u = base.board[rr][cc]?.unit;
-        if (u && CARDS[u.tplId]?.element === 'FIRE') cnt++;
-      }
+  const dynamicBonus = computeDynamicAttackBonus(base, r, c, tplA);
+  if (dynamicBonus?.amount) {
+    atk += dynamicBonus.amount;
+    if (dynamicBonus.type === 'ELEMENT_CREATURES' && dynamicBonus.element) {
+      logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount} (существа стихии ${dynamicBonus.element})`);
+    } else {
+      logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount}`);
     }
-    atk += cnt;
-    logLines.push(`${tplA.name}: атака увеличена на ${cnt}`);
-  }
-  if (tplA.dynamicAtk === 'FOREST_CREATURES') {
-    let cnt = 0;
-    for (let rr = 0; rr < 3; rr++) {
-      for (let cc = 0; cc < 3; cc++) {
-        if (rr === r && cc === c) continue;
-        const u = base.board[rr][cc]?.unit;
-        if (u && CARDS[u.tplId]?.element === 'FOREST') cnt++;
-      }
-    }
-    atk += cnt;
-    logLines.push(`${tplA.name}: атака увеличена на ${cnt}`);
   }
   const targetBonus = getTargetElementBonus(tplA, base, hitsRaw);
   const plusCfg = tplA.plusAtkIfTargetOnElement || (tplA.plus1IfTargetOnElement ? { element: tplA.plus1IfTargetOnElement, amount: 1 } : null);
