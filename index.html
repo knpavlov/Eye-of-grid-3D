@@ -659,7 +659,7 @@
               try { schedulePush('battle-finish', { force: true }); } catch {}
               if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
                 window.__interactions.interactionState.autoEndTurnAfterAttack = false;
-                try { endTurn(); } catch {}
+                try { endTurn({ auto: true }); } catch {}
               }
             }, 1000);
             setTimeout(() => {
@@ -676,7 +676,7 @@
           try { schedulePush('battle-finish', { force: true }); } catch {}
           if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
             window.__interactions.interactionState.autoEndTurnAfterAttack = false;
-            try { endTurn(); } catch {}
+            try { endTurn({ auto: true }); } catch {}
           }
             }, Math.max(0, animDelayMs));
             setTimeout(() => {
@@ -789,7 +789,7 @@
           try { schedulePush('magic-battle-finish', { force: true }); } catch {}
           if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
             window.__interactions.interactionState.autoEndTurnAfterAttack = false;
-            try { endTurn(); } catch {}
+            try { endTurn({ auto: true }); } catch {}
           }
         }, 1000);
       } else {
@@ -805,7 +805,7 @@
         try { schedulePush('magic-battle-finish', { force: true }); } catch {}
         if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
           window.__interactions.interactionState.autoEndTurnAfterAttack = false;
-          try { endTurn(); } catch {}
+          try { endTurn({ auto: true }); } catch {}
         }
       }
     }

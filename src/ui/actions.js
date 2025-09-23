@@ -409,29 +409,77 @@ export function confirmUnitAbilityOrientation(context, direction) {
 }
 
 // Полная обработка завершения хода
-export async function endTurn() {
+// options.auto === true позволяет автоматически дождаться окончания блокирующих анимаций
+export async function endTurn(options = {}) {
   try {
     if (typeof window === 'undefined') return;
     const w = window;
-    const gameState = w.gameState;
+    const auto = !!options.auto;
+    const waitInterval = Number.isFinite(options.waitInterval)
+      ? Math.max(50, Math.floor(options.waitInterval))
+      : 120;
+    const waitTimeout = Number.isFinite(options.waitTimeout)
+      ? Math.max(waitInterval, Math.floor(options.waitTimeout))
+      : 8000;
+
+    let gameState = w.gameState;
     if (!gameState || gameState.winner !== null) return;
     const isInputLocked = w.isInputLocked || (() => false);
-    if (isInputLocked()) return;
-    try {
-      if (typeof w.MY_SEAT === 'number' && gameState.active !== w.MY_SEAT) {
-        w.showNotification?.("Opponent's turn", 'error');
-        return;
-      }
-    } catch {}
-    const manaGainActive = w.manaGainActive || false;
-    const drawAnimationActive = w.drawAnimationActive || false;
-    const splashActive = (w.__ui && w.__ui.banner)
+
+    const computeSplashActive = () => (w.__ui && w.__ui.banner)
       ? !!w.__ui.banner.getState()._splashActive
       : !!w.splashActive;
-    if (isInputLocked() || manaGainActive || drawAnimationActive || splashActive) {
-      w.showNotification?.('Wait for animations to complete', 'warning');
-      return;
+
+    const readLocks = () => ({
+      locked: isInputLocked(),
+      manaGainActive: !!w.manaGainActive,
+      drawAnimationActive: !!w.drawAnimationActive,
+      splashActive: computeSplashActive(),
+    });
+
+    const waitForUnlock = async () => {
+      const started = Date.now();
+      let state = readLocks();
+      while (state.locked || state.manaGainActive || state.drawAnimationActive || state.splashActive) {
+        if (Date.now() - started >= waitTimeout) {
+          return false;
+        }
+        await new Promise(resolve => setTimeout(resolve, waitInterval));
+        state = readLocks();
+      }
+      return true;
+    };
+
+    const ensureSeatIsActive = () => {
+      try {
+        if (typeof w.MY_SEAT === 'number' && gameState.active !== w.MY_SEAT) {
+          if (!auto) {
+            w.showNotification?.("Opponent's turn", 'error');
+          }
+          return false;
+        }
+      } catch {}
+      return true;
+    };
+
+    if (!ensureSeatIsActive()) return;
+
+    const initialLocks = readLocks();
+    if (initialLocks.locked || initialLocks.manaGainActive || initialLocks.drawAnimationActive || initialLocks.splashActive) {
+      if (!auto) {
+        w.showNotification?.('Wait for animations to complete', 'warning');
+        return;
+      }
+      const unlocked = await waitForUnlock();
+      if (!unlocked) {
+        return;
+      }
+      gameState = w.gameState;
+      if (!gameState || gameState.winner !== null) return;
+      if (!ensureSeatIsActive()) return;
     }
+
+    if (isInputLocked() && !auto) return;
 
     w.__endTurnInProgress = true;
     w.refreshInputLockUI?.();

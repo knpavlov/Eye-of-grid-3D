@@ -532,7 +532,7 @@ function performMagicAttack(from, targetMesh) {
       try { window.schedulePush && window.schedulePush('magic-battle-finish', { force: true }); } catch {}
       if (interactionState.autoEndTurnAfterAttack) {
         interactionState.autoEndTurnAfterAttack = false;
-      try { window.endTurn && window.endTurn(); } catch {}
+      try { window.endTurn && window.endTurn({ auto: true }); } catch {}
     }
     }, 1000);
   } else {
@@ -542,7 +542,7 @@ function performMagicAttack(from, targetMesh) {
     try { window.schedulePush && window.schedulePush('magic-battle-finish', { force: true }); } catch {}
     if (interactionState.autoEndTurnAfterAttack) {
       interactionState.autoEndTurnAfterAttack = false;
-      try { window.endTurn && window.endTurn(); } catch {}
+      try { window.endTurn && window.endTurn({ auto: true }); } catch {}
     }
   }
   return true;
@@ -654,7 +654,7 @@ export function placeUnitWithDirection(direction) {
   const endTurnAfterSummon = () => {
     if (summonEndedTurn) return;
     summonEndedTurn = true;
-    try { window.endTurn && window.endTurn(); } catch {}
+    try { window.endTurn && window.endTurn({ auto: true }); } catch {}
   };
   let incarnationResult = null;
   if (incarnation?.active) {
@@ -754,21 +754,29 @@ export function placeUnitWithDirection(direction) {
   }
   if (gameState.board[row][col].unit) {
     const summonEvents = applySummonAbilities(gameState, row, col);
-    if (summonEvents?.draw?.count > 0) {
-      const drawInfo = summonEvents.draw;
-      const ownerIdx = typeof drawInfo.player === 'number' ? drawInfo.player : gameState.active;
-      const cards = Array.isArray(drawInfo.cards) ? drawInfo.cards : [];
-      const name = cardData?.name || 'Существо';
-      window.__ui?.log?.add?.(`${name}: игрок ${ownerIdx + 1} добирает ${drawInfo.count} карт(ы).`);
-      (async () => {
-        const animate = window.animateDrawnCardToHand;
-        if (typeof animate === 'function') {
-          for (const tplDrawn of cards) {
-            try { await animate(tplDrawn); } catch (err) { console.warn('[summonDraw] animation failed', err); }
+    const drawEvents = Array.isArray(summonEvents?.draws) && summonEvents.draws.length
+      ? summonEvents.draws
+      : (summonEvents?.draw?.count > 0 ? [summonEvents.draw] : []);
+    if (drawEvents.length) {
+      const cardsDb = window.CARDS || {};
+      for (const drawInfo of drawEvents) {
+        if (!drawInfo || drawInfo.count <= 0) continue;
+        const ownerIdx = typeof drawInfo.player === 'number' ? drawInfo.player : gameState.active;
+        const drawnCards = Array.isArray(drawInfo.cards) ? drawInfo.cards : [];
+        const sourceTplId = drawInfo.source?.tplId || cardData?.id;
+        const sourceTpl = sourceTplId ? cardsDb[sourceTplId] : null;
+        const sourceName = sourceTpl?.name || cardData?.name || 'Существо';
+        window.__ui?.log?.add?.(`${sourceName}: игрок ${ownerIdx + 1} добирает ${drawInfo.count} карт(ы).`);
+        (async (cardsForAnim) => {
+          const animate = window.animateDrawnCardToHand;
+          if (typeof animate === 'function') {
+            for (const tplDrawn of cardsForAnim) {
+              try { await animate(tplDrawn); } catch (err) { console.warn('[summonDraw] animation failed', err); }
+            }
           }
-        }
-        window.updateHand?.(gameState);
-      })();
+          window.updateHand?.(gameState);
+        })(drawnCards);
+      }
     }
     if (Array.isArray(summonEvents?.dodgeUpdates) && summonEvents.dodgeUpdates.length) {
       logDodgeUpdates(summonEvents.dodgeUpdates, gameState, cardData?.name || null);
