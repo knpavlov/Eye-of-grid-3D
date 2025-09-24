@@ -2,7 +2,7 @@
 import { getCtx } from './context.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
-import { trackDodgeHover, resetDodgeHover } from './dodgeTooltip.js';
+import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
 import { showTooltip, hideTooltip } from '../ui/tooltip.js';
 import {
   applyFreedonianAura,
@@ -114,7 +114,7 @@ function onMouseMove(event) {
   mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
   if (interactionState.draggedCard) {
-    resetDodgeHover();
+    resetUnitHover();
     raycaster.setFromCamera(mouse, ctx.camera);
     const intersects = raycaster.intersectObjects(tileMeshes.flat());
 
@@ -174,15 +174,15 @@ function onMouseMove(event) {
       if (r != null && c != null) {
         const unit = gameState.board?.[r]?.[c]?.unit;
         if (unit) {
-          trackDodgeHover({ unit, r, c, event });
+          trackUnitHover({ unit, r, c, event });
         } else {
-          resetDodgeHover();
+          resetUnitHover();
         }
       } else {
-        resetDodgeHover();
+        resetUnitHover();
       }
     } else {
-      resetDodgeHover();
+      resetUnitHover();
     }
   }
   if (interactionState.selectedUnit) {
@@ -237,7 +237,7 @@ function onMouseDown(event) {
   const gameState = (typeof window !== 'undefined' ? window.gameState : null);
   if (!gameState || gameState.winner !== null) return;
   if (isInputLocked() && !interactionState.pendingDiscardSelection) return;
-  resetDodgeHover();
+  resetUnitHover();
   hideTooltip(META_TOOLTIP_SOURCE);
   const ctx = getCtx();
   const { renderer, mouse, raycaster, unitMeshes, handCardMeshes } = ctx;
@@ -1012,7 +1012,7 @@ export function setupInteractions() {
       setHandCardHoverVisual(interactionState.hoveredHandCard, false);
       interactionState.hoveredHandCard = null;
     }
-    resetDodgeHover();
+    resetUnitHover();
     hideTooltip(META_TOOLTIP_SOURCE);
   });
 }

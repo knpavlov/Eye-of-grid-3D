@@ -99,6 +99,161 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
 /* Tooltip для 3D-колод/кладбищ */
 #hover-tooltip { position: fixed; pointer-events: none; z-index: 50; }
 
+#hover-tooltip.unit-tooltip-panel {
+  padding: 14px 16px;
+  max-width: 280px;
+  width: max-content;
+  font-size: 12px;
+  line-height: 1.45;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: #f8fafc;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__name {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.55);
+  border-radius: 12px;
+  padding: 6px 8px;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 4px rgba(15, 23, 42, 0.35));
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__stat-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__stat-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__divider {
+  height: 1px;
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.1), rgba(148, 163, 184, 0.45), rgba(148, 163, 184, 0.1));
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__section-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(226, 232, 240, 0.65);
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__desc {
+  font-size: 12px;
+  color: #e2e8f0;
+  white-space: normal;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__statuses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__status {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(226, 232, 240, 0.9);
+  color: #0f172a;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.25);
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__status--empty {
+  background: rgba(148, 163, 184, 0.3);
+  color: rgba(226, 232, 240, 0.9);
+  box-shadow: none;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__status--possessed {
+  background: linear-gradient(135deg, #7c3aed, #ec4899);
+  color: #fdf4ff;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__status--invisible {
+  background: #14b8a6;
+  color: #022c22;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__status--perfect-dodge {
+  background: #facc15;
+  color: #422006;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__status--dodge {
+  background: #38bdf8;
+  color: #0c4a6e;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__status--quickness {
+  background: #fb7185;
+  color: #7f1d1d;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__status--fortress {
+  background: rgba(148, 163, 184, 0.75);
+  color: #1f2937;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__status--double-attack {
+  background: #f97316;
+  color: #7c2d12;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__status--fieldquake {
+  background: #6366f1;
+  color: #1e1b4b;
+}
+
+#hover-tooltip.unit-tooltip-panel .unit-tooltip__status--magic {
+  background: #a855f7;
+  color: #3b0764;
+}
+
 /* Opponent hand count indicator */
 #opponent-hand-count {
   position: relative;
