@@ -25,6 +25,7 @@ import {
 import { computeCellBuff } from './fieldEffects.js';
 import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
+import { collectForcedDiscardEvents } from './abilityHandlers/discard.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -532,13 +533,41 @@ export function stagedAttack(state, r, c, opts = {}) {
       logLines.push(`Retaliation to ${CARDS[A.tplId]?.name || 'Attacker'}: ${ret.total || 0} (HP ${before}→${A.currentHP})`);
     }
 
+    const boardBeforeDeaths = nFinal.board.map((row, rr) => (
+      Array.isArray(row)
+        ? row.map((cell, cc) => ({
+            element: cell?.element ?? null,
+            unit: cell?.unit
+              ? {
+                  owner: cell.unit.owner,
+                  tplId: cell.unit.tplId,
+                  currentHP: cell.unit.currentHP ?? null,
+                  uid: cell.unit.uid ?? null,
+                  r: rr,
+                  c: cc,
+                }
+              : null,
+          }))
+        : []
+    ));
+
     const deaths = [];
     for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
       const u = nFinal.board?.[rr]?.[cc]?.unit;
       if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null });
+        const fieldElement = nFinal.board?.[rr]?.[cc]?.element ?? null;
+        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, field: fieldElement });
         nFinal.board[rr][cc].unit = null;
       }
+    }
+
+    const discardSummary = collectForcedDiscardEvents(nFinal, deaths, { cause: 'ATTACK', boardBefore: boardBeforeDeaths });
+    if (Array.isArray(discardSummary?.events) && discardSummary.events.length) {
+      if (!Array.isArray(nFinal.pendingForcedDiscards)) nFinal.pendingForcedDiscards = [];
+      nFinal.pendingForcedDiscards.push(...discardSummary.events);
+    }
+    if (Array.isArray(discardSummary?.logLines) && discardSummary.logLines.length) {
+      logLines.push(...discardSummary.logLines);
     }
 
     try {
@@ -614,6 +643,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       logLines,
       targets,
       deaths,
+      forcedDiscards: Array.isArray(discardSummary?.events) ? discardSummary.events : [],
       retaliators: ret.retaliators,
       releases: combinedReleases,
       possessions: continuous.possessions,
@@ -850,13 +880,41 @@ export function magicAttack(state, fr, fc, tr, tc) {
     }
   }
 
+  const boardBeforeDeaths = n1.board.map((row, rr) => (
+    Array.isArray(row)
+      ? row.map((cell, cc) => ({
+          element: cell?.element ?? null,
+          unit: cell?.unit
+            ? {
+                owner: cell.unit.owner,
+                tplId: cell.unit.tplId,
+                currentHP: cell.unit.currentHP ?? null,
+                uid: cell.unit.uid ?? null,
+                r: rr,
+                c: cc,
+              }
+            : null,
+        }))
+      : []
+  ));
+
   const deaths = [];
   for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
     const u = n1.board[rr][cc].unit;
     if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null });
+      const fieldElement = n1.board?.[rr]?.[cc]?.element ?? null;
+      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, field: fieldElement });
       n1.board[rr][cc].unit = null;
     }
+  }
+
+  const discardSummary = collectForcedDiscardEvents(n1, deaths, { cause: 'MAGIC', boardBefore: boardBeforeDeaths });
+  if (Array.isArray(discardSummary?.events) && discardSummary.events.length) {
+    if (!Array.isArray(n1.pendingForcedDiscards)) n1.pendingForcedDiscards = [];
+    n1.pendingForcedDiscards.push(...discardSummary.events);
+  }
+  if (Array.isArray(discardSummary?.logLines) && discardSummary.logLines.length) {
+    logLines.push(...discardSummary.logLines);
   }
   try {
     for (const d of deaths) {
@@ -913,6 +971,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     logLines,
     targets,
     deaths,
+    forcedDiscards: Array.isArray(discardSummary?.events) ? discardSummary.events : [],
     releases: combinedReleases,
     possessions: continuous.possessions,
     attackerPosUpdate,

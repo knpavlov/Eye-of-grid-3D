@@ -402,6 +402,80 @@ export const CARDS = {
     desc: 'Incarnation. Exalted Elven Deity’s Magic Attack targets all enemies on non-Wood fields. Destroy Exalted Elven Deity if it is on a Biolith field.'
   },
 
+  FOREST_ELVEN_RIDER: {
+    id: 'FOREST_ELVEN_RIDER', name: 'Elven Rider', type: 'UNIT', cost: 4, activation: 2,
+    element: 'FOREST', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE' } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    forcedDiscardOnDeath: {
+      condition: { element: 'FOREST', mode: 'NOT_EQUAL' },
+      count: { type: 'FIELD_ELEMENT', element: 'FOREST' }
+    },
+    desc: 'If Elven Rider is destroyed on a non-Wood field, your opponent must discard cards equal to the number of Wood fields.'
+  },
+
+  FOREST_GREEN_ERLKING_ZOMBA: {
+    id: 'FOREST_GREEN_ERLKING_ZOMBA', name: 'Green Erlking Zomba', type: 'UNIT', cost: 6, activation: 3,
+    element: 'FOREST', atk: 6, hp: 6,
+    attackType: 'STANDARD',
+    attackSchemes: [
+      { key: 'BASE', attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE' } ] },
+      { key: 'ALT', attacks: [ { dir: 'N', ranges: [1], group: 'LINE' } ] },
+    ],
+    defaultAttackScheme: 'BASE',
+    mustUseSchemeOnElement: [ { element: 'FOREST', scheme: 'ALT' } ],
+    blindspots: ['S'],
+    friendlyFire: true,
+    ignoreAlliedBlocking: true,
+    forcedDiscardOnAllyDeath: { element: 'FOREST', count: { type: 'FIXED', amount: 1 }, includeSelf: true },
+    desc: 'Zomba must use its secondary attack while it is on a Wood field. While Zomba is on a Wood field, each time an allied creature is destroyed, your opponent must discard a card.'
+  },
+
+  FOREST_SAMURAI_NAGIRASHU: {
+    id: 'FOREST_SAMURAI_NAGIRASHU', name: 'Samurai Nagirashu', type: 'UNIT', cost: 2, activation: 2,
+    element: 'FOREST', atk: 2, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    forcedDiscardOnDeath: {
+      condition: { element: 'FOREST', mode: 'EQUAL' },
+      count: 1,
+    },
+    desc: 'If Samurai Nagirashu is destroyed on a Wood field, your opponent must discard 1 card.'
+  },
+
+  EARTH_BLACK_HOOD_DWARF_VULITRA: {
+    id: 'EARTH_BLACK_HOOD_DWARF_VULITRA', name: 'Black Hood Dwarf Vulitra', type: 'UNIT', cost: 3, activation: 2,
+    element: 'EARTH', atk: 4, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE' } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    plusAtkVsElement: { element: 'EARTH', amount: 1 },
+    forcedDiscardOnDeath: {
+      condition: { element: 'EARTH', mode: 'NOT_EQUAL' },
+      count: { type: 'FIELD_ELEMENT', element: 'EARTH' }
+    },
+    desc: 'Vulitra adds 1 to his attack if at least one target creature is an earth creature. If Vulitra is destroyed on a non-Earth field, your opponent must discard cards equal to the number of Earth fields.'
+  },
+
+  FOREST_LEAPFROG_BANDIT: {
+    id: 'FOREST_LEAPFROG_BANDIT', name: 'Leapfrog Bandit', type: 'UNIT', cost: 1, activation: 1,
+    element: 'FOREST', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [2], ignoreBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    forcedDiscardOnDeath: {
+      condition: { element: 'FOREST', mode: 'NOT_EQUAL' },
+      count: 1,
+    },
+    desc: 'If Leapfrog Bandit is destroyed on a non-Wood field, your opponent must discard 1 card.'
+  },
+
   BIOLITH_PHASEUS: {
     id: 'BIOLITH_PHASEUS', name: 'Phaseus, Biolith God', type: 'UNIT', cost: 9, activation: 5,
     element: 'BIOLITH', atk: 3, hp: 9,

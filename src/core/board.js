@@ -82,6 +82,8 @@ export function startGame(deck0 = DEFAULT_DECK, deck1 = DEFAULT_DECK) {
     turn: 1,
     winner: null,
     __ver: 0,
+    __forcedDiscardSeq: 0,
+    pendingForcedDiscards: [],
     summoningUnlocked: false, // поле по умолчанию заблокировано
   };
   for (let i = 0; i < 5; i++) { drawOne(state, 0); drawOne(state, 1); }

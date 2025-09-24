@@ -46,6 +46,7 @@ import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
 import * as CancelButton from './ui/cancelButton.js';
+import * as ForcedDiscard from './ui/forcedDiscard.js';
 import { initDebugControls } from './ui/debugControls.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
@@ -150,6 +151,7 @@ export function applyGameState(state) {
     // Сообщаем страницам с локальной переменной gameState о новом состоянии
     // (например, index.html держит собственную копию)
     window.setGameState?.(state);
+    window.__ui?.forcedDiscard?.syncPendingDiscards?.(state);
   } catch {}
 }
 try { if (typeof window !== 'undefined') window.applyGameState = applyGameState; } catch {}
@@ -197,6 +199,7 @@ try {
   window.__ui.inputLock = InputLock;
   window.__ui.summonLock = SummonLock;
   window.__ui.cancelButton = CancelButton;
+  window.__ui.forcedDiscard = ForcedDiscard;
   window.__ui.deckSelect = DeckSelect;
   window.__ui.deckBuilder = DeckBuilder;
   window.__ui.mainMenu = MainMenu;

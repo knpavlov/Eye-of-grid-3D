@@ -229,6 +229,64 @@ describe('guards and hits', () => {
   });
 });
 
+describe('forced discard abilities', () => {
+  function createEmptyState() {
+    const board = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE', unit: null })));
+    return {
+      board,
+      players: [
+        { mana: 0, hand: [], graveyard: [], deck: [], name: 'P1' },
+        { mana: 0, hand: [], graveyard: [], deck: [], name: 'P2' },
+      ],
+      active: 0,
+      turn: 1,
+      pendingForcedDiscards: [],
+      __forcedDiscardSeq: 0,
+    };
+  }
+
+  it('Elven Rider на не-лесном поле заставляет соперника сбросить по числу лесных полей', () => {
+    const state = createEmptyState();
+    state.board[2][1].element = 'FIRE';
+    state.board[0][0].element = 'FOREST';
+    state.board[0][2].element = 'FOREST';
+    state.players[1].hand = [{ id: 'A' }, { id: 'B' }, { id: 'C' }];
+    state.players[0].hand = [{ id: 'X' }];
+    state.board[2][1].unit = { owner: 0, tplId: 'FOREST_ELVEN_RIDER', facing: 'N', currentHP: CARDS.FOREST_ELVEN_RIDER.hp };
+    state.board[1][1].unit = { owner: 1, tplId: 'FIRE_TRICEPTAUR_BEHEMOTH', facing: 'S', currentHP: CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp };
+
+    const staged = stagedAttack(state, 1, 1);
+    const result = staged.finish();
+
+    expect(result.n1.pendingForcedDiscards).toHaveLength(1);
+    const event = result.n1.pendingForcedDiscards[0];
+    expect(event.target).toBe(1);
+    expect(event.amount).toBe(2);
+    expect(event.remaining).toBe(2);
+    expect(result.forcedDiscards).toHaveLength(1);
+  });
+
+  it('Zomba на лесном поле реагирует на гибель союзника', () => {
+    const state = createEmptyState();
+    state.board[2][1].element = 'FOREST';
+    state.board[1][1].element = 'FOREST';
+    state.players[1].hand = [{ id: 'A' }];
+    state.players[0].hand = [{ id: 'X' }];
+    state.board[2][1].unit = { owner: 0, tplId: 'FOREST_GREEN_ERLKING_ZOMBA', facing: 'N', currentHP: CARDS.FOREST_GREEN_ERLKING_ZOMBA.hp };
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'N', currentHP: 1 };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_TRICEPTAUR_BEHEMOTH', facing: 'S', currentHP: CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp };
+
+    const staged = stagedAttack(state, 0, 1);
+    const result = staged.finish();
+
+    expect(result.n1.pendingForcedDiscards).toHaveLength(1);
+    const event = result.n1.pendingForcedDiscards[0];
+    expect(event.target).toBe(1);
+    expect(event.amount).toBe(1);
+    expect(result.forcedDiscards).toHaveLength(1);
+  });
+});
+
 describe('особые способности', () => {
   it('Hellfire Spitter имеет способность quickness', () => {
     expect(hasFirstStrike(CARDS.FIRE_HELLFIRE_SPITTER)).toBe(true);
