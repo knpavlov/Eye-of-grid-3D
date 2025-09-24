@@ -534,14 +534,33 @@ function performMagicAttack(from, targetMesh) {
   if (!res) { showNotification('Incorrect target', 'error'); return false; }
   for (const l of res.logLines.reverse()) window.addLog(l);
   const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
-  if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
+  if (aMesh) {
+    // Визуальные эффекты не должны мешать обновлению логики, поэтому любые ошибки гасим локально
+    try {
+      const tweenLib = (typeof window !== 'undefined') ? window.gsap : null;
+      tweenLib?.fromTo?.(
+        aMesh.position,
+        { y: aMesh.position.y },
+        { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 },
+      );
+    } catch (err) {
+      console.error('[performMagicAttack] Ошибка анимации атакующего', err);
+    }
+  }
   for (const t of res.targets || []) {
     const tMesh = unitMeshes.find(m => m.userData.row === t.r && m.userData.col === t.c);
     if (tMesh) {
-      window.__fx.magicBurst(tMesh.position.clone().add(new THREE.Vector3(0, 0.4, 0)));
-      window.__fx.shakeMesh(tMesh, 6, 0.12);
+      const burstPos = (() => {
+        try { return tMesh.position.clone().add(new THREE.Vector3(0, 0.4, 0)); }
+        catch { return null; }
+      })();
+      try { window.__fx?.magicBurst?.(burstPos); }
+      catch (err) { console.error('[performMagicAttack] Ошибка magicBurst', err); }
+      try { window.__fx?.shakeMesh?.(tMesh, 6, 0.12); }
+      catch (err) { console.error('[performMagicAttack] Ошибка shakeMesh', err); }
       if (typeof t.dmg === 'number' && t.dmg > 0) {
-        window.__fx.spawnDamageText(tMesh, `-${t.dmg}`, '#ff5555');
+        try { window.__fx?.spawnDamageText?.(tMesh, `-${t.dmg}`, '#ff5555'); }
+        catch (err) { console.error('[performMagicAttack] Ошибка всплывающего урона', err); }
       }
     }
   }

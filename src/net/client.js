@@ -626,8 +626,10 @@ import { getServerBase } from './config.js';
       if (until && now < until) return false;
       const aMesh = unitMeshes.find(m => m.userData.row === attacker.r && m.userData.col === attacker.c);
       if (!aMesh) return false;
+      const list = Array.isArray(retaliators) ? retaliators : [];
+      const hasRetaliators = list.length > 0;
       let maxDur = 0;
-      for (const rrObj of retaliators) {
+      for (const rrObj of list) {
         const rMesh = unitMeshes.find(m => m.userData.row === rrObj.r && m.userData.col === rrObj.c);
         if (!rMesh) continue;
         const dir2 = new THREE.Vector3().subVectors(aMesh.position, rMesh.position).normalize();
@@ -637,17 +639,21 @@ import { getServerBase } from './config.js';
            .to(rMesh.position, { x: `-=${push2.x}`, z: `-=${push2.z}`, duration: 0.30, ease: 'power2.inOut' });
         maxDur = Math.max(maxDur, 0.52);
       }
-      if (typeof total === 'number' && total > 0) {
+      if (hasRetaliators && typeof total === 'number' && total >= 0) {
         setTimeout(() => {
           const aLive = unitMeshes.find(m => m.userData.row === attacker.r && m.userData.col === attacker.c) || aMesh;
           if (aLive) {
             window.__fx?.shakeMesh(aLive, 6, 0.14);
-            try { window.__fx?.cancelPendingHpPopup(`${attacker.r},${attacker.c}`, -total); } catch {}
+            if (total > 0) {
+              try { window.__fx?.cancelPendingHpPopup(`${attacker.r},${attacker.c}`, -total); } catch {}
+            }
             try { window.__fx?.spawnDamageText(aLive, `-${total}`, '#ffd166'); } catch {}
-            try {
-              const key = `${attacker.r},${attacker.c}`;
-              RECENT_REMOTE_DAMAGE.set(key, { delta: -total, ts: Date.now() });
-            } catch {}
+            if (total > 0) {
+              try {
+                const key = `${attacker.r},${attacker.c}`;
+                RECENT_REMOTE_DAMAGE.set(key, { delta: -total, ts: Date.now() });
+              } catch {}
+            }
           }
         }, Math.max(0, maxDur * 1000 - 10));
       }
