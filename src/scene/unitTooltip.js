@@ -7,6 +7,7 @@ import {
   rotateCost,
   resolveAttackProfile,
   isUnitPossessed,
+  getUnitProtection,
 } from '../core/abilities.js';
 import { effectiveStats } from '../core/rules.js';
 import { showTooltip, hideTooltip } from '../ui/tooltip.js';
@@ -116,6 +117,10 @@ function collectStatuses(state, unit, tpl, { r, c, cell }) {
   }
   if (tpl?.fieldquakeLock) {
     statuses.push({ key: 'fieldquake', text: 'Fieldquake lock aura' });
+  }
+  const protection = getUnitProtection(state, r, c, { unit, tpl });
+  if (protection > 0) {
+    statuses.push({ key: 'protection', text: `Protection ${protection}` });
   }
   let attackType = tpl?.attackType || 'STANDARD';
   try {

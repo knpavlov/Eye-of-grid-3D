@@ -28,6 +28,28 @@ function normalizeAmount(value) {
   return null;
 }
 
+function normalizeHpConfig(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'number') {
+    return { threshold: raw, amount: 1, useCurrent: true };
+  }
+  if (typeof raw === 'object') {
+    const threshold = (() => {
+      if (typeof raw.threshold === 'number') return raw.threshold;
+      if (typeof raw.min === 'number') return raw.min;
+      if (typeof raw.hp === 'number') return raw.hp;
+      if (typeof raw.value === 'number') return raw.value;
+      if (typeof raw.atLeast === 'number') return raw.atLeast;
+      return null;
+    })();
+    const amount = normalizeAmount(raw);
+    if (threshold == null || amount == null) return null;
+    const useCurrent = raw.useCurrent != null ? !!raw.useCurrent : true;
+    return { threshold, amount, useCurrent };
+  }
+  return null;
+}
+
 function normalizeConfig(raw) {
   if (!raw) return null;
   if (typeof raw === 'number') {
@@ -52,6 +74,21 @@ function targetCost(state, hit) {
   return (typeof cost === 'number' && Number.isFinite(cost)) ? cost : null;
 }
 
+function targetHp(state, hit, useCurrent = true) {
+  if (!state || !hit) return null;
+  const unit = state.board?.[hit.r]?.[hit.c]?.unit;
+  if (!unit) return null;
+  const tpl = CARDS[unit.tplId];
+  if (!tpl) return null;
+  if (!useCurrent) {
+    return (typeof tpl.hp === 'number' && Number.isFinite(tpl.hp)) ? tpl.hp : null;
+  }
+  if (typeof unit.currentHP === 'number' && Number.isFinite(unit.currentHP)) {
+    return unit.currentHP;
+  }
+  return (typeof tpl.hp === 'number' && Number.isFinite(tpl.hp)) ? tpl.hp : null;
+}
+
 export function computeTargetCostBonus(state, tpl, hits) {
   if (!tpl || !Array.isArray(hits) || !hits.length) return null;
   const cfgRaw = tpl.plusAtkVsSummonCostAtMost || tpl.plusAtkIfTargetCostLeq;
@@ -67,4 +104,22 @@ export function computeTargetCostBonus(state, tpl, hits) {
   });
   if (!qualifies) return null;
   return { amount, limit };
+}
+
+export function computeTargetHpBonus(state, tpl, hits) {
+  if (!tpl || !Array.isArray(hits) || !hits.length) return null;
+  const cfgRaw = tpl.plusAtkIfTargetHpAtLeast
+    || tpl.plusAtkVsHpAtLeast
+    || tpl.plusAtkIfTargetHp
+    || tpl.plusAtkVsTargetHp;
+  const cfg = normalizeHpConfig(cfgRaw);
+  if (!cfg) return null;
+  const { threshold, amount, useCurrent } = cfg;
+  if (!Number.isFinite(threshold) || !Number.isFinite(amount) || amount === 0) return null;
+  const qualifies = hits.some(hit => {
+    const hp = targetHp(state, hit, useCurrent);
+    return hp != null && hp >= threshold;
+  });
+  if (!qualifies) return null;
+  return { amount, threshold };
 }
