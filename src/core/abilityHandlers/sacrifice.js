@@ -1,6 +1,7 @@
 // Модуль обработки способности "жертвоприношение" для кубов и похожих карт
 import { CARDS } from '../cards.js';
 import { computeCellBuff } from '../fieldEffects.js';
+import { collectForcedDiscardEffects } from './discard.js';
 
 const FACING_ORDER = ['N', 'E', 'S', 'W'];
 
@@ -256,6 +257,25 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
         }
       }
       result.events.oracleBuff = { owner: newUnit.owner, amount };
+    }
+    const discardSummary = collectForcedDiscardEffects({
+      stateBefore: state,
+      stateAfter: state,
+      deaths: [
+        {
+          r,
+          c,
+          owner: newUnit.owner,
+          tplId: summonTpl.id,
+          uid: newUnit.uid ?? null,
+        },
+      ],
+    });
+    if (Array.isArray(discardSummary?.events) && discardSummary.events.length) {
+      result.events.forcedDiscards = discardSummary.events;
+      if (Array.isArray(discardSummary.logs) && discardSummary.logs.length) {
+        result.events.forcedDiscardLogs = discardSummary.logs;
+      }
     }
   }
 

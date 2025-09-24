@@ -12,6 +12,7 @@ import {
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
 import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, activationCost, hasInvisibility, getUnitProtection } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
+import { collectForcedDiscardEffects } from '../src/core/abilityHandlers/discard.js';
 
 function makeBoard() {
   const b = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE', unit: null })));
@@ -1357,6 +1358,108 @@ describe('Новые способности существ', () => {
     expect(hasInvisibility(state, 1, 1)).toBe(false);
     expect(hasInvisibility(state, 0, 1)).toBe(true);
     expect(hasInvisibility(state, 0, 2)).toBe(false);
+  });
+});
+
+describe('forced discard effects', () => {
+  function cloneState(state) {
+    return JSON.parse(JSON.stringify(state));
+  }
+
+  it('Elven Rider заставляет сбрасывать карты по числу лесных полей', () => {
+    const board = makeBoard();
+    const players = [ { mana: 0 }, { mana: 0 } ];
+    let forestCount = 0;
+    for (let r = 0; r < 3; r += 1) {
+      for (let c = 0; c < 3; c += 1) {
+        if (r === 0 && c === 0) {
+          board[r][c].element = 'FIRE';
+        } else {
+          board[r][c].element = 'FOREST';
+          forestCount += 1;
+        }
+      }
+    }
+    board[0][0].unit = { owner: 0, tplId: 'FOREST_ELVEN_RIDER', uid: 101 };
+    const stateBefore = { board, players };
+    const stateAfter = cloneState(stateBefore);
+    stateAfter.board[0][0].unit = null;
+    const summary = collectForcedDiscardEffects({
+      stateBefore,
+      stateAfter,
+      deaths: [ { r: 0, c: 0, owner: 0, tplId: 'FOREST_ELVEN_RIDER', uid: 101 } ],
+    });
+    expect(summary.events).toHaveLength(1);
+    expect(summary.events[0]).toMatchObject({ targetPlayer: 1, amount: forestCount });
+    expect(summary.logs[0]).toContain('Elven Rider');
+  });
+
+  it('Samurai Nagirashu заставляет сбросить одну карту на лесном поле', () => {
+    const board = makeBoard();
+    const players = [ { mana: 0 }, { mana: 0 } ];
+    board[1][1].element = 'FOREST';
+    board[1][1].unit = { owner: 0, tplId: 'FOREST_SAMURAI_NAGIRASHU', uid: 55 };
+    const stateBefore = { board, players };
+    const stateAfter = cloneState(stateBefore);
+    stateAfter.board[1][1].unit = null;
+    const summary = collectForcedDiscardEffects({
+      stateBefore,
+      stateAfter,
+      deaths: [ { r: 1, c: 1, owner: 0, tplId: 'FOREST_SAMURAI_NAGIRASHU', uid: 55 } ],
+    });
+    expect(summary.events).toHaveLength(1);
+    expect(summary.events[0].amount).toBe(1);
+    expect(summary.logs[0]).toContain('Samurai Nagirashu');
+  });
+
+  it('Vulitra считает количество земляных полей', () => {
+    const board = makeBoard();
+    const players = [ { mana: 0 }, { mana: 0 } ];
+    let earthCount = 0;
+    for (let r = 0; r < 3; r += 1) {
+      for (let c = 0; c < 3; c += 1) {
+        if (r === 2 && c === 2) {
+          board[r][c].element = 'FOREST';
+        } else {
+          board[r][c].element = 'EARTH';
+          earthCount += 1;
+        }
+      }
+    }
+    board[2][2].unit = { owner: 0, tplId: 'EARTH_BLACK_HOOD_DWARF_VULITRA', uid: 42 };
+    const stateBefore = { board, players };
+    const stateAfter = cloneState(stateBefore);
+    stateAfter.board[2][2].unit = null;
+    const summary = collectForcedDiscardEffects({
+      stateBefore,
+      stateAfter,
+      deaths: [ { r: 2, c: 2, owner: 0, tplId: 'EARTH_BLACK_HOOD_DWARF_VULITRA', uid: 42 } ],
+    });
+    expect(summary.events).toHaveLength(1);
+    expect(summary.events[0].amount).toBe(earthCount);
+    expect(summary.logs[0]).toContain('Vulitra');
+  });
+
+  it('Green Erlking Zomba активирует сброс при гибели союзника на лесу', () => {
+    const board = makeBoard();
+    const players = [ { mana: 0 }, { mana: 0 } ];
+    board[1][1].element = 'FOREST';
+    board[1][1].unit = { owner: 0, tplId: 'FOREST_GREEN_ERLKING_ZOMBA', uid: 77 };
+    board[0][1].element = 'FIRE';
+    board[0][1].unit = { owner: 0, tplId: 'FOREST_LEAPFROG_BANDIT', uid: 78 };
+    const stateBefore = { board, players };
+    const stateAfter = cloneState(stateBefore);
+    stateAfter.board[0][1].unit = null;
+    const summary = collectForcedDiscardEffects({
+      stateBefore,
+      stateAfter,
+      deaths: [ { r: 0, c: 1, owner: 0, tplId: 'FOREST_LEAPFROG_BANDIT', uid: 78 } ],
+    });
+    expect(summary.events.length).toBeGreaterThanOrEqual(2);
+    const zombaEvent = summary.events.find(ev => String(ev.label || '').includes('Zomba'));
+    expect(zombaEvent).toBeTruthy();
+    expect(zombaEvent).toMatchObject({ targetPlayer: 1, amount: 1 });
+    expect(summary.logs.some(line => line.includes('Green Erlking Zomba'))).toBe(true);
   });
 });
 

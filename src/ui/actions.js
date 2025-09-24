@@ -358,6 +358,15 @@ export function confirmUnitAbilityOrientation(context, direction) {
       w.addLog?.(`${replacementName}: союзники получают +${amount} HP.`);
     }
 
+    if (Array.isArray(result.events?.forcedDiscardLogs) && result.events.forcedDiscardLogs.length) {
+      for (const line of result.events.forcedDiscardLogs) {
+        w.addLog?.(line);
+      }
+    }
+    if (Array.isArray(result.events?.forcedDiscards) && result.events.forcedDiscards.length) {
+      try { w.__ui?.forcedDiscard?.enqueueForcedDiscardRequests?.(result.events.forcedDiscards); } catch {}
+    }
+
     if (result.summonEvents?.possessions?.length) {
       for (const ev of result.summonEvents.possessions) {
         const unitTaken = gameState.board?.[ev.r]?.[ev.c]?.unit;

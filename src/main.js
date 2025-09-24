@@ -47,6 +47,7 @@ import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
 import * as CancelButton from './ui/cancelButton.js';
 import { initDebugControls } from './ui/debugControls.js';
+import * as ForcedDiscard from './ui/forcedDiscard.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -193,6 +194,7 @@ try {
   window.__ui.handCount = HandCount;
   window.__ui.actions = UIActions;
   window.__ui.spellUtils = UISpellUtils;
+  window.__ui.forcedDiscard = ForcedDiscard;
   window.__ui.updateUI = updateUI;
   window.__ui.inputLock = InputLock;
   window.__ui.summonLock = SummonLock;

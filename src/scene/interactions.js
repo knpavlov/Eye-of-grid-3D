@@ -12,6 +12,7 @@ import {
   isIncarnationCard,
 } from '../core/abilities.js';
 import { capMana } from '../core/constants.js';
+import { collectForcedDiscardEffects } from '../core/abilityHandlers/discard.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -844,6 +845,27 @@ export function placeUnitWithDirection(direction) {
     const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
     window.animateManaGainFromWorld(pos, owner, true, slotBeforeGain);
     gameState.board[row][col].unit = null;
+    const discardSummary = collectForcedDiscardEffects({
+      stateBefore: gameState,
+      stateAfter: gameState,
+      deaths: [
+        {
+          r: row,
+          c: col,
+          owner: owner,
+          tplId: cardData.id,
+          uid: unit.uid ?? null,
+        },
+      ],
+    });
+    if (Array.isArray(discardSummary?.logs)) {
+      for (const line of discardSummary.logs) {
+        if (line) window.addLog?.(line);
+      }
+    }
+    if (Array.isArray(discardSummary?.events) && discardSummary.events.length) {
+      try { window.__ui?.forcedDiscard?.enqueueForcedDiscardRequests?.(discardSummary.events); } catch {}
+    }
   }
   if (gameState.board[row][col].unit) {
     const summonEvents = applySummonAbilities(gameState, row, col);

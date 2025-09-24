@@ -25,6 +25,7 @@ import {
 import { computeCellBuff } from './fieldEffects.js';
 import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
+import { collectForcedDiscardEffects } from './abilityHandlers/discard.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -603,6 +604,16 @@ export function stagedAttack(state, r, c, opts = {}) {
       A.apSpent = (A.apSpent || 0) + attackCostValue;
     }
 
+    const discardSummary = collectForcedDiscardEffects({
+      stateBefore: state,
+      stateAfter: nFinal,
+      deaths,
+    });
+    if (Array.isArray(discardSummary?.logs) && discardSummary.logs.length) {
+      logLines.push(...discardSummary.logs);
+    }
+    const forcedDiscards = Array.isArray(discardSummary?.events) ? discardSummary.events : [];
+
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
     const combinedReleases = [...releaseEvents.releases, ...continuous.releases];
     const dodgeFinal = refreshBoardDodgeStates(nFinal);
@@ -622,6 +633,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       attackType,
       schemeKey,
       attackProfile: profile,
+      forcedDiscards,
     };
   }
 
@@ -865,6 +877,15 @@ export function magicAttack(state, fr, fc, tr, tc) {
       }
     }
   } catch {}
+  const discardSummary = collectForcedDiscardEffects({
+    stateBefore: state,
+    stateAfter: n1,
+    deaths,
+  });
+  if (Array.isArray(discardSummary?.logs) && discardSummary.logs.length) {
+    logLines.push(...discardSummary.logs);
+  }
+  const forcedDiscards = Array.isArray(discardSummary?.events) ? discardSummary.events : [];
   const releaseEvents = releasePossessionsAfterDeaths(n1, deaths);
   if (releaseEvents.releases.length) {
     for (const rel of releaseEvents.releases) {
@@ -921,6 +942,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     schemeKey,
     attackProfile: profile,
     dmg,
+    forcedDiscards,
   };
 }
 
