@@ -33,37 +33,98 @@ export function scheduleHpPopup(r, c, delta, delayMs) {
   } catch {}
 }
 
-export function spawnDamageText(targetMesh, text, color = '#ff5555') {
+export function spawnDamageText(targetMesh, text, color = '#ff5555', options = {}) {
   if (!targetMesh || typeof window === 'undefined') return;
   const THREE = window.THREE; const gsap = window.gsap;
   const renderer = window.renderer || window.__scene?.getCtx()?.renderer;
   const effectsGroup = window.effectsGroup || window.__scene?.getCtx()?.effectsGroup;
   if (!THREE || !gsap || !renderer || !effectsGroup) return;
+
+  const {
+    fontSize = 64,
+    fontFamily = 'Arial',
+    fontWeight = 'bold',
+    strokeStyle = 'rgba(0,0,0,0.6)',
+    lineWidth = 6,
+    padding = 24,
+    canvasWidth = null,
+    canvasHeight = null,
+    scale: scaleOpt = null,
+    scaleX: explicitScaleX,
+    scaleY: explicitScaleY,
+    offsetX = 0,
+    offsetY = 0.9,
+    offsetZ = 0,
+    appearDuration = 0.05,
+    floatDuration = 0.5,
+    firstRise = 0.8,
+    secondRise = 1.6,
+    holdDuration = 1.0,
+    fadeDuration = 0.5,
+    easingOut = 'power1.out',
+    easingIn = 'power1.in',
+  } = options || {};
+
+  const fontSpec = `${fontWeight} ${fontSize}px ${fontFamily}`;
+  const measureCtx = document.createElement('canvas').getContext('2d');
+  measureCtx.font = fontSpec;
+  const textWidth = measureCtx.measureText(text).width;
+  const computedWidth = canvasWidth ?? Math.max(256, Math.ceil(textWidth + padding * 2));
+  const computedHeight = canvasHeight ?? Math.max(128, Math.ceil(fontSize + padding * 2));
+
   const canvas = document.createElement('canvas');
-  canvas.width = 256; canvas.height = 128;
+  canvas.width = computedWidth;
+  canvas.height = computedHeight;
   const ctx = canvas.getContext('2d');
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.font = 'bold 64px Arial';
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.font = fontSpec;
   ctx.fillStyle = color;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 6;
-  ctx.strokeText(text, canvas.width/2, canvas.height/2);
-  ctx.fillText(text, canvas.width/2, canvas.height/2);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.strokeStyle = strokeStyle;
+  ctx.lineWidth = lineWidth;
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  if (strokeStyle && lineWidth > 0) {
+    ctx.strokeText(text, centerX, centerY);
+  }
+  ctx.fillText(text, centerX, centerY);
+
   const tex = new THREE.CanvasTexture(canvas);
   try { tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); } catch {}
   const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0, depthTest: false, depthWrite: false });
   const sprite = new THREE.Sprite(mat);
-  sprite.scale.set(2.6, 1.4, 1);
-  const pos = targetMesh.position.clone().add(new THREE.Vector3(0, 0.9, 0));
-  sprite.position.copy(pos);
+
+  const derivedScaleX = explicitScaleX
+    ?? (typeof scaleOpt === 'number' ? scaleOpt : scaleOpt?.x)
+    ?? 2.6;
+  const derivedScaleY = explicitScaleY
+    ?? (typeof scaleOpt === 'number' ? scaleOpt : scaleOpt?.y)
+    ?? 1.4;
+  sprite.scale.set(derivedScaleX, derivedScaleY, 1);
+
+  const offsetVec = new THREE.Vector3(offsetX, offsetY, offsetZ);
+  const basePos = targetMesh.position.clone().add(offsetVec);
+  sprite.position.copy(basePos);
   sprite.renderOrder = 999;
   effectsGroup.add(sprite);
-  const tl = gsap.timeline({ onComplete: () => { effectsGroup.remove(sprite); tex.dispose(); mat.dispose(); } });
-  tl.to(sprite.material, { opacity: 1, duration: 0.05 })
-    .to(sprite.position, { y: sprite.position.y + 0.8, duration: 0.5, ease: 'power1.out' })
-    .to({}, { duration: 1.0 })
-    .to(sprite.position, { y: sprite.position.y + 1.6, duration: 0.5, ease: 'power1.in' }, 'end')
-    .to(sprite.material, { opacity: 0, duration: 0.5 }, 'end');
+
+  const startY = sprite.position.y;
+  const firstTargetY = startY + firstRise;
+  const finalTargetY = firstTargetY + secondRise;
+  const tl = gsap.timeline({
+    onComplete: () => {
+      try { effectsGroup.remove(sprite); } catch {}
+      tex.dispose();
+      mat.dispose();
+    },
+  });
+  tl.to(sprite.material, { opacity: 1, duration: appearDuration })
+    .to(sprite.position, { y: firstTargetY, duration: floatDuration, ease: easingOut })
+    .to({}, { duration: holdDuration })
+    .add('fade')
+    .to(sprite.position, { y: finalTargetY, duration: fadeDuration, ease: easingIn }, 'fade')
+    .to(sprite.material, { opacity: 0, duration: fadeDuration }, 'fade');
 }
 
 // Короткий взрывной столб магической энергии

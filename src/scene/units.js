@@ -2,10 +2,11 @@
 import { getCtx } from './context.js';
 import { createCard3D, drawCardFace } from './cards.js';
 import { renderFieldLocks } from './fieldlocks.js';
-import { isUnitPossessed, hasInvisibility } from '../core/abilities.js';
+import { isUnitPossessed, hasInvisibility, getUnitProtection } from '../core/abilities.js';
 import { attachPossessionOverlay, disposePossessionOverlay } from './possessionOverlay.js';
 import { setInvisibilityFx } from './unitFx.js';
 import { resetUnitHover } from './unitTooltip.js';
+import { spawnDamageText } from './effects.js';
 
 function getTHREE() {
   const ctx = getCtx();
@@ -190,7 +191,32 @@ export function updateUnits(gameState) {
         }
       }
 
+      const rawProtection = getUnitProtection(gameState, r, c, { unit, tpl: cardData });
+      const protectionValue = Math.max(0, Math.round(rawProtection ?? 0));
       mesh.userData = mesh.userData || {};
+      const prevProtection = Number.isFinite(mesh.userData.lastProtection) ? mesh.userData.lastProtection : null;
+      const shouldShowProtection = (prevProtection === null && protectionValue > 0)
+        || (prevProtection !== null && protectionValue !== prevProtection);
+      if (shouldShowProtection) {
+        try {
+          // Отображаем всплывающий текст защиты прямо над существом для обоих клиентов
+          spawnDamageText(mesh, `Protection -${protectionValue}`, '#60a5fa', {
+            fontSize: 44,
+            lineWidth: 4,
+            padding: 32,
+            strokeStyle: 'rgba(15,23,42,0.75)',
+            scaleX: 2.0,
+            scaleY: 1.0,
+            offsetY: 1.05,
+            appearDuration: 0.08,
+            floatDuration: 0.45,
+            firstRise: 0.6,
+            secondRise: 1.0,
+            holdDuration: 0.85,
+            fadeDuration: 0.4,
+          });
+        } catch {}
+      }
       mesh.userData.type = 'unit';
       mesh.userData.row = r;
       mesh.userData.col = c;
@@ -200,6 +226,7 @@ export function updateUnits(gameState) {
       mesh.userData.lastHp = hpValue;
       mesh.userData.lastAtk = atkValue;
       mesh.userData.lastActivation = activationValue;
+      mesh.userData.lastProtection = protectionValue;
 
       const targetRotation = (facingDeg[unit.facing] || 0) * Math.PI / 180;
       mesh.rotation.y = targetRotation;
