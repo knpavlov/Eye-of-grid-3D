@@ -126,16 +126,36 @@ function gatherSources(tpl) {
   }
 
   if (tpl.protectionEqualsAlliedElementCount) {
-    const element = normalizeElementName(tpl.protectionEqualsAlliedElementCount);
-    if (element) {
-      sources.push({ type: 'ALLY_ELEMENT', element, per: 1, includeSelf: true });
+    const raw = tpl.protectionEqualsAlliedElementCount;
+    if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
+      const element = normalizeElementName(raw.element ?? raw.type ?? raw.match ?? raw.value);
+      if (element) {
+        const per = clampNumber(raw.per ?? raw.amount ?? raw.value ?? 1, 1);
+        const includeSelf = raw.includeSelf != null ? !!raw.includeSelf : true;
+        sources.push({ type: 'ALLY_ELEMENT', element, per, includeSelf });
+      }
+    } else {
+      const element = normalizeElementName(raw);
+      if (element) {
+        sources.push({ type: 'ALLY_ELEMENT', element, per: 1, includeSelf: true });
+      }
     }
   }
 
   if (tpl.protectionEqualsAlliedTemplates || tpl.protectionEqualsAllyTemplates) {
-    const { ids, names } = normalizeIdList(tpl.protectionEqualsAlliedTemplates || tpl.protectionEqualsAllyTemplates);
-    if (ids.size || names.size) {
-      sources.push({ type: 'ALLY_TEMPLATE', ids, names, per: 1, includeSelf: true });
+    const raw = tpl.protectionEqualsAlliedTemplates || tpl.protectionEqualsAllyTemplates;
+    if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
+      const { ids, names } = normalizeIdList(raw.ids ?? raw.tplIds ?? raw.cards ?? raw.templates ?? raw.names ?? raw.values);
+      if (ids.size || names.size) {
+        const per = clampNumber(raw.per ?? raw.amount ?? raw.value ?? 1, 1);
+        const includeSelf = raw.includeSelf != null ? !!raw.includeSelf : true;
+        sources.push({ type: 'ALLY_TEMPLATE', ids, names, per, includeSelf });
+      }
+    } else {
+      const { ids, names } = normalizeIdList(raw);
+      if (ids.size || names.size) {
+        sources.push({ type: 'ALLY_TEMPLATE', ids, names, per: 1, includeSelf: true });
+      }
     }
   }
 

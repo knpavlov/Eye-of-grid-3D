@@ -1,3 +1,5 @@
+import { getUnitProtection } from '../core/abilities.js';
+
 // Анимация различий между предыдущим и новым состоянием
 
 export function playDeltaAnimations(prevState, nextState, opts = {}) {
@@ -144,6 +146,65 @@ export function playDeltaAnimations(prevState, nextState, opts = {}) {
       return;
     }
 
+    const findPrevUnitMatch = (unit, targetR, targetC) => {
+      if (!unit) return null;
+      if (unit.uid != null) {
+        for (let rr = 0; rr < 3; rr++) {
+          for (let cc = 0; cc < 3; cc++) {
+            const candidate = (prevB[rr] && prevB[rr][cc] && prevB[rr][cc].unit) ? prevB[rr][cc].unit : null;
+            if (candidate && candidate.uid === unit.uid) {
+              return { unit: candidate, r: rr, c: cc };
+            }
+          }
+        }
+      }
+      const sig = makeSignature(unit);
+      if (sig) {
+        const matches = [];
+        for (let rr = 0; rr < 3; rr++) {
+          for (let cc = 0; cc < 3; cc++) {
+            const candidate = (prevB[rr] && prevB[rr][cc] && prevB[rr][cc].unit) ? prevB[rr][cc].unit : null;
+            if (!candidate) continue;
+            if (makeSignature(candidate) === sig) {
+              matches.push({ unit: candidate, r: rr, c: cc });
+            }
+          }
+        }
+        if (matches.length === 1) {
+          return matches[0];
+        }
+      }
+      const loose = makeLooseSignature(unit);
+      if (loose && (prevLooseCounts.get(loose) || 0) === 1) {
+        for (let rr = 0; rr < 3; rr++) {
+          for (let cc = 0; cc < 3; cc++) {
+            const candidate = (prevB[rr] && prevB[rr][cc] && prevB[rr][cc].unit) ? prevB[rr][cc].unit : null;
+            if (!candidate) continue;
+            if (makeLooseSignature(candidate) === loose) {
+              return { unit: candidate, r: rr, c: cc };
+            }
+          }
+        }
+      }
+      if (typeof targetR === 'number' && typeof targetC === 'number') {
+        const sameCell = (prevB[targetR] && prevB[targetR][targetC] && prevB[targetR][targetC].unit)
+          ? prevB[targetR][targetC].unit
+          : null;
+        if (sameCell && sameCell.owner === unit.owner && sameCell.tplId === unit.tplId) {
+          return { unit: sameCell, r: targetR, c: targetC };
+        }
+      }
+      return null;
+    };
+
+    const getProtectionSafe = (state, r, c, unit) => {
+      try {
+        return getUnitProtection(state, r, c, { unit });
+      } catch {
+        return 0;
+      }
+    };
+
     const hpChanges = [];
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) {
@@ -157,6 +218,33 @@ export function playDeltaAnimations(prevState, nextState, opts = {}) {
             hpChanges.push({ r, c, delta });
           }
         }
+      }
+    }
+
+    const protectionGains = [];
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        const nu = (nextB[r] && nextB[r][c] && nextB[r][c].unit) ? nextB[r][c].unit : null;
+        if (!nu) continue;
+        const nextProt = getProtectionSafe(nextState, r, c, nu);
+        if (!(nextProt > 0)) continue;
+        const prevMatch = findPrevUnitMatch(nu, r, c);
+        const prevProt = prevMatch ? getProtectionSafe(prevState, prevMatch.r, prevMatch.c, prevMatch.unit) : 0;
+        const gain = Math.max(0, nextProt - prevProt);
+        if (gain > 0) {
+          protectionGains.push({ r, c, gain });
+        }
+      }
+    }
+
+    if (protectionGains.length) {
+      for (const entry of protectionGains) {
+        try {
+          const mesh = unitMeshes.find(m => m.userData.row === entry.r && m.userData.col === entry.c);
+          if (!mesh) continue;
+          // Показать всплывающее сообщение о росте защиты
+          window.__fx?.spawnDamageText?.(mesh, `Protection -${entry.gain}`, '#60a5fa');
+        } catch {}
       }
     }
 

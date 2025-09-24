@@ -373,8 +373,11 @@ export function stagedAttack(state, r, c, opts = {}) {
     const isMagic = attackType === 'MAGIC';
     const tplB = CARDS[B.tplId];
     if (sameOwner) {
-      // Союзники не уклоняются от массового удара, но учитывают защиту
-      const protection = getUnitProtection(base, h.r, h.c, { unit: B, tpl: tplB });
+      // Союзники не уклоняются от массового удара, но учитывают защиту только для немагических атак
+      const bypassProtection = isMagic;
+      const protection = bypassProtection
+        ? 0
+        : getUnitProtection(base, h.r, h.c, { unit: B, tpl: tplB });
       const dealt = Math.max(0, h.dmg - protection);
       return { ...h, dealt, dodge: false, invisible: false, sameOwner: true };
     }
@@ -385,7 +388,8 @@ export function stagedAttack(state, r, c, opts = {}) {
       dodgeInfo = attemptUnitDodge(base, h.r, h.c, { rng: randomFn });
     }
     const dodgeSuccess = !isMagic && !invisible && (perfect || (dodgeInfo?.success === true));
-    const protection = (invisible || dodgeSuccess)
+    const bypassProtection = isMagic;
+    const protection = (invisible || dodgeSuccess || bypassProtection)
       ? 0
       : getUnitProtection(base, h.r, h.c, { unit: B, tpl: tplB });
     const rawDamage = Math.max(0, h.dmg - protection);
@@ -782,8 +786,8 @@ export function magicAttack(state, fr, fc, tr, tc) {
     const before = u.currentHP ?? tplB.hp;
     let dealt = 0;
     if (!invisible) {
-      const protection = getUnitProtection(n1, cell.r, cell.c, { unit: u, tpl: tplB });
-      dealt = Math.max(0, dmg - protection);
+      // Магические атаки полностью игнорируют защиту
+      dealt = Math.max(0, dmg);
       u.currentHP = Math.max(0, before - dealt);
     }
     addSummary(cell.r, cell.c, dealt, { invisible });
@@ -805,8 +809,8 @@ export function magicAttack(state, fr, fc, tr, tc) {
       const before2 = u2.currentHP ?? tplB2.hp;
       let dealt2 = 0;
       if (!invisible) {
-        const protection2 = getUnitProtection(n1, cell.r, cell.c, { unit: u2, tpl: tplB2 });
-        dealt2 = Math.max(0, dmg - protection2);
+        // Магические атаки игнорируют защиту на всех последующих ударах
+        dealt2 = Math.max(0, dmg);
         u2.currentHP = Math.max(0, before2 - dealt2);
       }
       addSummary(cell.r, cell.c, dealt2, { invisible });
