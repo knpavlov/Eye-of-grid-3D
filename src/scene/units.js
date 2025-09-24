@@ -2,10 +2,11 @@
 import { getCtx } from './context.js';
 import { createCard3D, drawCardFace } from './cards.js';
 import { renderFieldLocks } from './fieldlocks.js';
-import { isUnitPossessed, hasInvisibility } from '../core/abilities.js';
+import { isUnitPossessed, hasInvisibility, getUnitProtection } from '../core/abilities.js';
 import { attachPossessionOverlay, disposePossessionOverlay } from './possessionOverlay.js';
 import { setInvisibilityFx } from './unitFx.js';
 import { resetUnitHover } from './unitTooltip.js';
+import { spawnProtectionPopup } from './effects.js';
 
 function getTHREE() {
   const ctx = getCtx();
@@ -190,7 +191,10 @@ export function updateUnits(gameState) {
         }
       }
 
+      const protectionValue = Math.max(0, getUnitProtection(gameState, r, c, { unit, tpl: cardData }));
       mesh.userData = mesh.userData || {};
+      const prevProtection = typeof mesh.userData.lastProtection === 'number' ? mesh.userData.lastProtection : 0;
+      const protectionDelta = protectionValue - prevProtection;
       mesh.userData.type = 'unit';
       mesh.userData.row = r;
       mesh.userData.col = c;
@@ -209,6 +213,12 @@ export function updateUnits(gameState) {
       const yBase = (ctx.tileFrames?.[r]?.[c]?.children?.[0]?.position?.y) || (0.5 + 0.5);
       const targetPos = new THREE.Vector3(x, yBase + 0.28, z);
       animateToPosition(mesh, targetPos, !existedBefore);
+
+      if (protectionDelta !== 0) {
+        try { spawnProtectionPopup(mesh, protectionDelta, targetPos); } catch {}
+      }
+
+      mesh.userData.lastProtection = protectionValue;
 
       if (isUnitPossessed(unit)) {
         try { attachPossessionOverlay(mesh); } catch {}
