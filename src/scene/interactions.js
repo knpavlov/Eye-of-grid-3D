@@ -538,31 +538,51 @@ function performMagicAttack(from, targetMesh) {
   for (const t of res.targets || []) {
     const tMesh = unitMeshes.find(m => m.userData.row === t.r && m.userData.col === t.c);
     if (tMesh) {
-      window.__fx.magicBurst(tMesh.position.clone().add(new THREE.Vector3(0, 0.4, 0)));
-      window.__fx.shakeMesh(tMesh, 6, 0.12);
+      try { window.__fx.magicBurst(tMesh.position.clone().add(new THREE.Vector3(0, 0.4, 0))); } catch {}
+      try { window.__fx.shakeMesh(tMesh, 6, 0.12); } catch {}
       if (typeof t.dmg === 'number' && t.dmg > 0) {
-        window.__fx.spawnDamageText(tMesh, `-${t.dmg}`, '#ff5555');
+        try { window.__fx.spawnDamageText(tMesh, `-${t.dmg}`, '#ff5555'); } catch {}
       }
     }
   }
+  const attackerPos = res.attackerPosUpdate || from;
   if (res.deaths && res.deaths.length) {
-    for (const d of res.deaths) {
+    const deathFxPayloads = res.deaths.map((d) => {
+      const payload = { info: d, tilePos: null };
       try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
-      const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
-      if (deadMesh) { window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9); }
-      setTimeout(() => {
-        const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-        const slot = gameState.players?.[d.owner]?.mana || 0;
-        window.animateManaGainFromWorld(p, d.owner, true, slot);
-      }, 400);
+      payload.deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c) || null;
+      try {
+        const tile = tileMeshes?.[d.r]?.[d.c];
+        if (tile?.position?.clone) {
+          payload.tilePos = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+        }
+      } catch {}
+      return payload;
+    });
+    try { window.applyGameState(res.n1); } catch {}
+    const attackerCell = window.gameState?.board?.[attackerPos.r]?.[attackerPos.c];
+    const attackerUnit = attackerCell?.unit;
+    if (attackerUnit) attackerUnit.lastAttackTurn = window.gameState.turn;
+    for (const fx of deathFxPayloads) {
+      const d = fx.info;
+      if (fx.deadMesh) {
+        try { window.__fx?.dissolveAndAsh?.(fx.deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9); } catch {}
+      }
       const tplDead = CARDS[d.tplId];
       if (tplDead?.onDeathAddHPAll) {
         showOracleDeathBuff(d.owner, tplDead.onDeathAddHPAll);
       }
+      if (fx.tilePos) {
+        setTimeout(() => {
+          try {
+            const slot = window.gameState?.players?.[d.owner]?.mana || 0;
+            if (typeof window.animateManaGainFromWorld === 'function') {
+              window.animateManaGainFromWorld(fx.tilePos.clone(), d.owner, true, slot);
+            }
+          } catch {}
+        }, 400);
+      }
     }
-    // Обновляем состояние сразу, чтобы клетка считалась свободной
-    try { window.applyGameState(res.n1); } catch {}
-    const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
     setTimeout(() => {
       window.updateUnits(); window.updateUI();
       try { window.schedulePush && window.schedulePush('magic-battle-finish', { force: true }); } catch {}
@@ -574,7 +594,9 @@ function performMagicAttack(from, targetMesh) {
   } else {
     try { window.applyGameState(res.n1); } catch {}
     window.updateUnits(); window.updateUI();
-    const attacker = window.gameState.board[from.r][from.c]?.unit; if (attacker) attacker.lastAttackTurn = window.gameState.turn;
+    const attackerCell = window.gameState?.board?.[attackerPos.r]?.[attackerPos.c];
+    const attackerUnit = attackerCell?.unit;
+    if (attackerUnit) attackerUnit.lastAttackTurn = window.gameState.turn;
     try { window.schedulePush && window.schedulePush('magic-battle-finish', { force: true }); } catch {}
     if (interactionState.autoEndTurnAfterAttack) {
       interactionState.autoEndTurnAfterAttack = false;

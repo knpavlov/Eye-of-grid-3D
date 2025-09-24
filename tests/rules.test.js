@@ -10,7 +10,7 @@ import {
   refreshBoardDodgeStates,
 } from '../src/core/rules.js';
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
-import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, activationCost, hasInvisibility } from '../src/core/abilities.js';
+import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, activationCost, hasInvisibility, getUnitProtection } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -613,6 +613,22 @@ describe('magicAttack', () => {
     expect(res.targets[0].dmg).toBeGreaterThanOrEqual(1);
   });
 
+  it('убивает цель и очищает клетку при летальном уроне', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 3 };
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 1 };
+
+    const res = magicAttack(state, 1, 1, 0, 1);
+
+    expect(res).toBeTruthy();
+    expect(res.deaths).toHaveLength(1);
+    const death = res.deaths[0];
+    expect(death).toMatchObject({ r: 0, c: 1, owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD' });
+    expect(res.n1.board[0][1].unit).toBeNull();
+    const attacker = res.n1.board[1][1].unit;
+    expect(attacker?.lastAttackTurn).toBe(state.turn);
+  });
+
   it('allows friendly fire when template permits', () => {
     CARDS.TEST_MAGIC_FF = { id: 'TEST_MAGIC_FF', name: 'Test Mage', type: 'UNIT', cost: 0, element: 'FIRE', atk: 1, hp: 1, attackType: 'MAGIC', friendlyFire: true };
     const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
@@ -636,6 +652,126 @@ describe('magicAttack', () => {
     expect(hitCoords).toContain('0,0');
     expect(hitCoords).toContain('0,1');
     delete CARDS.TEST_MAGIC_SPLASH;
+  });
+
+  it('обрабатывает строковые координаты', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'N', currentHP: CARDS.FIRE_FLAME_MAGUS.hp };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: CARDS.FIRE_PARTMOLE_FLAME_LIZARD.hp };
+
+    const res = magicAttack(state, '1', '1', '0', '1');
+    expect(res).toBeTruthy();
+    const target = res.n1.board[0][1].unit;
+    expect(target.currentHP).toBe(CARDS.FIRE_PARTMOLE_FLAME_LIZARD.hp - CARDS.FIRE_FLAME_MAGUS.atk);
+    const hit = res.targets.find(t => t.r === 0 && t.c === 1);
+    expect(hit?.dmg).toBe(CARDS.FIRE_FLAME_MAGUS.atk);
+  });
+});
+
+describe('механика защиты', () => {
+  it('магическая атака игнорирует защиту цели', () => {
+    const added = !CARDS.TEST_PROTECTED;
+    if (added) {
+      CARDS.TEST_PROTECTED = {
+        id: 'TEST_PROTECTED',
+        name: 'Shielded Dummy',
+        type: 'UNIT',
+        cost: 0,
+        element: 'EARTH',
+        atk: 0,
+        hp: 2,
+        protection: 2,
+        attackType: 'STANDARD',
+        attacks: [ { dir: 'N', ranges: [1] } ],
+      };
+    }
+
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'N' };
+    state.board[1][1].unit = {
+      owner: 1,
+      tplId: 'TEST_PROTECTED',
+      facing: 'S',
+      currentHP: CARDS.TEST_PROTECTED.hp,
+    };
+
+    try {
+      const res = magicAttack(state, 2, 1, 1, 1);
+      expect(res).toBeTruthy();
+      const hit = res.targets.find(t => t.r === 1 && t.c === 1);
+      expect(hit?.dmg).toBe(CARDS.FIRE_FLAME_MAGUS.atk);
+      const survivor = res.n1.board[1][1].unit;
+      expect(survivor?.currentHP).toBe(CARDS.TEST_PROTECTED.hp - CARDS.FIRE_FLAME_MAGUS.atk);
+    } finally {
+      if (added) delete CARDS.TEST_PROTECTED;
+    }
+  });
+
+  it('Morning Star Warrior не учитывает себя при расчёте защиты', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_MORNING_STAR_WARRIOR', facing: 'N' };
+
+    let prot = getUnitProtection(state, 1, 1, { unit: state.board[1][1].unit });
+    expect(prot).toBe(0);
+
+    state.board[0][1].unit = { owner: 0, tplId: 'BIOLITH_TAURUS_MONOLITH', facing: 'S' };
+    prot = getUnitProtection(state, 1, 1, { unit: state.board[1][1].unit });
+    expect(prot).toBe(1);
+
+    state.board[2][1].unit = { owner: 1, tplId: 'BIOLITH_TAURUS_MONOLITH', facing: 'N' };
+    prot = getUnitProtection(state, 1, 1, { unit: state.board[1][1].unit });
+    expect(prot).toBe(1);
+
+    state.board[1][2].unit = { owner: 0, tplId: 'BIOLITH_PHASEUS', facing: 'W' };
+    prot = getUnitProtection(state, 1, 1, { unit: state.board[1][1].unit });
+    expect(prot).toBe(2);
+  });
+
+  it('контратака происходит даже при нулевом уроне по атакующему', () => {
+    const added = !CARDS.TEST_ARMORED_ATTACKER;
+    if (added) {
+      CARDS.TEST_ARMORED_ATTACKER = {
+        id: 'TEST_ARMORED_ATTACKER',
+        name: 'Armored Tester',
+        type: 'UNIT',
+        cost: 0,
+        element: 'EARTH',
+        atk: 1,
+        hp: 3,
+        protection: 2,
+        attackType: 'STANDARD',
+        attacks: [ { dir: 'N', ranges: [1] } ],
+      };
+    }
+
+    try {
+      const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+      state.board[2][1].unit = {
+        owner: 0,
+        tplId: 'TEST_ARMORED_ATTACKER',
+        facing: 'N',
+        currentHP: CARDS.TEST_ARMORED_ATTACKER.hp,
+      };
+      state.board[1][1].unit = {
+        owner: 1,
+        tplId: 'FIRE_FREEDONIAN_WANDERER',
+        facing: 'S',
+        currentHP: CARDS.FIRE_FREEDONIAN_WANDERER.hp,
+      };
+
+      const staged = stagedAttack(state, 2, 1);
+      expect(staged).toBeTruthy();
+      staged.step1();
+      const ret = staged.step2();
+      expect(ret).toBeTruthy();
+      const total = typeof ret === 'number' ? ret : (ret.total || 0);
+      const retaliators = typeof ret === 'number' ? [] : (ret.retaliators || []);
+      expect(total).toBe(0);
+      expect(retaliators.length).toBeGreaterThan(0);
+      expect(retaliators[0]).toMatchObject({ r: 1, c: 1 });
+    } finally {
+      if (added) delete CARDS.TEST_ARMORED_ATTACKER;
+    }
   });
 });
 

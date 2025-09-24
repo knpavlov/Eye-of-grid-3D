@@ -373,8 +373,10 @@ export function stagedAttack(state, r, c, opts = {}) {
     const isMagic = attackType === 'MAGIC';
     const tplB = CARDS[B.tplId];
     if (sameOwner) {
-      // Союзники не уклоняются от массового удара, но учитывают защиту
-      const protection = getUnitProtection(base, h.r, h.c, { unit: B, tpl: tplB });
+      // Союзники не уклоняются от массового удара, но учитывают защиту (кроме магии)
+      const protection = isMagic
+        ? 0
+        : getUnitProtection(base, h.r, h.c, { unit: B, tpl: tplB });
       const dealt = Math.max(0, h.dmg - protection);
       return { ...h, dealt, dodge: false, invisible: false, sameOwner: true };
     }
@@ -385,7 +387,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       dodgeInfo = attemptUnitDodge(base, h.r, h.c, { rng: randomFn });
     }
     const dodgeSuccess = !isMagic && !invisible && (perfect || (dodgeInfo?.success === true));
-    const protection = (invisible || dodgeSuccess)
+    const protection = (invisible || dodgeSuccess || isMagic)
       ? 0
       : getUnitProtection(base, h.r, h.c, { unit: B, tpl: tplB });
     const rawDamage = Math.max(0, h.dmg - protection);
@@ -642,8 +644,24 @@ export function stagedAttack(state, r, c, opts = {}) {
 }
 
 export function magicAttack(state, fr, fc, tr, tc) {
+  const parseIndex = (value) => {
+    if (typeof value === 'number' && Number.isInteger(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number.parseInt(value, 10);
+      if (Number.isInteger(parsed)) return parsed;
+    }
+    return null;
+  };
+
+  let fromR = parseIndex(fr);
+  let fromC = parseIndex(fc);
+  const targetR = parseIndex(tr);
+  const targetC = parseIndex(tc);
+  if (fromR == null || fromC == null || targetR == null || targetC == null) return null;
+  if (!inBounds(fromR, fromC) || !inBounds(targetR, targetC)) return null;
+
   const n1 = JSON.parse(JSON.stringify(state));
-  const originCell = n1.board?.[fr]?.[fc];
+  const originCell = n1.board?.[fromR]?.[fromC];
   const attacker = originCell?.unit;
   if (!attacker) return null;
   // не позволяем магам бить дважды в одном ходу
@@ -651,7 +669,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
   const tplA = CARDS[attacker.tplId];
   if (!canAttack(tplA)) return null;
 
-  const profile = resolveAttackProfile(n1, fr, fc, tplA, { unit: attacker, cell: originCell });
+  const profile = resolveAttackProfile(n1, fromR, fromC, tplA, { unit: attacker, cell: originCell });
   const attackType = profile?.attackType || tplA.attackType || 'STANDARD';
   const schemeKey = profile?.schemeKey || null;
   if (attackType !== 'MAGIC') return null;
@@ -659,8 +677,8 @@ export function magicAttack(state, fr, fc, tr, tc) {
   const startElement = originCell?.element;
   const attackCostValue = attackCost(tplA, startElement, {
     state: n1,
-    r: fr,
-    c: fc,
+    r: fromR,
+    c: fromC,
     unit: attacker,
     owner: attacker?.owner,
   });
@@ -668,7 +686,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
   const tplForMagic = (profile?.magicAttackArea != null)
     ? { ...tplA, magicAttackArea: profile.magicAttackArea }
     : tplA;
-  const mainTarget = n1.board?.[tr]?.[tc]?.unit;
+  const mainTarget = n1.board?.[targetR]?.[targetC]?.unit;
   if (!allowFriendly && (!mainTarget || mainTarget.owner === attacker.owner)) return null;
 
   const logLines = [];
@@ -684,7 +702,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     hitsSummary.set(key, entry);
   };
 
-  const atkStats = effectiveStats(originCell, attacker, { state: n1, r: fr, c: fc });
+  const atkStats = effectiveStats(originCell, attacker, { state: n1, r: fromR, c: fromC });
   let atk = atkStats.atk || 0;
   const dynMagic = computeDynamicMagicAttack(n1, tplA);
   if (dynMagic) {
@@ -697,12 +715,12 @@ export function magicAttack(state, fr, fc, tr, tc) {
     const el = normalizeElementName(plusCfg2.element);
     const amount = plusCfg2.amount;
     if (el) {
-      const cellEl = normalizeElementName(n1.board?.[tr]?.[tc]?.element);
+      const cellEl = normalizeElementName(n1.board?.[targetR]?.[targetC]?.element);
       if (cellEl === el) atk += amount;
     }
   }
   if (mainTarget) {
-    const costBonus2 = getTargetCostBonus(n1, tplA, [ { r: tr, c: tc } ]);
+    const costBonus2 = getTargetCostBonus(n1, tplA, [ { r: targetR, c: targetC } ]);
     if (costBonus2) {
       atk += costBonus2.amount;
       logLines.push(`${tplA.name}: +${costBonus2.amount} ATK против существ с ценой призыва <= ${costBonus2.limit}`);
@@ -719,10 +737,8 @@ export function magicAttack(state, fr, fc, tr, tc) {
     cells.push({ r: rr, c: cc });
   };
 
-  const primaryTarget = (typeof tr === 'number' && typeof tc === 'number')
-    ? { r: tr, c: tc }
-    : null;
-  const baseCells = collectMagicTargetCells(n1, tplForMagic, { r: fr, c: fc }, primaryTarget) || [];
+  const primaryTarget = { r: targetR, c: targetC };
+  const baseCells = collectMagicTargetCells(n1, tplForMagic, { r: fromR, c: fromC }, primaryTarget) || [];
   for (const cell of baseCells) { addCell(cell.r, cell.c); }
 
   if (tplA.magicTargetsSameElement && mainTarget) {
@@ -731,7 +747,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     if (targetElement) {
       for (let rr = 0; rr < 3; rr++) {
         for (let cc = 0; cc < 3; cc++) {
-          if (rr === tr && cc === tc) continue;
+          if (rr === targetR && cc === targetC) continue;
           const cellUnit = n1.board?.[rr]?.[cc]?.unit;
           if (!cellUnit) continue;
           if (cellUnit.owner === attacker.owner) continue;
@@ -746,8 +762,8 @@ export function magicAttack(state, fr, fc, tr, tc) {
 
   const splash = tplA.splash || 0;
   if (splash > 0 && !tplA.targetAllEnemies && !tplA.targetAllNonElement) {
-    const refR = (primaryTarget && typeof primaryTarget.r === 'number') ? primaryTarget.r : tr;
-    const refC = (primaryTarget && typeof primaryTarget.c === 'number') ? primaryTarget.c : tc;
+    const refR = primaryTarget?.r ?? targetR;
+    const refC = primaryTarget?.c ?? targetC;
     if (typeof refR === 'number' && typeof refC === 'number') {
       const dirs = [ [-1,0], [1,0], [0,-1], [0,1] ];
       for (const [dr, dc] of dirs) {
@@ -782,8 +798,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     const before = u.currentHP ?? tplB.hp;
     let dealt = 0;
     if (!invisible) {
-      const protection = getUnitProtection(n1, cell.r, cell.c, { unit: u, tpl: tplB });
-      dealt = Math.max(0, dmg - protection);
+      dealt = dmg;
       u.currentHP = Math.max(0, before - dealt);
     }
     addSummary(cell.r, cell.c, dealt, { invisible });
@@ -805,8 +820,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
       const before2 = u2.currentHP ?? tplB2.hp;
       let dealt2 = 0;
       if (!invisible) {
-        const protection2 = getUnitProtection(n1, cell.r, cell.c, { unit: u2, tpl: tplB2 });
-        dealt2 = Math.max(0, dmg - protection2);
+        dealt2 = dmg;
         u2.currentHP = Math.max(0, before2 - dealt2);
       }
       addSummary(cell.r, cell.c, dealt2, { invisible });
@@ -819,7 +833,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
   }
 
   const interactions = collectDamageInteractions(n1, {
-    attackerPos: { r: fr, c: fc },
+    attackerPos: { r: fromR, c: fromC },
     attackerUnit: attacker,
     tpl: tplA,
     hits: Array.from(hitsSummary.values()),
@@ -863,8 +877,8 @@ export function magicAttack(state, fr, fc, tr, tc) {
   const applied = applyDamageInteractionResults(n1, damageEffects);
   const attackerPosUpdate = applied?.attackerPosUpdate || null;
   if (attackerPosUpdate) {
-    fr = attackerPosUpdate.r;
-    fc = attackerPosUpdate.c;
+    fromR = attackerPosUpdate.r;
+    fromC = attackerPosUpdate.c;
   }
   if (Array.isArray(applied?.logLines) && applied.logLines.length) {
     logLines.push(...applied.logLines);
