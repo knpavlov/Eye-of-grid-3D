@@ -33,6 +33,7 @@ function normalizeStat(raw) {
   const stat = upper(raw);
   if (stat === 'ATK' || stat === 'ATTACK') return 'ATK';
   if (stat === 'ACTIVATION' || stat === 'AP' || stat === 'ACTION') return 'ACTIVATION';
+  if (stat === 'PROTECTION' || stat === 'PROTECT' || stat === 'PROT') return 'PROTECTION';
   return null;
 }
 

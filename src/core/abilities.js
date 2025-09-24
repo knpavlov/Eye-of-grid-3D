@@ -16,7 +16,10 @@ import {
   attemptDodge as attemptDodgeInternal,
 } from './abilityHandlers/dodge.js';
 import { refreshBoardDodgeStates } from './abilityHandlers/dodgeEffects.js';
-import { computeTargetCostBonus as computeTargetCostBonusInternal } from './abilityHandlers/attackModifiers.js';
+import {
+  computeTargetCostBonus as computeTargetCostBonusInternal,
+  computeTargetHpBonus as computeTargetHpBonusInternal,
+} from './abilityHandlers/attackModifiers.js';
 import { collectRepositionOnDamage } from './abilityHandlers/reposition.js';
 import { extraActivationCostFromAuras } from './abilityHandlers/costModifiers.js';
 import {
@@ -33,6 +36,10 @@ import {
 import { hasAuraInvisibility } from './abilityHandlers/invisibilityAura.js';
 import { applyEnemySummonReactions } from './abilityHandlers/summonReactions.js';
 import { applyTurnStartManaEffects as applyTurnStartManaEffectsInternal } from './abilityHandlers/startPhase.js';
+import {
+  computeUnitProtection as computeUnitProtectionInternal,
+  computeAuraProtection as computeAuraProtectionInternal,
+} from './abilityHandlers/protection.js';
 import { normalizeElementName } from './utils/elements.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
@@ -759,12 +766,24 @@ export function getTargetCostBonus(state, tpl, hits) {
   return computeTargetCostBonusInternal(state, tpl, hits);
 }
 
+export function getTargetHpBonus(state, tpl, hits) {
+  return computeTargetHpBonusInternal(state, tpl, hits);
+}
+
 export function getAuraAttackBonus(state, r, c, opts = {}) {
   return computeAuraAttackBonusInternal(state, r, c, opts);
 }
 
 export function getAuraActivationModifier(state, r, c, opts = {}) {
   return computeAuraActivationDeltaInternal(state, r, c, opts);
+}
+
+export function getUnitProtection(state, r, c, opts = {}) {
+  return computeUnitProtectionInternal(state, r, c, opts);
+}
+
+export function getAuraProtectionBonus(state, r, c, opts = {}) {
+  return computeAuraProtectionInternal(state, r, c, opts);
 }
 
 export { isIncarnationCard };

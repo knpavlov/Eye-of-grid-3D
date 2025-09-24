@@ -288,6 +288,96 @@ export const CARDS = {
     desc: 'Magic Attack. While on a Water field, Aluhja Priestess gains Dodge attempt.'
   },
 
+  EARTH_ARELAI_THE_PROTECTOR: {
+    id: 'EARTH_ARELAI_THE_PROTECTOR', name: 'Arelai the Protector', type: 'UNIT', cost: 3, activation: 2,
+    element: 'EARTH', atk: 2, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'N', ranges: [1], group: 'FRONT_BACK', ignoreAlliedBlocking: true },
+      { dir: 'S', ranges: [1], group: 'FRONT_BACK', ignoreAlliedBlocking: true },
+    ],
+    blindspots: [],
+    ignoreAlliedBlocking: true,
+    protectionEqualsFieldCount: 'EARTH',
+    plusAtkIfTargetOnElement: { element: 'EARTH', amount: 1 },
+    auraModifiers: [
+      { stat: 'PROTECTION', amount: 1, scope: 'BOARD', target: 'ALLY', targetOnElement: 'EARTH', excludeSelf: true },
+    ],
+    desc: 'Arelai gains Protection equal to the number of Earth fields.\nArelai adds +1 to his Attack if at least one target creature is on an Earth field.\nAll other allied creatures on Earth fields gain +1 Protection.'
+  },
+
+  EARTH_NOVOGUS_GOLEM: {
+    id: 'EARTH_NOVOGUS_GOLEM', name: 'Novogus Golem', type: 'UNIT', cost: 4, activation: 2,
+    element: 'EARTH', atk: 2, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    protectionEqualsEmptyFields: true,
+    desc: 'Novogus Golem gains Protection equal to the number of empty fields.'
+  },
+
+  EARTH_SE_HOLLYN_FORTRESS: {
+    id: 'EARTH_SE_HOLLYN_FORTRESS', name: 'Se Hollyn Fortress', type: 'UNIT', cost: 4, activation: 2,
+    element: 'EARTH', atk: 1, hp: 4,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'E', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'S', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], ignoreAlliedBlocking: true }
+    ],
+    blindspots: [],
+    ignoreAlliedBlocking: true,
+    fortress: true,
+    auraModifiers: [
+      { stat: 'PROTECTION', amount: 2, scope: 'ADJACENT', target: 'ALLY', excludeSelf: true },
+    ],
+    diesOnElement: 'FOREST',
+    desc: 'Fortress.\nAllied creatures on adjacent fields gain +2 Protection.\nDestroy Se Hollyn Fortress if it is on a Wood field.'
+  },
+
+  EARTH_STONE_WING_DWARF: {
+    id: 'EARTH_STONE_WING_DWARF', name: 'Stone Wing Dwarf', type: 'UNIT', cost: 1, activation: 1,
+    element: 'EARTH', atk: 1, hp: 1,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'E', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'S', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], ignoreAlliedBlocking: true }
+    ],
+    blindspots: [],
+    ignoreAlliedBlocking: true,
+    protectionEqualsAlliedTemplates: ['EARTH_GIANT_AXE_DWARF', 'Giant Axe Dwarf'],
+    desc: 'Stone Wing Dwarf gains Protection equal to the number of allied Giant Axe Dwarves on the board.'
+  },
+
+  EARTH_VERZAR_CANINE: {
+    id: 'EARTH_VERZAR_CANINE', name: 'Verzar Canine', type: 'UNIT', cost: 1, activation: 1,
+    element: 'EARTH', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    auraModifiers: [
+      { stat: 'PROTECTION', amount: 1, scope: 'ADJACENT', target: 'ALLY' },
+    ],
+    desc: 'Allied creatures on adjacent fields gain +1 Protection.'
+  },
+
+  BIOLITH_MORNING_STAR_WARRIOR: {
+    id: 'BIOLITH_MORNING_STAR_WARRIOR', name: 'Morning Star Warrior', type: 'UNIT', cost: 4, activation: 2,
+    element: 'BIOLITH', atk: 2, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY', ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    plusAtkIfTargetHpAtLeast: { threshold: 5, amount: 2 },
+    protectionEqualsAlliedElementCount: 'BIOLITH',
+    desc: 'Morning Star Warrior adds 2 to its Attack if the target creature has 5 or more HPs.\nMorning Star Warrior gains Protection equal to the number of allied Biolith creatures.'
+  },
+
   EARTH_NOVOGUS_GRAVEKEEPER: {
     id: 'EARTH_NOVOGUS_GRAVEKEEPER', name: 'Novogus Gravekeeper', type: 'UNIT', cost: 9, activation: 5,
     element: 'EARTH', atk: 3, hp: 9,
