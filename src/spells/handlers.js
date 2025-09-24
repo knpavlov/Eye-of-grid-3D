@@ -9,6 +9,7 @@ import { interactionState, resetCardSelection } from '../scene/interactions.js';
 import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
 import { refreshPossessionsUI } from '../ui/possessions.js';
+import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -256,6 +257,7 @@ export const handlers = {
   FREEZE_STREAM: {
     requiresUnitTarget: true,
     onUnit({ tpl, pl, idx, r, c, u }) {
+      const cell = gameState.board?.[r]?.[c];
       if (u) {
         const before = u.currentHP;
         u.currentHP = Math.max(0, u.currentHP - 1);
@@ -269,6 +271,14 @@ export const handlers = {
         if (u.currentHP <= 0) {
           const owner = u.owner;
           try { gameState.players[owner].graveyard.push(CARDS[u.tplId]); } catch {}
+          const discard = applyDeathDiscardEffects(gameState, [
+            { r, c, owner, tplId: u.tplId, fieldElement: cell?.element || null },
+          ]);
+          if (Array.isArray(discard?.logLines)) {
+            for (const line of discard.logLines) {
+              if (line) addLog(line);
+            }
+          }
           const pos = getCtx().tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
           const slot = gameState.players?.[owner]?.mana || 0;
           animateManaGainFromWorld(pos, owner, true, slot);
@@ -384,6 +394,14 @@ export const handlers = {
             );
           if (u.currentHP <= 0) {
             try { gameState.players[u.owner].graveyard.push(CARDS[u.tplId]); } catch {}
+            const discard = applyDeathDiscardEffects(gameState, [
+              { r, c, owner: u.owner, tplId: u.tplId, fieldElement: nextEl },
+            ]);
+            if (Array.isArray(discard?.logLines)) {
+              for (const line of discard.logLines) {
+                if (line) addLog(line);
+              }
+            }
             const deadMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
             if (deadMesh) {
               window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9);

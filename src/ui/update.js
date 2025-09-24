@@ -1,4 +1,6 @@
 // Centralized UI refresh logic
+import { processDiscardQueue } from './discardQueue.js';
+
 export function updateUI(gameState) {
   const state = gameState || (typeof window !== 'undefined' ? window.gameState : null);
   if (!state) return;
@@ -96,4 +98,6 @@ export function updateUI(gameState) {
     try { window.__ui && window.__ui.notifications && window.__ui.notifications.show('Player 2 wins!', 'success'); } catch {}
     state.winner = 1;
   }
+
+  try { processDiscardQueue(state); } catch {}
 }

@@ -25,6 +25,7 @@ import {
 import { computeCellBuff } from './fieldEffects.js';
 import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
+import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -536,7 +537,8 @@ export function stagedAttack(state, r, c, opts = {}) {
     for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
       const u = nFinal.board?.[rr]?.[cc]?.unit;
       if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null });
+        const fieldElement = nFinal.board?.[rr]?.[cc]?.element || null;
+        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, fieldElement });
         nFinal.board[rr][cc].unit = null;
       }
     }
@@ -598,6 +600,11 @@ export function stagedAttack(state, r, c, opts = {}) {
       }
     }
 
+    const discardEffects = applyDeathDiscardEffects(nFinal, deaths);
+    if (Array.isArray(discardEffects?.logLines) && discardEffects.logLines.length) {
+      logLines.push(...discardEffects.logLines);
+    }
+
     if (A) {
       A.lastAttackTurn = nFinal.turn;
       A.apSpent = (A.apSpent || 0) + attackCostValue;
@@ -617,6 +624,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       retaliators: ret.retaliators,
       releases: combinedReleases,
       possessions: continuous.possessions,
+      discardRequests: discardEffects?.requests || [],
       attackerPosUpdate,
       dodgeUpdates,
       attackType,

@@ -1,6 +1,7 @@
 // Модуль обработки способности "жертвоприношение" для кубов и похожих карт
 import { CARDS } from '../cards.js';
 import { computeCellBuff } from '../fieldEffects.js';
+import { applyDeathDiscardEffects } from './discard.js';
 
 const FACING_ORDER = ['N', 'E', 'S', 'W'];
 
@@ -237,6 +238,22 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
     const tplDeath = getTemplateRef(summonTpl);
     graveyard.push(tplDeath);
     cell.unit = null;
+
+    const discard = applyDeathDiscardEffects(state, [
+      {
+        r,
+        c,
+        owner: newUnit.owner,
+        tplId: summonTpl.id,
+        fieldElement: cellElement,
+      },
+    ]);
+    if (Array.isArray(discard?.logLines) && discard.logLines.length) {
+      result.events.discardLogLines = [
+        ...(result.events.discardLogLines || []),
+        ...discard.logLines,
+      ];
+    }
 
     if (summonTpl.onDeathAddHPAll) {
       const amount = summonTpl.onDeathAddHPAll;

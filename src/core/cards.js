@@ -306,6 +306,24 @@ export const CARDS = {
     desc: 'Arelai gains Protection equal to the number of Earth fields.\nArelai adds +1 to his Attack if at least one target creature is on an Earth field.\nAll other allied creatures on Earth fields gain +1 Protection.'
   },
 
+  EARTH_BLACK_HOOD_DWARF_VULITRA: {
+    id: 'EARTH_BLACK_HOOD_DWARF_VULITRA', name: 'Black Hood Dwarf Vulitra', type: 'UNIT', cost: 3, activation: 2,
+    element: 'EARTH', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], group: 'DOUBLE_FRONT', ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    plusAtkVsElement: { element: 'EARTH', amount: 1 },
+    deathDiscardRules: [
+      {
+        target: 'OPPONENT',
+        amount: { type: 'FIELD_COUNT', element: 'EARTH' },
+        condition: { fieldElementNot: 'EARTH' },
+      },
+    ],
+    desc: 'Vulitra adds 1 to his attack if at least one target creature is an earth creature. If Vulitra is destroyed on a non-Earth field, your opponent must discard cards equal to the number of Earth fields.'
+  },
+
   EARTH_NOVOGUS_GOLEM: {
     id: 'EARTH_NOVOGUS_GOLEM', name: 'Novogus Golem', type: 'UNIT', cost: 4, activation: 2,
     element: 'EARTH', atk: 2, hp: 3,
@@ -601,6 +619,81 @@ export const CARDS = {
     swapOnDamage: true,
     enemyActivationTaxAdjacent: 3,
     desc: 'Magic Attack. If Elven Death Dancer damages (but does not destroy) a creature, she switches locations with that creature (which cannot counterattack). Enemies on adjacent fields add 3 to their Activation Cost.'
+  },
+  FOREST_ELVEN_RIDER: {
+    id: 'FOREST_ELVEN_RIDER', name: 'Elven Rider', type: 'UNIT', cost: 4, activation: 2,
+    element: 'FOREST', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], group: 'DOUBLE_FRONT', ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    deathDiscardRules: [
+      {
+        target: 'OPPONENT',
+        amount: { type: 'FIELD_COUNT', element: 'FOREST' },
+        condition: { fieldElementNot: 'FOREST' },
+      },
+    ],
+    desc: 'If Elven Rider is destroyed on a non-Wood field, your opponent must discard cards equal to the number of Wood fields.'
+  },
+  FOREST_GREEN_ERLKING_ZOMBA: {
+    id: 'FOREST_GREEN_ERLKING_ZOMBA', name: 'Green Erlking Zomba', type: 'UNIT', cost: 6, activation: 3,
+    element: 'FOREST', atk: 3, hp: 6,
+    attackType: 'STANDARD',
+    attackSchemes: [
+      {
+        key: 'BASE',
+        label: 'Stampede',
+        attacks: [
+          { dir: 'N', ranges: [1], group: 'ZOMBA_LINE', ignoreAlliedBlocking: true },
+          { dir: 'N', ranges: [2], group: 'ZOMBA_LINE', ignoreAlliedBlocking: true },
+        ],
+      },
+      {
+        key: 'WOOD',
+        label: 'Wood Strike',
+        attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+      },
+    ],
+    defaultAttackScheme: 'BASE',
+    mustUseSchemeOnElement: [ { element: 'FOREST', scheme: 'WOOD' } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    friendlyFire: true,
+    allyDeathDiscard: { target: 'OPPONENT', amount: 1, whileOnElement: 'FOREST' },
+    desc: 'Zomba must use its secondary attack while it is on a Wood field. While Zomba is on a Wood field, each time an allied creature is destroyed, your opponent must discard a card.'
+  },
+  FOREST_SAMURAI_NAGIRASHU: {
+    id: 'FOREST_SAMURAI_NAGIRASHU', name: 'Samurai Nagirashu', type: 'UNIT', cost: 2, activation: 2,
+    element: 'FOREST', atk: 2, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    deathDiscardRules: [
+      {
+        target: 'OPPONENT',
+        amount: 1,
+        condition: { fieldElement: 'FOREST' },
+      },
+    ],
+    desc: 'If Samurai Nagirashu is destroyed on a Wood field, your opponent must discard 1 card.'
+  },
+  FOREST_LEAPFROG_BANDIT: {
+    id: 'FOREST_LEAPFROG_BANDIT', name: 'Leapfrog Bandit', type: 'UNIT', cost: 1, activation: 1,
+    element: 'FOREST', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [2], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    deathDiscardRules: [
+      {
+        target: 'OPPONENT',
+        amount: 1,
+        condition: { fieldElementNot: 'FOREST' },
+      },
+    ],
+    desc: 'If Leapfrog Bandit is destroyed on a non-Wood field, your opponent must discard 1 card.'
   },
   FOREST_JUNO_FOREST_DRAGON: {
     id: 'FOREST_JUNO_FOREST_DRAGON', name: 'Juno Forest Dragon', type: 'UNIT', cost: 7, activation: 4,

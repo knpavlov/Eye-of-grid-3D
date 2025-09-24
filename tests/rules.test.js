@@ -11,6 +11,7 @@ import {
 } from '../src/core/rules.js';
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
 import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, activationCost, hasInvisibility, getUnitProtection } from '../src/core/abilities.js';
+import { applyDeathDiscardEffects } from '../src/core/abilityHandlers/discard.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -1357,6 +1358,51 @@ describe('Новые способности существ', () => {
     expect(hasInvisibility(state, 1, 1)).toBe(false);
     expect(hasInvisibility(state, 0, 1)).toBe(true);
     expect(hasInvisibility(state, 0, 2)).toBe(false);
+  });
+});
+
+describe('Discard triggers', () => {
+  it('Elven Rider создаёт очередь на сброс при уничтожении на чужом поле', () => {
+    const state = {
+      board: makeBoard(),
+      players: [ { mana: 0, hand: [], discard: [], graveyard: [] }, { mana: 0, hand: [], discard: [], graveyard: [] } ],
+      turn: 1,
+      pendingDiscardRequests: [],
+      __discardSeq: 1,
+    };
+    state.board[0][0].element = 'FOREST';
+    state.board[0][2].element = 'FOREST';
+    state.board[1][1].element = 'EARTH';
+    state.board[1][1].unit = { owner: 0, tplId: 'FOREST_ELVEN_RIDER', facing: 'N', currentHP: 1 };
+    state.board[2][1].unit = { owner: 1, tplId: 'FIRE_GREAT_MINOS', facing: 'N', currentHP: CARDS.FIRE_GREAT_MINOS.hp };
+
+    const res = stagedAttack(state, 2, 1, { chosenDir: 'N' });
+    expect(res).toBeTruthy();
+    const fin = res.finish();
+    expect(Array.isArray(fin.discardRequests)).toBe(true);
+    expect(fin.discardRequests.length).toBeGreaterThan(0);
+    const req = fin.discardRequests[0];
+    expect(req.amount).toBe(2);
+    expect(fin.n1.pendingDiscardRequests?.[0]?.amount).toBe(2);
+    expect(fin.n1.pendingDiscardRequests?.[0]?.target).toBe(1);
+  });
+
+  it('Green Erlking Zomba требует сброс при гибели союзника в лесу', () => {
+    const state = {
+      board: makeBoard(),
+      players: [ { mana: 0, hand: [], discard: [], graveyard: [] }, { mana: 0, hand: [], discard: [], graveyard: [] } ],
+      pendingDiscardRequests: [],
+      __discardSeq: 1,
+    };
+    state.board[2][2].element = 'FOREST';
+    state.board[2][2].unit = { owner: 0, tplId: 'FOREST_GREEN_ERLKING_ZOMBA', facing: 'N', currentHP: CARDS.FOREST_GREEN_ERLKING_ZOMBA.hp };
+
+    const deaths = [ { r: 0, c: 0, owner: 0, tplId: 'FIRE_FLAME_MAGUS', fieldElement: 'FIRE' } ];
+    const effects = applyDeathDiscardEffects(state, deaths);
+    expect(effects.requests).toHaveLength(1);
+    expect(effects.requests[0].amount).toBe(1);
+    expect(state.pendingDiscardRequests).toHaveLength(1);
+    expect(state.pendingDiscardRequests[0].target).toBe(1);
   });
 });
 
