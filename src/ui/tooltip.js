@@ -11,6 +11,8 @@ function renderTooltip() {
   if (!el) return;
   if (!entries.size) {
     el.classList.add('hidden');
+    el.innerHTML = '';
+    delete el.dataset.variant;
     return;
   }
   let latest = null;
@@ -23,19 +25,30 @@ function renderTooltip() {
     el.classList.add('hidden');
     return;
   }
-  el.textContent = latest.text;
+  if (latest.variant) {
+    el.dataset.variant = latest.variant;
+  } else {
+    delete el.dataset.variant;
+  }
+  if (typeof latest.html === 'string') {
+    el.innerHTML = latest.html;
+  } else {
+    el.textContent = latest.text;
+  }
   el.style.left = `${latest.x}px`;
   el.style.top = `${latest.y}px`;
   el.classList.remove('hidden');
 }
 
-export function showTooltip(source, { text, x, y }) {
+export function showTooltip(source, { text, html, x, y, variant } = {}) {
   if (!source) return;
   entries.set(source, {
     text: String(text ?? ''),
+    html: typeof html === 'string' ? html : null,
     x: Math.round(x ?? 0),
     y: Math.round(y ?? 0),
     timestamp: Date.now(),
+    variant: variant || null,
   });
   renderTooltip();
 }
