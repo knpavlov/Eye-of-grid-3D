@@ -34,6 +34,7 @@ import { hasAuraInvisibility } from './abilityHandlers/invisibilityAura.js';
 import { applyEnemySummonReactions } from './abilityHandlers/summonReactions.js';
 import { applyTurnStartManaEffects as applyTurnStartManaEffectsInternal } from './abilityHandlers/startPhase.js';
 import { normalizeElementName } from './utils/elements.js';
+import { getUnitProtection as getUnitProtectionInternal } from './abilityHandlers/protection.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -775,6 +776,7 @@ export const attemptUnitDodge = attemptDodgeInternal;
 export const refreshContinuousPossessions = refreshContinuousPossessionsInternal;
 export { refreshBoardDodgeStates };
 export const applyTurnStartManaEffects = applyTurnStartManaEffectsInternal;
+export const getUnitProtection = getUnitProtectionInternal;
 
 export function collectUnitActions(state, r, c) {
   const actions = [];

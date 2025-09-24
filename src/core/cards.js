@@ -320,6 +320,16 @@ export const CARDS = {
     diesOffElement: 'BIOLITH',
     desc: 'Incarnation. Phaseus’s Magic Attack targets all enemies. Destroy Phaseus if he is on a non-Biolith field.'
   },
+  BIOLITH_MORNING_STAR_WARRIOR: {
+    id: 'BIOLITH_MORNING_STAR_WARRIOR', name: 'Morning Star Warrior', type: 'UNIT', cost: 4, activation: 3,
+    element: 'BIOLITH', atk: 3, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY', ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    plusAtkIfTargetHpAtLeast: { hp: 5, amount: 2 },
+    selfProtection: [ { type: 'ALLY_ELEMENT', element: 'BIOLITH' } ],
+    desc: 'Morning Star Warrior adds 2 to its Attack if the target creature has 5 or more HPs. Morning Star Warrior gains Protection equal to the number of allied Biolith creatures.'
+  },
 
   // Ninja cycle
   FIRE_FIREFLY_NINJA: {
@@ -394,6 +404,68 @@ export const CARDS = {
     manaGainOnNonElement: 'EARTH',
     diesOnElement: 'FOREST',
     desc: 'Fortress: cannot attack unless counterattacking. While on a non‑Earth field, its summoner gains 1 mana during their resolution phase. Destroy if on a Forest field.'
+  },
+  EARTH_ARELAI_THE_PROTECTOR: {
+    id: 'EARTH_ARELAI_THE_PROTECTOR', name: 'Arelai the Protector', type: 'UNIT', cost: 3, activation: 2,
+    element: 'EARTH', atk: 2, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'N', ranges: [1], group: 'FRONT_BACK', ignoreAlliedBlocking: true },
+      { dir: 'S', ranges: [1], group: 'FRONT_BACK', ignoreAlliedBlocking: true },
+    ],
+    blindspots: [],
+    selfProtection: [ { type: 'FIELDS', element: 'EARTH' } ],
+    plusAtkIfTargetOnElement: { element: 'EARTH', amount: 1 },
+    protectionAuras: [ { amount: 1, scope: 'BOARD', target: 'ALLY', field: 'EARTH', excludeSelf: true } ],
+    desc: 'Arelai gains Protection equal to the number of Earth fields. Arelai adds 1 to his Attack if at least one target creature is on an Earth field. All other allied creatures on Earth fields gain +1 Protection.'
+  },
+  EARTH_NOVOGUS_GOLEM: {
+    id: 'EARTH_NOVOGUS_GOLEM', name: 'Novogus Golem', type: 'UNIT', cost: 4, activation: 2,
+    element: 'EARTH', atk: 3, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    selfProtection: [ { type: 'EMPTY_FIELDS' } ],
+    desc: 'Novogus Golem gains Protection equal to the number of empty fields.'
+  },
+  EARTH_SE_HOLLYN_FORTRESS: {
+    id: 'EARTH_SE_HOLLYN_FORTRESS', name: 'Se Hollyn Fortress', type: 'UNIT', cost: 4, activation: 2,
+    element: 'EARTH', atk: 1, hp: 4,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'E', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'S', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], ignoreAlliedBlocking: true },
+    ],
+    blindspots: [],
+    fortress: true,
+    protectionAuras: [ { amount: 2, scope: 'ADJACENT', target: 'ALLY', excludeSelf: true } ],
+    diesOnElement: 'FOREST',
+    desc: 'Fortress. Allied creatures on adjacent fields gain +2 Protection. Destroy Se Hollyn Fortress if it is on a Wood field.'
+  },
+  EARTH_STONE_WING_DWARF: {
+    id: 'EARTH_STONE_WING_DWARF', name: 'Stone Wing Dwarf', type: 'UNIT', cost: 1, activation: 1,
+    element: 'EARTH', atk: 1, hp: 1,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'E', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'S', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], ignoreAlliedBlocking: true },
+    ],
+    blindspots: [],
+    selfProtection: [ { type: 'ALLY_TPL', ids: ['EARTH_GIANT_AXE_DWARF'], excludeSelf: true } ],
+    desc: 'Stone Wing Dwarf gains Protection equal to the number of allied Giant Axe Dwarves on the board.'
+  },
+  EARTH_VERZAR_CANINE: {
+    id: 'EARTH_VERZAR_CANINE', name: 'Verzar Canine', type: 'UNIT', cost: 1, activation: 1,
+    element: 'EARTH', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    protectionAuras: [ { amount: 1, scope: 'ADJACENT', target: 'ALLY', excludeSelf: true } ],
+    desc: 'Allied creatures on adjacent fields gain +1 Protection.'
   },
   WATER_WOLF_NINJA: {
     id: 'WATER_WOLF_NINJA', name: 'Wolf Ninja', type: 'UNIT', cost: 3, activation: 2,
