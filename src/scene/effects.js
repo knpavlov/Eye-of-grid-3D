@@ -33,37 +33,131 @@ export function scheduleHpPopup(r, c, delta, delayMs) {
   } catch {}
 }
 
-export function spawnDamageText(targetMesh, text, color = '#ff5555') {
+export function spawnDamageText(targetMesh, text, color = '#ff5555', options = {}) {
   if (!targetMesh || typeof window === 'undefined') return;
   const THREE = window.THREE; const gsap = window.gsap;
   const renderer = window.renderer || window.__scene?.getCtx()?.renderer;
   const effectsGroup = window.effectsGroup || window.__scene?.getCtx()?.effectsGroup;
   if (!THREE || !gsap || !renderer || !effectsGroup) return;
+
+  const {
+    canvasWidth = 256,
+    canvasHeight = 128,
+    fontSize = 64,
+    minFontSize = 24,
+    fontFamily = 'Arial',
+    fontWeight = 'bold',
+    strokeWidth = 6,
+    strokeColor = 'rgba(0,0,0,0.6)',
+    maxTextWidth,
+    yOffset = 0.9,
+    scale = { x: 2.6, y: 1.4 },
+    fadeInDuration = 0.05,
+    riseHeight = 0.8,
+    riseDuration = 0.5,
+    holdDuration = 1.0,
+    floatHeight = 1.6,
+    floatDuration = 0.5,
+    fadeOutDuration = 0.5,
+    anchorPosition,
+  } = options;
+
   const canvas = document.createElement('canvas');
-  canvas.width = 256; canvas.height = 128;
+  const actualCanvasWidth = Math.max(64, canvasWidth);
+  const actualCanvasHeight = Math.max(64, canvasHeight);
+  canvas.width = actualCanvasWidth;
+  canvas.height = actualCanvasHeight;
   const ctx = canvas.getContext('2d');
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.font = 'bold 64px Arial';
+  if (!ctx) return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  let currentFontSize = Math.max(minFontSize, fontSize);
+  ctx.font = `${fontWeight} ${currentFontSize}px ${fontFamily}`;
+  const renderedText = String(text);
+  let metrics = ctx.measureText(renderedText);
+  const textLimit = Math.max(32, typeof maxTextWidth === 'number' ? maxTextWidth : actualCanvasWidth - 24);
+  const minSize = Math.max(12, minFontSize);
+  while (metrics.width > textLimit && currentFontSize > minSize) {
+    currentFontSize -= 2;
+    ctx.font = `${fontWeight} ${currentFontSize}px ${fontFamily}`;
+    metrics = ctx.measureText(renderedText);
+  }
+
   ctx.fillStyle = color;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 6;
-  ctx.strokeText(text, canvas.width/2, canvas.height/2);
-  ctx.fillText(text, canvas.width/2, canvas.height/2);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = strokeWidth;
+  ctx.strokeText(renderedText, canvas.width / 2, canvas.height / 2);
+  ctx.fillText(renderedText, canvas.width / 2, canvas.height / 2);
+
   const tex = new THREE.CanvasTexture(canvas);
   try { tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); } catch {}
   const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0, depthTest: false, depthWrite: false });
   const sprite = new THREE.Sprite(mat);
-  sprite.scale.set(2.6, 1.4, 1);
-  const pos = targetMesh.position.clone().add(new THREE.Vector3(0, 0.9, 0));
-  sprite.position.copy(pos);
+
+  let scaleX = 2.6; let scaleY = 1.4;
+  if (typeof scale === 'number') {
+    scaleX = scaleY = scale;
+  } else if (Array.isArray(scale)) {
+    scaleX = typeof scale[0] === 'number' ? scale[0] : scaleX;
+    scaleY = typeof scale[1] === 'number' ? scale[1] : scaleY;
+    if (scaleY == null) scaleY = scaleX;
+  } else if (scale && typeof scale === 'object') {
+    if (typeof scale.x === 'number') scaleX = scale.x;
+    if (typeof scale.y === 'number') scaleY = scale.y;
+  }
+  sprite.scale.set(scaleX, scaleY, 1);
+
+  let anchor;
+  if (anchorPosition && typeof anchorPosition === 'object') {
+    const ax = typeof anchorPosition.x === 'number' ? anchorPosition.x : targetMesh.position.x;
+    const ay = typeof anchorPosition.y === 'number' ? anchorPosition.y : targetMesh.position.y;
+    const az = typeof anchorPosition.z === 'number' ? anchorPosition.z : targetMesh.position.z;
+    anchor = new THREE.Vector3(ax, ay, az);
+  } else {
+    anchor = targetMesh.position.clone();
+  }
+  anchor.y += yOffset;
+  sprite.position.copy(anchor);
   sprite.renderOrder = 999;
   effectsGroup.add(sprite);
-  const tl = gsap.timeline({ onComplete: () => { effectsGroup.remove(sprite); tex.dispose(); mat.dispose(); } });
-  tl.to(sprite.material, { opacity: 1, duration: 0.05 })
-    .to(sprite.position, { y: sprite.position.y + 0.8, duration: 0.5, ease: 'power1.out' })
-    .to({}, { duration: 1.0 })
-    .to(sprite.position, { y: sprite.position.y + 1.6, duration: 0.5, ease: 'power1.in' }, 'end')
-    .to(sprite.material, { opacity: 0, duration: 0.5 }, 'end');
+
+  const baseY = sprite.position.y;
+  const tl = gsap.timeline({
+    onComplete: () => { effectsGroup.remove(sprite); tex.dispose(); mat.dispose(); },
+  });
+  tl.to(sprite.material, { opacity: 1, duration: fadeInDuration })
+    .to(sprite.position, { y: baseY + riseHeight, duration: riseDuration, ease: 'power1.out' })
+    .to({}, { duration: holdDuration })
+    .addLabel('fade')
+    .to(sprite.position, { y: baseY + riseHeight + floatHeight, duration: floatDuration, ease: 'power1.in' }, 'fade')
+    .to(sprite.material, { opacity: 0, duration: fadeOutDuration }, 'fade');
+}
+
+// Отдельный хелпер для всплывающих уведомлений об изменении защиты
+export function spawnProtectionPopup(targetMesh, delta, anchorPosition) {
+  if (!targetMesh || !delta) return;
+  const rawValue = Math.abs(delta);
+  if (!(rawValue > 0)) return;
+  const sign = delta > 0 ? '+' : '-';
+  const formatted = Number.isInteger(rawValue) ? rawValue : Number(rawValue.toFixed(2));
+  const text = `Protection ${sign}${formatted}`;
+  const color = '#60a5fa';
+  spawnDamageText(targetMesh, text, color, {
+    canvasWidth: 384,
+    canvasHeight: 192,
+    fontSize: 48,
+    minFontSize: 28,
+    maxTextWidth: 336,
+    strokeWidth: 5,
+    yOffset: 1.1,
+    scale: { x: 2.2, y: 1.15 },
+    riseHeight: 0.7,
+    floatHeight: 1.4,
+    holdDuration: 1.1,
+    anchorPosition,
+  });
 }
 
 // Короткий взрывной столб магической энергии
@@ -360,6 +454,6 @@ export function dissolveTileCrossfade(tileMesh, oldMaterial, newMaterial, durati
   }
 }
 
-const api = { spawnDamageText, magicBurst, shakeMesh, dissolveAndAsh, dissolveTileSwap, dissolveTileCrossfade, scheduleHpPopup, cancelPendingHpPopup };
+const api = { spawnDamageText, spawnProtectionPopup, magicBurst, shakeMesh, dissolveAndAsh, dissolveTileSwap, dissolveTileCrossfade, scheduleHpPopup, cancelPendingHpPopup };
 try { if (typeof window !== 'undefined') window.__fx = api; } catch {}
 export default api;
