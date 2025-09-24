@@ -165,15 +165,24 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
   padding-bottom: 1rem;
   grid-template-rows: repeat(2, max-content);
   grid-auto-rows: max-content;
+  /* Управляющие переменные для адаптивной сетки */
+  --deck-catalog-columns: 5;
+  --deck-card-scale: 1;
+  --deck-card-width: 256px;
+  --deck-card-horizontal-padding: 12px;
+  --deck-card-aspect: 256 / 356;
+  grid-template-columns: repeat(var(--deck-catalog-columns), minmax(0, 1fr));
 }
 
 #deck-builder-overlay .catalog-card {
-  width: 100%;
+  width: min(100%, calc(var(--deck-card-scale) * var(--deck-card-width) + var(--deck-card-horizontal-padding)));
   padding: 6px;
   border-radius: 18px;
   background: rgba(15,23,42,0.65);
   box-shadow: 0 8px 20px rgba(8,11,20,0.4);
   transition: transform 140ms ease, box-shadow 140ms ease;
+  box-sizing: border-box;
+  justify-self: center;
 }
 
 #deck-builder-overlay .catalog-card:hover {
@@ -184,4 +193,9 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
 #deck-builder-overlay .catalog-card canvas {
   display: block;
   border-radius: 14px;
+  width: calc(var(--deck-card-scale) * var(--deck-card-width));
+  height: auto;
+  aspect-ratio: var(--deck-card-aspect);
+  max-width: 100%;
+  margin: 0 auto;
 }
