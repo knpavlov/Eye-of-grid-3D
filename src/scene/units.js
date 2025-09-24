@@ -2,10 +2,11 @@
 import { getCtx } from './context.js';
 import { createCard3D, drawCardFace } from './cards.js';
 import { renderFieldLocks } from './fieldlocks.js';
-import { isUnitPossessed, hasInvisibility } from '../core/abilities.js';
+import { isUnitPossessed, hasInvisibility, getUnitProtection } from '../core/abilities.js';
 import { attachPossessionOverlay, disposePossessionOverlay } from './possessionOverlay.js';
 import { setInvisibilityFx } from './unitFx.js';
 import { resetUnitHover } from './unitTooltip.js';
+import { spawnDamageText } from './effects.js';
 
 function getTHREE() {
   const ctx = getCtx();
@@ -190,7 +191,14 @@ export function updateUnits(gameState) {
         }
       }
 
+      const protectionValue = Math.max(0, getUnitProtection(gameState, r, c, { unit, tpl: cardData }));
       mesh.userData = mesh.userData || {};
+      const prevProtection = typeof mesh.userData.lastProtection === 'number' ? mesh.userData.lastProtection : 0;
+      if (protectionValue > prevProtection) {
+        try {
+          spawnDamageText(mesh, `Protection -${protectionValue}`, '#60a5fa');
+        } catch {}
+      }
       mesh.userData.type = 'unit';
       mesh.userData.row = r;
       mesh.userData.col = c;
@@ -200,6 +208,7 @@ export function updateUnits(gameState) {
       mesh.userData.lastHp = hpValue;
       mesh.userData.lastAtk = atkValue;
       mesh.userData.lastActivation = activationValue;
+      mesh.userData.lastProtection = protectionValue;
 
       const targetRotation = (facingDeg[unit.facing] || 0) * Math.PI / 180;
       mesh.rotation.y = targetRotation;
