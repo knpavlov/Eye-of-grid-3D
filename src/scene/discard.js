@@ -1,6 +1,7 @@
 // Универсальная функция для сброса карты из руки в кладбище с анимацией
 import { getCtx } from './context.js';
 import { updateHand } from './hand.js';
+import { applyHandDiscard } from '../core/abilityHandlers/discard.js';
 
 /**
  * Универсальная анимация "растворения" меша.
@@ -27,17 +28,8 @@ export function discardMesh(mesh, awayVec, duration = 0.9) {
  */
 export function discardHandCard(player, handIdx) {
   if (!player || typeof handIdx !== 'number' || handIdx < 0) return null;
-  const cardTpl = player.hand?.[handIdx];
+  const cardTpl = applyHandDiscard(player, handIdx);
   if (!cardTpl) return null;
-
-  // Перемещение карты в кладбище
-  try {
-    player.graveyard = Array.isArray(player.graveyard) ? player.graveyard : [];
-    player.graveyard.push(cardTpl);
-  } catch {}
-
-  // Удаляем карту из руки
-  try { player.hand.splice(handIdx, 1); } catch {}
 
   // Анимация исчезновения карты из руки
   try {

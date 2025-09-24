@@ -25,6 +25,11 @@ import {
 import { computeCellBuff } from './fieldEffects.js';
 import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
+import {
+  collectDeathDiscardEffects,
+  collectAllyDeathDiscardEffects,
+  enqueueDiscardRequests,
+} from './abilityHandlers/discard.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -533,12 +538,31 @@ export function stagedAttack(state, r, c, opts = {}) {
     }
 
     const deaths = [];
+    const toClear = [];
     for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
       const u = nFinal.board?.[rr]?.[cc]?.unit;
       if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
         deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null });
-        nFinal.board[rr][cc].unit = null;
+        toClear.push({ r: rr, c: cc });
       }
+    }
+
+    if (deaths.length) {
+      const discardEvents = collectDeathDiscardEffects(nFinal, deaths);
+      const allyDiscard = collectAllyDeathDiscardEffects(nFinal, deaths);
+      const combinedLogs = [];
+      if (Array.isArray(discardEvents.logLines)) combinedLogs.push(...discardEvents.logLines);
+      if (Array.isArray(allyDiscard.logLines)) combinedLogs.push(...allyDiscard.logLines);
+      if (combinedLogs.length) logLines.push(...combinedLogs);
+      const pending = [];
+      if (Array.isArray(discardEvents.requests)) pending.push(...discardEvents.requests);
+      if (Array.isArray(allyDiscard.requests)) pending.push(...allyDiscard.requests);
+      if (pending.length) enqueueDiscardRequests(nFinal, pending, { now: Date.now() });
+    }
+
+    for (const cell of toClear) {
+      const entry = nFinal.board?.[cell.r]?.[cell.c];
+      if (entry) entry.unit = null;
     }
 
     try {
@@ -851,12 +875,31 @@ export function magicAttack(state, fr, fc, tr, tc) {
   }
 
   const deaths = [];
+  const toClear = [];
   for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
     const u = n1.board[rr][cc].unit;
     if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
       deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null });
-      n1.board[rr][cc].unit = null;
+      toClear.push({ r: rr, c: cc });
     }
+  }
+
+  if (deaths.length) {
+    const discardEvents = collectDeathDiscardEffects(n1, deaths);
+    const allyDiscard = collectAllyDeathDiscardEffects(n1, deaths);
+    const combinedLogs = [];
+    if (Array.isArray(discardEvents.logLines)) combinedLogs.push(...discardEvents.logLines);
+    if (Array.isArray(allyDiscard.logLines)) combinedLogs.push(...allyDiscard.logLines);
+    if (combinedLogs.length) logLines.push(...combinedLogs);
+    const pending = [];
+    if (Array.isArray(discardEvents.requests)) pending.push(...discardEvents.requests);
+    if (Array.isArray(allyDiscard.requests)) pending.push(...allyDiscard.requests);
+    if (pending.length) enqueueDiscardRequests(n1, pending, { now: Date.now() });
+  }
+
+  for (const cell of toClear) {
+    const entry = n1.board?.[cell.r]?.[cell.c];
+    if (entry) entry.unit = null;
   }
   try {
     for (const d of deaths) {

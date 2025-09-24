@@ -47,6 +47,7 @@ import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
 import * as CancelButton from './ui/cancelButton.js';
 import { initDebugControls } from './ui/debugControls.js';
+import * as DiscardPrompt from './ui/discardPrompt.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -150,6 +151,8 @@ export function applyGameState(state) {
     // Сообщаем страницам с локальной переменной gameState о новом состоянии
     // (например, index.html держит собственную копию)
     window.setGameState?.(state);
+    try { DiscardPrompt.syncRequests(state); } catch {}
+    try { window.__ui?.discard?.syncRequests?.(state); } catch {}
   } catch {}
 }
 try { if (typeof window !== 'undefined') window.applyGameState = applyGameState; } catch {}

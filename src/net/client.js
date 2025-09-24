@@ -159,7 +159,13 @@ import { getServerBase } from './config.js';
           // фиксируем фактическое здоровье, а не базовое
           const hp = (typeof u?.currentHP === 'number') ? u.currentHP : u?.hp;
           return u ? { o: u.owner, h: hp, a: u.atk, f: u.facing, t: u.tplId } : null;
-        }))
+        })),
+        pendingDiscards: (state.pendingDiscards || []).map(req => ({
+          id: req.id,
+          target: req.target,
+          remaining: req.remaining,
+          total: req.total,
+        })),
       };
       return JSON.stringify(compact);
     } catch { return '';}

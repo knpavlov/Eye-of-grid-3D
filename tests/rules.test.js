@@ -12,6 +12,11 @@ import {
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
 import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, activationCost, hasInvisibility, getUnitProtection } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
+import {
+  collectDeathDiscardEffects,
+  collectAllyDeathDiscardEffects,
+  enqueueDiscardRequests,
+} from '../src/core/abilityHandlers/discard.js';
 
 function makeBoard() {
   const b = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE', unit: null })));
@@ -226,6 +231,46 @@ describe('guards and hits', () => {
     };
     const hits = computeHits(state, 2, 1);
     expect(hits).toHaveLength(0);
+  });
+});
+
+describe('discard abilities', () => {
+  it('Elven Rider queues discard equal to Wood fields on non-Wood death', () => {
+    const state = { board: makeBoard(), players: [ { hand: [], graveyard: [], discard: [], mana: 0 }, { hand: [], graveyard: [], discard: [], mana: 0 } ], pendingDiscards: [] };
+    state.board[0][0].element = 'FOREST';
+    state.board[0][1].element = 'FOREST';
+    state.board[0][2].element = 'FOREST';
+    state.board[1][1].element = 'FIRE';
+    state.board[1][1].unit = { owner: 0, tplId: 'FOREST_ELVEN_RIDER', currentHP: 0 };
+    const death = { r: 1, c: 1, owner: 0, tplId: 'FOREST_ELVEN_RIDER' };
+    const effects = collectDeathDiscardEffects(state, [death]);
+    expect(effects.requests).toHaveLength(1);
+    expect(effects.requests[0]).toMatchObject({ target: 1, amount: 3 });
+    expect((effects.logLines || [])[0]).toContain('Elven Rider');
+  });
+
+  it('Green Erlking Zomba triggers discard when allies fall on Wood field', () => {
+    const state = { board: makeBoard(), players: [ { hand: [], graveyard: [], discard: [], mana: 0 }, { hand: [], graveyard: [], discard: [], mana: 0 } ], pendingDiscards: [] };
+    state.board[2][2].element = 'FOREST';
+    state.board[2][2].unit = { owner: 0, tplId: 'FOREST_GREEN_ERLKING_ZOMBA', currentHP: 6 };
+    const deaths = [
+      { r: 0, c: 0, owner: 0, tplId: 'FOREST_LEAPFROG_BANDIT' },
+      { r: 0, c: 1, owner: 0, tplId: 'FOREST_LEAPFROG_BANDIT' },
+    ];
+    const allyEffects = collectAllyDeathDiscardEffects(state, deaths);
+    expect(allyEffects.requests).toHaveLength(1);
+    expect(allyEffects.requests[0]).toMatchObject({ target: 1, amount: 2 });
+  });
+
+  it('enqueueDiscardRequests stores pending discard info', () => {
+    const state = { pendingDiscards: [] };
+    const now = 1000;
+    enqueueDiscardRequests(state, [ { target: 1, amount: 2 } ], { now, timerMs: 5000 });
+    expect(state.pendingDiscards).toHaveLength(1);
+    const req = state.pendingDiscards[0];
+    expect(req.remaining).toBe(2);
+    expect(req.total).toBe(2);
+    expect(req.deadline).toBe(now + 5000);
   });
 });
 
