@@ -128,7 +128,10 @@ function gatherSources(tpl) {
   if (tpl.protectionEqualsAlliedElementCount) {
     const element = normalizeElementName(tpl.protectionEqualsAlliedElementCount);
     if (element) {
-      sources.push({ type: 'ALLY_ELEMENT', element, per: 1, includeSelf: true });
+      const includeSelf = tpl.protectionEqualsAlliedElementCountIncludeSelf != null
+        ? !!tpl.protectionEqualsAlliedElementCountIncludeSelf
+        : true;
+      sources.push({ type: 'ALLY_ELEMENT', element, per: 1, includeSelf });
     }
   }
 

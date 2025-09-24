@@ -66,6 +66,17 @@ export function spawnDamageText(targetMesh, text, color = '#ff5555') {
     .to(sprite.material, { opacity: 0, duration: 0.5 }, 'end');
 }
 
+// Всплывающий текст для изменений защиты (Protection)
+export function spawnProtectionText(targetMesh, delta) {
+  if (!targetMesh || typeof delta !== 'number' || !Number.isFinite(delta)) return;
+  const amount = Math.abs(Math.round(delta));
+  if (amount <= 0) return;
+  const sign = delta > 0 ? '+' : '-';
+  const color = delta > 0 ? '#60a5fa' : '#a78bfa';
+  const text = `Protection ${sign}${amount}`;
+  spawnDamageText(targetMesh, text, color);
+}
+
 // Короткий взрывной столб магической энергии
 export function magicBurst(pos, durationSec = 0.75) {
   const THREE = window.THREE; const gsap = window.gsap;
@@ -360,6 +371,6 @@ export function dissolveTileCrossfade(tileMesh, oldMaterial, newMaterial, durati
   }
 }
 
-const api = { spawnDamageText, magicBurst, shakeMesh, dissolveAndAsh, dissolveTileSwap, dissolveTileCrossfade, scheduleHpPopup, cancelPendingHpPopup };
+const api = { spawnDamageText, spawnProtectionText, magicBurst, shakeMesh, dissolveAndAsh, dissolveTileSwap, dissolveTileCrossfade, scheduleHpPopup, cancelPendingHpPopup };
 try { if (typeof window !== 'undefined') window.__fx = api; } catch {}
 export default api;

@@ -356,7 +356,10 @@ export function stagedAttack(state, r, c, opts = {}) {
       if (hitsB.length) {
         const { atk: batk } = effectiveStats(base.board[h.r][h.c], B, { state: base, r: h.r, c: h.c });
         const baseDmg = Math.max(0, batk);
-        const prot = getUnitProtection(base, r, c, { unit: attacker, tpl: tplA });
+        const retaliationType = hitsB.attackType || tplB?.attackType || 'STANDARD';
+        const prot = retaliationType === 'MAGIC'
+          ? 0
+          : getUnitProtection(base, r, c, { unit: attacker, tpl: tplA });
         const dmg = Math.max(0, baseDmg - prot);
         quickRetaliation += dmg;
         quickSources.push(CARDS[B.tplId].name);
@@ -374,7 +377,9 @@ export function stagedAttack(state, r, c, opts = {}) {
     const tplB = CARDS[B.tplId];
     if (sameOwner) {
       // Союзники не уклоняются от массового удара, но учитывают защиту
-      const protection = getUnitProtection(base, h.r, h.c, { unit: B, tpl: tplB });
+      const protection = isMagic
+        ? 0
+        : getUnitProtection(base, h.r, h.c, { unit: B, tpl: tplB });
       const dealt = Math.max(0, h.dmg - protection);
       return { ...h, dealt, dodge: false, invisible: false, sameOwner: true };
     }
@@ -385,7 +390,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       dodgeInfo = attemptUnitDodge(base, h.r, h.c, { rng: randomFn });
     }
     const dodgeSuccess = !isMagic && !invisible && (perfect || (dodgeInfo?.success === true));
-    const protection = (invisible || dodgeSuccess)
+    const protection = (invisible || dodgeSuccess || isMagic)
       ? 0
       : getUnitProtection(base, h.r, h.c, { unit: B, tpl: tplB });
     const rawDamage = Math.max(0, h.dmg - protection);
@@ -496,7 +501,10 @@ export function stagedAttack(state, r, c, opts = {}) {
         const baseDmg = Math.max(0, batk);
         const attackerCell = n1.board?.[r]?.[c];
         const attackerUnit = attackerCell?.unit;
-        const protection = getUnitProtection(n1, r, c, { unit: attackerUnit, tpl: tplA });
+        const retaliationType = hitsB.attackType || tplB?.attackType || 'STANDARD';
+        const protection = retaliationType === 'MAGIC'
+          ? 0
+          : getUnitProtection(n1, r, c, { unit: attackerUnit, tpl: tplA });
         const dealt = Math.max(0, baseDmg - protection);
         totalRetaliation += dealt;
         retaliators.push({ r: h.r, c: h.c, dmg: dealt });
@@ -782,8 +790,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     const before = u.currentHP ?? tplB.hp;
     let dealt = 0;
     if (!invisible) {
-      const protection = getUnitProtection(n1, cell.r, cell.c, { unit: u, tpl: tplB });
-      dealt = Math.max(0, dmg - protection);
+      dealt = Math.max(0, dmg);
       u.currentHP = Math.max(0, before - dealt);
     }
     addSummary(cell.r, cell.c, dealt, { invisible });
@@ -805,8 +812,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
       const before2 = u2.currentHP ?? tplB2.hp;
       let dealt2 = 0;
       if (!invisible) {
-        const protection2 = getUnitProtection(n1, cell.r, cell.c, { unit: u2, tpl: tplB2 });
-        dealt2 = Math.max(0, dmg - protection2);
+        dealt2 = Math.max(0, dmg);
         u2.currentHP = Math.max(0, before2 - dealt2);
       }
       addSummary(cell.r, cell.c, dealt2, { invisible });

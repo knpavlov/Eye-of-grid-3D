@@ -1,5 +1,7 @@
 // Анимация различий между предыдущим и новым состоянием
 
+import { getUnitProtection } from '../core/abilities.js';
+
 export function playDeltaAnimations(prevState, nextState, opts = {}) {
   try {
     if (!prevState || !nextState) return;
@@ -145,6 +147,16 @@ export function playDeltaAnimations(prevState, nextState, opts = {}) {
     }
 
     const hpChanges = [];
+    const protectionChanges = [];
+    const sameUnit = (a, b) => {
+      if (!a || !b) return false;
+      const aUid = (a.uid != null) ? a.uid : null;
+      const bUid = (b.uid != null) ? b.uid : null;
+      if (aUid != null || bUid != null) {
+        return aUid != null && bUid != null && aUid === bUid;
+      }
+      return a.owner === b.owner && a.tplId === b.tplId;
+    };
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) {
         const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
@@ -155,6 +167,30 @@ export function playDeltaAnimations(prevState, nextState, opts = {}) {
           const delta = (typeof pHP === 'number' && typeof nHP === 'number') ? (nHP - pHP) : 0;
           if (delta !== 0) {
             hpChanges.push({ r, c, delta });
+          }
+          const tplPrev = CARDS[pu.tplId];
+          const tplNext = CARDS[nu.tplId];
+          if (tplNext) {
+            const nextProtRaw = getUnitProtection(nextState, r, c, { unit: nu, tpl: tplNext });
+            if (Number.isFinite(nextProtRaw)) {
+              let prevProtRaw = 0;
+              if (tplPrev && sameUnit(pu, nu)) {
+                const prevComputed = getUnitProtection(prevState, r, c, { unit: pu, tpl: tplPrev });
+                if (Number.isFinite(prevComputed)) prevProtRaw = prevComputed;
+              }
+              const deltaProt = Math.round(nextProtRaw) - Math.round(prevProtRaw);
+              if (deltaProt !== 0) {
+                protectionChanges.push({ r, c, delta: deltaProt });
+              }
+            }
+          }
+        } else if (!pu && nu) {
+          const tplNext = CARDS[nu.tplId];
+          if (tplNext) {
+            const nextProtRaw = getUnitProtection(nextState, r, c, { unit: nu, tpl: tplNext });
+            if (Number.isFinite(nextProtRaw) && Math.round(nextProtRaw) > 0) {
+              protectionChanges.push({ r, c, delta: Math.round(nextProtRaw) });
+            }
           }
         }
       }
@@ -181,6 +217,15 @@ export function playDeltaAnimations(prevState, nextState, opts = {}) {
         const change = pendingHpChanges[i];
         window.__fx?.scheduleHpPopup(change.r, change.c, change.delta, 1600);
       }
+    }
+
+    for (const change of protectionChanges) {
+      try {
+        const mesh = unitMeshes.find(m => m.userData.row === change.r && m.userData.col === change.c);
+        if (mesh) {
+          window.__fx?.spawnProtectionText?.(mesh, change.delta);
+        }
+      } catch {}
     }
   } catch {}
 }

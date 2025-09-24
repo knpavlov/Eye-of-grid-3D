@@ -375,6 +375,7 @@ export const CARDS = {
     ignoreAlliedBlocking: true,
     plusAtkIfTargetHpAtLeast: { threshold: 5, amount: 2 },
     protectionEqualsAlliedElementCount: 'BIOLITH',
+    protectionEqualsAlliedElementCountIncludeSelf: false,
     desc: 'Morning Star Warrior adds 2 to its Attack if the target creature has 5 or more HPs.\nMorning Star Warrior gains Protection equal to the number of allied Biolith creatures.'
   },
 
