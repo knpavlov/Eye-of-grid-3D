@@ -34,6 +34,7 @@ import * as UIActions from './ui/actions.js';
 import * as SceneEffects from './scene/effects.js';
 import * as UISpellUtils from './ui/spellUtils.js';
 import * as Spells from './spells/handlers.js';
+import './ui/discardQueue.js';
 import './ui/statusChip.js';
 import * as InputLock from './ui/inputLock.js';
 import { attachUIEvents } from './ui/domEvents.js';

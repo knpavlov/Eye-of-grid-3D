@@ -25,6 +25,7 @@ import {
 import { computeCellBuff } from './fieldEffects.js';
 import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
+import { evaluateDiscardTriggers } from './abilityHandlers/discard.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -598,6 +599,12 @@ export function stagedAttack(state, r, c, opts = {}) {
       }
     }
 
+    const discardSummary = evaluateDiscardTriggers({ beforeState: base, afterState: nFinal, deaths });
+    const discardRequests = Array.isArray(discardSummary?.requests) ? discardSummary.requests : [];
+    if (Array.isArray(discardSummary?.logLines) && discardSummary.logLines.length) {
+      logLines.push(...discardSummary.logLines);
+    }
+
     if (A) {
       A.lastAttackTurn = nFinal.turn;
       A.apSpent = (A.apSpent || 0) + attackCostValue;
@@ -622,6 +629,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       attackType,
       schemeKey,
       attackProfile: profile,
+      discardRequests,
     };
   }
 
@@ -901,6 +909,11 @@ export function magicAttack(state, fr, fc, tr, tc) {
       logLines.push(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
     }
   }
+  const discardSummary = evaluateDiscardTriggers({ beforeState: state, afterState: n1, deaths });
+  const discardRequests = Array.isArray(discardSummary?.requests) ? discardSummary.requests : [];
+  if (Array.isArray(discardSummary?.logLines) && discardSummary.logLines.length) {
+    logLines.push(...discardSummary.logLines);
+  }
   attacker.lastAttackTurn = n1.turn;
   attacker.apSpent = (attacker.apSpent || 0) + attackCostValue;
   const dodgeFinal = refreshBoardDodgeStates(n1);
@@ -921,6 +934,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     schemeKey,
     attackProfile: profile,
     dmg,
+    discardRequests,
   };
 }
 

@@ -454,6 +454,25 @@ export const CARDS = {
     pushTargetOnDamage: { distance: 1 },
     desc: 'If Dark Yokozuna Sekimaru attacks (but does not destroy) a creature, that creature is pushed back one field in the direction of the attack (provided the field is empty) and cannot counterattack.'
   },
+  EARTH_BLACK_HOOD_DWARF_VULITRA: {
+    id: 'EARTH_BLACK_HOOD_DWARF_VULITRA', name: 'Black Hood Dwarf Vulitra', type: 'UNIT', cost: 3, activation: 2,
+    element: 'EARTH', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    plusAtkVsElement: { element: 'EARTH', amount: 1 },
+    discardTriggers: [
+      {
+        when: 'SELF_DEATH',
+        target: 'OPPONENT',
+        amount: { type: 'FIELDS', element: 'EARTH' },
+        fieldElement: 'EARTH',
+        fieldNot: true,
+      },
+    ],
+    desc: 'Vulitra adds 1 to his attack if at least one target creature is an earth creature.\nIf Vulitra is destroyed on a non-Earth field, your opponent must discard cards equal to the number of Earth fields.'
+  },
   EARTH_VERZAR_ELEPHANT_BRIGADE: {
     id: 'EARTH_VERZAR_ELEPHANT_BRIGADE', name: 'Verzar Elephant Brigade', type: 'UNIT', cost: 5, activation: 3,
     element: 'EARTH', atk: 2, hp: 5,
@@ -601,6 +620,83 @@ export const CARDS = {
     swapOnDamage: true,
     enemyActivationTaxAdjacent: 3,
     desc: 'Magic Attack. If Elven Death Dancer damages (but does not destroy) a creature, she switches locations with that creature (which cannot counterattack). Enemies on adjacent fields add 3 to their Activation Cost.'
+  },
+  FOREST_ELVEN_RIDER: {
+    id: 'FOREST_ELVEN_RIDER', name: 'Elven Rider', type: 'UNIT', cost: 4, activation: 2,
+    element: 'FOREST', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2] } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    discardTriggers: [
+      {
+        when: 'SELF_DEATH',
+        target: 'OPPONENT',
+        amount: { type: 'FIELDS', element: 'FOREST' },
+        fieldElement: 'FOREST',
+        fieldNot: true,
+      },
+    ],
+    desc: 'If Elven Rider is destroyed on a non-Wood field, your opponent must discard cards equal to the number of Wood fields.'
+  },
+  FOREST_GREEN_ERLKING_ZOMBA: {
+    id: 'FOREST_GREEN_ERLKING_ZOMBA', name: 'Green Erlking Zomba', type: 'UNIT', cost: 6, activation: 3,
+    element: 'FOREST', atk: 3, hp: 6,
+    attackType: 'STANDARD',
+    attackSchemes: [
+      { key: 'BASE', attacks: [ { dir: 'N', ranges: [1, 2] } ] },
+      { key: 'ALT', attacks: [ { dir: 'N', ranges: [1] } ] },
+    ],
+    defaultAttackScheme: 'BASE',
+    mustUseSchemeOnElement: [ { element: 'FOREST', scheme: 'ALT' } ],
+    blindspots: ['S'],
+    friendlyFire: true,
+    ignoreAlliedBlocking: true,
+    discardTriggers: [
+      {
+        when: 'ALLY_DEATH',
+        target: 'OPPONENT',
+        amount: 1,
+        whileOn: { element: 'FOREST' },
+        includeSelf: true,
+      },
+    ],
+    desc: 'Zomba must use its secondary attack while it is on a Wood field.\nWhile Zomba is on a Wood field, each time an allied creature is destroyed, your opponent must discard a card.'
+  },
+  SAMURAI_NAGIRASHU: {
+    id: 'SAMURAI_NAGIRASHU', name: 'Samurai Nagirashu', type: 'UNIT', cost: 2, activation: 2,
+    element: 'FOREST', atk: 2, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    discardTriggers: [
+      {
+        when: 'SELF_DEATH',
+        target: 'OPPONENT',
+        amount: 1,
+        fieldElement: 'FOREST',
+      },
+    ],
+    desc: 'If Samurai Nagirashu is destroyed on a Wood field, your opponent must discard 1 card.'
+  },
+  FOREST_LEAPFROG_BANDIT: {
+    id: 'FOREST_LEAPFROG_BANDIT', name: 'Leapfrog Bandit', type: 'UNIT', cost: 1, activation: 1,
+    element: 'FOREST', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [2] } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    discardTriggers: [
+      {
+        when: 'SELF_DEATH',
+        target: 'OPPONENT',
+        amount: 1,
+        fieldElement: 'FOREST',
+        fieldNot: true,
+      },
+    ],
+    desc: 'If Leapfrog Bandit is destroyed on a non-Wood field, your opponent must discard 1 card.'
   },
   FOREST_JUNO_FOREST_DRAGON: {
     id: 'FOREST_JUNO_FOREST_DRAGON', name: 'Juno Forest Dragon', type: 'UNIT', cost: 7, activation: 4,

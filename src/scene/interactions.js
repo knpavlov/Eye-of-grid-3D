@@ -12,6 +12,7 @@ import {
   isIncarnationCard,
 } from '../core/abilities.js';
 import { capMana } from '../core/constants.js';
+import { evaluateDiscardTriggers } from '../core/abilityHandlers/discard.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -812,6 +813,8 @@ export function placeUnitWithDirection(direction) {
     alive = false;
   }
   if (!alive) {
+    const beforeDeathState = JSON.parse(JSON.stringify(gameState));
+    const deathRecord = { r: row, c: col, owner: unit.owner, tplId: unit.tplId, uid: unit.uid ?? null };
     // обработка эффектов при смерти (например, лечение союзников)
     if (cardData.onDeathAddHPAll) {
       const amount = cardData.onDeathAddHPAll;
@@ -844,6 +847,21 @@ export function placeUnitWithDirection(direction) {
     const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
     window.animateManaGainFromWorld(pos, owner, true, slotBeforeGain);
     gameState.board[row][col].unit = null;
+    try {
+      const summary = evaluateDiscardTriggers({
+        beforeState: beforeDeathState,
+        afterState: gameState,
+        deaths: [deathRecord],
+      });
+      if (Array.isArray(summary?.logLines)) {
+        for (const line of summary.logLines) window.addLog?.(line);
+      }
+      if (Array.isArray(summary?.requests) && summary.requests.length) {
+        window.__ui?.discardQueue?.enqueueDiscardRequests?.(summary.requests);
+      }
+    } catch (err) {
+      console.error('[placeUnitWithDirection] ошибка обработки discard', err);
+    }
   }
   if (gameState.board[row][col].unit) {
     const summonEvents = applySummonAbilities(gameState, row, col);

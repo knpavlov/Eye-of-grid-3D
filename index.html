@@ -656,6 +656,7 @@
             }
             setTimeout(() => {
               updateUnits(finalState); updateUI();
+              window.__ui?.discardQueue?.enqueueDiscardRequests?.(res.discardRequests || []);
               for (const l of res.logLines.reverse()) addLog(l);
               try { schedulePush('battle-finish', { force: true }); } catch {}
               if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
@@ -676,6 +677,7 @@
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем обновим визуально
         setTimeout(() => {
           updateUnits(finalState); updateUI(); for (const l of res.logLines.reverse()) addLog(l);
+          window.__ui?.discardQueue?.enqueueDiscardRequests?.(res.discardRequests || []);
           const pos2 = attackerPos;
           if (markAttackTurn && gameState.board[pos2.r]?.[pos2.c]?.unit) {
             gameState.board[pos2.r][pos2.c].unit.lastAttackTurn = gameState.turn;
@@ -799,6 +801,7 @@
         if (attackerUnit) attackerUnit.lastAttackTurn = window.gameState.turn;
         setTimeout(() => {
           updateUnits(); updateUI();
+          window.__ui?.discardQueue?.enqueueDiscardRequests?.(res.discardRequests || []);
           try { schedulePush('magic-battle-finish', { force: true }); } catch {}
           if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
             window.__interactions.interactionState.autoEndTurnAfterAttack = false;
@@ -818,6 +821,7 @@
           try { window.__interactions?.logDodgeUpdates?.(res.dodgeUpdates, gameState, attackerName); } catch {}
         }
         updateUnits(); updateUI();
+        window.__ui?.discardQueue?.enqueueDiscardRequests?.(res.discardRequests || []);
         const attackerCell2 = gameState.board?.[attackerPosMagic.r]?.[attackerPosMagic.c];
         const attackerUnit2 = attackerCell2?.unit;
         if (attackerUnit2) attackerUnit2.lastAttackTurn = gameState.turn;
