@@ -25,6 +25,7 @@ import {
 import { computeCellBuff } from './fieldEffects.js';
 import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
+import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -534,10 +535,11 @@ export function stagedAttack(state, r, c, opts = {}) {
 
     const deaths = [];
     for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
-      const u = nFinal.board?.[rr]?.[cc]?.unit;
+      const cellRef = nFinal.board?.[rr]?.[cc];
+      const u = cellRef?.unit;
       if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null });
-        nFinal.board[rr][cc].unit = null;
+        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: cellRef?.element || null });
+        if (cellRef) cellRef.unit = null;
       }
     }
 
@@ -567,6 +569,11 @@ export function stagedAttack(state, r, c, opts = {}) {
         }
         logLines.push(`${tplD.name}: союзники получают +${tplD.onDeathAddHPAll} HP`);
       }
+    }
+
+    const discardEffects = applyDeathDiscardEffects(nFinal, deaths, { cause: 'BATTLE' });
+    if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
+      logLines.push(...discardEffects.logs);
     }
 
     const releaseEvents = releasePossessionsAfterDeaths(nFinal, deaths);
@@ -852,10 +859,11 @@ export function magicAttack(state, fr, fc, tr, tc) {
 
   const deaths = [];
   for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
-    const u = n1.board[rr][cc].unit;
+    const cellRef = n1.board[rr][cc];
+    const u = cellRef.unit;
     if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null });
-      n1.board[rr][cc].unit = null;
+      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: cellRef?.element || null });
+      cellRef.unit = null;
     }
   }
   try {
@@ -865,6 +873,10 @@ export function magicAttack(state, fr, fc, tr, tc) {
       }
     }
   } catch {}
+  const discardEffects = applyDeathDiscardEffects(n1, deaths, { cause: 'MAGIC' });
+  if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
+    logLines.push(...discardEffects.logs);
+  }
   const releaseEvents = releasePossessionsAfterDeaths(n1, deaths);
   if (releaseEvents.releases.length) {
     for (const rel of releaseEvents.releases) {

@@ -358,6 +358,12 @@ export function confirmUnitAbilityOrientation(context, direction) {
       w.addLog?.(`${replacementName}: союзники получают +${amount} HP.`);
     }
 
+    if (Array.isArray(result.events?.discardLogs) && result.events.discardLogs.length) {
+      for (const text of result.events.discardLogs) {
+        if (text) w.addLog?.(text);
+      }
+    }
+
     if (result.summonEvents?.possessions?.length) {
       for (const ev of result.summonEvents.possessions) {
         const unitTaken = gameState.board?.[ev.r]?.[ev.c]?.unit;
@@ -425,6 +431,13 @@ export async function endTurn() {
         return;
       }
     } catch {}
+    const pendingDiscards = Array.isArray(gameState.pendingDiscards)
+      ? gameState.pendingDiscards.some(req => req && req.remaining > 0)
+      : false;
+    if (pendingDiscards) {
+      w.showNotification?.('Дождитесь завершения сброса карт.', 'error');
+      return;
+    }
     const manaGainActive = w.manaGainActive || false;
     const drawAnimationActive = w.drawAnimationActive || false;
     const splashActive = (w.__ui && w.__ui.banner)
