@@ -1,6 +1,7 @@
 // Модуль обработки способности "жертвоприношение" для кубов и похожих карт
 import { CARDS } from '../cards.js';
 import { computeCellBuff } from '../fieldEffects.js';
+import { applyFieldFatalityCheck as applyFieldFatalityCheckInternal } from './fieldHazards.js';
 import { applyDeathDiscardEffects } from './discard.js';
 
 const FACING_ORDER = ['N', 'E', 'S', 'W'];
@@ -236,18 +237,22 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
 
   let alive = newUnit.currentHP > 0;
   let deathReason = null;
-  if (alive && summonTpl.diesOffElement && cellElement !== summonTpl.diesOffElement) {
-    alive = false;
-    deathReason = 'OFF_ELEMENT';
-  }
-  if (alive && summonTpl.diesOnElement && cellElement === summonTpl.diesOnElement) {
-    alive = false;
-    deathReason = 'ON_ELEMENT';
+  let deathInfo = null;
+  if (alive) {
+    const hazard = applyFieldFatalityCheckInternal(newUnit, summonTpl, cellElement);
+    if (hazard.dies) {
+      alive = false;
+      deathReason = hazard.reason;
+      deathInfo = hazard;
+    }
   }
 
   if (!alive) {
     result.replacement.alive = false;
     result.replacement.deathReason = deathReason;
+    if (deathInfo) {
+      result.replacement.deathInfo = deathInfo;
+    }
     const tplDeath = getTemplateRef(summonTpl);
     graveyard.push(tplDeath);
     cell.unit = null;

@@ -41,6 +41,11 @@ import {
   computeAuraProtection as computeAuraProtectionInternal,
 } from './abilityHandlers/protection.js';
 import { normalizeElementName } from './utils/elements.js';
+import {
+  applyFieldFatalityCheck as applyFieldFatalityCheckInternal,
+  describeFieldFatality as describeFieldFatalityInternal,
+  evaluateFieldFatality as evaluateFieldFatalityInternal,
+} from './abilityHandlers/fieldHazards.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -264,6 +269,15 @@ function computeFacingAway(targetRef, attackerRef) {
   return OPPOSITE_DIR[dirToAttacker] || null;
 }
 
+// Проверяем, нужно ли активировать эффекты "при нанесении урона" даже при нулевом уроне
+function shouldProcessZeroDamageInteractions(tpl, dealt) {
+  if ((dealt ?? 0) > 0) return true;
+  if (!tpl) return false;
+  if (tpl.swapOnDamage && tpl.swapOnDamageAllowZero) return true;
+  if (tpl.enableDamageEffectsOnZero) return true;
+  return false;
+}
+
 function findUnitRef(state, ref = {}) {
   if (!state?.board) return { unit: null, r: null, c: null };
   const { uid, r, c } = ref || {};
@@ -294,7 +308,7 @@ export function collectDamageInteractions(state, context = {}) {
   for (const h of hits) {
     if (!h) continue;
     const dealt = h.dealt ?? h.dmg ?? 0;
-    if (dealt <= 0) continue;
+    if (!shouldProcessZeroDamageInteractions(tpl, dealt)) continue;
     const cell = state.board?.[h.r]?.[h.c];
     const target = cell?.unit;
     if (!target) continue;
@@ -406,6 +420,12 @@ export function applyDamageInteractionResults(state, effects = {}) {
       if (attackerLog) logs.push(attackerLog);
       const targetLog = describeShift(shiftTarget, targetName);
       if (targetLog) logs.push(targetLog);
+      const attackerHazard = applyFieldFatalityCheckInternal(attackerUnit, tplAttacker, targetPrevElement);
+      const targetHazard = applyFieldFatalityCheckInternal(targetUnit, tplTarget, attackerPrevElement);
+      const attackerFatalLog = describeFieldFatalityInternal(tplAttacker, attackerHazard, { name: attackerName });
+      if (attackerFatalLog) logs.push(attackerFatalLog);
+      const targetFatalLog = describeFieldFatalityInternal(tplTarget, targetHazard, { name: targetName });
+      if (targetFatalLog) logs.push(targetFatalLog);
     } else if (ev?.type === 'ROTATE_TARGET') {
       const target = findUnitRef(state, ev.target);
       if (!target.unit) continue;
@@ -456,6 +476,9 @@ export function applyDamageInteractionResults(state, effects = {}) {
           logs.push(`${targetName} теряет силу на ${fieldLabel}: HP ${prev}→${next}.`);
         }
       }
+      const hazard = applyFieldFatalityCheckInternal(state.board[to.r][to.c]?.unit, tplTarget, toElement);
+      const fatalLog = describeFieldFatalityInternal(tplTarget, hazard, { name: targetName });
+      if (fatalLog) logs.push(fatalLog);
     }
   }
 
@@ -794,6 +817,9 @@ export const attemptUnitDodge = attemptDodgeInternal;
 export const refreshContinuousPossessions = refreshContinuousPossessionsInternal;
 export { refreshBoardDodgeStates };
 export const applyTurnStartManaEffects = applyTurnStartManaEffectsInternal;
+export const evaluateFieldFatality = evaluateFieldFatalityInternal;
+export const applyFieldFatalityCheck = applyFieldFatalityCheckInternal;
+export const describeFieldFatality = describeFieldFatalityInternal;
 
 export function collectUnitActions(state, r, c) {
   const actions = [];
