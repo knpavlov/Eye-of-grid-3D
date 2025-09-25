@@ -159,7 +159,8 @@ import { getServerBase } from './config.js';
           // фиксируем фактическое здоровье, а не базовое
           const hp = (typeof u?.currentHP === 'number') ? u.currentHP : u?.hp;
           return u ? { o: u.owner, h: hp, a: u.atk, f: u.facing, t: u.tplId } : null;
-        }))
+        })),
+        pendingDiscards: (state.pendingDiscards||[]).map(req => req ? ({ id: req.id, target: req.target, remaining: req.remaining, requested: req.requested }) : null)
       };
       return JSON.stringify(compact);
     } catch { return '';}
@@ -886,8 +887,25 @@ import { getServerBase } from './config.js';
     // Lock only when seat is known; otherwise do not block input
     if (!lock) return;
     const myKnown = (typeof MY_SEAT === 'number');
-    const shouldLock = (typeof NET_ON === 'function' ? NET_ON() : false) &&
+    let shouldLock = (typeof NET_ON === 'function' ? NET_ON() : false) &&
       gameState && myKnown && (gameState.active !== MY_SEAT);
+    if (shouldLock) {
+      try {
+        const seats = (typeof MY_SEAT === 'number') ? [MY_SEAT] : [0, 1];
+        const queue = Array.isArray(gameState?.pendingDiscards) ? gameState.pendingDiscards : [];
+        const hasLocalPending = queue.some(req => req && req.remaining > 0 && seats.includes(req.target));
+        if (hasLocalPending) {
+          shouldLock = false;
+        }
+      } catch {}
+    }
+    if (shouldLock) {
+      try {
+        if (typeof window !== 'undefined' && window.__ui?.discardManager?.hasActiveLocalRequest?.()) {
+          shouldLock = false;
+        }
+      } catch {}
+    }
     lock.classList.toggle('on', !!shouldLock);
   }
 
@@ -905,8 +923,11 @@ import { getServerBase } from './config.js';
     try {
       if (window.__ui && window.__ui.turnTimer) {
         const tt = window.__ui.turnTimer.attach('end-turn-btn');
+        const suppressed = !!window.__ui?.discardManager?.isTurnTimerSuppressed?.();
         tt.stop();
-        tt.set(Math.max(0, Math.min(100, Number(seconds)||0)));
+        if (!suppressed) {
+          tt.set(Math.max(0, Math.min(100, Number(seconds) || 0)));
+        }
       }
     } catch {}
 
