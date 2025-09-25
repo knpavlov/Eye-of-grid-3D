@@ -3,9 +3,11 @@
 export function isInputLocked() {
   const splash = (typeof window !== 'undefined' && window.__ui && window.__ui.banner)
     ? !!window.__ui.banner.getState()._splashActive : false;
+  const discardBlock = (typeof window !== 'undefined' && window.__ui?.discardManager?.isActiveSeatBlocked?.()) || false;
   return (typeof window !== 'undefined' && window.__endTurnInProgress) ||
          (typeof window !== 'undefined' && window.drawAnimationActive) ||
-         splash || (typeof window !== 'undefined' && window.manaGainActive);
+         splash || (typeof window !== 'undefined' && window.manaGainActive) ||
+         discardBlock;
 }
 
 export function refreshInputLockUI() {
