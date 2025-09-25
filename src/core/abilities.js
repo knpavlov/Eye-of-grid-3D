@@ -35,6 +35,7 @@ import {
 } from './abilityHandlers/auraModifiers.js';
 import { hasAuraInvisibility } from './abilityHandlers/invisibilityAura.js';
 import { applyEnemySummonReactions } from './abilityHandlers/summonReactions.js';
+import { applySummonStatBuffs } from './abilityHandlers/summonBuffs.js';
 import { applyTurnStartManaEffects as applyTurnStartManaEffectsInternal } from './abilityHandlers/startPhase.js';
 import {
   computeUnitProtection as computeUnitProtectionInternal,
@@ -263,10 +264,22 @@ function directionBetween(from, to) {
   return null;
 }
 
-function computeFacingAway(targetRef, attackerRef) {
-  const dirToAttacker = directionBetween(targetRef, attackerRef);
-  if (!dirToAttacker) return null;
-  return OPPOSITE_DIR[dirToAttacker] || null;
+function computeFacingAway(targetRef = {}, attackerRef = {}) {
+  // Определяем направление на атакующего без привязки к дистанции
+  const tr = Number.isInteger(targetRef.r) ? targetRef.r : null;
+  const tc = Number.isInteger(targetRef.c) ? targetRef.c : null;
+  const ar = Number.isInteger(attackerRef.r) ? attackerRef.r : null;
+  const ac = Number.isInteger(attackerRef.c) ? attackerRef.c : null;
+  if (tr == null || tc == null || ar == null || ac == null) return null;
+  const dr = ar - tr;
+  const dc = ac - tc;
+  if (dr === 0 && dc === 0) return null;
+  if (dr !== 0 && dc !== 0) return null;
+  if (dr < 0) return 'S';
+  if (dr > 0) return 'N';
+  if (dc < 0) return 'E';
+  if (dc > 0) return 'W';
+  return null;
 }
 
 // Проверяем, нужно ли активировать эффекты "при нанесении урона" даже при нулевом уроне
@@ -634,6 +647,14 @@ export function applySummonAbilities(state, r, c) {
   if (!cell || !unit) return events;
   const tpl = getUnitTemplate(unit);
   if (!tpl) return events;
+
+  const summonBuffs = applySummonStatBuffs(state, r, c);
+  if (Array.isArray(summonBuffs?.logs) && summonBuffs.logs.length) {
+    events.logs = [...(events.logs || []), ...summonBuffs.logs];
+  }
+  if (Array.isArray(summonBuffs?.statBuffs) && summonBuffs.statBuffs.length) {
+    events.statBuffs = [...(events.statBuffs || []), ...summonBuffs.statBuffs];
+  }
 
   const drawRes = applySummonDraw(state, r, c, unit, tpl);
   if (Array.isArray(drawRes?.events) && drawRes.events.length) {

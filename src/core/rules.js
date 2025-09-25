@@ -25,6 +25,7 @@ import {
 import { computeCellBuff } from './fieldEffects.js';
 import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
+import { getHpConditionalBonuses } from './abilityHandlers/conditionalBonuses.js';
 import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
 
 export function hasAdjacentGuard(state, r, c) {
@@ -88,7 +89,8 @@ export function effectiveStats(cell, unit, opts = {}) {
   const tpl = unit ? CARDS[unit.tplId] : null;
   const buff = computeCellBuff(cell?.element, tpl?.element);
   const tempAtk = typeof unit?.tempAtkBuff === 'number' ? unit.tempAtkBuff : 0;
-  let atk = (tpl?.atk || 0) + buff.atk + tempAtk;
+  const permAtk = typeof unit?.permanentAtkBuff === 'number' ? unit.permanentAtkBuff : 0;
+  let atk = (tpl?.atk || 0) + buff.atk + tempAtk + permAtk;
   const extra = typeof unit?.bonusHP === 'number' ? unit.bonusHP : 0;
   let hp = (tpl?.hp || 0) + buff.hp + extra;
   const state = opts?.state;
@@ -105,6 +107,10 @@ export function effectiveStats(cell, unit, opts = {}) {
         atk += aura;
       }
     }
+  }
+  const hpConditional = getHpConditionalBonuses(unit, tpl);
+  if (hpConditional?.attackBonus) {
+    atk += hpConditional.attackBonus;
   }
   return { atk: Math.max(0, Math.floor(atk)), hp: Math.max(0, Math.floor(hp)) };
 }
@@ -333,6 +339,10 @@ export function stagedAttack(state, r, c, opts = {}) {
   if (targetBonus) {
     atk += targetBonus.amount;
     logLines.push(`${tplA.name}: +${targetBonus.amount} ATK против существ стихии ${targetBonus.element}`);
+  }
+  const hpConditional = getHpConditionalBonuses(attacker, tplA);
+  if (hpConditional?.attackBonus) {
+    logLines.push(`${tplA.name}: +${hpConditional.attackBonus} ATK при ${hpConditional.hp} HP.`);
   }
   if (tplA.randomPlus2 && Math.random() < 0.5) {
     atk += 2;
