@@ -35,6 +35,7 @@ import {
 } from './abilityHandlers/auraModifiers.js';
 import { hasAuraInvisibility } from './abilityHandlers/invisibilityAura.js';
 import { applyEnemySummonReactions } from './abilityHandlers/summonReactions.js';
+import { applySummonStatBuffs } from './abilityHandlers/summonBuffs.js';
 import { applyTurnStartManaEffects as applyTurnStartManaEffectsInternal } from './abilityHandlers/startPhase.js';
 import {
   computeUnitProtection as computeUnitProtectionInternal,
@@ -256,10 +257,10 @@ function directionBetween(from, to) {
   if (!from || !to) return null;
   const dr = (to.r ?? 0) - (from.r ?? 0);
   const dc = (to.c ?? 0) - (from.c ?? 0);
-  if (dr === -1 && dc === 0) return 'N';
-  if (dr === 1 && dc === 0) return 'S';
-  if (dr === 0 && dc === 1) return 'E';
-  if (dr === 0 && dc === -1) return 'W';
+  if (dr < 0 && dc === 0) return 'N';
+  if (dr > 0 && dc === 0) return 'S';
+  if (dr === 0 && dc > 0) return 'E';
+  if (dr === 0 && dc < 0) return 'W';
   return null;
 }
 
@@ -634,6 +635,14 @@ export function applySummonAbilities(state, r, c) {
   if (!cell || !unit) return events;
   const tpl = getUnitTemplate(unit);
   if (!tpl) return events;
+
+  const summonBuffs = applySummonStatBuffs(state, r, c);
+  if (Array.isArray(summonBuffs?.logs) && summonBuffs.logs.length) {
+    events.logs = [...(events.logs || []), ...summonBuffs.logs];
+  }
+  if (Array.isArray(summonBuffs?.statBuffs) && summonBuffs.statBuffs.length) {
+    events.statBuffs = [...(events.statBuffs || []), ...summonBuffs.statBuffs];
+  }
 
   const drawRes = applySummonDraw(state, r, c, unit, tpl);
   if (Array.isArray(drawRes?.events) && drawRes.events.length) {
