@@ -69,10 +69,14 @@ export function applyIncarnationSummon(state, context = {}) {
   const cell = board?.[r]?.[c];
   const removedUnit = cell?.unit || null;
   const removedTpl = getTemplate(removedUnit?.tplId);
+  const deathInfo = removedUnit
+    ? [{ r, c, owner: removedUnit.owner, tplId: removedUnit.tplId, uid: removedUnit.uid ?? null, element: cell?.element || null }]
+    : null;
   if (cell) cell.unit = null;
   return {
     ok: true,
     cost: check.cost,
     sacrifice: cloneSacrificeInfo(removedUnit, removedTpl, { r, c }),
+    death: deathInfo,
   };
 }
