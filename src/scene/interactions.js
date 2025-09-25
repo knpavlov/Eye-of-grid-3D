@@ -892,6 +892,8 @@ export function placeUnitWithDirection(direction) {
         window.addLog(text);
       }
     }
+    // При мгновенной смерти существо считается призванным, поэтому передаём ход оппоненту
+    endTurnAfterSummon();
     // очищаем возможные состояния выбора цели, чтобы не блокировать интерфейс после мгновенной смерти
     interactionState.magicFrom = null;
     interactionState.pendingAttack = null;
@@ -1018,6 +1020,8 @@ export function placeUnitWithDirection(direction) {
         // Если существо погибло мгновенно, не запускаем выбор целей и выходим из обработки анимации
         interactionState.autoEndTurnAfterAttack = false;
         try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+        // Визуальная часть завершилась, а ход уже должен перейти оппоненту
+        endTurnAfterSummon();
         if (unlockTriggered) {
           setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0);
         }
