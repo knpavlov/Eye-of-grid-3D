@@ -113,6 +113,16 @@ describe('guards and hits', () => {
     expect(coords).toEqual(['0,1','1,1']);
   });
 
+  it('Vulitra контратакует только ближнюю клетку', () => {
+    const state = { board: makeBoard() };
+    state.board[1][1].unit = { owner: 0, tplId: 'EARTH_BLACK_HOOD_DWARF_VULITRA', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_HELLFIRE_SPITTER', facing: 'S', currentHP: 1 };
+    state.board[2][1].unit = { owner: 0, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'N', currentHP: 2 };
+    const hits = computeHits(state, 1, 1, { purpose: 'RETALIATION', target: { r: 0, c: 1 }, union: true });
+    const coords = hits.map(h => `${h.r},${h.c}`).sort();
+    expect(coords).toEqual(['0,1']);
+  });
+
   it('stagedAttack: Great Minos задевает союзника, если есть враг', () => {
     const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
     state.board[2][1].unit = { owner:0, tplId:'FIRE_GREAT_MINOS', facing:'N' };

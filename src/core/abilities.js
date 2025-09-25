@@ -135,6 +135,7 @@ export function resolveAttackProfile(state, r, c, tpl, opts = {}) {
   const schemeMap = buildSchemeMap(tpl);
   const defaultKey = tpl.defaultAttackScheme || 'BASE';
   const defaultScheme = schemeMap.get(defaultKey) || (schemeMap.size ? schemeMap.values().next().value : null);
+  const purpose = opts.purpose || null;
 
   const requirements = normalizeSchemeRequirements(tpl.mustUseSchemeOnElement);
   let active = null;
@@ -169,6 +170,22 @@ export function resolveAttackProfile(state, r, c, tpl, opts = {}) {
       chooseDir: tpl.chooseDir,
       magicAttackArea: tpl.magicAttackArea,
     };
+  }
+
+  if (purpose === 'RETALIATION') {
+    const altKey = tpl.retaliationSchemeKey || tpl.retaliationScheme || tpl.retaliationProfileKey;
+    if (altKey && schemeMap.has(altKey)) {
+      active = schemeMap.get(altKey);
+    } else if (tpl.retaliationProfile) {
+      const rp = tpl.retaliationProfile || {};
+      active = {
+        key: rp.key || rp.schemeKey || 'RETALIATION',
+        attackType: rp.attackType || tpl.attackType,
+        attacks: Array.isArray(rp.attacks) ? rp.attacks.map(cloneAttackEntry) : [],
+        chooseDir: rp.chooseDir != null ? !!rp.chooseDir : !!tpl.chooseDir,
+        magicAttackArea: rp.magicAttackArea != null ? rp.magicAttackArea : tpl.magicAttackArea,
+      };
+    }
   }
 
   const attackType = active.attackType || tpl.attackType || 'STANDARD';

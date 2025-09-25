@@ -3,9 +3,20 @@
 export function isInputLocked() {
   const splash = (typeof window !== 'undefined' && window.__ui && window.__ui.banner)
     ? !!window.__ui.banner.getState()._splashActive : false;
-  return (typeof window !== 'undefined' && window.__endTurnInProgress) ||
-         (typeof window !== 'undefined' && window.drawAnimationActive) ||
-         splash || (typeof window !== 'undefined' && window.manaGainActive);
+
+  const baseLock = (typeof window !== 'undefined' && window.__endTurnInProgress) ||
+    (typeof window !== 'undefined' && window.drawAnimationActive) ||
+    splash || (typeof window !== 'undefined' && window.manaGainActive);
+
+  if (typeof window !== 'undefined') {
+    const forced = window.__interactions?.interactionState?.pendingDiscardSelection;
+    if (forced?.forced) {
+      // Принудительный сброс должен работать независимо от статуса активного игрока
+      return false;
+    }
+  }
+
+  return baseLock;
 }
 
 export function refreshInputLockUI() {
