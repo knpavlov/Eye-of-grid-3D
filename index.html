@@ -461,7 +461,7 @@
     // UI wrappers: use modules only
     try { showNotification = (message, type) => window.__ui.notifications.show(message, type); } catch {}
     try { addLog = (message) => window.__ui.log.add(message); } catch {}
-    try { animateManaGainFromWorld = (pos, ownerIndex, visualOnly) => window.__ui.mana.animateManaGainFromWorld(pos, ownerIndex, visualOnly); } catch {}
+    try { animateManaGainFromWorld = (...args) => window.__ui.mana.animateManaGainFromWorld(...args); } catch {}
     // animateTurnManaGain теперь вызывается напрямую через модуль
       
 

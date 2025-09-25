@@ -628,6 +628,44 @@ export async function endTurn() {
     } catch (e) {
       console.error('Mana animation failed:', e);
     }
+
+    // Анимация дополнительной маны от существ: запускаем отдельные орбы с поля
+    const extraManaEntries = Array.isArray(manaEffects.entries)
+      ? manaEffects.entries.filter(entry => entry && typeof entry.r === 'number' && typeof entry.c === 'number' && entry.amount > 0)
+      : [];
+    if (extraManaEntries.length) {
+      try {
+        const sceneCtx = w.__scene?.getCtx?.();
+        const tileMeshes = sceneCtx?.tileMeshes;
+        const THREE = sceneCtx?.THREE || w.THREE;
+        const animateFromWorld = w.__ui?.mana?.animateManaGainFromWorld;
+        if (tileMeshes && THREE && typeof THREE.Vector3 === 'function' && typeof animateFromWorld === 'function') {
+          const baseGain = Math.max(0, Math.min(10, before + 2) - before);
+          let slotCursor = Math.min(10, before + baseGain);
+          for (const entry of extraManaEntries) {
+            const amount = Math.max(0, Math.floor(entry.amount || 0));
+            if (amount <= 0) continue;
+            if (slotCursor >= 10) break;
+            const tile = tileMeshes?.[entry.r]?.[entry.c];
+            const pos = tile?.position;
+            if (!pos || typeof pos.clone !== 'function') continue;
+            const origin = pos.clone().add(new THREE.Vector3(0, 1.2, 0));
+            const remaining = Math.max(0, 10 - slotCursor);
+            const actualAmount = Math.min(remaining, amount);
+            if (actualAmount <= 0) continue;
+            animateFromWorld(origin, gameState.active, {
+              visualOnly: true,
+              amount: actualAmount,
+              startSlot: slotCursor,
+              spreadDelayMs: 110,
+            });
+            slotCursor = Math.min(10, slotCursor + actualAmount);
+          }
+        }
+      } catch (err) {
+        console.warn('Не удалось воспроизвести анимацию дополнительной маны:', err);
+      }
+    }
     // После получения маны сразу запускаем добор карты без лишней паузы
     w.updateUI?.();
     const runDrawAnimation = async () => {
