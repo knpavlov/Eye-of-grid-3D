@@ -2,6 +2,9 @@
 // Логика изолирована от визуальной части для дальнейшего переиспользования
 import { CARDS } from '../cards.js';
 
+export const ROTATE_TARGET_MODE_FACE_AWAY = 'FACE_AWAY_FROM_ATTACKER';
+export const ROTATE_TARGET_MODE_REVERSE = 'REVERSE_CURRENT_FACING';
+
 const inBounds = (r, c) => r >= 0 && r < 3 && c >= 0 && c < 3;
 
 function getUnitUid(unit) {
@@ -49,6 +52,50 @@ function normalizePushConfig(raw) {
   return base;
 }
 
+function normalizeRotateModeValue(raw) {
+  if (raw == null) return null;
+  const text = String(raw).trim().toUpperCase();
+  if (!text) return null;
+  if (text === 'FACE_AWAY' || text === 'AWAY' || text === ROTATE_TARGET_MODE_FACE_AWAY) {
+    return ROTATE_TARGET_MODE_FACE_AWAY;
+  }
+  if (
+    text === 'REVERSE' ||
+    text === 'OPPOSITE' ||
+    text === 'FLIP' ||
+    text === 'TURN_BACK' ||
+    text === ROTATE_TARGET_MODE_REVERSE
+  ) {
+    return ROTATE_TARGET_MODE_REVERSE;
+  }
+  return null;
+}
+
+function normalizeRotateConfig(raw) {
+  if (!raw) return null;
+  if (raw === true) return { mode: ROTATE_TARGET_MODE_FACE_AWAY };
+  if (typeof raw === 'string') {
+    const mode = normalizeRotateModeValue(raw);
+    return mode ? { mode } : null;
+  }
+  if (typeof raw === 'object') {
+    const { mode, type, behavior, behaviour } = raw;
+    const fromFields = normalizeRotateModeValue(mode || type || behavior || behaviour);
+    if (fromFields) return { mode: fromFields };
+    if (raw.reverse === true || raw.flip === true || raw.turnAround === true) {
+      return { mode: ROTATE_TARGET_MODE_REVERSE };
+    }
+    if (raw.faceAway === true) {
+      return { mode: ROTATE_TARGET_MODE_FACE_AWAY };
+    }
+    if (raw.faceAway === false) {
+      return { mode: ROTATE_TARGET_MODE_REVERSE };
+    }
+    return { mode: ROTATE_TARGET_MODE_FACE_AWAY };
+  }
+  return null;
+}
+
 function directionBetween(from, to) {
   if (!from || !to) return null;
   const dr = (to.r ?? 0) - (from.r ?? 0);
@@ -77,7 +124,7 @@ export function collectRepositionOnDamage(state, context = {}) {
   );
   const allowSwapAny = !!tpl.swapOnDamage;
   const pushCfg = normalizePushConfig(tpl.pushTargetOnDamage);
-  const rotateOnDamage = !!tpl.rotateTargetOnDamage;
+  const rotateCfg = normalizeRotateConfig(tpl.rotateTargetOnDamage);
 
   let swapTriggered = false;
 
@@ -107,11 +154,12 @@ export function collectRepositionOnDamage(state, context = {}) {
       }
     }
 
-    if (rotateOnDamage) {
+    if (rotateCfg) {
       events.push({
         type: 'ROTATE_TARGET',
         target: { uid: getUnitUid(target), r: hit.r, c: hit.c, tplId: tplTarget?.id ?? target.tplId },
-        faceAwayFrom: attackerRef,
+        faceAwayFrom: rotateCfg.mode === ROTATE_TARGET_MODE_FACE_AWAY ? attackerRef : null,
+        mode: rotateCfg.mode,
       });
       prevent.add(key);
     }

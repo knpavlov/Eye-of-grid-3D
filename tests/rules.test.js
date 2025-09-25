@@ -154,6 +154,28 @@ describe('guards and hits', () => {
     expect(goblinHit.dmg).toBe(CARDS.FIRE_HELLFIRE_SPITTER.atk);
   });
 
+  it('Bewitching Elf Archeress разворачивает цель на 180° даже на дистанции 2', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'FOREST_BEWITCHING_ELF_ARCHERESS',
+      facing: 'N',
+      currentHP: CARDS.FOREST_BEWITCHING_ELF_ARCHERESS.hp,
+    };
+    state.board[0][1].unit = {
+      owner: 1,
+      tplId: 'FIRE_PARTMOLE_FLAME_LIZARD',
+      facing: 'E',
+      currentHP: CARDS.FIRE_PARTMOLE_FLAME_LIZARD.hp,
+    };
+    const res = stagedAttack(state, 2, 1);
+    const fin = res.finish();
+    const target = fin.n1.board[0][1].unit;
+    expect(target).toBeTruthy();
+    expect(target.currentHP).toBeGreaterThan(0);
+    expect(target.facing).toBe('W');
+  });
+
   it('существо со стандартным blind spot получает +1 урона со спины', () => {
     const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
     state.board[1][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'N', currentHP: 2 };
@@ -861,6 +883,130 @@ describe('новые способности (Хильда и Диос)', () => {
     const sideHit = res.targets.find(t => t.r === 0 && t.c === 0);
     expect(sideHit).toBeTruthy();
     expect(sideHit.dmg).toBe(fireFields);
+  });
+});
+
+describe('новые лесные и земные карты', () => {
+  it('Green Lycanthrope получает случайный бафф при удачном броске', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'FOREST';
+    state.board[1][1].unit = {
+      owner: 0,
+      tplId: 'FOREST_GREEN_LYCANTHROPE',
+      facing: 'N',
+      currentHP: CARDS.FOREST_GREEN_LYCANTHROPE.hp,
+    };
+    const originalRandom = Math.random;
+    Math.random = () => 0.4;
+    try {
+      const events = applySummonAbilities(state, 1, 1);
+      const unit = state.board[1][1].unit;
+      expect(unit.bonusHP).toBe(3);
+      expect(unit.currentHP).toBe(CARDS.FOREST_GREEN_LYCANTHROPE.hp + 3);
+      expect(unit.permanentAtkBuff).toBe(2);
+      expect(Array.isArray(events.statBuffs)).toBe(true);
+      expect(events.statBuffs[0]).toMatchObject({ hp: 3, atk: 2 });
+    } finally {
+      Math.random = originalRandom;
+    }
+  });
+
+  it('Elven Berserker Maiden получает бонус к атаке и dodge при 1 HP', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'FOREST';
+    state.board[1][1].unit = {
+      owner: 0,
+      tplId: 'FOREST_ELVEN_BERSERKER_MAIDEN',
+      facing: 'N',
+      currentHP: 1,
+    };
+    state.board[0][1].unit = {
+      owner: 1,
+      tplId: 'FIRE_FLAME_MAGUS',
+      facing: 'S',
+      currentHP: CARDS.FIRE_FLAME_MAGUS.hp,
+    };
+    const stats = effectiveStats(state.board[1][1], state.board[1][1].unit, { state, r: 1, c: 1 });
+    expect(stats.atk).toBe(3);
+    refreshBoardDodgeStates(state);
+    expect(state.board[1][1].unit.dodgeState).toMatchObject({ limited: true, max: 1 });
+    const battle = stagedAttack(state, 1, 1);
+    const fin = battle.finish();
+    const target = fin.targets.find(t => t.r === 0 && t.c === 1);
+    expect(target.dmg).toBeGreaterThanOrEqual(3);
+  });
+
+  it('Giant Axe Dwarf масштабирует атаку от Stone Wing Dwarf', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].element = 'EARTH';
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'EARTH_GIANT_AXE_DWARF',
+      facing: 'N',
+      currentHP: CARDS.EARTH_GIANT_AXE_DWARF.hp,
+    };
+    state.board[1][1].unit = {
+      owner: 1,
+      tplId: 'FIRE_FLAME_MAGUS',
+      facing: 'S',
+      currentHP: CARDS.FIRE_FLAME_MAGUS.hp,
+    };
+    state.board[0][0].unit = {
+      owner: 0,
+      tplId: 'EARTH_STONE_WING_DWARF',
+      facing: 'E',
+      currentHP: CARDS.EARTH_STONE_WING_DWARF.hp,
+    };
+    state.board[0][2].unit = {
+      owner: 0,
+      tplId: 'EARTH_STONE_WING_DWARF',
+      facing: 'W',
+      currentHP: CARDS.EARTH_STONE_WING_DWARF.hp,
+    };
+    const battle = stagedAttack(state, 2, 1);
+    const fin = battle.finish();
+    const target = fin.targets.find(t => t.r === 1 && t.c === 1);
+    expect(target.dmg).toBeGreaterThanOrEqual(3);
+  });
+
+  it('Verzar Foot Soldier получает +1 ATK при союзнике и теряет его при отсутствии', () => {
+    const buildState = (withAlly) => {
+      const st = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+      st.board[2][0].element = 'EARTH';
+      st.board[2][0].unit = {
+        owner: 0,
+        tplId: 'EARTH_VERZAR_FOOT_SOLDIER',
+        facing: 'N',
+        currentHP: CARDS.EARTH_VERZAR_FOOT_SOLDIER.hp,
+      };
+      if (withAlly) {
+        st.board[2][2].unit = {
+          owner: 0,
+          tplId: 'EARTH_VERZAR_FOOT_SOLDIER',
+          facing: 'N',
+          currentHP: CARDS.EARTH_VERZAR_FOOT_SOLDIER.hp,
+        };
+      }
+      st.board[1][0].unit = {
+        owner: 1,
+        tplId: 'FIRE_FLAME_MAGUS',
+        facing: 'S',
+        currentHP: CARDS.FIRE_FLAME_MAGUS.hp,
+      };
+      return st;
+    };
+
+    const stateWithAlly = buildState(true);
+    const battleWithAlly = stagedAttack(stateWithAlly, 2, 0);
+    const finWithAlly = battleWithAlly.finish();
+    const targetWith = finWithAlly.targets.find(t => t.r === 1 && t.c === 0);
+    expect(targetWith.dmg).toBeGreaterThanOrEqual(2);
+
+    const stateWithout = buildState(false);
+    const battleWithout = stagedAttack(stateWithout, 2, 0);
+    const finWithout = battleWithout.finish();
+    const targetWithout = finWithout.targets.find(t => t.r === 1 && t.c === 0);
+    expect(targetWith.dmg - targetWithout.dmg).toBe(1);
   });
 });
 

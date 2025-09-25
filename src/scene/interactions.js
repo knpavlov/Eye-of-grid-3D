@@ -929,6 +929,21 @@ export function placeUnitWithDirection(direction) {
         })(drawnCards);
       }
     }
+    if (Array.isArray(summonEvents?.logs) && summonEvents.logs.length) {
+      for (const text of summonEvents.logs) {
+        if (!text) continue;
+        window.addLog?.(text);
+      }
+    }
+    if (Array.isArray(summonEvents?.statBuffs) && summonEvents.statBuffs.length) {
+      for (const buff of summonEvents.statBuffs) {
+        if (!buff) continue;
+        const { r: br, c: bc, hp } = buff;
+        if (hp && typeof br === 'number' && typeof bc === 'number') {
+          window.__fx?.scheduleHpPopup?.(br, bc, hp, 600);
+        }
+      }
+    }
     if (Array.isArray(summonEvents?.dodgeUpdates) && summonEvents.dodgeUpdates.length) {
       logDodgeUpdates(summonEvents.dodgeUpdates, gameState, cardData?.name || null);
     }
