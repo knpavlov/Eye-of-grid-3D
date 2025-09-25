@@ -25,6 +25,7 @@ import {
 import { computeCellBuff } from './fieldEffects.js';
 import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
+import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -121,6 +122,7 @@ export function computeHits(state, r, c, opts = {}) {
   const tplA = CARDS[attacker.tplId];
   const profile = opts.profile || resolveAttackProfile(state, r, c, tplA, { unit: attacker, cell });
   const attackType = profile?.attackType || tplA?.attackType || 'STANDARD';
+  const isMagicAttack = attackType === 'MAGIC';
   // tplA.friendlyFire — может ли атака задевать союзников
   const cells = attackCellsFromProfile(profile, tplA, attacker.facing, opts);
   const { atk } = effectiveStats(cell, attacker, { state, r, c });
@@ -133,6 +135,9 @@ export function computeHits(state, r, c, opts = {}) {
   const baseSkipAllies = !!(tplA.ignoreAlliedBlocking || tplA.ignoreFriendlyBlocking || tplA.skipAlliedBlocking);
   const allowFriendly = !!tplA.friendlyFire; // может ли существо задевать союзников
   const forceBackAttack = !!tplA.backAttack;
+  const retaliationRangeCap = opts.retaliation && typeof tplA?.retaliationRangeCap === 'number'
+    ? tplA.retaliationRangeCap
+    : null;
   const grouped = new Map();
   let fallbackIdx = 0;
   for (const cell of cells) {
@@ -149,6 +154,7 @@ export function computeHits(state, r, c, opts = {}) {
       const nr = r + dr * cell.range;
       const nc = c + dc * cell.range;
       if (!inBounds(nr, nc)) continue;
+      if (retaliationRangeCap != null && cell.range > retaliationRangeCap) continue;
       evaluated.push({ cell, dr, dc, nr, nc });
     }
     if (!evaluated.length) continue;
@@ -220,12 +226,18 @@ export function computeHits(state, r, c, opts = {}) {
         const backDir = { N: 'S', S: 'N', E: 'W', W: 'E' }[B.facing];
         const [bdr, bdc] = DIR_VECTORS[backDir] || [0, 0];
         let isBack = (nr + bdr === r && nc + bdc === c);
-        const dirAbsFromB = (() => {
-          if (r === nr - 1 && c === nc) return 'N';
-          if (r === nr + 1 && c === nc) return 'S';
-          if (r === nr && c === nc - 1) return 'W';
-          return 'E';
-        })();
+        const drFromB = r - nr;
+        const dcFromB = c - nc;
+        let dirAbsFromB;
+        if (Math.abs(drFromB) > Math.abs(dcFromB)) {
+          dirAbsFromB = drFromB < 0 ? 'N' : 'S';
+        } else if (Math.abs(dcFromB) > Math.abs(drFromB)) {
+          dirAbsFromB = dcFromB < 0 ? 'W' : 'E';
+        } else if (drFromB === 0 && dcFromB === 0) {
+          dirAbsFromB = B.facing;
+        } else {
+          dirAbsFromB = drFromB < 0 ? 'N' : 'S';
+        }
         const ORDER = ['N', 'E', 'S', 'W'];
         const absIdx = ORDER.indexOf(dirAbsFromB);
         const faceIdx = ORDER.indexOf(B.facing);
@@ -240,7 +252,7 @@ export function computeHits(state, r, c, opts = {}) {
         const blindRaw = hasExplicitBlind ? tplB.blindspots : ['S'];
         const blind = Array.isArray(blindRaw) ? blindRaw : ['S'];
         const inBlind = blind.includes(dirRel);
-        const extraTotal = inBlind ? 1 : 0;
+        const extraTotal = (!isMagicAttack && inBlind) ? 1 : 0;
         const dmg = Math.max(0, atk + extraTotal);
         hits.push({ r: nr, c: nc, dmg, backstab: isBack, sameOwner: false });
         continue;
@@ -352,7 +364,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     if (!B) continue;
     const tplB = CARDS[B.tplId];
     if (!attackerQuick && hasFirstStrike(tplB)) {
-      const hitsB = computeHits(base, h.r, h.c, { target: { r, c }, union: true });
+      const hitsB = computeHits(base, h.r, h.c, { target: { r, c }, union: true, retaliation: true });
       if (hitsB.length) {
         const { atk: batk } = effectiveStats(base.board[h.r][h.c], B, { state: base, r: h.r, c: h.c });
         const baseDmg = Math.max(0, batk);
@@ -492,7 +504,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       if (tplB?.attackType === 'MAGIC' && !tplB?.allowMagicRetaliation) continue;
       // быстрота защитника уже сработала на stepQuick, если атакующий не был быстрым
       if (!attackerQuick && hasFirstStrike(tplB)) continue;
-      const hitsB = computeHits(n1, h.r, h.c, { target: { r, c }, union: true });
+      const hitsB = computeHits(n1, h.r, h.c, { target: { r, c }, union: true, retaliation: true });
       if (hitsB.length) {
         const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B, { state: n1, r: h.r, c: h.c });
         const baseDmg = Math.max(0, batk);
@@ -534,10 +546,11 @@ export function stagedAttack(state, r, c, opts = {}) {
 
     const deaths = [];
     for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
-      const u = nFinal.board?.[rr]?.[cc]?.unit;
+      const cellRef = nFinal.board?.[rr]?.[cc];
+      const u = cellRef?.unit;
       if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null });
-        nFinal.board[rr][cc].unit = null;
+        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: cellRef?.element || null });
+        if (cellRef) cellRef.unit = null;
       }
     }
 
@@ -567,6 +580,11 @@ export function stagedAttack(state, r, c, opts = {}) {
         }
         logLines.push(`${tplD.name}: союзники получают +${tplD.onDeathAddHPAll} HP`);
       }
+    }
+
+    const discardEffects = applyDeathDiscardEffects(nFinal, deaths, { cause: 'BATTLE' });
+    if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
+      logLines.push(...discardEffects.logs);
     }
 
     const releaseEvents = releasePossessionsAfterDeaths(nFinal, deaths);
@@ -852,10 +870,11 @@ export function magicAttack(state, fr, fc, tr, tc) {
 
   const deaths = [];
   for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
-    const u = n1.board[rr][cc].unit;
+    const cellRef = n1.board[rr][cc];
+    const u = cellRef.unit;
     if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null });
-      n1.board[rr][cc].unit = null;
+      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: cellRef?.element || null });
+      cellRef.unit = null;
     }
   }
   try {
@@ -865,6 +884,10 @@ export function magicAttack(state, fr, fc, tr, tc) {
       }
     }
   } catch {}
+  const discardEffects = applyDeathDiscardEffects(n1, deaths, { cause: 'MAGIC' });
+  if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
+    logLines.push(...discardEffects.logs);
+  }
   const releaseEvents = releasePossessionsAfterDeaths(n1, deaths);
   if (releaseEvents.releases.length) {
     for (const rel of releaseEvents.releases) {

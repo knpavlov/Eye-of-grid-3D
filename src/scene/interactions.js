@@ -12,6 +12,7 @@ import {
   isIncarnationCard,
 } from '../core/abilities.js';
 import { capMana } from '../core/constants.js';
+import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -34,13 +35,27 @@ export const interactionState = {
   spellDragHandled: false,
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
+  // необходимость повторного авто-завершения хода после призыва (учитываем дискард)
+  pendingAutoEndAfterSummon: false,
 };
 
 const AUTO_END_TURN_RETRY_MS = 120;
 const AUTO_END_TURN_MAX_ATTEMPTS = 60;
 
+export function hasPendingForcedDiscards() {
+  if (typeof window === 'undefined') return false;
+  const state = window.gameState;
+  if (!state) return false;
+  const queue = Array.isArray(state.pendingDiscards) ? state.pendingDiscards : [];
+  return queue.some(req => req && req.remaining > 0);
+}
+
 // Планировщик авто-завершения хода, который дожидается окончания анимаций и разблокировки ввода
-function scheduleAutoEndTurnRetry(delayMs = AUTO_END_TURN_RETRY_MS, maxAttempts = AUTO_END_TURN_MAX_ATTEMPTS) {
+function scheduleAutoEndTurnRetry(
+  delayMs = AUTO_END_TURN_RETRY_MS,
+  maxAttempts = AUTO_END_TURN_MAX_ATTEMPTS,
+  reason = 'GENERAL',
+) {
   if (typeof window === 'undefined') return;
   const w = window;
   let attempts = 0;
@@ -50,6 +65,10 @@ function scheduleAutoEndTurnRetry(delayMs = AUTO_END_TURN_RETRY_MS, maxAttempts 
     if (attempts >= maxAttempts) return;
     attempts += 1;
     if (w.__endTurnInProgress) {
+      setTimeout(tryFinish, delayMs);
+      return;
+    }
+    if (hasPendingForcedDiscards()) {
       setTimeout(tryFinish, delayMs);
       return;
     }
@@ -63,13 +82,20 @@ function scheduleAutoEndTurnRetry(delayMs = AUTO_END_TURN_RETRY_MS, maxAttempts 
       return;
     }
     try { w.endTurn(); } catch {}
+    if (reason === 'SUMMON') {
+      interactionState.pendingAutoEndAfterSummon = false;
+    }
   };
 
   setTimeout(tryFinish, delayMs);
 }
 
-export function requestAutoEndTurn() {
-  scheduleAutoEndTurnRetry();
+export function requestAutoEndTurn(opts = {}) {
+  const reason = typeof opts.reason === 'string' ? opts.reason : 'GENERAL';
+  if (reason === 'SUMMON') {
+    interactionState.pendingAutoEndAfterSummon = true;
+  }
+  scheduleAutoEndTurnRetry(AUTO_END_TURN_RETRY_MS, AUTO_END_TURN_MAX_ATTEMPTS, reason);
 }
 
 const META_TOOLTIP_SOURCE = 'meta-hover';
@@ -747,7 +773,7 @@ export function placeUnitWithDirection(direction) {
   const endTurnAfterSummon = () => {
     if (summonEndedTurn) return;
     summonEndedTurn = true;
-    requestAutoEndTurn();
+    requestAutoEndTurn({ reason: 'SUMMON' });
   };
   let incarnationResult = null;
   if (incarnation?.active) {
@@ -760,6 +786,14 @@ export function placeUnitWithDirection(direction) {
       return;
     }
     incarnationResult = applied;
+    if (Array.isArray(applied.death) && applied.death.length) {
+      const discardInfo = applyDeathDiscardEffects(gameState, applied.death, { cause: 'INCARNATION' });
+      if (Array.isArray(discardInfo?.logs)) {
+        for (const text of discardInfo.logs) {
+          window.addLog(text);
+        }
+      }
+    }
   }
   const unit = {
     uid: window.uid(),
@@ -833,6 +867,8 @@ export function placeUnitWithDirection(direction) {
       window.addLog(`${cardData.name}: союзники получают +${amount} HP`);
     }
     const owner = unit.owner;
+    const deathElement = gameState.board?.[row]?.[col]?.element || null;
+    const deathInfo = [{ r: row, c: col, owner, tplId: unit.tplId, uid: unit.uid ?? null, element: deathElement }];
     const slotBeforeGain = gameState.players?.[owner]?.mana || 0;
     try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
     const ownerPlayer = gameState.players?.[owner];
@@ -844,6 +880,12 @@ export function placeUnitWithDirection(direction) {
     const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
     window.animateManaGainFromWorld(pos, owner, true, slotBeforeGain);
     gameState.board[row][col].unit = null;
+    const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SUMMON' });
+    if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
+      for (const text of discardEffects.logs) {
+        window.addLog(text);
+      }
+    }
   }
   if (gameState.board[row][col].unit) {
     const summonEvents = applySummonAbilities(gameState, row, col);
