@@ -2,6 +2,7 @@
 // Позволяет повторно использовать логику как в браузере, так и при переносе в другие движки
 import { CARDS } from '../cards.js';
 import { getDodgeConfig, ensureDodgeState } from './dodge.js';
+import { computeHpConditionalDodge } from './conditionalBuffs.js';
 
 const DIRS = [
   { dr: -1, dc: 0 },
@@ -162,7 +163,9 @@ export function refreshBoardDodgeStates(state) {
         if (unit.dodgeState) delete unit.dodgeState;
         continue;
       }
-      const base = getDodgeConfig(tpl);
+      const conditional = computeHpConditionalDodge(unit, tpl);
+      const base = conditional || getDodgeConfig(tpl);
+      const baseFromConditional = !!conditional;
       const contrib = contributions.get(`${r},${c}`) || [];
       let totalAttempts = 0;
       let overrideChance = null;
@@ -185,7 +188,12 @@ export function refreshBoardDodgeStates(state) {
           successes: totalAttempts,
           keyword: totalAttempts === 1 ? 'DODGE_ATTEMPT' : 'DODGE_ATTEMPT',
         };
-        ensureDodgeState(unit, tpl, cfg);
+        const stateObj = ensureDodgeState(unit, tpl, cfg);
+        if (stateObj) {
+          stateObj.max = cfg.successes;
+          stateObj.remaining = cfg.successes;
+          stateObj.limited = true;
+        }
         updated.push({ r, c, attempts: cfg.successes, chance: cfg.chance });
         continue;
       }
@@ -196,8 +204,13 @@ export function refreshBoardDodgeStates(state) {
             successes: null,
             keyword: base.keyword,
           };
-          ensureDodgeState(unit, tpl, cfg);
-          if (overrideChance != null) {
+          const stateObj = ensureDodgeState(unit, tpl, cfg);
+          if (stateObj) {
+            stateObj.limited = false;
+            stateObj.max = null;
+            stateObj.remaining = null;
+          }
+          if (overrideChance != null || baseFromConditional) {
             updated.push({ r, c, unlimited: true, chance: cfg.chance });
           }
           continue;
@@ -207,7 +220,17 @@ export function refreshBoardDodgeStates(state) {
           successes: base.successes + totalAttempts,
           keyword: base.keyword,
         };
-        ensureDodgeState(unit, tpl, cfg);
+        const stateObj = ensureDodgeState(unit, tpl, cfg);
+        if (stateObj) {
+          stateObj.max = cfg.successes;
+          stateObj.limited = true;
+          if (baseFromConditional) {
+            stateObj.remaining = cfg.successes;
+            stateObj.successesUsed = 0;
+          } else if (typeof stateObj.remaining === 'number') {
+            stateObj.remaining = Math.min(stateObj.remaining, cfg.successes);
+          }
+        }
         updated.push({ r, c, attempts: cfg.successes, chance: cfg.chance });
       }
     }

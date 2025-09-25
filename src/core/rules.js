@@ -25,6 +25,7 @@ import {
 import { computeCellBuff } from './fieldEffects.js';
 import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
+import { computeHpAttackBonus } from './abilityHandlers/conditionalBuffs.js';
 import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
 
 export function hasAdjacentGuard(state, r, c) {
@@ -88,7 +89,8 @@ export function effectiveStats(cell, unit, opts = {}) {
   const tpl = unit ? CARDS[unit.tplId] : null;
   const buff = computeCellBuff(cell?.element, tpl?.element);
   const tempAtk = typeof unit?.tempAtkBuff === 'number' ? unit.tempAtkBuff : 0;
-  let atk = (tpl?.atk || 0) + buff.atk + tempAtk;
+  const permanentAtk = typeof unit?.permanentAtkBonus === 'number' ? unit.permanentAtkBonus : 0;
+  let atk = (tpl?.atk || 0) + buff.atk + tempAtk + permanentAtk;
   const extra = typeof unit?.bonusHP === 'number' ? unit.bonusHP : 0;
   let hp = (tpl?.hp || 0) + buff.hp + extra;
   const state = opts?.state;
@@ -105,6 +107,10 @@ export function effectiveStats(cell, unit, opts = {}) {
         atk += aura;
       }
     }
+  }
+  const hpConditional = computeHpAttackBonus(unit, tpl);
+  if (hpConditional?.amount) {
+    atk += hpConditional.amount;
   }
   return { atk: Math.max(0, Math.floor(atk)), hp: Math.max(0, Math.floor(hp)) };
 }
@@ -301,10 +307,19 @@ export function stagedAttack(state, r, c, opts = {}) {
   const dynamicBonus = computeDynamicAttackBonus(base, r, c, tplA);
   if (dynamicBonus?.amount) {
     atk += dynamicBonus.amount;
-    if (dynamicBonus.type === 'ELEMENT_CREATURES' && dynamicBonus.element) {
-      logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount} (существа стихии ${dynamicBonus.element})`);
-    } else {
-      logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount}`);
+    const parts = Array.isArray(dynamicBonus.parts) && dynamicBonus.parts.length
+      ? dynamicBonus.parts
+      : [dynamicBonus];
+    for (const part of parts) {
+      if (!part?.amount) continue;
+      if (part.type === 'ELEMENT_CREATURES' && part.element) {
+        logLines.push(`${tplA.name}: атака увеличена на ${part.amount} (существа стихии ${part.element})`);
+      } else if (part.type === 'ALLY_TEMPLATE_COUNT' && Array.isArray(part.templates)) {
+        const names = part.templateNames?.length ? part.templateNames.join(', ') : 'союзные существа';
+        logLines.push(`${tplA.name}: атака увеличена на ${part.amount} (союзники: ${names} — ${part.count})`);
+      } else {
+        logLines.push(`${tplA.name}: атака увеличена на ${part.amount}`);
+      }
     }
   }
   const targetBonus = getTargetElementBonus(tplA, base, hitsRaw);

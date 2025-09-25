@@ -337,6 +337,17 @@ export const CARDS = {
     desc: 'Fortress.\nAllied creatures on adjacent fields gain +2 Protection.\nDestroy Se Hollyn Fortress if it is on a Wood field.'
   },
 
+  EARTH_GIANT_AXE_DWARF: {
+    id: 'EARTH_GIANT_AXE_DWARF', name: 'Giant Axe Dwarf', type: 'UNIT', cost: 2, activation: 1,
+    element: 'EARTH', atk: 1, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    plusAtkPerAlliedTemplates: { templates: ['EARTH_STONE_WING_DWARF'], amount: 1 },
+    desc: 'Giant Axe Dwarf adds 1 to his Attack for every allied Stone Wing Dwarf on the board.'
+  },
+
   EARTH_STONE_WING_DWARF: {
     id: 'EARTH_STONE_WING_DWARF', name: 'Stone Wing Dwarf', type: 'UNIT', cost: 1, activation: 1,
     element: 'EARTH', atk: 1, hp: 1,
@@ -376,6 +387,17 @@ export const CARDS = {
       { stat: 'PROTECTION', amount: 1, scope: 'ADJACENT', target: 'ALLY' },
     ],
     desc: 'Allied creatures on adjacent fields gain +1 Protection.'
+  },
+
+  EARTH_VERZAR_FOOT_SOLDIER: {
+    id: 'EARTH_VERZAR_FOOT_SOLDIER', name: 'Verzar Foot Soldier', type: 'UNIT', cost: 1, activation: 1,
+    element: 'EARTH', atk: 1, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    plusAtkPerAlliedTemplates: { templates: ['EARTH_VERZAR_FOOT_SOLDIER'], amount: 1, maxCount: 1 },
+    desc: 'Verzar Foot Soldier adds 1 to his Attack if at least one other allied Verzar Foot Soldier is on the board.'
   },
 
   BIOLITH_MORNING_STAR_WARRIOR: {
@@ -641,6 +663,37 @@ export const CARDS = {
     swapOnDamage: true,
     enemyActivationTaxAdjacent: 3,
     desc: 'Magic Attack. If Elven Death Dancer damages (but does not destroy) a creature, she switches locations with that creature (which cannot counterattack). Enemies on adjacent fields add 3 to their Activation Cost.'
+  },
+  FOREST_BEWITCHING_ELF_ARCHERESS: {
+    id: 'FOREST_BEWITCHING_ELF_ARCHERESS', name: 'Bewitching Elf Archeress', type: 'UNIT', cost: 1, activation: 1,
+    element: 'FOREST', atk: 1, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [2], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    rotateTargetOnDamage: true,
+    desc: 'When Archeress damages (but does not destroy) a creature, that creature is rotated 180° and cannot counterattack.'
+  },
+  FOREST_ELVEN_BERSERKER_MAIDEN: {
+    id: 'FOREST_ELVEN_BERSERKER_MAIDEN', name: 'Elven Berserker Maiden', type: 'UNIT', cost: 2, activation: 1,
+    element: 'FOREST', atk: 1, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY', ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    plusAtkWhenHpEquals: { hp: 1, amount: 2 },
+    gainDodgeWhenHpEquals: { hp: 1, attempts: 1 },
+    desc: 'While Elven Berserker Maiden has exactly 1 HP, she adds 2 to her Attack and gains a Dodge attempt.'
+  },
+  FOREST_GREEN_LYCANTHROPE: {
+    id: 'FOREST_GREEN_LYCANTHROPE', name: 'Green Lycanthrope', type: 'UNIT', cost: 1, activation: 1,
+    element: 'FOREST', atk: 0, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    randomSummonBuff: { chance: 0.5, hp: 3, atk: 2 },
+    desc: 'When Green Lycanthrope is summoned, half the time add 3 to its HP and 2 to its Attack.'
   },
   FOREST_ELVEN_RIDER: {
     id: 'FOREST_ELVEN_RIDER', name: 'Elven Rider', type: 'UNIT', cost: 4, activation: 2,
