@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { applyTurnStartManaEffects } from '../src/core/abilityHandlers/startPhase.js';
+import { applyDeathManaEffects } from '../src/core/abilityHandlers/manaGain.js';
 import { applyEnemySummonReactions } from '../src/core/abilityHandlers/summonReactions.js';
 import { grantManaToAllPlayers } from '../src/core/mana.js';
 
@@ -70,6 +71,71 @@ describe('реакции на призыв врага', () => {
     expect(reaction.heals[0].healed[0].increaseMax).toBe(true);
     expect(state.board[1][0].unit.currentHP).toBe(2);
     expect(state.board[1][0].unit.bonusHP).toBe(1);
+  });
+});
+
+describe('дополнительная мана при гибели существ', () => {
+  it('Skeleton Soldier даёт +1 ману при смерти', () => {
+    const state = {
+      board: makeBoard(),
+      players: [{ mana: 0 }, { mana: 0 }],
+    };
+    const deaths = [
+      { r: 0, c: 0, owner: 0, tplId: 'EARTH_SKELETON_SOLDIER', uid: null, element: state.board[0][0].element },
+    ];
+    state.board[0][0].unit = null;
+    const result = applyDeathManaEffects(state, deaths);
+    expect(result.total).toBe(1);
+    expect(state.players[0].mana).toBe(1);
+  });
+
+  it('Inquisitor Koog получает ману за врагов на поле', () => {
+    const state = {
+      board: makeBoard(),
+      players: [{ mana: 0 }, { mana: 0 }],
+    };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', currentHP: 1 };
+    state.board[2][2].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', currentHP: 1 };
+    state.board[1][1].unit = null;
+    const deaths = [
+      { r: 1, c: 1, owner: 0, tplId: 'BIOLITH_INQUISITOR_KOOG', uid: null, element: state.board[1][1].element },
+    ];
+    const result = applyDeathManaEffects(state, deaths);
+    expect(result.total).toBe(2);
+    expect(state.players[0].mana).toBe(2);
+  });
+
+  it('Novogus Catapult учитывает количество Земельных полей', () => {
+    const state = {
+      board: makeBoard(),
+      players: [{ mana: 0 }, { mana: 0 }],
+    };
+    state.board[0][0].element = 'EARTH';
+    state.board[0][1].element = 'EARTH';
+    state.board[2][2].element = 'EARTH';
+    const deaths = [
+      { r: 0, c: 0, owner: 0, tplId: 'EARTH_NOVOGUS_CATAPULT', uid: null, element: 'EARTH' },
+    ];
+    const result = applyDeathManaEffects(state, deaths);
+    expect(result.total).toBe(3);
+    expect(state.players[0].mana).toBe(3);
+  });
+
+  it('Undead Dragon даёт бонусную ману за гибель союзника рядом на Земле', () => {
+    const state = {
+      board: makeBoard(),
+      players: [{ mana: 0 }, { mana: 0 }],
+    };
+    state.board[1][1].element = 'EARTH';
+    state.board[1][1].unit = { owner: 0, tplId: 'EARTH_UNDEAD_DRAGON', currentHP: 8 };
+    state.board[1][0].element = 'FIRE';
+    state.board[1][0].unit = null;
+    const deaths = [
+      { r: 1, c: 0, owner: 0, tplId: 'EARTH_VERZAR_FOOT_SOLDIER', uid: null, element: 'FIRE' },
+    ];
+    const result = applyDeathManaEffects(state, deaths);
+    expect(result.total).toBe(1);
+    expect(state.players[0].mana).toBe(1);
   });
 });
 

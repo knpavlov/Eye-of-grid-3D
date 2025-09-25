@@ -430,6 +430,22 @@ export const CARDS = {
     desc: 'Dodge attempt. If Biolith Stinger damages (but does not destroy) a creature, it switches locations with that creature (which cannot counterattack).'
   },
 
+  BIOLITH_INQUISITOR_KOOG: {
+    id: 'BIOLITH_INQUISITOR_KOOG', name: 'Inquisitor Koog', type: 'UNIT', cost: 3, activation: 2,
+    element: 'BIOLITH', atk: 2, hp: 4,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'E', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], ignoreAlliedBlocking: true }
+    ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    plusAtkVsElement: { element: 'FOREST', amount: 1 },
+    onDeathGainMana: { type: 'ENEMY_COUNT' },
+    desc: 'Inquisitor Koog adds 1 to his attack if the target creature is a Wood creature. If Inquisitor Koog is destroyed, you gain additional mana equal to the number of enemies.'
+  },
+
   EARTH_NOVOGUS_GRAVEKEEPER: {
     id: 'EARTH_NOVOGUS_GRAVEKEEPER', name: 'Novogus Gravekeeper', type: 'UNIT', cost: 9, activation: 5,
     element: 'EARTH', atk: 3, hp: 9,
@@ -520,6 +536,40 @@ export const CARDS = {
       { stat: 'ACTIVATION', amount: 1, target: 'ALLY', scope: 'ADJACENT', sourceOnElement: 'EARTH' },
     ],
     desc: 'Verzar Elephant Brigade must use its secondary attack while it is on an Earth field. While Verzar Elephant Brigade is on an Earth field, allied creatures on adjacent fields add 2 to their Attack and 1 to their Activation Cost.'
+  },
+  EARTH_UNDEAD_DRAGON: {
+    id: 'EARTH_UNDEAD_DRAGON', name: 'Undead Dragon', type: 'UNIT', cost: 7, activation: 5,
+    element: 'EARTH', atk: 5, hp: 8,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY', ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    dynamicAtk: 'EARTH_CREATURES',
+    adjacentAllyDeathManaGain: { amount: 1, element: 'EARTH' },
+    desc: 'Undead Dragon\'s Attack is equal to 5 plus the number of other Earth creatures on the board. While Undead Dragon is on an Earth field, gain 1 additional mana whenever an adjacent allied creature is destroyed.'
+  },
+  EARTH_NOVOGUS_CATAPULT: {
+    id: 'EARTH_NOVOGUS_CATAPULT', name: 'Novogus Catapult', type: 'UNIT', cost: 3, activation: 1,
+    element: 'EARTH', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [2], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    onDeathGainMana: { type: 'FIELD_COUNT', element: 'EARTH' },
+    desc: 'If Novogus Catapult is destroyed, you gain mana equal to the number of Earth fields.'
+  },
+  EARTH_SKELETON_SOLDIER: {
+    id: 'EARTH_SKELETON_SOLDIER', name: 'Skeleton Soldier', type: 'UNIT', cost: 2, activation: 1,
+    element: 'EARTH', atk: 1, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'N', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], ignoreAlliedBlocking: true }
+    ],
+    blindspots: ['S', 'E'],
+    ignoreAlliedBlocking: true,
+    onDeathGainMana: 1,
+    desc: 'If Skeleton Soldier is destroyed, you gain 1 additional mana.'
   },
   EARTH_DUNGEON_OF_TEN_TYRANTS: {
     id: 'EARTH_DUNGEON_OF_TEN_TYRANTS', name: 'Dungeon of Ten Tyrants', type: 'UNIT', cost: 4, activation: 2,
