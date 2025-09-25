@@ -1,4 +1,5 @@
 import { getServerBase } from './config.js';
+import { computeForcedDiscardLock, FOREIGN_DISCARD_LOCK_MESSAGE } from '../ui/forcedDiscardLock.js';
 
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
@@ -159,7 +160,8 @@ import { getServerBase } from './config.js';
           // фиксируем фактическое здоровье, а не базовое
           const hp = (typeof u?.currentHP === 'number') ? u.currentHP : u?.hp;
           return u ? { o: u.owner, h: hp, a: u.atk, f: u.facing, t: u.tplId } : null;
-        }))
+        })),
+        pendingDiscards: (state.pendingDiscards||[]).map(req => req ? ({ id: req.id, target: req.target, remaining: req.remaining, requested: req.requested }) : null)
       };
       return JSON.stringify(compact);
     } catch { return '';}
@@ -879,16 +881,54 @@ import { getServerBase } from './config.js';
   // ===== 7) Input lock: когда не твой ход — блокируем клики по сцене =====
   const lock = document.createElement('div');
   lock.className = 'mp-lock';
-  lock.innerHTML = `<div class="mp-card">Ход соперника…</div>`;
+  const lockCard = document.createElement('div');
+  lockCard.className = 'mp-card';
+  lockCard.textContent = 'Ход соперника…';
+  lock.appendChild(lockCard);
   document.body.appendChild(lock);
 
   function updateInputLock(){
-    // Lock only when seat is known; otherwise do not block input
     if (!lock) return;
-    const myKnown = (typeof MY_SEAT === 'number');
-    const shouldLock = (typeof NET_ON === 'function' ? NET_ON() : false) &&
-      gameState && myKnown && (gameState.active !== MY_SEAT);
+    const seatKnown = (typeof MY_SEAT === 'number');
+    const state = gameState;
+    const queue = Array.isArray(state?.pendingDiscards) ? state.pendingDiscards : [];
+    const hasLocalPending = seatKnown
+      ? queue.some(req => req && req.remaining > 0 && req.target === MY_SEAT)
+      : false;
+
+    let shouldLock = false;
+    let message = 'Ход соперника…';
+
+    try { window.__forcedDiscardForeignLock = false; } catch {}
+
+    if (state && seatKnown) {
+      if (state.active !== MY_SEAT) {
+        shouldLock = true;
+      } else {
+        const discardLock = computeForcedDiscardLock(state, MY_SEAT);
+        if (discardLock.locked) {
+          shouldLock = true;
+          message = discardLock.message || FOREIGN_DISCARD_LOCK_MESSAGE;
+        }
+        try { window.__forcedDiscardForeignLock = !!discardLock.locked; } catch {}
+      }
+    }
+
+    if (hasLocalPending) {
+      shouldLock = false;
+    }
+
+    if (shouldLock) {
+      try {
+        if (typeof window !== 'undefined' && window.__ui?.discardManager?.hasActiveLocalRequest?.()) {
+          shouldLock = false;
+        }
+      } catch {}
+    }
+
     lock.classList.toggle('on', !!shouldLock);
+    lockCard.textContent = shouldLock ? message : 'Ход соперника…';
+    try { if (typeof window !== 'undefined') window.refreshInputLockUI?.(); } catch {}
   }
 
   try {

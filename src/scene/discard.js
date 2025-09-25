@@ -1,4 +1,5 @@
 // Универсальная функция для сброса карты из руки в кладбище с анимацией
+import { discardCardFromHand } from '../core/discardUtils.js';
 import { getCtx } from './context.js';
 import { updateHand } from './hand.js';
 
@@ -25,19 +26,16 @@ export function discardMesh(mesh, awayVec, duration = 0.9) {
  * @param {number} handIdx - индекс карты в руке.
  * @returns {object|null} - шаблон сброшенной карты или null, если сброс не удался.
  */
-export function discardHandCard(player, handIdx) {
+export function discardHandCard(player, handIdx, { skipLogic = false } = {}) {
   if (!player || typeof handIdx !== 'number' || handIdx < 0) return null;
-  const cardTpl = player.hand?.[handIdx];
+
+  let cardTpl = null;
+  if (!skipLogic) {
+    cardTpl = discardCardFromHand(player, handIdx) || null;
+  } else {
+    cardTpl = player.hand?.[handIdx] || null;
+  }
   if (!cardTpl) return null;
-
-  // Перемещение карты в кладбище
-  try {
-    player.graveyard = Array.isArray(player.graveyard) ? player.graveyard : [];
-    player.graveyard.push(cardTpl);
-  } catch {}
-
-  // Удаляем карту из руки
-  try { player.hand.splice(handIdx, 1); } catch {}
 
   // Анимация исчезновения карты из руки
   try {

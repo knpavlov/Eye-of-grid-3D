@@ -1,11 +1,22 @@
 // Управление блокировкой ввода
+import { hasForeignDiscardLock } from './forcedDiscardLock.js';
 
 export function isInputLocked() {
   const splash = (typeof window !== 'undefined' && window.__ui && window.__ui.banner)
     ? !!window.__ui.banner.getState()._splashActive : false;
-  return (typeof window !== 'undefined' && window.__endTurnInProgress) ||
+  const baseLocked = (typeof window !== 'undefined' && window.__endTurnInProgress) ||
          (typeof window !== 'undefined' && window.drawAnimationActive) ||
          splash || (typeof window !== 'undefined' && window.manaGainActive);
+  if (baseLocked) return true;
+
+  try {
+    if (typeof window === 'undefined') return false;
+    const seat = typeof window.MY_SEAT === 'number' ? window.MY_SEAT : null;
+    const state = window.gameState;
+    return hasForeignDiscardLock(state, seat);
+  } catch {
+    return false;
+  }
 }
 
 export function refreshInputLockUI() {
