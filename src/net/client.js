@@ -159,7 +159,8 @@ import { getServerBase } from './config.js';
           // фиксируем фактическое здоровье, а не базовое
           const hp = (typeof u?.currentHP === 'number') ? u.currentHP : u?.hp;
           return u ? { o: u.owner, h: hp, a: u.atk, f: u.facing, t: u.tplId } : null;
-        }))
+        })),
+        pendingDiscards: (state.pendingDiscards||[]).map(req => req ? ({ id: req.id, target: req.target, remaining: req.remaining, requested: req.requested }) : null)
       };
       return JSON.stringify(compact);
     } catch { return '';}
@@ -879,15 +880,54 @@ import { getServerBase } from './config.js';
   // ===== 7) Input lock: когда не твой ход — блокируем клики по сцене =====
   const lock = document.createElement('div');
   lock.className = 'mp-lock';
-  lock.innerHTML = `<div class="mp-card">Ход соперника…</div>`;
+  const lockCard = document.createElement('div');
+  lockCard.className = 'mp-card';
+  lockCard.textContent = 'Ход соперника…';
+  lock.appendChild(lockCard);
   document.body.appendChild(lock);
 
   function updateInputLock(){
-    // Lock only when seat is known; otherwise do not block input
+    // Блокируем действия, если сейчас ход соперника или он выбирает карты для сброса
     if (!lock) return;
     const myKnown = (typeof MY_SEAT === 'number');
-    const shouldLock = (typeof NET_ON === 'function' ? NET_ON() : false) &&
-      gameState && myKnown && (gameState.active !== MY_SEAT);
+    const queue = Array.isArray(gameState?.pendingDiscards) ? gameState.pendingDiscards : [];
+    const isOnline = (typeof NET_ON === 'function' ? NET_ON() : false);
+    let shouldLock = isOnline && gameState && myKnown && (gameState.active !== MY_SEAT);
+    let message = 'Ход соперника…';
+
+    let waitingOpponentDiscard = false;
+    if (isOnline && gameState && myKnown) {
+      try {
+        waitingOpponentDiscard = gameState.active === MY_SEAT && queue.some(req => req && req.remaining > 0 && req.target !== MY_SEAT);
+      } catch {
+        waitingOpponentDiscard = false;
+      }
+      if (waitingOpponentDiscard) {
+        message = 'Оппонент выбирает карты для сброса…';
+        shouldLock = true;
+      }
+    }
+
+    if (shouldLock && !waitingOpponentDiscard) {
+      try {
+        const seats = myKnown ? [MY_SEAT] : [0, 1];
+        const hasLocalPending = queue.some(req => req && req.remaining > 0 && seats.includes(req.target));
+        if (hasLocalPending) {
+          shouldLock = false;
+        }
+      } catch {}
+    }
+    if (shouldLock && !waitingOpponentDiscard) {
+      try {
+        if (typeof window !== 'undefined' && window.__ui?.discardManager?.hasActiveLocalRequest?.()) {
+          shouldLock = false;
+        }
+      } catch {}
+    }
+
+    if (lockCard) {
+      lockCard.textContent = message;
+    }
     lock.classList.toggle('on', !!shouldLock);
   }
 

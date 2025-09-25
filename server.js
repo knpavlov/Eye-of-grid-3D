@@ -8,6 +8,7 @@ import { ensureDeckTable, seedDecks } from "./server/repositories/decksRepositor
 import { DEFAULT_DECK_BLUEPRINTS } from "./src/core/defaultDecks.js";
 import { capMana } from "./src/core/constants.js";
 import { applyTurnStartManaEffects } from "./src/core/abilityHandlers/startPhase.js";
+import { discardCardFromHand as discardCardFromHandLogic } from "./src/core/discardUtils.js";
 
 const app = express();
 app.use(cors());
@@ -99,10 +100,16 @@ function pairIfPossible() {
     if (m.timerId) clearInterval(m.timerId);
     m.timerId = setInterval(()=>{
       if (!matches.has(matchId)) { clearInterval(m.timerId); return; }
-      // если ещё нет состояния — подождём
-      if (!m.lastState || typeof m.lastState.active !== 'number') return;
+      const st = m.lastState;
+      if (!st || typeof st.active !== 'number') return;
+      const queue = Array.isArray(st.pendingDiscards) ? st.pendingDiscards : [];
+      const hasPending = queue.some(req => req && req.remaining > 0);
+      if (hasPending) {
+        io.to(m.room).emit('turnTimer', { seconds: m.timerSeconds ?? 100, activeSeat: st.active });
+        return;
+      }
       m.timerSeconds = Math.max(0, (m.timerSeconds ?? 100) - 1);
-      io.to(m.room).emit('turnTimer', { seconds: m.timerSeconds, activeSeat: m.lastState.active });
+      io.to(m.room).emit('turnTimer', { seconds: m.timerSeconds, activeSeat: st.active });
     }, 1000);
   }
   
@@ -269,6 +276,68 @@ io.on("connection", (socket) => {
     try { io.to(m.room).emit('turnTimer', { seconds: m.timerSeconds, activeSeat: st.active }); } catch {}
     try { io.to(m.room).emit('turnSwitched', { activeSeat: st.active }); } catch {}
     pushLog({ ev: 'endTurn:applied', matchId, bySeat: socket.data.seat, prevActive, active: st.active, turn: st.turn, ver: m.lastVer, manaNewActive: st.players?.[st.active]?.mana });
+  });
+
+  socket.on('forcedDiscardResolve', ({ requestId, target, handIdx, auto } = {}) => {
+    const matchId = socket.data.matchId;
+    if (!matchId || !matches.has(matchId)) return;
+    const m = matches.get(matchId);
+    const st = m.lastState;
+    if (!st) return;
+    const queue = Array.isArray(st.pendingDiscards) ? st.pendingDiscards : [];
+    const req = queue.find(entry => entry && entry.id === requestId);
+    if (!req || req.remaining <= 0) {
+      pushLog({ ev: 'forcedDiscardResolve:skip', matchId, reason: 'noRequest', requestId, target, seat: socket.data.seat });
+      return;
+    }
+    const seat = socket.data.seat;
+    if (seat !== req.target) {
+      pushLog({ ev: 'forcedDiscardResolve:rejectSeat', matchId, requestId, seat: socket.data.seat, expected: req.target });
+      return;
+    }
+    if (typeof target === 'number' && target !== req.target) {
+      pushLog({ ev: 'forcedDiscardResolve:targetMismatch', matchId, requestId, seat: socket.data.seat, target, expected: req.target });
+      return;
+    }
+    const player = st.players?.[req.target];
+    if (!player) {
+      pushLog({ ev: 'forcedDiscardResolve:noPlayer', matchId, requestId, seat: socket.data.seat });
+      return;
+    }
+    const hand = Array.isArray(player.hand) ? player.hand : [];
+    const beforeRemaining = req.remaining;
+    let idx = typeof handIdx === 'number' ? Math.floor(handIdx) : -1;
+    if (!hand.length) {
+      idx = -1;
+    } else if (idx < 0 || idx >= hand.length) {
+      idx = Math.max(0, Math.min(hand.length - 1, idx));
+    }
+    let removed = null;
+    if (idx >= 0 && hand.length) {
+      removed = discardCardFromHandLogic(player, idx);
+    }
+    req.remaining = Math.max(0, (req.remaining || 1) - 1);
+    if (req.remaining <= 0) {
+      const pos = queue.indexOf(req);
+      if (pos >= 0) queue.splice(pos, 1);
+    }
+    try { st.__ver = (Number(st.__ver) || 0) + 1; m.lastVer = st.__ver; } catch { m.lastVer = m.lastVer || 0; }
+    m.lastState = st;
+    try {
+      io.to(m.room).emit('state', st);
+    } catch {}
+    pushLog({
+      ev: 'forcedDiscardResolve:applied',
+      matchId,
+      requestId,
+      seat,
+      auto: !!auto,
+      handIdx: idx,
+      removed: removed?.id || removed?.tplId || null,
+      beforeRemaining,
+      afterRemaining: req.remaining,
+      handSize: player.hand?.length || 0,
+    });
   });
 
   socket.on("requestState", () => {
