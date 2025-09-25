@@ -3,6 +3,7 @@ import { CARDS } from '../cards.js';
 import { computeCellBuff } from '../fieldEffects.js';
 import { applyFieldFatalityCheck as applyFieldFatalityCheckInternal } from './fieldHazards.js';
 import { applyDeathDiscardEffects } from './discard.js';
+import { applyDeathManaGain, applyAdjacentDeathManaGain, mergeManaGainResults } from './manaGain.js';
 
 const FACING_ORDER = ['N', 'E', 'S', 'W'];
 
@@ -177,8 +178,12 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
   cell.unit = null;
 
   let discardEvents = null;
+  let manaEvents = null;
   if (sacrificeDeath) {
     discardEvents = applyDeathDiscardEffects(state, sacrificeDeath, { cause: 'SACRIFICE' });
+    const manaDeath = applyDeathManaGain(state, sacrificeDeath, { cause: 'SACRIFICE' });
+    const manaAdj = applyAdjacentDeathManaGain(state, sacrificeDeath, { cause: 'SACRIFICE' });
+    manaEvents = mergeManaGainResults(manaEvents, manaDeath, manaAdj);
   }
 
   // Удаляем карту из руки и переносим в сброс
@@ -278,10 +283,18 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
       result.events.oracleBuff = { owner: newUnit.owner, amount };
     }
 
+    const manaDeathReplacement = applyDeathManaGain(state, replacementDeath, { cause: 'SACRIFICE_REPLACEMENT' });
+    const manaAdjReplacement = applyAdjacentDeathManaGain(state, replacementDeath, { cause: 'SACRIFICE_REPLACEMENT' });
+    manaEvents = mergeManaGainResults(manaEvents, manaDeathReplacement, manaAdjReplacement);
+
     const discardReplacement = applyDeathDiscardEffects(state, replacementDeath, { cause: 'SACRIFICE_REPLACEMENT' });
     if (discardReplacement && Array.isArray(discardReplacement.logs) && discardReplacement.logs.length) {
       result.events.discardLogs = (result.events.discardLogs || []).concat(discardReplacement.logs);
     }
+  }
+
+  if (manaEvents) {
+    result.events.manaGain = manaEvents;
   }
 
   return result;

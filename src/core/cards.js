@@ -348,6 +348,59 @@ export const CARDS = {
     desc: 'Giant Axe Dwarf adds 1 to his Attack for every allied Stone Wing Dwarf on the board.'
   },
 
+  EARTH_INQUISITOR_KOOG: {
+    id: 'EARTH_INQUISITOR_KOOG', name: 'Inquisitor Koog', type: 'UNIT', cost: 3, activation: 2,
+    element: 'EARTH', atk: 2, hp: 4,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'E', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], ignoreAlliedBlocking: true }
+    ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    plusAtkVsElement: { element: 'FOREST', amount: 1 },
+    onDeathManaGain: { type: 'ENEMY_UNITS', amountPer: 1 },
+    desc: 'Inquisitor Koog adds 1 to his attack if the target creature is a Wood creature. If Inquisitor Koog is destroyed, you gain additional mana equal to the number of enemies.'
+  },
+
+  EARTH_UNDEAD_DRAGON: {
+    id: 'EARTH_UNDEAD_DRAGON', name: 'Undead Dragon', type: 'UNIT', cost: 7, activation: 5,
+    element: 'EARTH', atk: 5, hp: 8,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY', ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    dynamicAtk: { type: 'ELEMENT_CREATURES', element: 'EARTH' },
+    adjacentDeathManaGain: { amount: 1, requireField: 'EARTH', alliedOnly: true },
+    desc: 'Undead Dragon\'s Attack is equal to 5 plus the number of other Earth creatures on the board. While Undead Dragon is on an Earth field, gain 1 additional mana whenever an adjacent allied creature is destroyed.'
+  },
+
+  EARTH_NOVOGUS_CATAPULT: {
+    id: 'EARTH_NOVOGUS_CATAPULT', name: 'Novogus Catapult', type: 'UNIT', cost: 3, activation: 1,
+    element: 'EARTH', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [2], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    onDeathManaGain: { type: 'FIELD_ELEMENT', element: 'EARTH', amountPer: 1 },
+    desc: 'If Novogus Catapult is destroyed, you gain mana equal to the number of Earth fields.'
+  },
+
+  EARTH_SKELETON_SOLDIER: {
+    id: 'EARTH_SKELETON_SOLDIER', name: 'Skeleton Soldier', type: 'UNIT', cost: 2, activation: 1,
+    element: 'EARTH', atk: 1, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'N', ranges: [1], group: 'FRONT_LEFT', ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], group: 'FRONT_LEFT', ignoreAlliedBlocking: true }
+    ],
+    blindspots: ['S', 'E'],
+    ignoreAlliedBlocking: true,
+    onDeathManaGain: 1,
+    desc: 'If Skeleton Soldier is destroyed, you gain 1 additional mana.'
+  },
+
   EARTH_STONE_WING_DWARF: {
     id: 'EARTH_STONE_WING_DWARF', name: 'Stone Wing Dwarf', type: 'UNIT', cost: 1, activation: 1,
     element: 'EARTH', atk: 1, hp: 1,

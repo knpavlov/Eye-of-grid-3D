@@ -27,6 +27,7 @@ import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
 import { getHpConditionalBonuses } from './abilityHandlers/conditionalBonuses.js';
 import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
+import { applyDeathManaGain, applyAdjacentDeathManaGain } from './abilityHandlers/manaGain.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -592,6 +593,26 @@ export function stagedAttack(state, r, c, opts = {}) {
         }
       }
     } catch {}
+
+    const manaDeath = applyDeathManaGain(nFinal, deaths, { cause: 'BATTLE' });
+    const manaAdjacent = applyAdjacentDeathManaGain(nFinal, deaths, { cause: 'BATTLE' });
+    const appendManaLogs = (events) => {
+      if (!events || !Array.isArray(events.entries)) return;
+      for (const entry of events.entries) {
+        if (!entry || !entry.amount) continue;
+        const tplId = entry.source?.tplId || null;
+        const sourceName = entry.source?.name || (tplId ? (CARDS[tplId]?.name || tplId) : 'Существо');
+        const playerLabel = (entry.playerIndex != null) ? entry.playerIndex + 1 : '?';
+        const details = [];
+        if (entry.mode === 'ENEMY_UNITS' && entry.count != null) details.push(`врагов: ${entry.count}`);
+        if (entry.mode === 'FIELD_ELEMENT' && entry.element) details.push(`полей ${entry.element}`);
+        if (entry.mode === 'ADJACENT' && entry.count != null) details.push(`соседних потерь: ${entry.count}`);
+        const extra = details.length ? ` (${details.join(', ')})` : '';
+        logLines.push(`${sourceName}: игрок ${playerLabel} получает +${entry.amount} маны${extra}.`);
+      }
+    };
+    appendManaLogs(manaDeath);
+    appendManaLogs(manaAdjacent);
 
     for (const d of deaths) {
       const tplD = CARDS[d.tplId];
