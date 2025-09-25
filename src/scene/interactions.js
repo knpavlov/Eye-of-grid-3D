@@ -9,6 +9,8 @@ import {
   applySummonAbilities,
   evaluateIncarnationSummon,
   applyIncarnationSummon,
+  applyFieldFatalityCheck,
+  describeFieldFatality,
   isIncarnationCard,
 } from '../core/abilities.js';
 import { capMana } from '../core/constants.js';
@@ -841,13 +843,13 @@ export function placeUnitWithDirection(direction) {
     else window.addLog(`Элемент ослабляет ${cardData.name}: HP ${before}→${unit.currentHP}`);
   }
   let alive = unit.currentHP > 0;
-  if (alive && cardData.diesOffElement && cellElement !== cardData.diesOffElement) {
-    window.addLog(`${cardData.name} погибает вдали от стихии ${cardData.diesOffElement}!`);
-    alive = false;
-  }
-  if (alive && cardData.diesOnElement && cellElement === cardData.diesOnElement) {
-    window.addLog(`${cardData.name} не переносит стихию ${cardData.diesOnElement} и погибает!`);
-    alive = false;
+  if (alive) {
+    const hazard = applyFieldFatalityCheck(unit, cardData, cellElement);
+    if (hazard.dies) {
+      alive = false;
+      const fatalLog = describeFieldFatality(cardData, hazard, { name: cardData.name });
+      if (fatalLog) window.addLog(fatalLog);
+    }
   }
   if (!alive) {
     // обработка эффектов при смерти (например, лечение союзников)
@@ -890,8 +892,16 @@ export function placeUnitWithDirection(direction) {
         window.addLog(text);
       }
     }
+    // очищаем возможные состояния выбора цели, чтобы не блокировать интерфейс после мгновенной смерти
+    interactionState.magicFrom = null;
+    interactionState.pendingAttack = null;
+    interactionState.autoEndTurnAfterAttack = false;
+    try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
   }
-  if (gameState.board[row][col].unit) {
+  const placedUnit = gameState.board[row][col].unit;
+  const placedTpl = placedUnit ? window.CARDS?.[placedUnit.tplId] : null;
+  const placedAlive = placedUnit && ((placedUnit.currentHP ?? placedTpl?.hp ?? cardData.hp) > 0);
+  if (placedAlive) {
     const summonEvents = applySummonAbilities(gameState, row, col);
     const drawEvents = Array.isArray(summonEvents?.draws) && summonEvents.draws.length
       ? summonEvents.draws
