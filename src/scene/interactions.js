@@ -932,6 +932,11 @@ export function placeUnitWithDirection(direction) {
     if (Array.isArray(summonEvents?.dodgeUpdates) && summonEvents.dodgeUpdates.length) {
       logDodgeUpdates(summonEvents.dodgeUpdates, gameState, cardData?.name || null);
     }
+    if (Array.isArray(summonEvents?.logLines) && summonEvents.logLines.length) {
+      for (const text of summonEvents.logLines) {
+        window.addLog?.(text);
+      }
+    }
     if (summonEvents?.possessions?.length) {
       try {
         const cards = window.CARDS || {};

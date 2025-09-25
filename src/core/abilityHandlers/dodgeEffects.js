@@ -2,6 +2,7 @@
 // Позволяет повторно использовать логику как в браузере, так и при переносе в другие движки
 import { CARDS } from '../cards.js';
 import { getDodgeConfig, ensureDodgeState } from './dodge.js';
+import { computeSelfHpDodgeBonus } from './selfState.js';
 
 const DIRS = [
   { dr: -1, dc: 0 },
@@ -147,6 +148,14 @@ export function refreshBoardDodgeStates(state) {
             attempts: enemyGain.attemptsPerEnemy * enemies,
           });
         }
+      }
+
+      const selfHpBonus = computeSelfHpDodgeBonus(state, r, c, tpl);
+      if (selfHpBonus) {
+        addContribution(contributions, r, c, {
+          attempts: selfHpBonus.attempts,
+          chance: selfHpBonus.chance,
+        });
       }
     }
   }

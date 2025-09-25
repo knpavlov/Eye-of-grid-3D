@@ -25,6 +25,7 @@ import {
 import { computeCellBuff } from './fieldEffects.js';
 import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
+import { computeSelfHpAttackBonus } from './abilityHandlers/selfState.js';
 import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
 
 export function hasAdjacentGuard(state, r, c) {
@@ -88,7 +89,8 @@ export function effectiveStats(cell, unit, opts = {}) {
   const tpl = unit ? CARDS[unit.tplId] : null;
   const buff = computeCellBuff(cell?.element, tpl?.element);
   const tempAtk = typeof unit?.tempAtkBuff === 'number' ? unit.tempAtkBuff : 0;
-  let atk = (tpl?.atk || 0) + buff.atk + tempAtk;
+  const bonusAtk = typeof unit?.bonusAtk === 'number' ? unit.bonusAtk : 0;
+  let atk = (tpl?.atk || 0) + buff.atk + tempAtk + bonusAtk;
   const extra = typeof unit?.bonusHP === 'number' ? unit.bonusHP : 0;
   let hp = (tpl?.hp || 0) + buff.hp + extra;
   const state = opts?.state;
@@ -303,9 +305,18 @@ export function stagedAttack(state, r, c, opts = {}) {
     atk += dynamicBonus.amount;
     if (dynamicBonus.type === 'ELEMENT_CREATURES' && dynamicBonus.element) {
       logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount} (существа стихии ${dynamicBonus.element})`);
+    } else if (dynamicBonus.type === 'ALLY_TEMPLATE') {
+      logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount} (союзные существа нужного типа)`);
+    } else if (dynamicBonus.type === 'ALLY_ELEMENT' && dynamicBonus.element) {
+      logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount} (союзники стихии ${dynamicBonus.element})`);
     } else {
       logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount}`);
     }
+  }
+  const selfHpBonus = computeSelfHpAttackBonus(base, r, c, tplA);
+  if (selfHpBonus?.amount) {
+    atk += selfHpBonus.amount;
+    logLines.push(`${tplA.name}: +${selfHpBonus.amount} ATK при текущем HP ${selfHpBonus.hp}`);
   }
   const targetBonus = getTargetElementBonus(tplA, base, hitsRaw);
   const plusCfg = tplA.plusAtkIfTargetOnElement || (tplA.plus1IfTargetOnElement ? { element: tplA.plus1IfTargetOnElement, amount: 1 } : null);
@@ -824,6 +835,11 @@ export function magicAttack(state, fr, fc, tr, tc) {
     logLines.push(`${tplA.name}: +${elementBonus.amount} ATK против существ стихии ${elementBonus.element}`);
   }
 
+  const selfHpMagicBonus = computeSelfHpAttackBonus(n1, fromR, fromC, tplA);
+  if (selfHpMagicBonus?.amount) {
+    atk += selfHpMagicBonus.amount;
+    logLines.push(`${tplA.name}: +${selfHpMagicBonus.amount} ATK при текущем HP ${selfHpMagicBonus.hp}`);
+  }
   const randomBonus = (tplA.randomPlus2 && Math.random() < 0.5) ? 2 : 0;
   if (randomBonus) atk += randomBonus;
   const dmg = Math.max(0, atk);

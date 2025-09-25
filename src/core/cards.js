@@ -352,6 +352,15 @@ export const CARDS = {
     protectionEqualsAlliedTemplates: ['EARTH_GIANT_AXE_DWARF', 'Giant Axe Dwarf'],
     desc: 'Stone Wing Dwarf gains Protection equal to the number of allied Giant Axe Dwarves on the board.'
   },
+  EARTH_GIANT_AXE_DWARF: {
+    id: 'EARTH_GIANT_AXE_DWARF', name: 'Giant Axe Dwarf', type: 'UNIT', cost: 2, activation: 1,
+    element: 'EARTH', atk: 1, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'], ignoreAlliedBlocking: true,
+    dynamicAtk: { type: 'ALLY_TEMPLATE', templates: ['EARTH_STONE_WING_DWARF', 'Stone Wing Dwarf'], per: 1 },
+    desc: 'Giant Axe Dwarf adds 1 to his Attack for every allied Stone Wing Dwarf on the board.'
+  },
 
   EARTH_BLACK_HOOD_DWARF_VULITRA: {
     id: 'EARTH_BLACK_HOOD_DWARF_VULITRA', name: 'Black Hood Dwarf Vulitra', type: 'UNIT', cost: 3, activation: 2,
@@ -376,6 +385,16 @@ export const CARDS = {
       { stat: 'PROTECTION', amount: 1, scope: 'ADJACENT', target: 'ALLY' },
     ],
     desc: 'Allied creatures on adjacent fields gain +1 Protection.'
+  },
+
+  EARTH_VERZAR_FOOT_SOLDIER: {
+    id: 'EARTH_VERZAR_FOOT_SOLDIER', name: 'Verzar Foot Soldier', type: 'UNIT', cost: 1, activation: 1,
+    element: 'EARTH', atk: 1, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'], ignoreAlliedBlocking: true,
+    dynamicAtk: { type: 'ALLY_TEMPLATE', templates: ['EARTH_VERZAR_FOOT_SOLDIER', 'Verzar Foot Soldier'], per: 1, max: 1, includeSelf: false },
+    desc: 'Verzar Foot Soldier adds 1 to his Attack if at least one other allied Verzar Foot Soldier is on the board.'
   },
 
   BIOLITH_MORNING_STAR_WARRIOR: {
@@ -593,6 +612,33 @@ export const CARDS = {
     invisibilityAllies: ['FIRE_FIREFLY_NINJA'],
     rotateTargetOnDamage: true,
     desc: 'Gains Invisibility while at least one allied Firefly Ninja is on the board. When Swallow Ninja damages (but does not destroy) a creature, rotate that creature so its back faces Swallow Ninja. The target creature cannot counterattack.'
+  },
+  FOREST_GREEN_LYCANTHROPE: {
+    id: 'FOREST_GREEN_LYCANTHROPE', name: 'Green Lycanthrope', type: 'UNIT', cost: 1, activation: 1,
+    element: 'FOREST', atk: 0, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'], ignoreAlliedBlocking: true,
+    randomSelfBuffOnSummon: { chance: 0.5, hp: 3, atk: 2 },
+    desc: 'When Green Lycanthrope is summoned, half the time add 3 to its HP and 2 to its Attack.'
+  },
+  FOREST_BEWITCHING_ELF_ARCHERESS: {
+    id: 'FOREST_BEWITCHING_ELF_ARCHERESS', name: 'Bewitching Elf Archeress', type: 'UNIT', cost: 1, activation: 1,
+    element: 'FOREST', atk: 1, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [2], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'], ignoreAlliedBlocking: true,
+    rotateTargetOnDamage: true,
+    desc: 'When Archeress damages (but does not destroy) a creature, that creature is rotated 180° and cannot counterattack.'
+  },
+  FOREST_ELVEN_BERSERKER_MAIDEN: {
+    id: 'FOREST_ELVEN_BERSERKER_MAIDEN', name: 'Elven Berserker Maiden', type: 'UNIT', cost: 2, activation: 1,
+    element: 'FOREST', atk: 1, hp: 3,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY', ignoreAlliedBlocking: true } ],
+    blindspots: ['S'], ignoreAlliedBlocking: true,
+    hpConditionalEffects: [ { hpEquals: 1, atkBonus: 2, dodgeAttempts: 1 } ],
+    desc: 'While Elven Berserker Maiden has exactly 1 HP, she adds 2 to her Attack and gains a Dodge attempt.'
   },
   FOREST_JUNO_PRISONER_TRAP: {
     id: 'FOREST_JUNO_PRISONER_TRAP', name: 'Juno Prisoner Trap', type: 'UNIT', cost: 4, activation: 2,

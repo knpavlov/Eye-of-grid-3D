@@ -1374,3 +1374,86 @@ describe('Новые способности существ', () => {
   });
 });
 
+describe('Новые лесные и земляные карты', () => {
+  it('Green Lycanthrope усиливается при удачном броске', () => {
+    const origRandom = Math.random;
+    try {
+      Math.random = () => 0.1;
+      const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+      state.board[1][1].element = 'FOREST';
+      state.board[1][1].unit = { owner: 0, tplId: 'FOREST_GREEN_LYCANTHROPE', facing: 'N' };
+      const events = applySummonAbilities(state, 1, 1);
+      const unit = state.board[1][1].unit;
+      expect(unit.bonusHP).toBe(3);
+      expect(unit.currentHP).toBe((CARDS.FOREST_GREEN_LYCANTHROPE.hp || 1) + 3);
+      expect(unit.bonusAtk).toBe(2);
+      expect(Array.isArray(events.logLines) && events.logLines.some(text => text.includes('Green Lycanthrope'))).toBe(true);
+    } finally {
+      Math.random = origRandom;
+    }
+  });
+
+  it('Elven Berserker Maiden получает +2 атаки и попытку уклонения при 1 HP', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'FOREST';
+    state.board[1][1].unit = { owner: 0, tplId: 'FOREST_ELVEN_BERSERKER_MAIDEN', facing: 'N', currentHP: 1 };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_TRICEPTAUR_BEHEMOTH', facing: 'S', currentHP: 4 };
+    refreshBoardDodgeStates(state);
+    const maiden = state.board[1][1].unit;
+    expect(maiden.dodgeState).toBeTruthy();
+    expect((maiden.dodgeState?.remaining ?? maiden.dodgeState?.max ?? 0)).toBeGreaterThan(0);
+    const res = stagedAttack(state, 1, 1);
+    const fin = res.finish();
+    const hit = fin.targets.find(t => t.r === 0 && t.c === 1);
+    expect(hit?.dmg).toBeGreaterThanOrEqual(3);
+  });
+
+  it('Giant Axe Dwarf получает +1 ATK за каждого союзного Stone Wing Dwarf', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'EARTH';
+    state.board[1][1].unit = { owner: 0, tplId: 'EARTH_GIANT_AXE_DWARF', facing: 'N' };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 5 };
+    let battle = stagedAttack(state, 1, 1);
+    let fin = battle.finish();
+    let hit = fin.targets.find(t => t.r === 0 && t.c === 1);
+    expect(hit?.dmg).toBe(1);
+
+    state.board[2][1].element = 'EARTH';
+    state.board[2][1].unit = { owner: 0, tplId: 'EARTH_STONE_WING_DWARF', facing: 'N' };
+    battle = stagedAttack(state, 1, 1);
+    fin = battle.finish();
+    hit = fin.targets.find(t => t.r === 0 && t.c === 1);
+    expect(hit?.dmg).toBe(2);
+  });
+
+  it('Verzar Foot Soldier получает только +1 ATK даже с несколькими союзниками', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].element = 'EARTH';
+    state.board[1][1].element = 'EARTH';
+    state.board[2][0].element = 'EARTH';
+    state.board[1][2].element = 'EARTH';
+    state.board[2][1].unit = { owner: 0, tplId: 'EARTH_VERZAR_FOOT_SOLDIER', facing: 'N' };
+    state.board[1][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 5 };
+    state.board[2][0].unit = { owner: 0, tplId: 'EARTH_VERZAR_FOOT_SOLDIER', facing: 'N' };
+    state.board[1][2].unit = { owner: 0, tplId: 'EARTH_VERZAR_FOOT_SOLDIER', facing: 'W' };
+    const battle = stagedAttack(state, 2, 1);
+    const fin = battle.finish();
+    const hit = fin.targets.find(t => t.r === 1 && t.c === 1);
+    expect(hit?.dmg).toBe(2);
+  });
+
+  it('Bewitching Elf Archeress разворачивает цель и не получает контратаку', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].element = 'FOREST';
+    state.board[2][1].unit = { owner: 0, tplId: 'FOREST_BEWITCHING_ELF_ARCHERESS', facing: 'N', currentHP: 2 };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_TRICEPTAUR_BEHEMOTH', facing: 'N', currentHP: 4 };
+    const res = stagedAttack(state, 2, 1);
+    const fin = res.finish();
+    const target = fin.n1.board[0][1].unit;
+    expect(target.currentHP).toBeGreaterThan(0);
+    expect(target.currentHP).toBeLessThan(4);
+    expect(target.facing).toBe('N');
+    expect(fin.retaliators?.length || 0).toBe(0);
+  });
+});
+

@@ -28,6 +28,7 @@ import {
 } from './abilityHandlers/possession.js';
 import { applySummonDraw, applyAdjacentSummonDraws } from './abilityHandlers/draw.js';
 import { transformAttackProfile } from './abilityHandlers/attackTransforms.js';
+import { applySummonSelfBuffs } from './abilityHandlers/summonBonuses.js';
 import { cloneAttackEntry } from './utils/attacks.js';
 import {
   computeAuraAttackBonus as computeAuraAttackBonusInternal,
@@ -256,10 +257,10 @@ function directionBetween(from, to) {
   if (!from || !to) return null;
   const dr = (to.r ?? 0) - (from.r ?? 0);
   const dc = (to.c ?? 0) - (from.c ?? 0);
-  if (dr === -1 && dc === 0) return 'N';
-  if (dr === 1 && dc === 0) return 'S';
-  if (dr === 0 && dc === 1) return 'E';
-  if (dr === 0 && dc === -1) return 'W';
+  if (dr < 0 && dc === 0) return 'N';
+  if (dr > 0 && dc === 0) return 'S';
+  if (dc > 0 && dr === 0) return 'E';
+  if (dc < 0 && dr === 0) return 'W';
   return null;
 }
 
@@ -634,6 +635,11 @@ export function applySummonAbilities(state, r, c) {
   if (!cell || !unit) return events;
   const tpl = getUnitTemplate(unit);
   if (!tpl) return events;
+
+  const summonBuffs = applySummonSelfBuffs(state, r, c);
+  if (summonBuffs?.logs?.length) {
+    events.logLines = [...(events.logLines || []), ...summonBuffs.logs];
+  }
 
   const drawRes = applySummonDraw(state, r, c, unit, tpl);
   if (Array.isArray(drawRes?.events) && drawRes.events.length) {
