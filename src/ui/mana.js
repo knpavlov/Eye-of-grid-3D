@@ -77,82 +77,155 @@ export function renderBars(gameState) {
   }
 }
 
-export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true, targetSlot = null) {
+function normalizeOrbOptions(raw) {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const opts = { ...raw };
+    if (typeof opts.targetSlot === 'number') {
+      opts.targetSlot = Math.max(0, Math.min(9, Math.floor(opts.targetSlot)));
+    } else {
+      opts.targetSlot = null;
+    }
+    opts.count = Math.max(1, Math.floor(Number.isFinite(opts.count) ? opts.count : 1));
+    opts.delayBetween = Math.max(0.06, Number.isFinite(opts.delayBetween) ? opts.delayBetween : 0.14);
+    opts.startDelay = Math.max(0, Number.isFinite(opts.startDelay) ? opts.startDelay : 0);
+    opts.accelerate = opts.accelerate !== false;
+    return opts;
+  }
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return {
+      targetSlot: Math.max(0, Math.min(9, Math.floor(raw))),
+      count: 1,
+      delayBetween: 0.14,
+      startDelay: 0,
+      accelerate: true,
+    };
+  }
+  return { targetSlot: null, count: 1, delayBetween: 0.14, startDelay: 0, accelerate: true };
+}
+
+function launchManaOrb({ start, ownerIndex, visualOnly, targetIdx, barEl, opts }) {
+  const run = () => {
+    try {
+      let child = barEl.children && barEl.children[targetIdx];
+      if (!child && barEl.children && barEl.children.length > 0) {
+        const lastIdx = Math.min(targetIdx ?? barEl.children.length - 1, barEl.children.length - 1);
+        child = barEl.children[lastIdx];
+      }
+
+      let tx;
+      let ty;
+      if (child) {
+        const rect = child.getBoundingClientRect();
+        tx = rect.left + rect.width / 2;
+        ty = rect.top + rect.height / 2;
+      } else {
+        const rect = barEl.getBoundingClientRect();
+        tx = rect.left + rect.width / 2;
+        ty = rect.top + rect.height / 2;
+      }
+
+      const orb = document.createElement('div');
+      orb.className = 'mana-orb';
+      orb.style.position = 'fixed';
+      orb.style.left = `${start.x}px`;
+      orb.style.top = `${start.y}px`;
+      orb.style.transform = 'translate(-50%, -50%) scale(0.32)';
+      orb.style.opacity = '0';
+      orb.style.zIndex = '60';
+      orb.style.pointerEvents = 'none';
+      document.body.appendChild(orb);
+
+      const cleanup = () => {
+        try { if (orb && orb.parentNode) orb.parentNode.removeChild(orb); } catch {}
+        if (visualOnly && typeof ownerIndex === 'number') {
+          const blocks = getBlocks();
+          blocks[ownerIndex] = Math.max(0, (blocks[ownerIndex] || 0) - 1);
+          setBlocks(blocks);
+          try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+        }
+      };
+
+      const tl = (typeof window !== 'undefined') ? window.gsap?.timeline?.({ onComplete: cleanup }) : null;
+      if (!tl) {
+        setTimeout(cleanup, 800);
+        return;
+      }
+
+      const midX = tx != null ? start.x + (tx - start.x) * 0.55 : start.x;
+      const midY = ty != null ? start.y + (ty - start.y) * 0.55 : start.y;
+      const accelEase = opts.accelerate ? 'power3.in' : 'power2.inOut';
+
+      tl.to(orb, { duration: 0.32, ease: 'back.out(1.4)', opacity: 1, transform: 'translate(-50%, -50%) scale(1)' })
+        .to(orb, { duration: 0.28, ease: 'power1.out', left: midX, top: midY }, '>-0.08')
+        .to(orb, { duration: 0.38, ease: accelEase, left: tx, top: ty }, '>-0.06')
+        .to(orb, { duration: 0.24, ease: 'power2.in', opacity: 0.95, transform: 'translate(-50%, -50%) scale(0.82)' }, '<0.02');
+    } catch {
+      if (visualOnly && typeof ownerIndex === 'number') {
+        const blocks = getBlocks();
+        blocks[ownerIndex] = Math.max(0, (blocks[ownerIndex] || 0) - 1);
+        setBlocks(blocks);
+        try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+      }
+    }
+  };
+
+  const delay = Math.max(0, Number.isFinite(opts.delay) ? opts.delay : 0);
+  if (delay > 0) {
+    setTimeout(run, delay * 1000);
+  } else {
+    run();
+  }
+}
+
+export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true, targetSlotOrOptions = null) {
   try {
     const start = worldToScreen(pos);
     const barEl = document.getElementById(`mana-display-${ownerIndex}`);
     if (!barEl) return;
     const gameState = (typeof window !== 'undefined') ? window.gameState : null;
-    
-    // Текущее количество маны и блокировок
-    let currentMana = Math.max(0, (gameState?.players?.[ownerIndex]?.mana) || 0);
-    const currentBlocks = Math.max(0, Number(getBlocks()?.[ownerIndex]) || 0);
 
-    // Итоговый целевой индекс слота маны
-    let targetIdx;
-    if (typeof targetSlot === 'number') {
-      // Явно заданный слот имеет приоритет
-      targetIdx = Math.max(0, Math.min(9, targetSlot));
-    } else if (visualOnly) {
-      // Показываем визуально в следующем свободном слоте, учитывая существующие блокировки
-      try {
-        const filledNow = Array.from(barEl.children).filter(el => el && el.classList && el.classList.contains('mana-orb')).length;
-        targetIdx = Math.min(9, Math.max(0, filledNow));
-      } catch {
-        const visibleMana = Math.max(0, currentMana - currentBlocks);
-        targetIdx = Math.min(9, visibleMana);
+    const opts = normalizeOrbOptions(targetSlotOrOptions);
+    const blocksSnapshot = getBlocks();
+
+    let currentMana = Math.max(0, (gameState?.players?.[ownerIndex]?.mana) || 0);
+    let currentBlocks = Math.max(0, Number(blocksSnapshot?.[ownerIndex]) || 0);
+
+    const makeTargetIndex = (localOffset = 0) => {
+      if (typeof opts.targetSlot === 'number') {
+        return Math.max(0, Math.min(9, opts.targetSlot + localOffset));
       }
-    } else {
-      // Состояние уже обновлено, целимся в последний заполненный орб
-      targetIdx = Math.max(0, Math.min(9, currentMana - 1));
-    }
-    
-    console.log(`[MANA] Animation for player ${ownerIndex}: currentMana=${currentMana}, blocks=${currentBlocks}, targetIdx=${targetIdx}, visualOnly=${visualOnly}`);
-    
-    if (visualOnly && typeof ownerIndex === 'number') {
-      const b = getBlocks(); 
-      b[ownerIndex] = Math.max(0, (b[ownerIndex] || 0) + 1); 
-      setBlocks(b);
-      try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
-    }
-    // Дополнительная защита: убедимся что DOM готов и элемент существует
-    let child = barEl.children && barEl.children[targetIdx];
-    
-    // Если целевой элемент не найден, попробуем пересчитать или взять последний доступный
-    if (!child && barEl.children && barEl.children.length > 0) {
-      const lastIdx = Math.min(targetIdx, barEl.children.length - 1);
-      child = barEl.children[lastIdx];
-      console.log(`[MANA] Target child not found at ${targetIdx}, using ${lastIdx}`);
-    }
-    
-    let tx, ty;
-    if (child) {
-      const srect = child.getBoundingClientRect();
-      tx = srect.left + srect.width / 2; 
-      ty = srect.top + srect.height / 2;
-      console.log(`[MANA] Flying to child at index ${targetIdx}: (${tx}, ${ty})`);
-    } else {
-      const rect = barEl.getBoundingClientRect();
-      tx = rect.left + rect.width / 2; 
-      ty = rect.top + rect.height / 2;
-      console.log(`[MANA] No valid child found, flying to bar center: (${tx}, ${ty})`);
-    }
-    const orb = document.createElement('div');
-    orb.className = 'mana-orb'; orb.style.position = 'fixed';
-    orb.style.left = start.x + 'px'; orb.style.top = start.y + 'px';
-    orb.style.transform = 'translate(-50%, -50%) scale(0.3)';
-    orb.style.opacity = '0'; orb.style.zIndex = '60';
-    document.body.appendChild(orb);
-    const tl = (typeof window !== 'undefined') ? window.gsap?.timeline?.({ onComplete: ()=>{
-      try { if (orb && orb.parentNode) orb.parentNode.removeChild(orb); } catch {}
+      if (visualOnly) {
+        try {
+          const filled = Array.from(barEl.children)
+            .filter(el => el && el.classList && el.classList.contains('mana-orb')).length;
+          return Math.min(9, Math.max(0, filled + localOffset));
+        } catch {
+          const visible = Math.max(0, currentMana - currentBlocks + localOffset);
+          return Math.min(9, visible);
+        }
+      }
+      return Math.max(0, Math.min(9, currentMana - 1 + localOffset));
+    };
+
+    for (let i = 0; i < opts.count; i += 1) {
+      const idx = makeTargetIndex(i);
       if (visualOnly && typeof ownerIndex === 'number') {
-        const b2 = getBlocks(); b2[ownerIndex] = Math.max(0, (b2[ownerIndex] || 0) - 1); setBlocks(b2);
+        const blocks = getBlocks();
+        blocks[ownerIndex] = Math.max(0, (blocks[ownerIndex] || 0) + 1);
+        setBlocks(blocks);
         try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+        currentBlocks = Math.max(0, Number(blocks[ownerIndex]) || 0);
       }
-    }}) : null;
-    if (tl) {
-      tl.to(orb, { duration: 0.5, ease: 'back.out(1.4)', opacity: 1, transform: 'translate(-50%, -50%) scale(1)' })
-        .to(orb, { duration: 2.0, ease: 'power2.inOut', left: tx, top: ty }, '>-0.1');
+
+      const delay = opts.startDelay + i * opts.delayBetween;
+      launchManaOrb({
+        start,
+        ownerIndex,
+        visualOnly,
+        targetIdx: idx,
+        barEl,
+        opts: { delay, accelerate: opts.accelerate },
+      });
     }
   } catch {}
 }
@@ -235,36 +308,39 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
       }
       
       for (const idx of indices) {
-        const el = bar.children[idx]; 
+        const el = bar.children[idx];
         if (!el) continue;
-        
+
         // Подготавливаем элемент для анимации
         el.style.willChange = 'transform, box-shadow, filter, opacity';
         el.style.transformOrigin = '50% 50%';
-        
+
+        const order = Math.max(0, idx - startIdx);
+        const orbStart = order * 0.12;
+
         // На старте убеждаемся что элемент существует как пустая ячейка, затем превращаем в орб + вспышка
-        tl.call(() => { 
-          try { 
+        tl.call(() => {
+          try {
             if (el.className !== 'mana-orb') {
-              el.className = 'mana-orb'; 
-              el.style.opacity = '1'; 
+              el.className = 'mana-orb';
+              el.style.opacity = '1';
             }
-          } catch {} 
-        }, null, 0)
+          } catch {}
+        }, null, orbStart)
           // Анимация масштабирования и свечения орба
-          .to(el, { 
-            duration: 0.196, 
-            ease: 'back.out(2.2)', 
-            onStart: () => { 
-              el.style.boxShadow = '0 0 22px rgba(96,165,250,0.95), 0 0 44px rgba(56,189,248,0.85)'; 
-            }, 
-            onComplete: () => { 
-              el.style.boxShadow = '0 0 12px rgba(30,160,255,0.85)'; 
-            } 
-          }, 0)
-          .to(el, { scale: 2.5, duration: 0.196, ease: 'back.out(2.2)' }, 0)
-          .to(el, { scale: 1.0, duration: 0.42, ease: 'power2.inOut' }, 0.196);
-        
+          .to(el, {
+            duration: 0.196,
+            ease: 'back.out(2.2)',
+            onStart: () => {
+              el.style.boxShadow = '0 0 22px rgba(96,165,250,0.95), 0 0 44px rgba(56,189,248,0.85)';
+            },
+            onComplete: () => {
+              el.style.boxShadow = '0 0 12px rgba(30,160,255,0.85)';
+            }
+          }, orbStart)
+          .to(el, { scale: 2.5, duration: 0.196, ease: 'back.out(2.2)' }, orbStart)
+          .to(el, { scale: 1.0, duration: 0.42, ease: 'power2.inOut' }, orbStart + 0.196);
+
         // Создаем блестки вокруг каждого орба
         const rect = el.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
@@ -292,12 +368,12 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
           const dist = 40 + Math.random() * 40;
           const dx = Math.cos(angle) * dist;
           const dy = Math.sin(angle) * dist;
-          const t0 = (idx - startIdx) * 0.056;
-          
+          const t0 = orbStart;
+
           // Анимация блестки: появление -> разлет -> исчезновение
-          tl.fromTo(spark, 
-            { x: 0, y: 0, opacity: 0, scale: 0.6 }, 
-            { x: dx, y: dy, opacity: 1, scale: 1.2, duration: 0.154, ease: 'power2.out' }, 
+          tl.fromTo(spark,
+            { x: 0, y: 0, opacity: 0, scale: 0.6 },
+            { x: dx, y: dy, opacity: 1, scale: 1.2, duration: 0.154, ease: 'power2.out' },
             t0)
             .to(spark, { 
               opacity: 0, 

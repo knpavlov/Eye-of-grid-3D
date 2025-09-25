@@ -639,7 +639,9 @@ function performMagicAttack(from, targetMesh) {
       }
       if (info.manaOrigin) {
         setTimeout(() => {
-          try { window.animateManaGainFromWorld?.(info.manaOrigin, info.death.owner, true, info.manaSlot); } catch {}
+          try {
+            window.animateManaGainFromWorld?.(info.manaOrigin, info.death.owner, true, { targetSlot: info.manaSlot });
+          } catch {}
         }, 400);
       }
     }
@@ -884,7 +886,7 @@ export function placeUnitWithDirection(direction) {
     const ctx = getCtx();
     const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
     const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-    window.animateManaGainFromWorld(pos, owner, true, slotBeforeGain);
+    window.animateManaGainFromWorld(pos, owner, true, { targetSlot: slotBeforeGain });
     gameState.board[row][col].unit = null;
     const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SUMMON' });
     if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {

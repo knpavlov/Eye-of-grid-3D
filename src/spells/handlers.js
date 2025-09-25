@@ -274,7 +274,7 @@ export const handlers = {
           try { gameState.players[owner].graveyard.push(CARDS[u.tplId]); } catch {}
           const pos = getCtx().tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
           const slot = gameState.players?.[owner]?.mana || 0;
-          animateManaGainFromWorld(pos, owner, true, slot);
+          animateManaGainFromWorld(pos, owner, true, { targetSlot: slot });
           const unitMeshesCtx = getCtx().unitMeshes;
           if (unitMeshesCtx) {
             const unitMesh = unitMeshesCtx.find(m => m.userData.row === r && m.userData.col === c);

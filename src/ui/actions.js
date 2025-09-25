@@ -541,9 +541,37 @@ export async function endTurn() {
       ? w.capMana
       : ((value) => Math.min(10, value));
     let manaAfter = capFn(before + 2);
+    const manaAfterTurnGain = manaAfter;
     player.mana = manaAfter;
     const manaEffects = applyTurnStartManaEffects(gameState, gameState.active) || { total: 0, entries: [] };
     manaAfter = player.mana;
+    const abilityManaAnimations = [];
+    try {
+      if (Array.isArray(manaEffects.entries) && manaEffects.entries.length) {
+        const tileMeshes = w.tileMeshes || [];
+        const THREE = w.THREE || null;
+        let slotCursor = Math.max(0, Math.min(9, manaAfterTurnGain));
+        for (const entry of manaEffects.entries) {
+          const amount = Math.max(0, Math.floor(entry?.amount || 0));
+          if (amount <= 0) continue;
+          const r = Number.isInteger(entry?.r) ? entry.r : Number.isInteger(entry?.watcher?.r) ? entry.watcher.r : null;
+          const c = Number.isInteger(entry?.c) ? entry.c : Number.isInteger(entry?.watcher?.c) ? entry.watcher.c : null;
+          if (r == null || c == null) {
+            slotCursor = Math.min(10, slotCursor + amount);
+            continue;
+          }
+          const row = tileMeshes?.[r];
+          const tile = row ? row[c] : null;
+          if (!tile || !THREE?.Vector3) {
+            slotCursor = Math.min(10, slotCursor + amount);
+            continue;
+          }
+          const origin = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+          abilityManaAnimations.push({ origin, startSlot: slotCursor, amount });
+          slotCursor = Math.min(10, slotCursor + amount);
+        }
+      }
+    } catch {}
     let drawnTpl = null;
     try {
       if (typeof w.drawOneNoAdd === 'function' && !player._drewThisTurn) {
@@ -648,6 +676,21 @@ export async function endTurn() {
     };
     await Promise.all([manaAnimationPromise, runDrawAnimation()]);
     player.mana = manaAfter;
+
+    if (abilityManaAnimations.length) {
+      const baseDelayBetweenSources = 0.2;
+      abilityManaAnimations.forEach((info, idx) => {
+        try {
+          const options = {
+            targetSlot: info.startSlot,
+            count: info.amount,
+            delayBetween: 0.14,
+            startDelay: idx * baseDelayBetweenSources,
+          };
+          window.animateManaGainFromWorld?.(info.origin, gameState.active, true, options);
+        } catch {}
+      });
+    }
 
     if (Array.isArray(manaEffects.entries) && manaEffects.entries.length) {
       const cards = w.CARDS || {};
