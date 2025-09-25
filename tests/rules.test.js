@@ -165,6 +165,17 @@ describe('guards and hits', () => {
     expect(targetHit.dmg).toBe(CARDS.FIRE_HELLFIRE_SPITTER.atk + 1);
   });
 
+  it('Leapfrog Bandit получает бонус за blind spot даже с дистанции 2', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][0].unit = { owner: 0, tplId: 'FOREST_LEAPFROG_BANDIT', facing: 'E' };
+    state.board[1][2].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'E', currentHP: 2 };
+    const hits = computeHits(state, 1, 0, {});
+    const targetHit = hits.find(h => h.r === 1 && h.c === 2);
+    expect(targetHit).toBeTruthy();
+    expect(targetHit.backstab).toBe(true);
+    expect(targetHit.dmg).toBe(CARDS.FOREST_LEAPFROG_BANDIT.atk + 1);
+  });
+
   it('Biolith Battle Chariot поражает клетки впереди и справа одновременно', () => {
     const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
     state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_BATTLE_CHARIOT', facing: 'N' };
