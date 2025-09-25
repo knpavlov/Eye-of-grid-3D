@@ -1,6 +1,7 @@
 // Модуль обработки способности "жертвоприношение" для кубов и похожих карт
 import { CARDS } from '../cards.js';
 import { computeCellBuff } from '../fieldEffects.js';
+import { applyDeathDiscardEffects } from './discard.js';
 
 const FACING_ORDER = ['N', 'E', 'S', 'W'];
 
@@ -161,14 +162,23 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
     }
   }
 
-  const sacrificeTpl = getTemplateRef(cell.unit);
+  const currentUnit = cell?.unit || null;
+  const sacrificeTpl = getTemplateRef(currentUnit);
   const graveyard = Array.isArray(player.graveyard) ? player.graveyard : (player.graveyard = []);
   if (sacrificeTpl) {
     graveyard.push(sacrificeTpl);
   }
 
   // Удаляем существо с клетки до появления нового
+  const sacrificeDeath = currentUnit
+    ? [{ r, c, owner: currentUnit.owner, tplId: currentUnit.tplId, uid: currentUnit.uid ?? null, element: cell?.element || null }]
+    : null;
   cell.unit = null;
+
+  let discardEvents = null;
+  if (sacrificeDeath) {
+    discardEvents = applyDeathDiscardEffects(state, sacrificeDeath, { cause: 'SACRIFICE' });
+  }
 
   // Удаляем карту из руки и переносим в сброс
   const discard = Array.isArray(player.discard) ? player.discard : (player.discard = []);
@@ -207,6 +217,10 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
     events: {},
   };
 
+  if (discardEvents && Array.isArray(discardEvents.logs) && discardEvents.logs.length) {
+    result.events.discardLogs = discardEvents.logs.slice();
+  }
+
   const cellElement = cell.element || null;
   const buff = computeCellBuff(cellElement, summonTpl.element);
   if (buff.hp !== 0) {
@@ -237,6 +251,7 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
     const tplDeath = getTemplateRef(summonTpl);
     graveyard.push(tplDeath);
     cell.unit = null;
+    const replacementDeath = [{ r, c, owner: newUnit.owner, tplId: summonTpl.id, uid: newUnit.uid ?? null, element: cell?.element || null }];
 
     if (summonTpl.onDeathAddHPAll) {
       const amount = summonTpl.onDeathAddHPAll;
@@ -256,6 +271,11 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
         }
       }
       result.events.oracleBuff = { owner: newUnit.owner, amount };
+    }
+
+    const discardReplacement = applyDeathDiscardEffects(state, replacementDeath, { cause: 'SACRIFICE_REPLACEMENT' });
+    if (discardReplacement && Array.isArray(discardReplacement.logs) && discardReplacement.logs.length) {
+      result.events.discardLogs = (result.events.discardLogs || []).concat(discardReplacement.logs);
     }
   }
 
