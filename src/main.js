@@ -47,6 +47,7 @@ import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
 import * as CancelButton from './ui/cancelButton.js';
 import { initDebugControls } from './ui/debugControls.js';
+import { initDiscardManager, syncWithState as syncDiscardManager } from './ui/discardManager.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -150,6 +151,7 @@ export function applyGameState(state) {
     // Сообщаем страницам с локальной переменной gameState о новом состоянии
     // (например, index.html держит собственную копию)
     window.setGameState?.(state);
+    try { syncDiscardManager(state); } catch {}
   } catch {}
 }
 try { if (typeof window !== 'undefined') window.applyGameState = applyGameState; } catch {}
@@ -198,6 +200,7 @@ try {
   window.__ui.summonLock = SummonLock;
   window.__ui.cancelButton = CancelButton;
   window.__ui.deckSelect = DeckSelect;
+  window.__ui.discardManager = window.__ui.discardManager || { initDiscardManager, syncWithState: syncDiscardManager };
   window.__ui.deckBuilder = DeckBuilder;
   window.__ui.mainMenu = MainMenu;
   window.updateUI = updateUI;
@@ -220,4 +223,5 @@ import * as UISync from './ui/sync.js';
 try { UISync.attachSocketUIRefresh(); if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.sync = UISync; } } catch {}
 
 try { initDebugControls(); } catch {}
+try { initDiscardManager(); } catch {}
 

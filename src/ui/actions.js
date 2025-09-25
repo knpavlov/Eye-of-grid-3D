@@ -18,6 +18,7 @@ import {
   getPendingAbilityOrientation,
   clearPendingAbilityOrientation,
   showOracleDeathBuff,
+  hasPendingForcedDiscards,
 } from '../scene/interactions.js';
 
 export function rotateUnit(unitMesh, dir) {
@@ -358,6 +359,12 @@ export function confirmUnitAbilityOrientation(context, direction) {
       w.addLog?.(`${replacementName}: союзники получают +${amount} HP.`);
     }
 
+    if (Array.isArray(result.events?.discardLogs) && result.events.discardLogs.length) {
+      for (const text of result.events.discardLogs) {
+        if (text) w.addLog?.(text);
+      }
+    }
+
     if (result.summonEvents?.possessions?.length) {
       for (const ev of result.summonEvents.possessions) {
         const unitTaken = gameState.board?.[ev.r]?.[ev.c]?.unit;
@@ -419,6 +426,11 @@ export async function endTurn() {
     if (!gameState || gameState.winner !== null) return;
     const isInputLocked = w.isInputLocked || (() => false);
     if (isInputLocked()) return;
+    const forcedPending = hasPendingForcedDiscards();
+    if (forcedPending) {
+      w.showNotification?.('Нельзя завершить ход до окончания принудительного сброса.', 'error');
+      return;
+    }
     try {
       if (typeof w.MY_SEAT === 'number' && gameState.active !== w.MY_SEAT) {
         w.showNotification?.("Opponent's turn", 'error');
