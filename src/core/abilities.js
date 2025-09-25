@@ -35,6 +35,7 @@ import {
 } from './abilityHandlers/auraModifiers.js';
 import { hasAuraInvisibility } from './abilityHandlers/invisibilityAura.js';
 import { applyEnemySummonReactions } from './abilityHandlers/summonReactions.js';
+import { applySummonStatBuffs } from './abilityHandlers/summonBuffs.js';
 import { applyTurnStartManaEffects as applyTurnStartManaEffectsInternal } from './abilityHandlers/startPhase.js';
 import {
   computeUnitProtection as computeUnitProtectionInternal,
@@ -634,6 +635,14 @@ export function applySummonAbilities(state, r, c) {
   if (!cell || !unit) return events;
   const tpl = getUnitTemplate(unit);
   if (!tpl) return events;
+
+  const summonBuffs = applySummonStatBuffs(state, r, c);
+  if (Array.isArray(summonBuffs?.logs) && summonBuffs.logs.length) {
+    events.logs = [...(events.logs || []), ...summonBuffs.logs];
+  }
+  if (Array.isArray(summonBuffs?.statBuffs) && summonBuffs.statBuffs.length) {
+    events.statBuffs = [...(events.statBuffs || []), ...summonBuffs.statBuffs];
+  }
 
   const drawRes = applySummonDraw(state, r, c, unit, tpl);
   if (Array.isArray(drawRes?.events) && drawRes.events.length) {
