@@ -35,6 +35,7 @@ import {
 } from './abilityHandlers/auraModifiers.js';
 import { hasAuraInvisibility } from './abilityHandlers/invisibilityAura.js';
 import { applyEnemySummonReactions } from './abilityHandlers/summonReactions.js';
+import { applySummonStatBuffs } from './abilityHandlers/summonBuffs.js';
 import { applyTurnStartManaEffects as applyTurnStartManaEffectsInternal } from './abilityHandlers/startPhase.js';
 import {
   computeUnitProtection as computeUnitProtectionInternal,
@@ -256,10 +257,10 @@ function directionBetween(from, to) {
   if (!from || !to) return null;
   const dr = (to.r ?? 0) - (from.r ?? 0);
   const dc = (to.c ?? 0) - (from.c ?? 0);
-  if (dr === -1 && dc === 0) return 'N';
-  if (dr === 1 && dc === 0) return 'S';
-  if (dr === 0 && dc === 1) return 'E';
-  if (dr === 0 && dc === -1) return 'W';
+  if (dr < 0 && dc === 0) return 'N';
+  if (dr > 0 && dc === 0) return 'S';
+  if (dr === 0 && dc > 0) return 'E';
+  if (dr === 0 && dc < 0) return 'W';
   return null;
 }
 
@@ -267,6 +268,24 @@ function computeFacingAway(targetRef, attackerRef) {
   const dirToAttacker = directionBetween(targetRef, attackerRef);
   if (!dirToAttacker) return null;
   return OPPOSITE_DIR[dirToAttacker] || null;
+}
+
+function resolveRotationFacing(state, targetRef, event = {}) {
+  const mode = typeof event.mode === 'string' ? event.mode.toUpperCase() : 'FACE_AWAY';
+  if (mode === 'OPPOSITE') {
+    const current = targetRef?.unit?.facing;
+    if (current && OPPOSITE_DIR[current]) {
+      return OPPOSITE_DIR[current];
+    }
+    const tpl = targetRef?.unit ? getUnitTemplate(targetRef.unit) : null;
+    const fallback = tpl?.facing || tpl?.defaultFacing;
+    if (fallback && OPPOSITE_DIR[fallback]) {
+      return OPPOSITE_DIR[fallback];
+    }
+    return null;
+  }
+  const attacker = findUnitRef(state, event.faceAwayFrom);
+  return computeFacingAway(targetRef, attacker);
 }
 
 // Проверяем, нужно ли активировать эффекты "при нанесении урона" даже при нулевом уроне
@@ -431,13 +450,15 @@ export function applyDamageInteractionResults(state, effects = {}) {
       if (!target.unit) continue;
       const aliveTarget = (target.unit.currentHP ?? CARDS[target.unit.tplId]?.hp ?? 0) > 0;
       if (!aliveTarget) continue;
-      const attacker = findUnitRef(state, ev.faceAwayFrom);
-      const facing = computeFacingAway(target, attacker);
-      if (facing) {
-        target.unit.facing = facing;
-        const name = CARDS[target.unit.tplId]?.name || 'Цель';
-        logs.push(`${name} поворачивается спиной к атакующему.`);
-      }
+      const facing = resolveRotationFacing(state, target, ev);
+      if (!facing) continue;
+      target.unit.facing = facing;
+      const name = CARDS[target.unit.tplId]?.name || 'Цель';
+      const mode = typeof ev.mode === 'string' ? ev.mode.toUpperCase() : 'FACE_AWAY';
+      const message = mode === 'OPPOSITE'
+        ? `${name} разворачивается на 180°.`
+        : `${name} поворачивается спиной к атакующему.`;
+      logs.push(message);
     } else if (ev?.type === 'PUSH_TARGET') {
       const target = findUnitRef(state, ev.target);
       if (!target.unit) continue;
@@ -634,6 +655,14 @@ export function applySummonAbilities(state, r, c) {
   if (!cell || !unit) return events;
   const tpl = getUnitTemplate(unit);
   if (!tpl) return events;
+
+  const summonBuffs = applySummonStatBuffs(state, r, c);
+  if (Array.isArray(summonBuffs?.logs) && summonBuffs.logs.length) {
+    events.logs = [...(events.logs || []), ...summonBuffs.logs];
+  }
+  if (Array.isArray(summonBuffs?.statBuffs) && summonBuffs.statBuffs.length) {
+    events.statBuffs = [...(events.statBuffs || []), ...summonBuffs.statBuffs];
+  }
 
   const drawRes = applySummonDraw(state, r, c, unit, tpl);
   if (Array.isArray(drawRes?.events) && drawRes.events.length) {
