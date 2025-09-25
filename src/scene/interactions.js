@@ -9,6 +9,8 @@ import {
   applySummonAbilities,
   evaluateIncarnationSummon,
   applyIncarnationSummon,
+  applyFieldFatalityCheck,
+  describeFieldFatality,
   isIncarnationCard,
 } from '../core/abilities.js';
 import { capMana } from '../core/constants.js';
@@ -841,13 +843,13 @@ export function placeUnitWithDirection(direction) {
     else window.addLog(`Элемент ослабляет ${cardData.name}: HP ${before}→${unit.currentHP}`);
   }
   let alive = unit.currentHP > 0;
-  if (alive && cardData.diesOffElement && cellElement !== cardData.diesOffElement) {
-    window.addLog(`${cardData.name} погибает вдали от стихии ${cardData.diesOffElement}!`);
-    alive = false;
-  }
-  if (alive && cardData.diesOnElement && cellElement === cardData.diesOnElement) {
-    window.addLog(`${cardData.name} не переносит стихию ${cardData.diesOnElement} и погибает!`);
-    alive = false;
+  if (alive) {
+    const hazard = applyFieldFatalityCheck(unit, cardData, cellElement);
+    if (hazard.dies) {
+      alive = false;
+      const fatalLog = describeFieldFatality(cardData, hazard, { name: cardData.name });
+      if (fatalLog) window.addLog(fatalLog);
+    }
   }
   if (!alive) {
     // обработка эффектов при смерти (например, лечение союзников)
@@ -1000,6 +1002,15 @@ export function placeUnitWithDirection(direction) {
       window.updateUnits();
       window.updateUI();
       const tpl = window.CARDS?.[cardData.id];
+      const currentUnit = gameState.board?.[row]?.[col]?.unit || null;
+      if (!currentUnit) {
+        interactionState.autoEndTurnAfterAttack = false;
+        if (unlockTriggered) {
+          setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0);
+        }
+        try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+        return;
+      }
       if (tpl?.fortress) {
         interactionState.autoEndTurnAfterAttack = false;
         if (unlockTriggered) {

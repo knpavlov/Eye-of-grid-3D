@@ -364,8 +364,20 @@ export function stagedAttack(state, r, c, opts = {}) {
       if (hitsB.length) {
         const { atk: batk } = effectiveStats(base.board[h.r][h.c], B, { state: base, r: h.r, c: h.c });
         const baseDmg = Math.max(0, batk);
-        const prot = getUnitProtection(base, r, c, { unit: attacker, tpl: tplA });
+        const retaliationType = hitsB.attackType || tplB?.attackType || 'STANDARD';
+        const attackerCell = base.board?.[r]?.[c] || null;
+        const attackerUnit = attackerCell?.unit || null;
+        const attackerInvisible = attackerUnit ? hasInvisibility(base, r, c, { unit: attackerUnit, tpl: tplA }) : false;
+        const blockedByPerfect = !attackerInvisible && retaliationType !== 'MAGIC'
+          && hasPerfectDodge(base, r, c, { unit: attackerUnit, tpl: tplA });
+        if (blockedByPerfect) {
+          continue;
+        }
+        const prot = retaliationType === 'MAGIC'
+          ? 0
+          : getUnitProtection(base, r, c, { unit: attacker, tpl: tplA });
         const dmg = Math.max(0, baseDmg - prot);
+        if (dmg <= 0) continue;
         quickRetaliation += dmg;
         quickSources.push(CARDS[B.tplId].name);
         quickRetaliators.push({ r: h.r, c: h.c, dmg });
@@ -506,9 +518,22 @@ export function stagedAttack(state, r, c, opts = {}) {
         const baseDmg = Math.max(0, batk);
         const attackerCell = n1.board?.[r]?.[c];
         const attackerUnit = attackerCell?.unit;
-        const protection = getUnitProtection(n1, r, c, { unit: attackerUnit, tpl: tplA });
+        const retaliationType = hitsB.attackType || tplB?.attackType || 'STANDARD';
+        const retaliationIsMagic = retaliationType === 'MAGIC';
+        const attackerInvisible = attackerUnit ? hasInvisibility(n1, r, c, { unit: attackerUnit, tpl: tplA }) : false;
+        const blockedByPerfect = !retaliationIsMagic && !attackerInvisible
+          && hasPerfectDodge(n1, r, c, { unit: attackerUnit, tpl: tplA });
+        if (blockedByPerfect) {
+          retaliators.push({ r: h.r, c: h.c, dmg: 0 });
+          continue;
+        }
+        const protection = retaliationIsMagic
+          ? 0
+          : getUnitProtection(n1, r, c, { unit: attackerUnit, tpl: tplA });
         const dealt = Math.max(0, baseDmg - protection);
-        totalRetaliation += dealt;
+        if (dealt > 0) {
+          totalRetaliation += dealt;
+        }
         retaliators.push({ r: h.r, c: h.c, dmg: dealt });
       }
     }

@@ -32,6 +32,7 @@ describe('buffs and stats', () => {
     expect(computeCellBuff('WATER', 'FIRE')).toEqual({ atk: 0, hp: -2 });
     // Biolith => no effect
     expect(computeCellBuff('BIOLITH', 'FIRE')).toEqual({ atk: 0, hp: 0 });
+    expect(computeCellBuff('BIOLITH', 'BIOLITH')).toEqual({ atk: 0, hp: 0 });
 
     const cell = { element: 'FIRE' };
     const unit = { tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', tempAtkBuff: 1 };
@@ -316,6 +317,38 @@ describe('особые способности', () => {
     expect(res.n1.board[1][1].unit).toBeNull();
   });
 
+  it('perfect dodge защищает от физической контратаки', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[1][1].unit = { owner:0, tplId:'FIRE_GREAT_MINOS', facing:'E' };
+    state.board[1][2].unit = { owner:1, tplId:'FIRE_FREEDONIAN_WANDERER', facing:'W', currentHP:4 };
+    const res = stagedAttack(state,1,1);
+    const fin = res.finish();
+    const minos = fin.n1.board[1][1].unit;
+    expect(minos).toBeTruthy();
+    const tplMinos = CARDS[minos.tplId];
+    expect(minos.currentHP ?? tplMinos.hp).toBe(tplMinos.hp);
+    const wanderer = fin.n1.board[1][2].unit;
+    expect(wanderer).toBeTruthy();
+    expect((wanderer.currentHP ?? CARDS[wanderer.tplId].hp)).toBeGreaterThan(0);
+  });
+
+  it('Biolith Stinger меняется местами даже без нанесённого урона', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[2][1].unit = { owner:0, tplId:'BIOLITH_BIOLITH_STINGER', facing:'N' };
+    state.board[1][1].unit = { owner:1, tplId:'FIRE_FREEDONIAN_WANDERER', facing:'S', currentHP:3 };
+    const res = stagedAttack(state,2,1,{ chosenDir:'N', rng: () => 1 });
+    const fin = res.finish();
+    const stingerCell = fin.n1.board[1][1].unit;
+    expect(stingerCell).toBeTruthy();
+    expect(stingerCell.tplId).toBe('BIOLITH_BIOLITH_STINGER');
+    const tplStinger = CARDS[stingerCell.tplId];
+    expect(stingerCell.currentHP ?? tplStinger.hp).toBe(tplStinger.hp);
+    const wandererCell = fin.n1.board[2][1].unit;
+    expect(wandererCell).toBeTruthy();
+    expect(wandererCell.tplId).toBe('FIRE_FREEDONIAN_WANDERER');
+    expect((wandererCell.currentHP ?? CARDS[wandererCell.tplId].hp)).toBeGreaterThan(0);
+  });
+
   it('dodge attempt спасает один раз', () => {
     const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
     state.board[1][1].unit = { owner:0, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'E' };
@@ -380,7 +413,7 @@ describe('особые способности', () => {
     const fin = res.finish();
     const attacker = fin.n1.board[1][0].unit;
     const tplA = CARDS[attacker.tplId];
-    expect(attacker.currentHP ?? tplA.hp).toBe(2);
+    expect(attacker.currentHP ?? tplA.hp).toBe(5);
     delete CARDS.TEST_DEFENDER;
   });
 
