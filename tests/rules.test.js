@@ -215,7 +215,7 @@ describe('guards and hits', () => {
       facing: 'S',
       currentHP: 1,
     };
-    const res = stagedAttack(state, 2, 1);
+    const res = stagedAttack(state, 2, 1, { chosenDir: 'N' });
     const fin = res.finish();
     expect(fin.n1.board[1][1].unit).toBeNull();
     expect(fin.n1.board[0][1].unit).toBeNull();
@@ -237,6 +237,70 @@ describe('guards and hits', () => {
     };
     const hits = computeHits(state, 2, 1);
     expect(hits).toHaveLength(0);
+  });
+});
+
+describe('новые карты', () => {
+  it('Juno Tree Haunt уклоняется от урона благодаря Perfect Dodge', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].element = 'FOREST';
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'WOOD_JUNO_TREE_HAUNT',
+      facing: 'N',
+      currentHP: CARDS.WOOD_JUNO_TREE_HAUNT.hp,
+    };
+    state.board[1][1].unit = {
+      owner: 1,
+      tplId: 'EARTH_DARK_YOKOZUNA_SEKIMARU',
+      facing: 'S',
+      currentHP: CARDS.EARTH_DARK_YOKOZUNA_SEKIMARU.hp,
+    };
+
+    const res = stagedAttack(state, 1, 1);
+    expect(res).toBeTruthy();
+    const fin = res.finish();
+    const hit = fin.targets.find(t => t.r === 2 && t.c === 1);
+    expect(hit?.dmg).toBe(0);
+    const juno = fin.n1.board[2][1].unit;
+    expect(juno?.tplId).toBe('WOOD_JUNO_TREE_HAUNT');
+    expect((juno?.currentHP ?? CARDS.WOOD_JUNO_TREE_HAUNT.hp)).toBeGreaterThan(0);
+  });
+
+  it('Biolith Stinger получает попытку Dodge и меняется местами при уроне', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_BIOLITH_STINGER',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_BIOLITH_STINGER.hp,
+      tempAtkBuff: 1,
+    };
+    state.board[1][1].unit = {
+      owner: 1,
+      tplId: 'EARTH_DARK_YOKOZUNA_SEKIMARU',
+      facing: 'S',
+      currentHP: CARDS.EARTH_DARK_YOKOZUNA_SEKIMARU.hp,
+    };
+
+    const dodgeInfo = refreshBoardDodgeStates(state);
+    expect(dodgeInfo.updated.some(u => u.r === 2 && u.c === 1)).toBe(true);
+    const stinger = state.board[2][1].unit;
+    expect(stinger.dodgeState).toBeTruthy();
+    expect(stinger.dodgeState.keyword).toBe('DODGE_ATTEMPT');
+    expect(stinger.dodgeState.limited).toBe(true);
+    expect(stinger.dodgeState.remaining).toBe(1);
+
+    const res = stagedAttack(state, 2, 1, { chosenDir: 'N' });
+    expect(res).toBeTruthy();
+    const fin = res.finish();
+    const damage = fin.targets.find(t => t.r === 1 && t.c === 1);
+    expect(damage?.dmg).toBe(1);
+    const attackerCell = fin.n1.board[1][1].unit;
+    const targetCell = fin.n1.board[2][1].unit;
+    expect(attackerCell?.tplId).toBe('BIOLITH_BIOLITH_STINGER');
+    expect(targetCell?.tplId).toBe('EARTH_DARK_YOKOZUNA_SEKIMARU');
+    expect(fin.retaliators.length).toBe(0);
   });
 });
 

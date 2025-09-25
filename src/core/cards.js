@@ -594,6 +594,21 @@ export const CARDS = {
     diesOnElement: 'EARTH',
     desc: 'Fortress: cannot attack unless counterattacking. When an enemy creature is summoned adjacent to it, all other allied creatures gain 1 HP. Destroy if on an Earth field.'
   },
+  WOOD_JUNO_TREE_HAUNT: {
+    id: 'WOOD_JUNO_TREE_HAUNT', name: 'Juno Tree Haunt', type: 'UNIT', cost: 3, activation: 1,
+    element: 'FOREST', atk: 2, hp: 1,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1, 2], mode: 'ANY', ignoreBlocking: true },
+      { dir: 'E', ranges: [1, 2], mode: 'ANY', ignoreBlocking: true },
+      { dir: 'S', ranges: [1, 2], mode: 'ANY', ignoreBlocking: true },
+      { dir: 'W', ranges: [1, 2], mode: 'ANY', ignoreBlocking: true },
+    ],
+    blindspots: ['S'],
+    perfectDodge: true,
+    diesOffElement: 'FOREST',
+    desc: 'Perfect Dodge. Destroy Juno Tree Haunt if it is on a non-Wood field.'
+  },
   FOREST_EDIN_THE_PERSECUTED: {
     id: 'FOREST_EDIN_THE_PERSECUTED', name: 'Edin the Persecuted', type: 'UNIT', cost: 3, activation: 2,
     element: 'FOREST', atk: 2, hp: 3,
@@ -728,6 +743,21 @@ export const CARDS = {
     blindspots: ['S'],
     plusAtkVsSummonCostAtMost: { limit: 2, amount: 2 },
     desc: 'Adds 2 to its Attack if the target creature has a Summoning Cost of 2 or lower.'
+  },
+  BIOLITH_BIOLITH_STINGER: {
+    id: 'BIOLITH_BIOLITH_STINGER', name: 'Biolith Stinger', type: 'UNIT', cost: 3, activation: 2,
+    element: 'BIOLITH', atk: 0, hp: 1,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1] },
+      { dir: 'E', ranges: [1] },
+      { dir: 'S', ranges: [1] },
+      { dir: 'W', ranges: [1] },
+    ],
+    blindspots: [],
+    dodge: { chance: 0.5, attempts: 1 },
+    swapOnDamage: true,
+    desc: 'Dodge attempt. If Biolith Stinger damages (but does not destroy) a creature, it switches locations with that creature (which cannot counterattack).'
   },
   BIOLITH_SCION_BIOLITH_LORD: {
     id: 'BIOLITH_SCION_BIOLITH_LORD', name: 'Scion, Biolith Lord', type: 'UNIT', cost: 6, activation: 3,
