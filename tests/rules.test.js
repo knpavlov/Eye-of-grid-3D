@@ -380,7 +380,10 @@ describe('особые способности', () => {
     const fin = res.finish();
     const attacker = fin.n1.board[1][0].unit;
     const tplA = CARDS[attacker.tplId];
-    expect(attacker.currentHP ?? tplA.hp).toBe(2);
+    expect(attacker.currentHP ?? tplA.hp).toBe(5);
+    expect(Array.isArray(fin.retaliators) ? fin.retaliators.length : 0).toBeGreaterThan(0);
+    const swapRet = fin.retaliators.find(item => item.r === 1 && item.c === 2);
+    expect(swapRet).toMatchObject({ dmg: 0, dodged: true });
     delete CARDS.TEST_DEFENDER;
   });
 

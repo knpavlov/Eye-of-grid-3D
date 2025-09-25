@@ -362,13 +362,25 @@ export function stagedAttack(state, r, c, opts = {}) {
     if (!attackerQuick && hasFirstStrike(tplB)) {
       const hitsB = computeHits(base, h.r, h.c, { target: { r, c }, union: true, retaliation: true });
       if (hitsB.length) {
-        const { atk: batk } = effectiveStats(base.board[h.r][h.c], B, { state: base, r: h.r, c: h.c });
-        const baseDmg = Math.max(0, batk);
-        const prot = getUnitProtection(base, r, c, { unit: attacker, tpl: tplA });
-        const dmg = Math.max(0, baseDmg - prot);
-        quickRetaliation += dmg;
-        quickSources.push(CARDS[B.tplId].name);
-        quickRetaliators.push({ r: h.r, c: h.c, dmg });
+        const retaliationType = hitsB.attackType || tplB?.attackType || 'STANDARD';
+        const isMagicRetaliation = retaliationType === 'MAGIC';
+        const attackerPerfect = !isMagicRetaliation && hasPerfectDodge(base, r, c, { unit: attacker, tpl: tplA });
+        let dmg = 0;
+        if (attackerPerfect) {
+          const nameA = tplA?.name || 'Существо';
+          const nameB = tplB?.name || 'Существо';
+          logLines.push(`${nameA} избегает контратаки ${nameB} благодаря Perfect Dodge.`);
+        } else {
+          const { atk: batk } = effectiveStats(base.board[h.r][h.c], B, { state: base, r: h.r, c: h.c });
+          const baseDmg = Math.max(0, batk);
+          const prot = isMagicRetaliation ? 0 : getUnitProtection(base, r, c, { unit: attacker, tpl: tplA });
+          dmg = Math.max(0, baseDmg - prot);
+        }
+        if (dmg > 0) {
+          quickRetaliation += dmg;
+          quickSources.push(CARDS[B.tplId].name);
+          quickRetaliators.push({ r: h.r, c: h.c, dmg });
+        }
       }
     }
   }
@@ -502,14 +514,27 @@ export function stagedAttack(state, r, c, opts = {}) {
       if (!attackerQuick && hasFirstStrike(tplB)) continue;
       const hitsB = computeHits(n1, h.r, h.c, { target: { r, c }, union: true, retaliation: true });
       if (hitsB.length) {
-        const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B, { state: n1, r: h.r, c: h.c });
-        const baseDmg = Math.max(0, batk);
+        const retaliationType = hitsB.attackType || tplB?.attackType || 'STANDARD';
+        const isMagicRetaliation = retaliationType === 'MAGIC';
         const attackerCell = n1.board?.[r]?.[c];
         const attackerUnit = attackerCell?.unit;
-        const protection = getUnitProtection(n1, r, c, { unit: attackerUnit, tpl: tplA });
-        const dealt = Math.max(0, baseDmg - protection);
-        totalRetaliation += dealt;
-        retaliators.push({ r: h.r, c: h.c, dmg: dealt });
+        if (!attackerUnit) continue;
+        const attackerPerfect = !isMagicRetaliation && hasPerfectDodge(n1, r, c, { unit: attackerUnit, tpl: tplA });
+        let dealt = 0;
+        if (attackerPerfect) {
+          const nameA = tplA?.name || 'Существо';
+          const nameB = tplB?.name || 'Существо';
+          logLines.push(`${nameA} избегает контратаки ${nameB} благодаря Perfect Dodge.`);
+        } else {
+          const { atk: batk } = effectiveStats(n1.board[h.r][h.c], B, { state: n1, r: h.r, c: h.c });
+          const baseDmg = Math.max(0, batk);
+          const protection = isMagicRetaliation ? 0 : getUnitProtection(n1, r, c, { unit: attackerUnit, tpl: tplA });
+          dealt = Math.max(0, baseDmg - protection);
+        }
+        retaliators.push({ r: h.r, c: h.c, dmg: dealt, dodged: attackerPerfect }); // dodged=true означает, что атакующий увернулся
+        if (!attackerPerfect && dealt > 0) {
+          totalRetaliation += dealt;
+        }
       }
     }
     const preventRetaliation = attackType === 'MAGIC' || (tplA.avoidRetaliation50 && Math.random() < 0.5);
