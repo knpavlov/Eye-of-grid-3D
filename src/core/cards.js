@@ -353,6 +353,17 @@ export const CARDS = {
     desc: 'Stone Wing Dwarf gains Protection equal to the number of allied Giant Axe Dwarves on the board.'
   },
 
+  EARTH_BLACK_HOOD_DWARF_VULITRA: {
+    id: 'EARTH_BLACK_HOOD_DWARF_VULITRA', name: 'Black Hood Dwarf Vulitra', type: 'UNIT', cost: 3, activation: 2,
+    element: 'EARTH', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'], ignoreAlliedBlocking: true, pierce: true,
+    plusAtkVsElement: { element: 'EARTH', amount: 1 },
+    deathDiscardOnNonElement: { element: 'EARTH', count: { type: 'FIELD_COUNT', element: 'EARTH' } },
+    desc: 'Vulitra adds 1 to his attack if at least one target creature is an earth creature. If Vulitra is destroyed on a non-Earth field, your opponent must discard cards equal to the number of Earth fields.'
+  },
+
   EARTH_VERZAR_CANINE: {
     id: 'EARTH_VERZAR_CANINE', name: 'Verzar Canine', type: 'UNIT', cost: 1, activation: 1,
     element: 'EARTH', atk: 1, hp: 1,
@@ -602,6 +613,15 @@ export const CARDS = {
     enemyActivationTaxAdjacent: 3,
     desc: 'Magic Attack. If Elven Death Dancer damages (but does not destroy) a creature, she switches locations with that creature (which cannot counterattack). Enemies on adjacent fields add 3 to their Activation Cost.'
   },
+  FOREST_ELVEN_RIDER: {
+    id: 'FOREST_ELVEN_RIDER', name: 'Elven Rider', type: 'UNIT', cost: 4, activation: 2,
+    element: 'FOREST', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'], ignoreAlliedBlocking: true, pierce: true,
+    deathDiscardOnNonElement: { element: 'FOREST', count: { type: 'FIELD_COUNT', element: 'FOREST' } },
+    desc: 'If Elven Rider is destroyed on a non-Wood field, your opponent must discard cards equal to the number of Wood fields.'
+  },
   FOREST_JUNO_FOREST_DRAGON: {
     id: 'FOREST_JUNO_FOREST_DRAGON', name: 'Juno Forest Dragon', type: 'UNIT', cost: 7, activation: 4,
     element: 'FOREST', atk: 5, hp: 8,
@@ -635,6 +655,39 @@ export const CARDS = {
       { key: 'SACRIFICE_TRANSFORM', element: 'FOREST', label: 'Sacrifice', requireNonCubic: true },
     ],
     desc: 'Sacrifice Green Cubic to summon a non‑cubic Wood creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
+  },
+  FOREST_GREEN_ERLKING_ZOMBA: {
+    id: 'FOREST_GREEN_ERLKING_ZOMBA', name: 'Green Erlking Zomba', type: 'UNIT', cost: 6, activation: 3,
+    element: 'FOREST', atk: 6, hp: 3,
+    attackType: 'STANDARD', friendlyFire: true,
+    attacks: [ { dir: 'N', ranges: [1, 2], ignoreAlliedBlocking: true } ],
+    attackSchemes: [
+      { key: 'BASE', label: 'Base', attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [1, 2], ignoreAlliedBlocking: true } ] },
+      { key: 'ALT', label: 'Wood', attackType: 'STANDARD', attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ] }
+    ],
+    defaultAttackScheme: 'BASE',
+    mustUseSchemeOnElement: { element: 'FOREST', scheme: 'ALT' },
+    blindspots: ['S'], ignoreAlliedBlocking: true, pierce: true,
+    allyDeathDiscardOnElement: { element: 'FOREST', amount: 1 },
+    desc: 'Zomba must use its secondary attack while it is on a Wood field. While Zomba is on a Wood field, each time an allied creature is destroyed, your opponent must discard a card.'
+  },
+  FOREST_LEAPFROG_BANDIT: {
+    id: 'FOREST_LEAPFROG_BANDIT', name: 'Leapfrog Bandit', type: 'UNIT', cost: 1, activation: 1,
+    element: 'FOREST', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [2], ignoreBlocking: true, ignoreAlliedBlocking: true } ],
+    blindspots: ['S'], ignoreAlliedBlocking: true,
+    deathDiscardOnNonElement: { element: 'FOREST', count: 1 },
+    desc: 'If Leapfrog Bandit is destroyed on a non-Wood field, your opponent must discard 1 card.'
+  },
+  SAMURAI_NAGIRASHU: {
+    id: 'SAMURAI_NAGIRASHU', name: 'Samurai Nagirashu', type: 'UNIT', cost: 2, activation: 2,
+    element: 'FOREST', atk: 2, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'], ignoreAlliedBlocking: true,
+    deathDiscardOnElement: { element: 'FOREST', count: 1 },
+    desc: 'If Samurai Nagirashu is destroyed on a Wood field, your opponent must discard 1 card.'
   },
   NEUTRAL_WHITE_CUBIC: {
     id: 'NEUTRAL_WHITE_CUBIC', name: 'White Cubic', type: 'UNIT', cost: 1, activation: 1,
