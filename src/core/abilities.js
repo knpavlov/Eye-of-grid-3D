@@ -47,6 +47,7 @@ import {
   describeFieldFatality as describeFieldFatalityInternal,
   evaluateFieldFatality as evaluateFieldFatalityInternal,
 } from './abilityHandlers/fieldHazards.js';
+import { applySummonManaSteal } from './abilityHandlers/manaSteal.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -677,6 +678,16 @@ export function applySummonAbilities(state, r, c) {
     events.draws = [...(events.draws || []), ...extraDraws];
     if (!events.draw) {
       events.draw = extraDraws[0];
+    }
+  }
+
+  const manaSteals = applySummonManaSteal(state, { r, c, unit, tpl, cell });
+  if (Array.isArray(manaSteals) && manaSteals.length) {
+    events.manaSteals = [...manaSteals];
+    for (const steal of manaSteals) {
+      if (steal?.log) {
+        events.logs = [...(events.logs || []), steal.log];
+      }
     }
   }
 

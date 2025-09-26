@@ -221,6 +221,9 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
   if (discardEvents && Array.isArray(discardEvents.logs) && discardEvents.logs.length) {
     result.events.discardLogs = discardEvents.logs.slice();
   }
+  if (Array.isArray(discardEvents?.manaSteals) && discardEvents.manaSteals.length) {
+    result.events.manaSteals = [...(result.events.manaSteals || []), ...discardEvents.manaSteals];
+  }
 
   const cellElement = cell.element || null;
   const buff = computeCellBuff(cellElement, summonTpl.element);
@@ -281,6 +284,9 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
     const discardReplacement = applyDeathDiscardEffects(state, replacementDeath, { cause: 'SACRIFICE_REPLACEMENT' });
     if (discardReplacement && Array.isArray(discardReplacement.logs) && discardReplacement.logs.length) {
       result.events.discardLogs = (result.events.discardLogs || []).concat(discardReplacement.logs);
+    }
+    if (Array.isArray(discardReplacement?.manaSteals) && discardReplacement.manaSteals.length) {
+      result.events.manaSteals = [...(result.events.manaSteals || []), ...discardReplacement.manaSteals];
     }
   }
 

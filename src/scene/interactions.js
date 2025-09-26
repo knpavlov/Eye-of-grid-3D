@@ -52,6 +52,17 @@ function adjustPendingAutoEnd(delta) {
   gs.pendingAutoEndRequests = next > 0 ? next : 0;
 }
 
+function handleManaStealAnimations(list) {
+  if (typeof window === 'undefined') return;
+  if (!Array.isArray(list) || list.length === 0) return;
+  const animate = window.__ui?.mana?.animateManaSteal;
+  if (typeof animate !== 'function') return;
+  for (const steal of list) {
+    if (!steal) continue;
+    try { animate(steal); } catch (err) { console.warn('[interactions] mana steal animation failed', err); }
+  }
+}
+
 export function hasPendingForcedDiscards() {
   if (typeof window === 'undefined') return false;
   const state = window.gameState;
@@ -799,6 +810,7 @@ export function placeUnitWithDirection(direction) {
           window.addLog(text);
         }
       }
+      handleManaStealAnimations(discardInfo?.manaSteals);
     }
   }
   const unit = {
@@ -892,6 +904,7 @@ export function placeUnitWithDirection(direction) {
         window.addLog(text);
       }
     }
+    handleManaStealAnimations(discardEffects?.manaSteals);
     // При мгновенной смерти существо считается призванным, поэтому передаём ход оппоненту
     endTurnAfterSummon();
     // очищаем возможные состояния выбора цели, чтобы не блокировать интерфейс после мгновенной смерти
@@ -935,6 +948,7 @@ export function placeUnitWithDirection(direction) {
         window.addLog?.(text);
       }
     }
+    handleManaStealAnimations(summonEvents?.manaSteals);
     if (Array.isArray(summonEvents?.statBuffs) && summonEvents.statBuffs.length) {
       for (const buff of summonEvents.statBuffs) {
         if (!buff) continue;

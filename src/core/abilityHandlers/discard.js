@@ -1,5 +1,6 @@
 // Логика эффектов принудительного сброса карт
 import { CARDS } from '../cards.js';
+import { applyDeathManaSteal } from './manaSteal.js';
 
 const DEFAULT_TIMER_MS = 20000;
 
@@ -101,6 +102,14 @@ export function applyDeathDiscardEffects(state, deaths = [], context = {}) {
 
   const queue = ensureQueue(state);
   if (!queue) return events;
+
+  const manaSteals = applyDeathManaSteal(state, deaths, context);
+  if (Array.isArray(manaSteals) && manaSteals.length) {
+    events.manaSteals = [...manaSteals];
+    for (const steal of manaSteals) {
+      if (steal?.log) events.logs.push(steal.log);
+    }
+  }
 
   for (const death of deaths) {
     if (!death) continue;

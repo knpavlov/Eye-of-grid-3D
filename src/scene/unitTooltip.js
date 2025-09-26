@@ -11,6 +11,7 @@ import {
 } from '../core/abilities.js';
 import { effectiveStats } from '../core/rules.js';
 import { showTooltip, hideTooltip } from '../ui/tooltip.js';
+import { hasManaStealKeyword } from '../core/abilityHandlers/manaSteal.js';
 
 const SOURCE = 'unit-hover';
 const DELAY_MS = 1000;
@@ -117,6 +118,9 @@ function collectStatuses(state, unit, tpl, { r, c, cell }) {
   }
   if (tpl?.fieldquakeLock) {
     statuses.push({ key: 'fieldquake', text: 'Fieldquake lock aura' });
+  }
+  if (hasManaStealKeyword(tpl)) {
+    statuses.push({ key: 'mana-steal', text: 'Mana steal' });
   }
   const protection = getUnitProtection(state, r, c, { unit, tpl });
   if (protection > 0) {
