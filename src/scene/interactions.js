@@ -1,5 +1,6 @@
 // Pointer and drag interactions for Three.js scene
 import { getCtx } from './context.js';
+import { buildManaGainPlan } from './manaFx.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
 import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
@@ -579,22 +580,32 @@ function performMagicAttack(from, targetMesh) {
     hitVisuals.push({ mesh, dmg });
   }
 
+  const manaPlan = buildManaGainPlan({
+    playersBefore: gameState.players,
+    deaths: res.deaths || [],
+    manaGainEntries: res.manaGainEvents || [],
+    tileMeshes,
+    THREE,
+  });
+  try { manaPlan?.reserve?.(); } catch {}
+
   const deathVisuals = [];
   for (const d of res.deaths || []) {
     const mesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c) || null;
     let manaOrigin = null;
     try {
-      const tile = tileMeshes?.[d.r]?.[d.c];
-      if (tile?.position?.clone) {
-        manaOrigin = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+      manaOrigin = manaPlan?.getOrigin?.(d) || null;
+      if (!manaOrigin) {
+        const tile = tileMeshes?.[d.r]?.[d.c];
+        if (tile?.position?.clone) {
+          manaOrigin = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+        }
       }
     } catch {}
-    const manaSlot = gameState.players?.[d.owner]?.mana || 0;
     deathVisuals.push({
       death: d,
       mesh,
       manaOrigin,
-      manaSlot,
       tpl: CARDS[d.tplId] || null,
     });
   }
@@ -637,12 +648,8 @@ function performMagicAttack(from, targetMesh) {
       if (info.mesh) {
         try { window.__fx?.dissolveAndAsh?.(info.mesh, new THREE.Vector3(0, 0, 0.6), 0.9); } catch {}
       }
-      if (info.manaOrigin) {
-        setTimeout(() => {
-          try { window.animateManaGainFromWorld?.(info.manaOrigin, info.death.owner, true, info.manaSlot); } catch {}
-        }, 400);
-      }
     }
+    try { manaPlan?.schedule?.(); } catch {}
   };
 
   playHitEffects();

@@ -618,6 +618,14 @@
           // Финализация: анимация смерти и орбы перед применением состояния
           const stateBeforeFinish = gameState ? JSON.parse(JSON.stringify(gameState)) : null;
           const res = staged.finish();
+          const manaPlan = window.__scene?.manaFx?.buildManaGainPlan?.({
+            playersBefore: stateBeforeFinish?.players || gameState.players,
+            deaths: res.deaths || [],
+            manaGainEntries: res.manaGainEvents || [],
+            tileMeshes,
+            THREE: window.THREE,
+          });
+          try { manaPlan?.reserve?.(); } catch {}
           const attackerPos = res.attackerPosUpdate || { r, c };
           gameState = res.n1;
           const finalState = gameState;
@@ -634,22 +642,17 @@
             for (const d of res.deaths) {
               try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
               const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
-            if (deadMesh) {
-              const fromMesh = aMesh || deadMesh;
-              const dirUp = new THREE.Vector3().subVectors(deadMesh.position, fromMesh.position).normalize().multiplyScalar(0.4);
-              window.__fx.dissolveAndAsh(deadMesh, dirUp, 0.9);
+              if (deadMesh) {
+                const fromMesh = aMesh || deadMesh;
+                const dirUp = new THREE.Vector3().subVectors(deadMesh.position, fromMesh.position).normalize().multiplyScalar(0.4);
+                window.__fx.dissolveAndAsh(deadMesh, dirUp, 0.9);
+              }
+              const tplDead = CARDS[d.tplId];
+              if (tplDead?.onDeathAddHPAll) {
+                window.__interactions?.showOracleDeathBuff?.(d.owner, tplDead.onDeathAddHPAll);
+              }
             }
-            // Орб маны появляется с задержкой 400мс после начала анимации смерти
-            setTimeout(() => {
-              const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.6, 0));
-              // Показать визуальный орб у обоих игроков; фактическое начисление маны уже в res.n1
-              animateManaGainFromWorld(p, d.owner, true);
-            }, 400);
-            const tplDead = CARDS[d.tplId];
-            if (tplDead?.onDeathAddHPAll) {
-              window.__interactions?.showOracleDeathBuff?.(d.owner, tplDead.onDeathAddHPAll);
-            }
-          }
+            try { manaPlan?.schedule?.(); } catch {}
             const pos = attackerPos;
             if (markAttackTurn && gameState.board[pos.r]?.[pos.c]?.unit) {
               gameState.board[pos.r][pos.c].unit.lastAttackTurn = gameState.turn;
