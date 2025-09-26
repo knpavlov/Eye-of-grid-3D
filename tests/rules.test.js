@@ -12,6 +12,7 @@ import {
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
 import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, activationCost, hasInvisibility, getUnitProtection } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
+import { applyDeathManaSteal } from '../src/core/abilityHandlers/manaSteal.js';
 
 function makeBoard() {
   const b = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE', unit: null })));
@@ -883,6 +884,45 @@ describe('новые способности (Хильда и Диос)', () => {
     const sideHit = res.targets.find(t => t.r === 0 && t.c === 0);
     expect(sideHit).toBeTruthy();
     expect(sideHit.dmg).toBe(fireFields);
+  });
+});
+
+describe('карты Triton Queendom с кражей маны', () => {
+  it('Moving Isle of Kadena крадёт ману при призыве на чужой стихии', () => {
+    const state = { board: makeBoard(), players: [{ mana: 2 }, { mana: 5 }], turn: 1 };
+    state.board[1][1].element = 'EARTH';
+    state.board[1][1].unit = { owner: 0, tplId: 'WATER_MOVING_ISLE_OF_KADENA', facing: 'N', currentHP: 4 };
+    state.board[0][0].element = 'WATER';
+    state.board[0][2].element = 'WATER';
+    state.board[2][1].element = 'WATER';
+    const events = applySummonAbilities(state, 1, 1);
+    expect(state.players[0].mana).toBe(5);
+    expect(state.players[1].mana).toBe(2);
+    expect(Array.isArray(events.manaSteals)).toBe(true);
+    expect(events.manaSteals[0].stolen).toBe(3);
+    expect(events.logs.some(line => line.includes('крадёт 3'))).toBe(true);
+  });
+
+  it('Moving Isle of Kadena не крадёт ману на воде', () => {
+    const state = { board: makeBoard(), players: [{ mana: 4 }, { mana: 4 }], turn: 1 };
+    state.board[1][1].element = 'WATER';
+    state.board[1][1].unit = { owner: 0, tplId: 'WATER_MOVING_ISLE_OF_KADENA', facing: 'N', currentHP: 4 };
+    state.board[0][0].element = 'WATER';
+    const events = applySummonAbilities(state, 1, 1);
+    expect(state.players[0].mana).toBe(4);
+    expect(state.players[1].mana).toBe(4);
+    expect(!events.manaSteals || events.manaSteals.length === 0).toBe(true);
+  });
+
+  it("Queen's Servant крадёт ману при смерти", () => {
+    const state = { board: makeBoard(), players: [{ mana: 1 }, { mana: 4 }], turn: 1 };
+    state.board[0][0].element = 'WATER';
+    const deaths = [{ r: 0, c: 0, owner: 0, tplId: 'WATER_QUEENS_SERVANT', element: 'WATER' }];
+    const res = applyDeathManaSteal(state, deaths, { cause: 'BATTLE' });
+    expect(state.players[0].mana).toBe(2);
+    expect(state.players[1].mana).toBe(3);
+    expect(Array.isArray(res.steals)).toBe(true);
+    expect(res.steals[0].stolen).toBe(1);
   });
 });
 

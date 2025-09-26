@@ -10,6 +10,7 @@ import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
 import { refreshPossessionsUI } from '../ui/possessions.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { applyDeathManaSteal } from '../core/abilityHandlers/manaSteal.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -283,6 +284,16 @@ export const handlers = {
             }
           }
           gameState.board[r][c].unit = null;
+          const manaStealInfo = applyDeathManaSteal(gameState, deathInfo, { cause: 'SPELL' });
+          const manaStealLogs = Array.isArray(manaStealInfo?.logs) ? manaStealInfo.logs : [];
+          if (manaStealLogs.length) {
+            for (const line of manaStealLogs) addLog(line);
+          }
+          if (Array.isArray(manaStealInfo?.steals)) {
+            for (const steal of manaStealInfo.steals) {
+              try { window.__ui?.mana?.animateManaSteal?.(steal); } catch {}
+            }
+          }
           const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SPELL' });
           if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
             for (const text of discardEffects.logs) {
@@ -399,6 +410,16 @@ export const handlers = {
             if (deadMesh) {
               window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9);
               gameState.board[r][c].unit = null;
+              const manaStealInfo = applyDeathManaSteal(gameState, deathInfo, { cause: 'SPELL' });
+              const manaStealLogs = Array.isArray(manaStealInfo?.logs) ? manaStealInfo.logs : [];
+              if (manaStealLogs.length) {
+                for (const line of manaStealLogs) addLog(line);
+              }
+              if (Array.isArray(manaStealInfo?.steals)) {
+                for (const steal of manaStealInfo.steals) {
+                  try { window.__ui?.mana?.animateManaSteal?.(steal); } catch {}
+                }
+              }
               const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SPELL' });
               if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
                 for (const text of discardEffects.logs) addLog(text);

@@ -3,6 +3,7 @@ import { CARDS } from '../cards.js';
 import { computeCellBuff } from '../fieldEffects.js';
 import { applyFieldFatalityCheck as applyFieldFatalityCheckInternal } from './fieldHazards.js';
 import { applyDeathDiscardEffects } from './discard.js';
+import { applyDeathManaSteal } from './manaSteal.js';
 
 const FACING_ORDER = ['N', 'E', 'S', 'W'];
 
@@ -177,8 +178,10 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
   cell.unit = null;
 
   let discardEvents = null;
+  let sacrificeManaSteal = null;
   if (sacrificeDeath) {
     discardEvents = applyDeathDiscardEffects(state, sacrificeDeath, { cause: 'SACRIFICE' });
+    sacrificeManaSteal = applyDeathManaSteal(state, sacrificeDeath, { cause: 'SACRIFICE' });
   }
 
   // Удаляем карту из руки и переносим в сброс
@@ -220,6 +223,13 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
 
   if (discardEvents && Array.isArray(discardEvents.logs) && discardEvents.logs.length) {
     result.events.discardLogs = discardEvents.logs.slice();
+  }
+  const sacrificeStealLogs = Array.isArray(sacrificeManaSteal?.logs) ? sacrificeManaSteal.logs : [];
+  if (sacrificeStealLogs.length) {
+    result.events.logs = [...(result.events.logs || []), ...sacrificeStealLogs];
+  }
+  if (Array.isArray(sacrificeManaSteal?.steals) && sacrificeManaSteal.steals.length) {
+    result.events.manaSteals = [...(result.events.manaSteals || []), ...sacrificeManaSteal.steals];
   }
 
   const cellElement = cell.element || null;
@@ -279,8 +289,16 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
     }
 
     const discardReplacement = applyDeathDiscardEffects(state, replacementDeath, { cause: 'SACRIFICE_REPLACEMENT' });
+    const replacementSteal = applyDeathManaSteal(state, replacementDeath, { cause: 'SACRIFICE_REPLACEMENT' });
     if (discardReplacement && Array.isArray(discardReplacement.logs) && discardReplacement.logs.length) {
       result.events.discardLogs = (result.events.discardLogs || []).concat(discardReplacement.logs);
+    }
+    const replacementStealLogs = Array.isArray(replacementSteal?.logs) ? replacementSteal.logs : [];
+    if (replacementStealLogs.length) {
+      result.events.logs = [...(result.events.logs || []), ...replacementStealLogs];
+    }
+    if (Array.isArray(replacementSteal?.steals) && replacementSteal.steals.length) {
+      result.events.manaSteals = [...(result.events.manaSteals || []), ...replacementSteal.steals];
     }
   }
 

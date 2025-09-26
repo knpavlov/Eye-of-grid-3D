@@ -15,6 +15,7 @@ import {
 } from '../core/abilities.js';
 import { capMana } from '../core/constants.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { applyDeathManaSteal } from '../core/abilityHandlers/manaSteal.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -58,6 +59,17 @@ export function hasPendingForcedDiscards() {
   if (!state) return false;
   const queue = Array.isArray(state.pendingDiscards) ? state.pendingDiscards : [];
   return queue.some(req => req && req.remaining > 0);
+}
+
+function playManaStealAnimations(events) {
+  const list = Array.isArray(events?.manaSteals) ? events.manaSteals
+    : Array.isArray(events?.steals) ? events.steals
+    : (Array.isArray(events) ? events : []);
+  if (!Array.isArray(list) || !list.length) return;
+  for (const steal of list) {
+    if (!steal) continue;
+    try { window.__ui?.mana?.animateManaSteal?.(steal); } catch {}
+  }
 }
 
 // Планировщик авто-завершения хода, который дожидается окончания анимаций и разблокировки ввода
@@ -598,6 +610,7 @@ function performMagicAttack(from, targetMesh) {
       tpl: CARDS[d.tplId] || null,
     });
   }
+  const manaStealEvents = Array.isArray(res?.manaSteals) ? res.manaSteals : [];
 
   let appliedState = res.n1;
   try {
@@ -648,11 +661,14 @@ function performMagicAttack(from, targetMesh) {
   playHitEffects();
   if (deathVisuals.length) {
     playDeathEffects();
+    playManaStealAnimations(manaStealEvents);
     for (const info of deathVisuals) {
       if (info.tpl?.onDeathAddHPAll) {
         try { showOracleDeathBuff(info.death.owner, info.tpl.onDeathAddHPAll); } catch {}
       }
     }
+  } else {
+    playManaStealAnimations(manaStealEvents);
   }
 
   const finalize = () => {
@@ -881,6 +897,11 @@ export function placeUnitWithDirection(direction) {
     if (ownerPlayer) {
       ownerPlayer.mana = capMana((ownerPlayer.mana || 0) + 1);
     }
+    const manaStealInfo = applyDeathManaSteal(gameState, deathInfo, { cause: 'SUMMON' });
+    if (Array.isArray(manaStealInfo?.logs) && manaStealInfo.logs.length) {
+      for (const line of manaStealInfo.logs) { window.addLog?.(line); }
+    }
+    playManaStealAnimations(manaStealInfo);
     const ctx = getCtx();
     const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
     const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
@@ -992,6 +1013,7 @@ export function placeUnitWithDirection(direction) {
         }
       } catch {}
     }
+    playManaStealAnimations(summonEvents?.manaSteals);
     const gained = applyFreedonianAura(gameState, gameState.active);
     if (gained > 0) {
       window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
