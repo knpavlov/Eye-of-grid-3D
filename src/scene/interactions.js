@@ -1,5 +1,6 @@
 // Pointer and drag interactions for Three.js scene
 import { getCtx } from './context.js';
+import { buildManaGainPlan } from './manaFx.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
 import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
@@ -15,6 +16,7 @@ import {
 } from '../core/abilities.js';
 import { capMana } from '../core/constants.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -579,22 +581,31 @@ function performMagicAttack(from, targetMesh) {
     hitVisuals.push({ mesh, dmg });
   }
 
+  const manaPlan = buildManaGainPlan({
+    playersBefore: gameState.players,
+    deaths: res.deaths || [],
+    manaGainEntries: res.manaGainEvents || [],
+    tileMeshes,
+    THREE,
+  });
+
   const deathVisuals = [];
   for (const d of res.deaths || []) {
     const mesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c) || null;
     let manaOrigin = null;
     try {
-      const tile = tileMeshes?.[d.r]?.[d.c];
-      if (tile?.position?.clone) {
-        manaOrigin = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+      manaOrigin = manaPlan?.getOrigin?.(d) || null;
+      if (!manaOrigin) {
+        const tile = tileMeshes?.[d.r]?.[d.c];
+        if (tile?.position?.clone) {
+          manaOrigin = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+        }
       }
     } catch {}
-    const manaSlot = gameState.players?.[d.owner]?.mana || 0;
     deathVisuals.push({
       death: d,
       mesh,
       manaOrigin,
-      manaSlot,
       tpl: CARDS[d.tplId] || null,
     });
   }
@@ -637,12 +648,8 @@ function performMagicAttack(from, targetMesh) {
       if (info.mesh) {
         try { window.__fx?.dissolveAndAsh?.(info.mesh, new THREE.Vector3(0, 0, 0.6), 0.9); } catch {}
       }
-      if (info.manaOrigin) {
-        setTimeout(() => {
-          try { window.animateManaGainFromWorld?.(info.manaOrigin, info.death.owner, true, info.manaSlot); } catch {}
-        }, 400);
-      }
     }
+    try { manaPlan?.schedule?.(); } catch {}
   };
 
   playHitEffects();
@@ -852,6 +859,9 @@ export function placeUnitWithDirection(direction) {
     }
   }
   if (!alive) {
+    const playersBefore = Array.isArray(gameState.players)
+      ? gameState.players.map(pl => ({ mana: pl?.mana ?? 0 }))
+      : [];
     // обработка эффектов при смерти (например, лечение союзников)
     if (cardData.onDeathAddHPAll) {
       const amount = cardData.onDeathAddHPAll;
@@ -881,10 +891,34 @@ export function placeUnitWithDirection(direction) {
     if (ownerPlayer) {
       ownerPlayer.mana = capMana((ownerPlayer.mana || 0) + 1);
     }
+
+    const manaFromDeaths = applyManaGainOnDeaths(gameState, deathInfo, { boardState: gameState });
+    if (Array.isArray(manaFromDeaths?.logs)) {
+      for (const text of manaFromDeaths.logs) {
+        if (text) window.addLog?.(text);
+      }
+    }
+
     const ctx = getCtx();
     const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
     const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-    window.animateManaGainFromWorld(pos, owner, true, slotBeforeGain);
+    const abilityEntries = Array.isArray(manaFromDeaths?.entries)
+      ? manaFromDeaths.entries
+          .filter(entry => entry && entry.owner === owner && entry.death)
+          .map(entry => ({ owner: entry.owner, amount: entry.amount, death: entry.death }))
+      : [];
+    const plan = buildManaGainPlan({
+      playersBefore,
+      deaths: deathInfo,
+      manaGainEntries: abilityEntries,
+      tileMeshes: ctx.tileMeshes,
+      THREE,
+    });
+    if (plan?.events?.length) {
+      try { plan.schedule(); } catch {}
+    } else {
+      window.animateManaGainFromWorld(pos, owner, true, slotBeforeGain, { reserveImmediately: true });
+    }
     gameState.board[row][col].unit = null;
     const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SUMMON' });
     if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
