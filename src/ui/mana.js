@@ -11,6 +11,207 @@ function setAnim(v){ try { window.PENDING_MANA_ANIM = v; } catch {} }
 function getManaGainActive(){ try { return !!(typeof window !== 'undefined' && window.manaGainActive); } catch { return false; } }
 function setManaGainActive(v){ try { if (typeof window !== 'undefined') { window.manaGainActive = !!v; } } catch {} }
 
+// Очередь отложенных подсветок на панелях маны
+function getRevealQueueRoot(){
+  try {
+    if (typeof window === 'undefined') return [[], []];
+    if (!Array.isArray(window.__PENDING_MANA_REVEAL)) {
+      window.__PENDING_MANA_REVEAL = [[], []];
+    }
+    const root = window.__PENDING_MANA_REVEAL;
+    if (!Array.isArray(root[0])) root[0] = [];
+    if (!Array.isArray(root[1])) root[1] = [];
+    return root;
+  } catch {
+    return [[], []];
+  }
+}
+
+function enqueueReveal(ownerIndex, info){
+  if (!Number.isFinite(ownerIndex)) return;
+  try {
+    if (typeof window === 'undefined') return;
+    const root = getRevealQueueRoot();
+    root[ownerIndex] = Array.isArray(root[ownerIndex]) ? root[ownerIndex] : [];
+    root[ownerIndex].push(info);
+  } catch {}
+}
+
+function peekReveal(ownerIndex){
+  try {
+    const root = getRevealQueueRoot();
+    if (!Array.isArray(root[ownerIndex]) || !root[ownerIndex].length) return null;
+    return root[ownerIndex][0] || null;
+  } catch {
+    return null;
+  }
+}
+
+function shiftReveal(ownerIndex){
+  try {
+    const root = getRevealQueueRoot();
+    if (!Array.isArray(root[ownerIndex]) || !root[ownerIndex].length) return null;
+    return root[ownerIndex].shift();
+  } catch {
+    return null;
+  }
+}
+
+// Мягкая подсветка панели маны при мгновенном появлении орбов
+function flashManaBar(bar){
+  if (!bar) return;
+  try {
+    const hasGsap = (typeof window !== 'undefined') && window.gsap && typeof window.gsap.to === 'function';
+    if (hasGsap) {
+      const tl = window.gsap.timeline();
+      tl.to(bar, {
+        filter: 'brightness(2.05) drop-shadow(0 0 18px rgba(56,189,248,0.85))',
+        duration: 0.18,
+        ease: 'power2.out'
+      }).to(bar, {
+        filter: 'none',
+        duration: 0.32,
+        ease: 'power2.inOut'
+      });
+    } else {
+      bar.style.transition = 'filter 320ms ease';
+      bar.style.filter = 'brightness(2.05)';
+      setTimeout(() => {
+        try { bar.style.filter = 'none'; } catch {}
+      }, 340);
+    }
+  } catch {}
+}
+
+// Создание блесток вокруг орба
+function spawnOrbSparks(orb, count = 14){
+  if (!orb || typeof document === 'undefined') return [];
+  try {
+    const rect = orb.getBoundingClientRect();
+    if (!rect || !rect.width || !rect.height) return [];
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const sparks = [];
+    for (let i = 0; i < count; i++) {
+      const spark = document.createElement('div');
+      spark.style.position = 'fixed';
+      spark.style.left = `${centerX}px`;
+      spark.style.top = `${centerY}px`;
+      spark.style.width = '4px';
+      spark.style.height = '4px';
+      spark.style.borderRadius = '50%';
+      spark.style.pointerEvents = 'none';
+      spark.style.background = 'radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(125,211,252,1) 60%, rgba(14,165,233,0.8) 100%)';
+      spark.style.boxShadow = '0 0 10px rgba(59,130,246,0.95)';
+      spark.style.opacity = '0';
+      spark.style.zIndex = '70';
+      spark.style.transform = 'translate(-50%, -50%) scale(0.6)';
+      document.body.appendChild(spark);
+      sparks.push(spark);
+    }
+    return sparks;
+  } catch {
+    return [];
+  }
+}
+
+// Анимация орба и блесток при мгновенном появлении
+function animateInstantOrbReveal(orb){
+  if (!orb) return;
+  try {
+    orb.className = 'mana-orb';
+    orb.style.opacity = '0';
+    orb.style.transform = 'scale(0.58)';
+    orb.style.willChange = 'transform, opacity, box-shadow';
+    const sparks = spawnOrbSparks(orb);
+    const cleanupSparks = () => {
+      for (const s of sparks) {
+        try { if (s.parentNode) s.parentNode.removeChild(s); } catch {}
+      }
+    };
+    const hasGsap = (typeof window !== 'undefined') && window.gsap && typeof window.gsap.timeline === 'function';
+    if (hasGsap) {
+      const tl = window.gsap.timeline({ onComplete: cleanupSparks });
+      tl.to(orb, {
+        duration: 0.2,
+        ease: 'back.out(2.2)',
+        scale: 2.4,
+        opacity: 1,
+        onStart: () => {
+          orb.style.boxShadow = '0 0 22px rgba(96,165,250,0.95), 0 0 40px rgba(56,189,248,0.8)';
+        }
+      }, 0)
+        .to(orb, {
+          duration: 0.36,
+          ease: 'power2.inOut',
+          scale: 1,
+          onComplete: () => {
+            orb.style.boxShadow = '0 0 12px rgba(30,160,255,0.85)';
+            orb.style.willChange = '';
+          }
+        }, 0.2);
+
+      const sparkDuration = 0.46;
+      sparks.forEach((spark, idx) => {
+        const angle = (Math.PI * 2) * (idx / sparks.length) + Math.random() * 0.7;
+        const dist = 36 + Math.random() * 42;
+        const dx = Math.cos(angle) * dist;
+        const dy = Math.sin(angle) * dist;
+        tl.fromTo(spark,
+          { x: 0, y: 0, opacity: 0, scale: 0.6 },
+          { x: dx, y: dy, opacity: 1, scale: 1.1, duration: 0.18, ease: 'power2.out' },
+          0.04)
+          .to(spark, {
+            opacity: 0,
+            scale: 0.3,
+            duration: sparkDuration,
+            ease: 'power1.in'
+          }, 0.18);
+      });
+    } else {
+      const distList = sparks.map((_, idx) => {
+        const angle = (Math.PI * 2) * (idx / Math.max(1, sparks.length)) + Math.random() * 0.7;
+        const dist = 36 + Math.random() * 42;
+        return {
+          dx: Math.cos(angle) * dist,
+          dy: Math.sin(angle) * dist
+        };
+      });
+      requestAnimationFrame(() => {
+        try {
+          orb.style.transition = 'transform 200ms ease-out, opacity 180ms ease-out';
+          orb.style.opacity = '1';
+          orb.style.transform = 'scale(2.4)';
+          orb.style.boxShadow = '0 0 22px rgba(96,165,250,0.95), 0 0 40px rgba(56,189,248,0.8)';
+          setTimeout(() => {
+            orb.style.transition = 'transform 360ms ease-in-out, opacity 320ms ease-in';
+            orb.style.transform = 'scale(1)';
+            orb.style.boxShadow = '0 0 12px rgba(30,160,255,0.85)';
+            setTimeout(() => { orb.style.willChange = ''; }, 360);
+          }, 200);
+        } catch {}
+      });
+      requestAnimationFrame(() => {
+        sparks.forEach((spark, idx) => {
+          try {
+            spark.style.transition = 'transform 220ms ease-out, opacity 180ms ease-out';
+            spark.style.opacity = '1';
+            spark.style.transform = `translate(${distList[idx].dx}px, ${distList[idx].dy}px) scale(1.15)`;
+            setTimeout(() => {
+              spark.style.transition = 'transform 320ms ease-in, opacity 280ms ease-in';
+              spark.style.opacity = '0';
+              spark.style.transform = `translate(${distList[idx].dx}px, ${distList[idx].dy}px) scale(0.3)`;
+            }, 200);
+          } catch {}
+        });
+      });
+      setTimeout(cleanupSparks, 720);
+    }
+  } catch (err) {
+    console.error('[mana] Ошибка анимации мгновенного орба:', err);
+  }
+}
+
 export function renderBars(gameState) {
   if (!gameState) return;
   const total = 10;
@@ -43,174 +244,279 @@ export function renderBars(gameState) {
     
     // Сохраняем текущие видимые орбы, чтобы избежать мерцания
     const existingOrbs = Array.from(manaDisplay.querySelectorAll('.mana-orb, .mana-slot'));
-    
+
     manaDisplay.innerHTML = '';
     const mySeat = (typeof window !== 'undefined' && typeof window.MY_SEAT === 'number') ? window.MY_SEAT : null;
     const activeSeat = (typeof window !== 'undefined' && window.gameState && typeof window.gameState.active === 'number')
       ? window.gameState.active : (gameState?.active ?? null);
     const animateAllowed = (typeof mySeat === 'number') ? (mySeat === p) : (typeof activeSeat === 'number' ? activeSeat === p : true);
+
+    const revealCandidate = peekReveal(p);
+    let revealRange = null;
+    if (revealCandidate && Number.isFinite(revealCandidate.from) && Number.isFinite(revealCandidate.to)) {
+      const from = Math.max(0, Math.floor(revealCandidate.from));
+      const to = Math.max(from, Math.floor(revealCandidate.to));
+      if (to > from) {
+        revealRange = { from, to };
+      }
+    }
+    let revealMatched = false;
+    const revealTargets = [];
+
     for (let i = 0; i < total; i++) {
       const orb = document.createElement('div');
       const filled = i < renderMana;
       const isBlockedForAnim = !!(pending && i >= pending.startIdx && i <= pending.endIdx);
       orb.className = filled ? 'mana-orb' : 'mana-slot';
-      
-      // Избегаем мерцания: если орб уже был видим, начинаем с opacity: 1
-      const wasVisible = existingOrbs[i] && existingOrbs[i].classList.contains('mana-orb');
-      orb.style.opacity = (!animateAllowed) ? '1' : ((filled && wasVisible) ? '1' : (filled ? '0' : '1'));
-      
+
+      const wasVisible = existingOrbs[i] && existingOrbs[i].classList && existingOrbs[i].classList.contains('mana-orb');
+      const isRevealOrb = !!(revealRange && filled && i >= revealRange.from && i < revealRange.to);
+      if (isRevealOrb) revealMatched = true;
+
+      if (isRevealOrb) {
+        if (animateAllowed) {
+          try {
+            orb.style.opacity = '0';
+            orb.style.transform = 'scale(0.58)';
+          } catch {}
+          revealTargets.push(orb);
+        } else {
+          orb.style.opacity = '1';
+        }
+        manaDisplay.appendChild(orb);
+        continue;
+      }
+
+      const baseOpacity = (!animateAllowed)
+        ? '1'
+        : ((filled && wasVisible) ? '1' : (filled ? '0' : '1'));
+      orb.style.opacity = baseOpacity;
       manaDisplay.appendChild(orb);
-      if (animateAllowed && filled && !isBlockedForAnim && !wasVisible) {
+
+      if (animateAllowed && filled && !isBlockedForAnim && !wasVisible && !isRevealOrb) {
         const delay = 0.06 * Math.max(0, i - prev);
-        setTimeout(()=>{
+        setTimeout(() => {
           try {
             orb.style.transform = 'translateX(16px) scale(0.6)';
             orb.style.transition = 'transform 220ms ease, opacity 220ms ease';
-            requestAnimationFrame(()=>{
+            requestAnimationFrame(() => {
               orb.style.opacity = '1';
               orb.style.transform = 'translateX(0) scale(1)';
             });
           } catch {}
-        }, delay*1000);
+        }, delay * 1000);
       }
+    }
+
+    if (revealRange && revealMatched) {
+      if (animateAllowed) {
+        flashManaBar(manaDisplay);
+        for (const node of revealTargets) {
+          animateInstantOrbReveal(node);
+        }
+      }
+      shiftReveal(p);
     }
   }
 }
 
-export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true, targetSlotMaybe = null, optionsMaybe = {}) {
+export function animateManaGainFromWorld(pos, ownerIndex, visualOnlyMaybe = true, legacyArg = null, legacyOpts = {}) {
   try {
-    let opts = (optionsMaybe && typeof optionsMaybe === 'object') ? optionsMaybe : {};
-    let targetSlot = targetSlotMaybe;
-    if (targetSlotMaybe && typeof targetSlotMaybe === 'object' && (!optionsMaybe || Object.keys(optionsMaybe).length === 0)) {
-      opts = targetSlotMaybe;
-      targetSlot = opts.targetSlot ?? null;
-      if (opts.visualOnly != null) visualOnly = !!opts.visualOnly;
+    let visualOnly = true;
+    let opts = {};
+    if (typeof visualOnlyMaybe === 'object' && visualOnlyMaybe !== null) {
+      opts = visualOnlyMaybe;
+      visualOnly = (visualOnlyMaybe.visualOnly != null) ? !!visualOnlyMaybe.visualOnly : true;
+    } else {
+      visualOnly = !!visualOnlyMaybe;
+      if (legacyArg && typeof legacyArg === 'object' && (!legacyOpts || Object.keys(legacyOpts).length === 0)) {
+        opts = legacyArg;
+      } else if (legacyOpts && typeof legacyOpts === 'object') {
+        opts = legacyOpts;
+      }
+    }
+    if (opts.visualOnly != null) {
+      visualOnly = !!opts.visualOnly;
     }
 
-    const count = Math.max(1, Math.floor(opts.count ?? 1));
-    const startDelayMs = Math.max(0, Number.isFinite(opts.startDelayMs) ? Number(opts.startDelayMs) : 0);
-    const delayBetweenMs = Math.max(0, Number.isFinite(opts.delayBetweenMs) ? Number(opts.delayBetweenMs) : 140);
-    const flightDuration = Math.max(0.45, Number.isFinite(opts.flightDuration) ? Number(opts.flightDuration) : 1.35);
-    const flightEase = typeof opts.flightEase === 'string' ? opts.flightEase : 'power3.in';
-    const arrivalScale = Number.isFinite(opts.arrivalScale) ? Number(opts.arrivalScale) : 1.1;
+    const amountRaw = opts.amount ?? opts.count ?? 1;
+    const amount = Math.max(0, Math.floor(Number.isFinite(amountRaw) ? amountRaw : Number(amountRaw) || 0));
+    if (amount <= 0) return;
+
+    const startDelayMs = Math.max(0, Number.isFinite(opts.startDelayMs)
+      ? Number(opts.startDelayMs)
+      : (Number.isFinite(opts.delayMs) ? Number(opts.delayMs) : 0));
+    const floatDuration = Math.max(0.6, Number.isFinite(opts.floatDuration) ? Number(opts.floatDuration) : 1.05);
+    const floatDistance = Number.isFinite(opts.floatDistance) ? Number(opts.floatDistance) : 170;
+    const labelHoldMs = Math.max(0, Number.isFinite(opts.labelHoldMs) ? Number(opts.labelHoldMs) : 680);
+    const fadeOutMs = Math.max(180, Number.isFinite(opts.fadeOutMs) ? Number(opts.fadeOutMs) : 320);
+    const labelText = typeof opts.label === 'string' ? opts.label : `+${amount}`;
+    const flashScale = Number.isFinite(opts.flashScale) ? Math.max(1.5, Number(opts.flashScale)) : 3.6;
 
     const gameState = (typeof window !== 'undefined') ? window.gameState : null;
 
-    const scheduleSingle = (slotIndex, extraDelayMs) => {
-      setTimeout(() => {
-        try {
-          const source = pos && typeof pos.clone === 'function'
-            ? pos.clone()
-            : (pos ? { x: pos.x, y: pos.y, z: pos.z } : null);
-          if (!source) return;
-          const start = worldToScreen(source);
-          const barEl = document.getElementById(`mana-display-${ownerIndex}`);
-          if (!barEl) return;
+    if (visualOnly && Number.isFinite(ownerIndex)) {
+      const blocks = getBlocks();
+      if (Array.isArray(blocks)) {
+        blocks[ownerIndex] = Math.max(0, Number(blocks[ownerIndex] || 0)) + amount;
+        setBlocks(blocks);
+        try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+      }
+    }
 
-          const barRect = barEl.getBoundingClientRect();
-          let currentMana = Math.max(0, (gameState?.players?.[ownerIndex]?.mana) || 0);
-          const currentBlocks = Math.max(0, Number(getBlocks()?.[ownerIndex]) || 0);
-
-          let targetIdx;
-          if (typeof slotIndex === 'number') {
-            targetIdx = Math.max(0, Math.min(9, slotIndex));
-          } else if (visualOnly) {
-            try {
-              const filledNow = Array.from(barEl.children)
-                .filter(el => el && el.classList && el.classList.contains('mana-orb')).length;
-              targetIdx = Math.min(9, Math.max(0, filledNow));
-            } catch {
-              const visibleMana = Math.max(0, currentMana - currentBlocks);
-              targetIdx = Math.min(9, visibleMana);
-            }
-          } else {
-            targetIdx = Math.max(0, Math.min(9, currentMana - 1));
+    setTimeout(() => {
+      let container = null;
+      let cleanupTriggered = false;
+      let revealApplied = false;
+      const applyReveal = () => {
+        if (revealApplied) return;
+        revealApplied = true;
+        if (visualOnly && Number.isFinite(ownerIndex)) {
+          const blocks = getBlocks();
+          const beforeBlock = Array.isArray(blocks)
+            ? Math.max(0, Number(blocks[ownerIndex] || 0))
+            : 0;
+          const afterBlock = Math.max(0, beforeBlock - amount);
+          if (Array.isArray(blocks)) {
+            blocks[ownerIndex] = afterBlock;
+            setBlocks(blocks);
           }
-
-          let child = barEl.children && barEl.children[targetIdx];
-          if (!child && barEl.children && barEl.children.length > 0) {
-            const lastIdx = Math.min(targetIdx, barEl.children.length - 1);
-            child = barEl.children[lastIdx];
+          const targetMana = Math.max(0, Number(gameState?.players?.[ownerIndex]?.mana) || 0);
+          const prevVisible = Math.max(0, targetMana - beforeBlock);
+          const visibleNow = Math.max(0, targetMana - afterBlock);
+          const revealCount = Math.max(0, visibleNow - prevVisible);
+          if (revealCount > 0) {
+            enqueueReveal(ownerIndex, { from: prevVisible, to: visibleNow, amount: revealCount });
           }
+          try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+        }
+      };
+      const cleanup = () => {
+        if (cleanupTriggered) return;
+        cleanupTriggered = true;
+        applyReveal();
+        try { if (container && container.parentNode) container.parentNode.removeChild(container); } catch {}
+      };
 
-          let tx;
-          let ty;
-          if (child) {
-            const srect = child.getBoundingClientRect();
-            tx = srect.left + srect.width / 2;
-            ty = srect.top + srect.height / 2;
-          } else {
-            tx = barRect.left + barRect.width / 2;
-            ty = barRect.top + barRect.height / 2;
-          }
+      try {
+        const source = pos && typeof pos?.clone === 'function'
+          ? pos.clone()
+          : (pos ? { x: pos.x, y: pos.y, z: pos.z } : null);
+        if (!source) return;
+        const start = worldToScreen(source);
+        container = document.createElement('div');
+        container.style.position = 'fixed';
+        container.style.left = `${start.x}px`;
+        container.style.top = `${start.y}px`;
+        container.style.transform = 'translate(-50%, -50%) scale(0.72)';
+        container.style.pointerEvents = 'none';
+        container.style.zIndex = '120';
+        container.style.opacity = '0';
+        document.body.appendChild(container);
 
-          if (visualOnly && typeof ownerIndex === 'number') {
-            const b = getBlocks();
-            b[ownerIndex] = Math.max(0, (b[ownerIndex] || 0) + 1);
-            setBlocks(b);
-            try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
-          }
+        const orb = document.createElement('div');
+        orb.style.width = '28px';
+        orb.style.height = '28px';
+        orb.style.borderRadius = '50%';
+        orb.style.background = 'radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(125,211,252,0.95) 55%, rgba(14,165,233,0.55) 100%)';
+        orb.style.boxShadow = '0 0 26px rgba(56,189,248,0.9)';
+        orb.style.opacity = '0.9';
+        orb.style.transform = 'scale(0.42)';
+        container.appendChild(orb);
 
-          const orb = document.createElement('div');
-          orb.className = 'mana-orb';
-          orb.style.position = 'fixed';
-          orb.style.left = `${start.x}px`;
-          orb.style.top = `${start.y}px`;
-          orb.style.transform = 'translate(-50%, -50%) scale(0.35)';
-          orb.style.opacity = '0';
-          orb.style.zIndex = '60';
-          document.body.appendChild(orb);
+        const label = document.createElement('div');
+        label.textContent = labelText;
+        label.style.position = 'absolute';
+        label.style.left = '50%';
+        label.style.top = '50%';
+        label.style.transform = 'translate(-50%, -120%)';
+        label.style.fontFamily = 'var(--ui-font, "Montserrat", "Roboto", sans-serif)';
+        label.style.fontWeight = '700';
+        label.style.fontSize = '20px';
+        label.style.color = '#a5f3fc';
+        label.style.textShadow = '0 0 16px rgba(56,189,248,0.9), 0 0 32px rgba(14,165,233,0.75)';
+        label.style.opacity = '0';
+        label.style.pointerEvents = 'none';
+        label.style.whiteSpace = 'nowrap';
+        container.appendChild(label);
 
-          const cleanup = () => {
-            try { if (orb && orb.parentNode) orb.parentNode.removeChild(orb); } catch {}
-            if (visualOnly && typeof ownerIndex === 'number') {
-              const b2 = getBlocks();
-              b2[ownerIndex] = Math.max(0, (b2[ownerIndex] || 0) - 1);
-              setBlocks(b2);
-              try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+        const flash = document.createElement('div');
+        flash.style.position = 'absolute';
+        flash.style.left = '50%';
+        flash.style.top = '50%';
+        flash.style.width = '18px';
+        flash.style.height = '18px';
+        flash.style.borderRadius = '50%';
+        flash.style.background = 'radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(125,211,252,0.35) 55%, rgba(14,165,233,0) 100%)';
+        flash.style.transform = 'translate(-50%, -50%) scale(0.24)';
+        flash.style.opacity = '0';
+        container.appendChild(flash);
+
+        const tl = (typeof window !== 'undefined')
+          ? window.gsap?.timeline?.({ onComplete: cleanup })
+          : null;
+        if (tl) {
+          const floatSeconds = floatDuration;
+          const holdSeconds = labelHoldMs / 1000;
+          const fadeSeconds = fadeOutMs / 1000;
+          tl.to(container, { opacity: 1, scale: 1, duration: 0.22, ease: 'back.out(1.8)' })
+            .to(container, { y: -floatDistance, duration: floatSeconds, ease: 'power1.out' }, '<')
+            .to(orb, { scale: 1, duration: 0.28, ease: 'back.out(2.1)' }, '<')
+            .to(label, { opacity: 1, y: -12, duration: 0.28, ease: 'power2.out' }, '<+0.06')
+            .to(label, { y: -24, duration: Math.max(0.12, floatSeconds + holdSeconds - 0.28), ease: 'power1.out' }, '<')
+            .call(applyReveal, null, `<+${Math.max(0.01, floatSeconds)}`)
+            .to(orb, { opacity: 0, scale: 1.45, duration: Math.max(0.2, fadeSeconds), ease: 'power1.in' }, `>-${Math.min(fadeSeconds, 0.32)}`)
+            .to(flash, { opacity: 1, scale: flashScale, duration: 0.34, ease: 'power2.out' }, `>-${Math.min(0.28, fadeSeconds)}`)
+            .to(flash, { opacity: 0, scale: flashScale * 1.08, duration: 0.32, ease: 'power2.in' }, '>-0.16')
+            .to(container, { opacity: 0, duration: 0.34, ease: 'power1.inOut' })
+            .to(label, { opacity: 0, duration: 0.32, ease: 'power1.in' }, `>-${Math.max(0.22, fadeSeconds)}`);
+        } else {
+          container.style.opacity = '1';
+          const raf = (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function')
+            ? window.requestAnimationFrame.bind(window)
+            : (fn => setTimeout(() => fn(Date.now()), 16));
+          const startTime = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+            ? performance.now()
+            : Date.now();
+          const totalDuration = floatDuration * 1000 + labelHoldMs + fadeOutMs;
+          const tick = (time) => {
+            const current = (typeof time === 'number')
+              ? time
+              : ((typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now());
+            const elapsed = Math.min(totalDuration, current - startTime);
+            const progress = elapsed / (totalDuration || 1);
+            const y = -floatDistance * progress;
+            container.style.transform = `translate(-50%, -50%) translateY(${y}px)`;
+            if (elapsed < totalDuration) {
+              raf(tick);
+            } else {
+              cleanup();
             }
           };
-
-          const tl = (typeof window !== 'undefined')
-            ? window.gsap?.timeline?.({ onComplete: cleanup })
-            : null;
-          if (tl) {
-            tl.to(orb, {
-              duration: 0.22,
-              ease: 'back.out(1.6)',
-              opacity: 1,
-              transform: 'translate(-50%, -50%) scale(1)'
-            })
-              .to(orb, {
-                duration: flightDuration,
-                ease: flightEase,
-                left: tx,
-                top: ty
-              }, '>-0.06')
-              .to(orb, {
-                duration: 0.16,
-                ease: 'power1.out',
-                transform: `translate(-50%, -50%) scale(${arrivalScale})`
-              }, `>-0.08`)
-              .to(orb, {
-                duration: 0.16,
-                ease: 'power1.inOut',
-                transform: 'translate(-50%, -50%) scale(1)'
-              });
-          } else {
-            setTimeout(cleanup, Math.max(600, (flightDuration * 1000) + 200));
-          }
-        } catch (err) {
-          console.error('[mana] Ошибка анимации орба маны:', err);
+          raf(tick);
+          setTimeout(() => {
+            try {
+              label.style.transition = 'opacity 240ms ease, transform 320ms ease';
+              label.style.opacity = '1';
+              label.style.transform = 'translate(-50%, -120%) translateY(-12px)';
+            } catch {}
+          }, 90);
+          setTimeout(() => {
+            try {
+              label.style.transition = 'opacity 260ms ease, transform 320ms ease';
+              label.style.opacity = '0';
+              label.style.transform = 'translate(-50%, -120%) translateY(-24px)';
+            } catch {}
+          }, floatDuration * 1000 + labelHoldMs);
+          setTimeout(() => { try { flash.style.opacity = '1'; } catch {} }, Math.max(0, floatDuration * 1000 - 160));
+          setTimeout(() => { applyReveal(); }, Math.round(floatDuration * 1000));
+          setTimeout(() => { cleanup(); }, totalDuration + 32);
         }
-      }, extraDelayMs);
-    };
-
-    for (let i = 0; i < count; i += 1) {
-      const slotIndex = (typeof targetSlot === 'number') ? (targetSlot + i) : null;
-      const extraDelayMs = startDelayMs + delayBetweenMs * i;
-      scheduleSingle(slotIndex, extraDelayMs);
-    }
+      } catch (err) {
+        console.error('[mana] Ошибка анимации орба маны:', err);
+        try { cleanup(); } catch {}
+      }
+    }, startDelayMs);
   } catch (err) {
     console.error('[mana] animateManaGainFromWorld error:', err);
   }
