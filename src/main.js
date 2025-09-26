@@ -1,7 +1,7 @@
 ﻿// Bridge file to expose core modules to existing global code progressively
 import * as Constants from './core/constants.js';
 import { CARDS } from './core/cards.js';
-import { DECKS } from './core/decks.js';
+import { DECKS, hydrateDeck, setDecks } from './core/decks.js';
 // Стартовая колода по умолчанию — первая из списка
 const STARTER_FIRESET = DECKS[0]?.cards || [];
 import * as Rules from './core/rules.js';
@@ -42,6 +42,9 @@ import * as DeckSelect from './ui/deckSelect.js';
 import * as MainMenu from './ui/mainMenu.js';
 import * as DeckBuilder from './ui/deckBuilder.js';
 import * as DeckNetwork from './net/decks.js';
+import { initAuthScreen } from './ui/authScreen.js';
+import { initUserPanel } from './ui/userPanel.js';
+import { onSessionChange } from './auth/session.js';
 import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
@@ -137,10 +140,6 @@ if (typeof window !== 'undefined' && !window.gameState) {
   try { applyGameState(s); } catch {}
 }
 
-if (typeof window !== 'undefined') {
-  DeckNetwork.refreshDecks().catch(err => console.warn('[main] Не удалось синхронизировать колоды с сервером', err));
-}
-
 // Унифицированное применение нового состояния игры
 export function applyGameState(state) {
   try {
@@ -155,6 +154,36 @@ export function applyGameState(state) {
   } catch {}
 }
 try { if (typeof window !== 'undefined') window.applyGameState = applyGameState; } catch {}
+
+async function bootstrapAuth() {
+  try {
+    await initAuthScreen();
+  } catch (err) {
+    console.warn('[main] Не удалось инициализировать экран авторизации', err);
+  }
+  initUserPanel();
+}
+
+let menuOpenedAfterLogin = false;
+onSessionChange(({ user, token }) => {
+  if (user && token) {
+    DeckNetwork.refreshDecks().catch(err => console.warn('[main] Не удалось синхронизировать колоды', err));
+    if (!menuOpenedAfterLogin) {
+      try { MainMenu.open(true); } catch {}
+    }
+    menuOpenedAfterLogin = true;
+  } else {
+    menuOpenedAfterLogin = false;
+    const defaults = DEFAULT_DECK_BLUEPRINTS.map(hydrateDeck).filter(Boolean);
+    setDecks(defaults, { persistLocal: false });
+    try { window.__selectedDeckObj = null; } catch {}
+    try { localStorage.removeItem('customDecks'); } catch {}
+  }
+});
+
+if (typeof window !== 'undefined') {
+  bootstrapAuth().catch(err => console.warn('[main] Ошибка запуска авторизации', err));
+}
 
 // Expose new scene/board API for gradual migration from inline script
 try {

@@ -3,8 +3,11 @@ import http from "http";
 import cors from "cors";
 import { Server } from "socket.io";
 import decksRouter from "./routes/decks.js";
+import authRouter from "./routes/auth.js";
 import { initDb, getDbError } from "./server/db.js";
 import { ensureDeckTable, seedDecks } from "./server/repositories/decksRepository.js";
+import { ensureAuthStorage, authenticateToken } from "./server/services/authService.js";
+import { optionalAuth } from "./server/middleware/auth.js";
 import { DEFAULT_DECK_BLUEPRINTS } from "./src/core/defaultDecks.js";
 import { capMana } from "./src/core/constants.js";
 import { applyTurnStartManaEffects } from "./src/core/abilityHandlers/startPhase.js";
@@ -13,6 +16,8 @@ import { discardCardFromHand as discardCardFromHandLogic } from "./src/core/disc
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(optionalAuth);
+app.use('/auth', authRouter);
 app.use('/decks', decksRouter);
 app.get("/", (req, res) => res.send("MP server alive"));
 // ===== Debug log (in-memory) =====
@@ -52,6 +57,7 @@ const PORT = process.env.PORT || 3001;
 const dbReadyOnStart = await initDb();
 if (dbReadyOnStart) {
   try {
+    await ensureAuthStorage();
     await ensureDeckTable();
     await seedDecks(DEFAULT_DECK_BLUEPRINTS);
   } catch (err) {
@@ -116,8 +122,34 @@ function pairIfPossible() {
   pushLog({ ev: 'pairIfPossible:end', queueSize: queue.length });
 }
 
+io.use(async (socket, next) => {
+  const authHeader = socket.handshake.headers?.authorization || socket.handshake.headers?.Authorization;
+  const headerToken = typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+    ? authHeader.slice('Bearer '.length).trim()
+    : null;
+  const token = socket.handshake.auth?.token || headerToken;
+  if (!token) {
+    return next(new Error('auth_required'));
+  }
+  try {
+    const user = await authenticateToken(token);
+    socket.data.user = user;
+    socket.data.userId = user?.id || null;
+    socket.data.authToken = token;
+    return next();
+  } catch (err) {
+    return next(new Error(err?.message || 'auth_failed'));
+  }
+});
+
 io.on("connection", (socket) => {
-  pushLog({ ev: 'connect', sid: socket.id, transport: socket.conn.transport.name, remoteAddress: socket.conn.remoteAddress });
+  pushLog({
+    ev: 'connect',
+    sid: socket.id,
+    transport: socket.conn.transport.name,
+    remoteAddress: socket.conn.remoteAddress,
+    userId: socket.data.userId,
+  });
   // Клиентские произвольные заметки для отладки
   socket.on('debugLog', (payload = {}) => {
     try {
@@ -126,9 +158,14 @@ io.on("connection", (socket) => {
     } catch {}
   });
   socket.on("joinQueue", (payload = {}) => {
+    if (!socket.data?.userId) {
+      socket.emit('authRequired', { error: 'Требуется авторизация' });
+      pushLog({ ev: 'joinQueue:rejectUnauthenticated', sid: socket.id });
+      return;
+    }
     const deckId = payload?.deckId;
     socket.data.deckId = deckId;
-    pushLog({ ev: 'joinQueue:start', sid: socket.id, currentQueueSize: queue.length, deckId });
+    pushLog({ ev: 'joinQueue:start', sid: socket.id, userId: socket.data.userId, currentQueueSize: queue.length, deckId });
     
     // если socket был в комнате завершённого матча — убедимся, что он вышел
     try {
@@ -156,7 +193,7 @@ io.on("connection", (socket) => {
     queue.push(socket);
     socket.data.queueing = true;
     
-    pushLog({ ev: 'joinQueue:added', sid: socket.id, newQueueSize: queue.length, deckId });
+    pushLog({ ev: 'joinQueue:added', sid: socket.id, userId: socket.data.userId, newQueueSize: queue.length, deckId });
     
     // Пытаемся создать матч
     pairIfPossible();

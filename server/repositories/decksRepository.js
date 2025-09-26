@@ -1,6 +1,11 @@
 import { randomUUID } from 'crypto';
 import { isDbReady, query } from '../db.js';
 
+function normalizeOwner(ownerId) {
+  if (typeof ownerId === 'string' && ownerId.trim()) return ownerId.trim();
+  return null;
+}
+
 function mapRow(row) {
   if (!row) return null;
   let cards = [];
@@ -66,27 +71,38 @@ export async function seedDecks(blueprints = []) {
   return inserted;
 }
 
-export async function listDecks() {
+export async function listDecksForUser(userId) {
   if (!isDbReady()) throw new Error('Хранилище колод недоступно');
-  const result = await query(`
-    SELECT id, name, description, cards, owner_id, version, updated_at
-    FROM decks
-    ORDER BY updated_at DESC, name ASC;
-  `);
+  const normalizedOwner = normalizeOwner(userId);
+  const result = await query(
+    `SELECT id, name, description, cards, owner_id, version, updated_at
+     FROM decks
+     WHERE owner_id = $1 OR owner_id IS NULL
+     ORDER BY (owner_id = $1) DESC, updated_at DESC, name ASC;`,
+    [normalizedOwner]
+  );
   return result.rows.map(mapRow);
 }
 
-export async function getDeckById(id) {
+export async function getDeckAccessibleToUser(id, userId) {
   if (!isDbReady()) throw new Error('Хранилище колод недоступно');
+  const normalizedOwner = normalizeOwner(userId);
   const result = await query(
-    `SELECT id, name, description, cards, owner_id, version, updated_at FROM decks WHERE id = $1 LIMIT 1;`,
-    [id]
+    `SELECT id, name, description, cards, owner_id, version, updated_at
+     FROM decks
+     WHERE id = $1 AND (owner_id = $2 OR owner_id IS NULL)
+     LIMIT 1;`,
+    [id, normalizedOwner]
   );
   return mapRow(result.rows?.[0]);
 }
 
-export async function upsertDeckRecord(deck) {
+export async function upsertDeckOwnedBy(userId, deck) {
   if (!isDbReady()) throw new Error('Хранилище колод недоступно');
+  const ownerId = normalizeOwner(userId);
+  if (!ownerId) {
+    throw new Error('Требуется указать владельца колоды');
+  }
   const id = deck.id || randomUUID();
   const result = await query(
     `INSERT INTO decks (id, name, description, cards, owner_id)
@@ -98,18 +114,26 @@ export async function upsertDeckRecord(deck) {
        owner_id = EXCLUDED.owner_id,
        version = decks.version + 1,
        updated_at = NOW()
+     WHERE decks.owner_id = $5
      RETURNING id, name, description, cards, owner_id, version, updated_at;`,
-    [id, deck.name, deck.description || '', JSON.stringify(deck.cards || []), deck.ownerId || null]
+    [id, deck.name, deck.description || '', JSON.stringify(deck.cards || []), ownerId]
   );
-  return mapRow(result.rows?.[0]);
+  const saved = mapRow(result.rows?.[0]);
+  if (!saved) {
+    const err = new Error('Колода не найдена или принадлежит другому пользователю');
+    err.status = 404;
+    throw err;
+  }
+  return saved;
 }
 
-export async function deleteDeckRecord(id) {
+export async function deleteDeckOwnedBy(id, userId) {
   if (!isDbReady()) throw new Error('Хранилище колод недоступно');
-  if (!id) return false;
+  const ownerId = normalizeOwner(userId);
+  if (!id || !ownerId) return false;
   const result = await query(
-    'DELETE FROM decks WHERE id = $1;',
-    [id]
+    'DELETE FROM decks WHERE id = $1 AND owner_id = $2;',
+    [id, ownerId]
   );
   const affected = typeof result.rowCount === 'number'
     ? result.rowCount

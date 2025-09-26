@@ -1,4 +1,5 @@
 import { getServerBase } from './config.js';
+import { getAuthToken, onTokenChange } from '../auth/session.js';
 
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
@@ -6,6 +7,7 @@ import { getServerBase } from './config.js';
 (() => {
   // ===== 0) Config =====
   const SERVER_URL = getServerBase();
+  let lastAuthToken = getAuthToken() || '';
   try {
     if (typeof window !== 'undefined') {
       const cfg = window.__netConfig = window.__netConfig || {};
@@ -73,14 +75,52 @@ import { getServerBase } from './config.js';
   function hideStartCountdown(){ startModal?.remove(); startModal=null; }
 
   // ===== 4) Socket + sync =====
-  const socket = io(SERVER_URL, { 
+  const socket = io(SERVER_URL, {
     transports: ['websocket', 'polling'],
     upgrade: true,
     rememberUpgrade: true,
     timeout: 20000,
-    forceNew: true
+    forceNew: true,
+    autoConnect: false,
+    auth: { token: lastAuthToken },
   });
   try { window.socket = socket; } catch {}
+  function updateSocketAuth(token) {
+    socket.auth = socket.auth || {};
+    socket.auth.token = token || '';
+  }
+  updateSocketAuth(lastAuthToken);
+
+  function refreshConnection(token) {
+    const normalized = token || '';
+    if (!normalized) {
+      if (socket.connected) {
+        try { socket.disconnect(); } catch {}
+      }
+      return;
+    }
+    if (socket.connected) {
+      try { socket.disconnect(); } catch {}
+      setTimeout(() => {
+        updateSocketAuth(normalized);
+        try { socket.connect(); } catch {}
+      }, 20);
+    } else {
+      try { socket.connect(); } catch {}
+    }
+  }
+
+  onTokenChange((token) => {
+    const normalized = token || '';
+    if (normalized === lastAuthToken) return;
+    lastAuthToken = normalized;
+    updateSocketAuth(normalized);
+    refreshConnection(normalized);
+  });
+
+  if (lastAuthToken) {
+    refreshConnection(lastAuthToken);
+  }
   // NET_ACTIVE, MY_SEAT, APPLYING уже объявлены выше в глобальной области
 
   // --- SENDING: «обёртки» + DIGEST-пуллер ---
@@ -699,7 +739,14 @@ import { getServerBase } from './config.js';
   // ===== 5) Queue / start =====
   function onFindMatchClick(deckId){
     console.log('[QUEUE] Attempting to join queue, socket connected:', socket.connected, 'deck:', deckId);
+    const token = getAuthToken();
+    if (!token) {
+      console.warn('[QUEUE] Попытка подключения без авторизации');
+      try { window.__ui?.auth?.open?.(); } catch {}
+      return;
+    }
     showQueueModal();
+    updateSocketAuth(token);
     try {
       if (!socket.connected) socket.connect();
       (window.socket || socket).emit('joinQueue', { deckId });
@@ -872,6 +919,10 @@ import { getServerBase } from './config.js';
   });
   socket.on('connect_error', (error) => {
     console.error('[SOCKET] Connection error:', error);
+  });
+  socket.on('authRequired', ({ error } = {}) => {
+    console.warn('[SOCKET] Требуется авторизация', error);
+    try { window.__ui?.auth?.open?.(); } catch {}
   });
   socket.on('matchFound', updateIndicator);
   setInterval(updateIndicator, 500);
