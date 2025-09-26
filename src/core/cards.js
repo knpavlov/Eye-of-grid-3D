@@ -604,6 +604,30 @@ export const CARDS = {
     ],
     desc: 'Magic Attack. While on a Water field, Imposter Queen Anfisa gains Possession of all enemies on adjacent fields.'
   },
+  WATER_MOVING_ISLE_OF_KADENA: {
+    id: 'WATER_MOVING_ISLE_OF_KADENA', name: 'Moving Isle of Kadena', type: 'UNIT', cost: 4, activation: 2,
+    element: 'WATER', atk: 1, hp: 4,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1] },
+      { dir: 'E', ranges: [1] },
+      { dir: 'S', ranges: [1] },
+      { dir: 'W', ranges: [1] },
+    ],
+    blindspots: [], fortress: true,
+    manaStealOnSummon: { ifNotOnElement: 'WATER', amount: { type: 'FIELD_COUNT', element: 'WATER' }, from: 'OPPONENT', to: 'OWNER' },
+    diesOnElement: 'FIRE',
+    desc: 'Fortress. If Moving Isle of Kadena is summoned to a non-Water field, steal mana from your opponent equal to the number of Water fields. Destroy Moving Isle of Kadena if it is on a Fire field.'
+  },
+  WATER_QUEENS_SERVANT: {
+    id: 'WATER_QUEENS_SERVANT', name: "Queen's Servant", type: 'UNIT', cost: 4, activation: 2,
+    element: 'WATER', atk: 1, hp: 1,
+    attackType: 'MAGIC',
+    attacks: [],
+    blindspots: ['S'], ignoreAlliedBlocking: true, perfectDodge: true,
+    manaStealOnDeath: { amount: 1 },
+    desc: "Magic Attack. Perfect Dodge. If Queen's Servant is destroyed, steal 1 mana from your opponent."
+  },
   FOREST_SWALLOW_NINJA: {
     id: 'FOREST_SWALLOW_NINJA', name: 'Swallow Ninja', type: 'UNIT', cost: 3, activation: 2,
     element: 'FOREST', atk: 1, hp: 3,

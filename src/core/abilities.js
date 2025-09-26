@@ -21,6 +21,7 @@ import {
   computeTargetHpBonus as computeTargetHpBonusInternal,
 } from './abilityHandlers/attackModifiers.js';
 import { collectRepositionOnDamage } from './abilityHandlers/reposition.js';
+import { applySummonManaSteal } from './abilityHandlers/manaSteal.js';
 import { extraActivationCostFromAuras } from './abilityHandlers/costModifiers.js';
 import {
   applyElementalPossession,
@@ -708,6 +709,14 @@ export function applySummonAbilities(state, r, c) {
   }
 
   const reactions = applyEnemySummonReactions(state, { r, c, unit, tpl });
+  const manaSteal = applySummonManaSteal(state, r, c, { r, c, unit, tpl, cell });
+  if (Array.isArray(manaSteal?.logs) && manaSteal.logs.length) {
+    events.logs = [...(events.logs || []), ...manaSteal.logs];
+  }
+  if (Array.isArray(manaSteal?.steals) && manaSteal.steals.length) {
+    events.manaSteals = [...(events.manaSteals || []), ...manaSteal.steals];
+  }
+
   if (Array.isArray(reactions?.heals) && reactions.heals.length) {
     events.heals = [...(events.heals || []), ...reactions.heals];
   }

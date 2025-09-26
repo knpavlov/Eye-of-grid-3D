@@ -157,6 +157,92 @@ export function animateManaGainFromWorld(pos, ownerIndex, visualOnly = true, tar
   } catch {}
 }
 
+
+export function animateManaSteal(stealEvent, options = {}) {
+  try {
+    if (!stealEvent) return;
+    const count = Math.max(0, Math.floor(stealEvent.stolen || 0));
+    if (count <= 0) return;
+    const fromIndex = typeof stealEvent.from === 'number' ? stealEvent.from : null;
+    const toIndex = typeof stealEvent.to === 'number' ? stealEvent.to : null;
+    const fromPanel = (typeof fromIndex === 'number') ? document.getElementById(`mana-display-${fromIndex}`) : null;
+    const toPanel = (typeof toIndex === 'number') ? document.getElementById(`mana-display-${toIndex}`) : null;
+    const fromChildren = fromPanel ? Array.from(fromPanel.children || []) : [];
+    const toChildren = toPanel ? Array.from(toPanel.children || []) : [];
+    const fromBefore = typeof stealEvent.fromBefore === 'number' ? stealEvent.fromBefore : null;
+    const toBefore = typeof stealEvent.toBefore === 'number' ? stealEvent.toBefore : null;
+    const toAfter = typeof stealEvent.toAfter === 'number' ? stealEvent.toAfter : ((toBefore || 0) + count);
+    const startBase = (fromBefore != null) ? fromBefore : ((typeof stealEvent.attempted === 'number' ? stealEvent.attempted : count) + (stealEvent.fromAfter || 0));
+
+    const ensureRect = (el, fallback) => {
+      if (el && el.getBoundingClientRect) {
+        const rect = el.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      }
+      if (fallback && fallback.getBoundingClientRect) {
+        const rect = fallback.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      }
+      return null;
+    };
+
+    const makeOrb = () => {
+      const orb = document.createElement('div');
+      orb.className = 'mana-orb';
+      orb.style.position = 'fixed';
+      orb.style.transform = 'translate(-50%, -50%) scale(1)';
+      orb.style.opacity = '1';
+      orb.style.pointerEvents = 'none';
+      orb.style.zIndex = '90';
+      return orb;
+    };
+
+    const gsap = (typeof window !== 'undefined') ? window.gsap : null;
+
+    for (let i = 0; i < count; i += 1) {
+      const startIdx = Math.max(0, Math.min(fromChildren.length - 1, (startBase || fromChildren.length) - 1 - i));
+      const startEl = fromChildren[startIdx] || (fromChildren.length ? fromChildren[fromChildren.length - 1] : null);
+      const startPos = ensureRect(startEl, fromPanel);
+      if (startPos) {
+        const orb = makeOrb();
+        orb.style.left = `${startPos.x}px`;
+        orb.style.top = `${startPos.y}px`;
+        document.body.appendChild(orb);
+        if (gsap) {
+          const tl = gsap.timeline({ delay: i * 0.08, onComplete: () => { try { orb.remove(); } catch {} } });
+          tl.to(orb, { duration: 0.2, ease: 'power1.out', transform: 'translate(-50%, -50%) scale(1.05)' })
+            .to(orb, { duration: 0.32, ease: 'power2.in', transform: 'translate(-50%, -120%) scale(0.6)', opacity: 0 }, '>-0.04');
+        } else {
+          setTimeout(() => { try { orb.remove(); } catch {} }, 360);
+        }
+      }
+      const targetIdx = Math.max(0, Math.min(toChildren.length - 1, toAfter - count + i));
+      const targetEl = toChildren[targetIdx] || (toChildren.length ? toChildren[toChildren.length - 1] : null);
+      const targetPos = ensureRect(targetEl, toPanel);
+      if (targetPos) {
+        const delay = 260 + i * 90;
+        const sparkle = makeOrb();
+        sparkle.style.left = `${targetPos.x}px`;
+        sparkle.style.top = `${targetPos.y}px`;
+        sparkle.style.opacity = '0';
+        sparkle.style.transform = 'translate(-50%, -50%) scale(0.3)';
+        document.body.appendChild(sparkle);
+        if (gsap) {
+          const tl2 = gsap.timeline({ delay: delay / 1000, onComplete: () => { try { sparkle.remove(); } catch {} } });
+          tl2.to(sparkle, { duration: 0.18, ease: 'power3.out', opacity: 1, transform: 'translate(-50%, -50%) scale(0.95)' })
+             .to(sparkle, { duration: 0.24, ease: 'power1.inOut', opacity: 0, transform: 'translate(-50%, -50%) scale(1.4)' });
+        } else {
+          setTimeout(() => { try { sparkle.style.opacity = '1'; } catch {} }, delay);
+          setTimeout(() => { try { sparkle.remove(); } catch {} }, delay + 280);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[mana] animateManaSteal failed', err);
+  }
+}
+
+
 export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationMs = 900) {
   return new Promise(resolve => {
     try {
@@ -321,7 +407,7 @@ export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationM
   });
 }
 
-const api = { renderBars, animateManaGainFromWorld, animateTurnManaGain };
+const api = { renderBars, animateManaGainFromWorld, animateManaSteal, animateTurnManaGain };
 try { if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.mana = api; } } catch {}
 export default api;
 

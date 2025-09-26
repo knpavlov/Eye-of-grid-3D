@@ -27,6 +27,7 @@ import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
 import { getHpConditionalBonuses } from './abilityHandlers/conditionalBonuses.js';
 import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
+import { applyDeathManaSteal } from './abilityHandlers/manaSteal.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -593,6 +594,13 @@ export function stagedAttack(state, r, c, opts = {}) {
       }
     } catch {}
 
+    const manaStealEvents = applyDeathManaSteal(nFinal, deaths, { cause: 'BATTLE' });
+    const manaStealLogs = Array.isArray(manaStealEvents?.logs) ? manaStealEvents.logs : [];
+    if (manaStealLogs.length) {
+      logLines.push(...manaStealLogs);
+    }
+    const manaStealList = Array.isArray(manaStealEvents?.steals) ? manaStealEvents.steals : [];
+
     for (const d of deaths) {
       const tplD = CARDS[d.tplId];
       if (tplD?.onDeathAddHPAll) {
@@ -671,6 +679,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       attackType,
       schemeKey,
       attackProfile: profile,
+      manaSteals: manaStealList,
     };
   }
 
@@ -915,6 +924,13 @@ export function magicAttack(state, fr, fc, tr, tc) {
       }
     }
   } catch {}
+  const manaStealEvents = applyDeathManaSteal(n1, deaths, { cause: 'MAGIC' });
+  const manaStealLogs = Array.isArray(manaStealEvents?.logs) ? manaStealEvents.logs : [];
+  if (manaStealLogs.length) {
+    logLines.push(...manaStealLogs);
+  }
+  const manaStealList = Array.isArray(manaStealEvents?.steals) ? manaStealEvents.steals : [];
+
   const discardEffects = applyDeathDiscardEffects(n1, deaths, { cause: 'MAGIC' });
   if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
     logLines.push(...discardEffects.logs);
@@ -975,6 +991,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     schemeKey,
     attackProfile: profile,
     dmg,
+    manaSteals: manaStealList,
   };
 }
 

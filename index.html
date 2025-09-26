@@ -618,10 +618,16 @@
           // Финализация: анимация смерти и орбы перед применением состояния
           const stateBeforeFinish = gameState ? JSON.parse(JSON.stringify(gameState)) : null;
           const res = staged.finish();
+          const manaSteals = Array.isArray(res?.manaSteals) ? res.manaSteals : [];
           const attackerPos = res.attackerPosUpdate || { r, c };
           gameState = res.n1;
           const finalState = gameState;
           try { window.applyGameState(finalState); } catch {}
+          if (manaSteals.length) {
+            for (const steal of manaSteals) {
+              try { window.__ui?.mana?.animateManaSteal?.(steal); } catch {}
+            }
+          }
           if (Array.isArray(res.dodgeUpdates) && res.dodgeUpdates.length) {
             try { window.__interactions?.logDodgeUpdates?.(res.dodgeUpdates, finalState, attackerName); } catch {}
           }
@@ -753,6 +759,7 @@
       const attackerName = CARDS[attacker.tplId]?.name || 'Существо';
       const res = magicAttack(gameState, from.r, from.c, tr, tc);
       if (!res) { showNotification('Incorrect target', 'error'); return; }
+      const manaSteals = Array.isArray(res?.manaSteals) ? res.manaSteals : [];
       const attackerPosMagic = res.attackerPosUpdate || from;
       for (const l of res.logLines.reverse()) addLog(l);
       const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
