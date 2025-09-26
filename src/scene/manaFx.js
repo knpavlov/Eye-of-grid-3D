@@ -7,7 +7,7 @@ export function buildManaGainPlan({
   THREE = (typeof window !== 'undefined' ? window.THREE : null),
   baseDelayMs = 400,
   abilityOffsetMs = 160,
-  perOrbDelayMs = 140,
+  riseDurationMs = 1000,
 } = {}) {
   try {
     const initialMana = new Map();
@@ -20,6 +20,7 @@ export function buildManaGainPlan({
 
     const ownerState = new Map();
     const deathOrigins = new Map();
+    const aggregates = new Map();
     const abilityDelayByOwner = new Map();
     const events = [];
 
@@ -32,7 +33,7 @@ export function buildManaGainPlan({
       if (!Number.isFinite(owner)) return null;
       if (!ownerState.has(owner)) {
         const start = initialMana.has(owner) ? initialMana.get(owner) : 0;
-        ownerState.set(owner, { nextSlot: Math.max(0, Math.min(10, start)) });
+        ownerState.set(owner, { nextValue: Math.max(0, Math.min(10, start)) });
       }
       return ownerState.get(owner);
     };
@@ -57,38 +58,42 @@ export function buildManaGainPlan({
       }
     };
 
-    const addEvent = (owner, origin, amount, slotStart, startDelay) => {
-      if (!origin || !Number.isFinite(owner)) return;
-      const normalizedAmount = Math.max(0, Math.floor(amount));
-      if (normalizedAmount <= 0) return;
-      const clampedSlot = Math.max(0, Math.min(9, Number.isFinite(slotStart) ? slotStart : 0));
-      const originClone = typeof origin.clone === 'function' ? origin.clone() : origin;
-      events.push({
-        owner,
-        origin: originClone,
-        amount: normalizedAmount,
-        slotStart: clampedSlot,
-        startDelayMs: Number.isFinite(startDelay) ? Math.max(0, startDelay) : 0,
-        delayBetweenMs: perOrbDelayMs,
-      });
+    const ensureAggregate = (death) => {
+      if (!death || !Number.isFinite(death.owner)) return null;
+      const key = makeKey(death);
+      if (!key) return null;
+      if (!aggregates.has(key)) {
+        const origin = resolveOrigin(death);
+        if (origin) {
+          deathOrigins.set(key, typeof origin.clone === 'function' ? origin.clone() : origin);
+        }
+        aggregates.set(key, {
+          owner: death.owner,
+          origin: deathOrigins.get(key) || null,
+          contributions: [],
+          startDelayMs: baseDelayMs,
+          death,
+        });
+      } else if (!deathOrigins.has(key)) {
+        const origin = resolveOrigin(death);
+        if (origin) {
+          deathOrigins.set(key, typeof origin.clone === 'function' ? origin.clone() : origin);
+        }
+      }
+      const agg = aggregates.get(key);
+      if (agg && !agg.origin && deathOrigins.has(key)) {
+        const stored = deathOrigins.get(key);
+        agg.origin = typeof stored.clone === 'function' ? stored.clone() : stored;
+      }
+      return agg || null;
     };
 
     const processDeath = (death) => {
       if (!death || !Number.isFinite(death.owner)) return;
-      const owner = death.owner;
-      const state = ensureOwnerState(owner);
-      if (!state) return;
-      const baseSlot = state.nextSlot;
-      const hasCapacity = baseSlot < 10;
-      const origin = resolveOrigin(death);
-      const key = makeKey(death);
-      if (origin && key) {
-        deathOrigins.set(key, typeof origin.clone === 'function' ? origin.clone() : origin);
-      }
-      if (origin && hasCapacity) {
-        addEvent(owner, origin, 1, baseSlot, baseDelayMs);
-      }
-      state.nextSlot = Math.min(10, baseSlot + (hasCapacity ? 1 : 0));
+      const agg = ensureAggregate(death);
+      if (!agg) return;
+      agg.contributions.push({ amount: 1, delay: baseDelayMs, type: 'BASE' });
+      agg.startDelayMs = Math.max(agg.startDelayMs, baseDelayMs);
     };
 
     deaths.forEach(processDeath);
@@ -104,24 +109,46 @@ export function buildManaGainPlan({
       if (owner == null) continue;
       const rawAmount = Number(entry?.amount);
       if (!Number.isFinite(rawAmount) || rawAmount <= 0) continue;
-      const state = ensureOwnerState(owner);
-      if (!state || state.nextSlot >= 10) continue;
       const death = entry.death;
-      let origin = null;
+      const agg = ensureAggregate(death);
+      if (!agg) continue;
+      const delay = getAbilityDelay(owner);
+      agg.contributions.push({ amount: rawAmount, delay, type: entry.type || 'ABILITY' });
+      agg.startDelayMs = Math.max(agg.startDelayMs, delay);
+    }
+
+    const processed = new Set();
+    for (const death of deaths) {
       const key = makeKey(death);
-      if (key && deathOrigins.has(key)) {
-        origin = deathOrigins.get(key);
-      } else {
-        origin = resolveOrigin(death);
-        if (origin && key) {
-          deathOrigins.set(key, typeof origin.clone === 'function' ? origin.clone() : origin);
-        }
-      }
+      if (!key || processed.has(key)) continue;
+      processed.add(key);
+      const agg = aggregates.get(key);
+      if (!agg) continue;
+      const owner = agg.owner;
+      const state = ensureOwnerState(owner);
+      if (!state) continue;
+      const totalPlanned = agg.contributions.reduce((sum, item) => {
+        const val = Number.isFinite(item?.amount) ? Math.floor(item.amount) : 0;
+        return sum + Math.max(0, val);
+      }, 0);
+      if (totalPlanned <= 0) continue;
+      const before = state.nextValue;
+      const gain = Math.max(0, Math.min(totalPlanned, 10 - before));
+      if (gain <= 0) continue;
+      const after = before + gain;
+      state.nextValue = after;
+      const startDelay = Number.isFinite(agg.startDelayMs) ? Math.max(0, agg.startDelayMs) : baseDelayMs;
+      const origin = agg.origin;
       if (!origin) continue;
-      const capacity = Math.max(0, Math.min(Math.floor(rawAmount), 10 - state.nextSlot));
-      if (capacity <= 0) continue;
-      addEvent(owner, origin, capacity, state.nextSlot, getAbilityDelay(owner));
-      state.nextSlot = Math.min(10, state.nextSlot + capacity);
+      events.push({
+        owner,
+        origin: typeof origin.clone === 'function' ? origin.clone() : origin,
+        amount: gain,
+        before,
+        after,
+        startDelayMs: startDelay,
+        riseDurationMs,
+      });
     }
 
     const schedule = () => {
@@ -133,10 +160,13 @@ export function buildManaGainPlan({
       for (const ev of events) {
         try {
           const origin = ev.origin && typeof ev.origin.clone === 'function' ? ev.origin.clone() : ev.origin;
-          animate(origin, ev.owner, true, ev.slotStart, {
-            count: ev.amount,
+          animate(origin, ev.owner, true, null, {
+            amount: ev.amount,
+            before: ev.before,
+            after: ev.after,
             startDelayMs: ev.startDelayMs,
-            delayBetweenMs: ev.delayBetweenMs,
+            floatDurationMs: ev.riseDurationMs,
+            labelText: `+${ev.amount}`,
           });
         } catch (err) {
           console.error('[manaFx] Не удалось запустить анимацию маны:', err);

@@ -10,6 +10,8 @@ import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
 import { refreshPossessionsUI } from '../ui/possessions.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
+import { buildManaGainPlan } from '../scene/manaFx.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -212,19 +214,46 @@ export const handlers = {
           }
         return n;
       };
-      const g0 = countUnits(0),
-        g1 = countUnits(1);
-      gameState.players[0].mana = capMana(gameState.players[0].mana + g0);
-      gameState.players[1].mana = capMana(gameState.players[1].mana + g1);
-      for (let rr = 0; rr < 3; rr++)
+      const g0 = countUnits(0);
+      const g1 = countUnits(1);
+      const before0 = Math.max(0, Number(gameState.players[0].mana || 0));
+      const before1 = Math.max(0, Number(gameState.players[1].mana || 0));
+      const after0 = capMana(before0 + g0);
+      const after1 = capMana(before1 + g1);
+      gameState.players[0].mana = after0;
+      gameState.players[1].mana = after1;
+      const totalGain = { 0: Math.max(0, after0 - before0), 1: Math.max(0, after1 - before1) };
+      const gainedSoFar = { 0: 0, 1: 0 };
+      const ctx = getCtx();
+      const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+      for (let rr = 0; rr < 3; rr++) {
         for (let cc = 0; cc < 3; cc++) {
           const un = gameState.board[rr][cc].unit;
           if (!un) continue;
-          const pos = getCtx().tileMeshes[rr][cc].position
-            .clone()
-            .add(new THREE.Vector3(0, 1.2, 0));
-          animateManaGainFromWorld(pos, un.owner === 0 ? 1 : 0);
+          const targetOwner = un.owner === 0 ? 1 : 0;
+          const remaining = totalGain[targetOwner] - gainedSoFar[targetOwner];
+          if (remaining <= 0) continue;
+          const stepGain = Math.min(1, remaining);
+          if (stepGain <= 0) continue;
+          const baseBefore = targetOwner === 0 ? before0 : before1;
+          const beforeStep = baseBefore + gainedSoFar[targetOwner];
+          const afterStep = beforeStep + stepGain;
+          const basePos = ctx.tileMeshes[rr][cc].position.clone();
+          if (THREE?.Vector3) {
+            basePos.add(new THREE.Vector3(0, 1.2, 0));
+          } else if ('y' in basePos) {
+            basePos.y += 1.2;
+          }
+          animateManaGainFromWorld(basePos, targetOwner, true, null, {
+            amount: stepGain,
+            before: beforeStep,
+            after: afterStep,
+            startDelayMs: gainedSoFar[targetOwner] * 160,
+            labelText: `+${stepGain}`,
+          });
+          gainedSoFar[targetOwner] += stepGain;
         }
+      }
       addLog(
         `${tpl.name}: оба игрока получают ману от вражеских существ (P1 +${g0}, P2 +${g1}).`
       );
@@ -271,18 +300,38 @@ export const handlers = {
           const owner = u.owner;
           const deathElement = gameState.board?.[r]?.[c]?.element || null;
           const deathInfo = [{ r, c, owner, tplId: u.tplId, uid: u.uid ?? null, element: deathElement }];
+          const playersBefore = Array.isArray(gameState.players)
+            ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))
+            : [];
           try { gameState.players[owner].graveyard.push(CARDS[u.tplId]); } catch {}
-          const pos = getCtx().tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-          const slot = gameState.players?.[owner]?.mana || 0;
-          animateManaGainFromWorld(pos, owner, true, slot);
-          const unitMeshesCtx = getCtx().unitMeshes;
+          const ownerPlayer = gameState.players?.[owner];
+          if (ownerPlayer) {
+            ownerPlayer.mana = capMana((ownerPlayer.mana || 0) + 1);
+          }
+          const ctx = getCtx();
+          const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+          gameState.board[r][c].unit = null;
+          const manaAbility = applyManaGainOnDeaths(gameState, deathInfo, { boardState: gameState });
+          const manaPlan = buildManaGainPlan({
+            playersBefore,
+            deaths: deathInfo,
+            manaGainEntries: Array.isArray(manaAbility?.entries) ? manaAbility.entries : [],
+            tileMeshes: ctx.tileMeshes,
+            THREE,
+          });
+          try { manaPlan?.schedule?.(); } catch {}
+          if (Array.isArray(manaAbility?.logs) && manaAbility.logs.length) {
+            for (const text of manaAbility.logs) {
+              addLog(text);
+            }
+          }
+          const unitMeshesCtx = ctx.unitMeshes;
           if (unitMeshesCtx) {
             const unitMesh = unitMeshesCtx.find(m => m.userData.row === r && m.userData.col === c);
             if (unitMesh) {
               window.__fx.dissolveAndAsh(unitMesh, new THREE.Vector3(0, 0, 0.6), 0.9);
             }
           }
-          gameState.board[r][c].unit = null;
           const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SPELL' });
           if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
             for (const text of discardEffects.logs) {
