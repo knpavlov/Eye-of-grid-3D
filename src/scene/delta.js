@@ -1,4 +1,5 @@
 // Анимация различий между предыдущим и новым состоянием
+import { buildManaGainPlan } from './manaFx.js';
 
 export function playDeltaAnimations(prevState, nextState, opts = {}) {
   try {
@@ -11,7 +12,6 @@ export function playDeltaAnimations(prevState, nextState, opts = {}) {
     const effectsGroup = ctx.effectsGroup;
     const cardGroup = ctx.cardGroup;
     const createCard3D = window.__cards?.createCard3D;
-    const animateManaGainFromWorld = window.__ui?.mana?.animateManaGainFromWorld;
     const updateUI = window.updateUI;
     const NET_ACTIVE = typeof window.NET_ACTIVE !== 'undefined' ? window.NET_ACTIVE : false;
     const capMana = window.capMana || (x => x);
@@ -71,6 +71,7 @@ export function playDeltaAnimations(prevState, nextState, opts = {}) {
       }
     }
 
+    const deathEvents = [];
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) {
         const pu = (prevB[r] && prevB[r][c] && prevB[r][c].unit) ? prevB[r][c].unit : null;
@@ -116,9 +117,7 @@ export function playDeltaAnimations(prevState, nextState, opts = {}) {
                 try { effectsGroup.add(ghost); } catch { cardGroup.add(ghost); }
                 window.__fx?.dissolveAndAsh(ghost, new window.THREE.Vector3(0,0,0.6), 0.9);
               }
-              const p = tile.position.clone().add(new window.THREE.Vector3(0, 1.2, 0));
-              const slot = (prevState?.players?.[pu.owner]?.mana ?? 0);
-              animateManaGainFromWorld?.(p, pu.owner, true, slot);
+              deathEvents.push({ r, c, owner: pu.owner, tplId: pu.tplId, element: pu.element || null });
               try {
                 if (!NET_ACTIVE && gameState && gameState.players && typeof pu.owner === 'number') {
                   gameState.players[pu.owner].mana = capMana((gameState.players[pu.owner].mana||0) + 1);
@@ -142,6 +141,43 @@ export function playDeltaAnimations(prevState, nextState, opts = {}) {
 
     if (!includeActive && isActivePlayer) {
       return;
+    }
+
+    if (deathEvents.length) {
+      const deathsByOwner = new Map();
+      for (const d of deathEvents) {
+        if (!Number.isFinite(d.owner)) continue;
+        if (!deathsByOwner.has(d.owner)) deathsByOwner.set(d.owner, []);
+        deathsByOwner.get(d.owner).push(d);
+      }
+      const abilityEntries = [];
+      for (const [owner, ownerDeaths] of deathsByOwner.entries()) {
+        const before = Math.max(0, Number(prevState?.players?.[owner]?.mana ?? 0));
+        const after = Math.max(0, Number(nextState?.players?.[owner]?.mana ?? 0));
+        const totalGain = Math.max(0, after - before);
+        const baseCap = Math.max(0, 10 - before);
+        const baseGain = Math.min(ownerDeaths.length, baseCap);
+        let remaining = Math.max(0, Math.floor(totalGain - baseGain));
+        if (remaining <= 0) continue;
+        for (let i = 0; i < ownerDeaths.length && remaining > 0; i += 1) {
+          const remainingDeaths = ownerDeaths.length - i;
+          const amount = (i === ownerDeaths.length - 1)
+            ? remaining
+            : Math.max(1, Math.floor(remaining / remainingDeaths));
+          abilityEntries.push({ owner, amount, death: ownerDeaths[i] });
+          remaining -= amount;
+        }
+      }
+
+      const manaPlan = buildManaGainPlan({
+        playersBefore: prevState?.players,
+        deaths: deathEvents,
+        manaGainEntries: abilityEntries,
+        tileMeshes,
+        THREE: window.THREE || ctx.THREE,
+      });
+      try { manaPlan?.reserve?.(); } catch {}
+      try { manaPlan?.schedule?.(); } catch {}
     }
 
     const hpChanges = [];
