@@ -3,7 +3,8 @@
 import { CARDS } from './cards.js';
 import { DEFAULT_DECK_BLUEPRINTS } from './defaultDecks.js';
 
-const LOCAL_STORAGE_KEY = 'customDecks';
+const BASE_LOCAL_STORAGE_KEY = 'customDecks';
+let storageKey = BASE_LOCAL_STORAGE_KEY;
 
 const subscribers = new Set();
 
@@ -64,7 +65,7 @@ export function serializeDeck(deck) {
 
 function loadLocalDecks() {
   try {
-    const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+    const stored = localStorage.getItem(storageKey);
     if (!stored) return null;
     const parsed = JSON.parse(stored);
     if (!Array.isArray(parsed)) return null;
@@ -77,7 +78,7 @@ function loadLocalDecks() {
 function persistLocalDecks() {
   try {
     const payload = DECKS.map(serializeDeck);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(payload));
+    localStorage.setItem(storageKey, JSON.stringify(payload));
   } catch {}
 }
 
@@ -159,6 +160,22 @@ export function getDeckById(id) {
   return DECKS.find(d => d.id === id) || null;
 }
 
+export function setDeckStorageNamespace(namespace, { fallbackToDefaults = true } = {}) {
+  const nextKey = namespace ? `${BASE_LOCAL_STORAGE_KEY}:${namespace}` : BASE_LOCAL_STORAGE_KEY;
+  if (nextKey === storageKey) return DECKS;
+  storageKey = nextKey;
+  const stored = loadLocalDecks();
+  if (stored?.length) {
+    setDecks(stored, { persistLocal: false });
+    return DECKS;
+  }
+  if (fallbackToDefaults) {
+    const defaults = DEFAULT_DECK_BLUEPRINTS.map(hydrateDeck).filter(Boolean);
+    setDecks(defaults, { persistLocal: false });
+  }
+  return DECKS;
+}
+
 const api = {
   DECKS,
   addDeck,
@@ -170,6 +187,7 @@ const api = {
   setDecks,
   upsertDeck,
   onDecksChanged,
+  setDeckStorageNamespace,
 };
 
 try {

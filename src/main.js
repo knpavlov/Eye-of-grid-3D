@@ -48,6 +48,8 @@ import * as SummonLock from './ui/summonLock.js';
 import * as CancelButton from './ui/cancelButton.js';
 import { initDebugControls } from './ui/debugControls.js';
 import { initDiscardManager, syncWithState as syncDiscardManager } from './ui/discardManager.js';
+import { initAuthScreen } from './ui/authScreen.js';
+import { initSessionStore, onSessionChange, getStateSnapshot } from './auth/sessionStore.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -131,6 +133,38 @@ const netMiddleware = makeMiddleware(({ getState, next, action }) => {
 export const store = createStore(reducer, undefined, [netMiddleware]);
 try { window.__store = store; } catch {}
 
+const initialSessionState = initSessionStore();
+let menuAutoOpened = false;
+
+function tryOpenMainMenu(initial = false) {
+  try {
+    const menu = window.__ui?.mainMenu;
+    if (!menu || typeof menu.open !== 'function') return;
+    menu.open(initial);
+    menuAutoOpened = true;
+  } catch {}
+}
+
+function handleAuthStateForMenu(state) {
+  if (state?.authenticated) {
+    if (!menuAutoOpened) {
+      tryOpenMainMenu(true);
+    }
+  } else {
+    menuAutoOpened = false;
+  }
+}
+
+function setupAuthUI() {
+  initAuthScreen({
+    onAuthenticated() {
+      tryOpenMainMenu(true);
+    },
+  });
+  handleAuthStateForMenu(getStateSnapshot());
+  onSessionChange(handleAuthStateForMenu);
+}
+
 // Initialize only if no existing gameState is present (non-destructive)
 if (typeof window !== 'undefined' && !window.gameState) {
   const s = startGame(STARTER_FIRESET, STARTER_FIRESET);
@@ -138,7 +172,14 @@ if (typeof window !== 'undefined' && !window.gameState) {
 }
 
 if (typeof window !== 'undefined') {
-  DeckNetwork.refreshDecks().catch(err => console.warn('[main] Не удалось синхронизировать колоды с сервером', err));
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupAuthUI, { once: true });
+  } else {
+    setupAuthUI();
+  }
+  if (initialSessionState?.authenticated) {
+    tryOpenMainMenu(true);
+  }
 }
 
 // Унифицированное применение нового состояния игры
