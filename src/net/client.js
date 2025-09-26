@@ -733,7 +733,15 @@ import { getServerBase } from './config.js';
     // Полный сброс локального состояния предыдущего матча перед стартом нового
     try { if (window.__pendingBattleFlushTimer) { clearInterval(window.__pendingBattleFlushTimer); window.__pendingBattleFlushTimer = null; } } catch {}
     try { PENDING_BATTLE_ANIMS = []; PENDING_RETALIATIONS = []; } catch {}
-    try { PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = null; PENDING_MANA_BLOCK = [0,0]; } catch {}
+    try {
+      PENDING_MANA_ANIM = window.PENDING_MANA_ANIM = null;
+      if (window.__ui && window.__ui.mana && typeof window.__ui.mana.resetPendingState === 'function') {
+        window.__ui.mana.resetPendingState();
+      } else {
+        PENDING_MANA_BLOCK = [0,0];
+        try { window.PENDING_MANA_BLOCK = PENDING_MANA_BLOCK; } catch {}
+      }
+    } catch {}
     try { pendingDrawCount = 0; pendingRitualSpellHandIndex = null; pendingRitualSpellCard = null; } catch {}
     try { lastDigest = ''; } catch {}
     APPLYING = false;

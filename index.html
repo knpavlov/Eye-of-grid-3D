@@ -231,10 +231,14 @@
       try { window.manaGainActive = manaGainActive; } catch {}
       var PENDING_MANA_ANIM = null; // { ownerIndex, startIdx, endIdx }
       var PENDING_MANA_BLOCK = [0,0]; // by player index
+      var __pendingManaState = { counts: PENDING_MANA_BLOCK, slots: [new Set(), new Set()], anonymous: [0,0] };
 // Ожидаемая анимация маны: диапазон новых орбов, которые должны появиться синхронно со вспышкой
         try { window.PENDING_MANA_ANIM = PENDING_MANA_ANIM; } catch {}
     // Блокировка появления N последних орбов маны на панели до завершения «полетевших» визуальных орбов (смерть/эффекты)
-        try { window.PENDING_MANA_BLOCK = PENDING_MANA_BLOCK; } catch {}
+        try {
+          window.PENDING_MANA_BLOCK = PENDING_MANA_BLOCK;
+          window.__pendingManaState = __pendingManaState;
+        } catch {}
     // Прячет один экземпляр ритуального спелла в руке активного игрока, пока ждём выбора жертвы
     let pendingRitualSpellHandIndex = null;
     let pendingRitualSpellCard = null; // ссылка на сам объект карты-спелла, чтобы скрывать по идентичности
@@ -618,6 +622,13 @@
           // Финализация: анимация смерти и орбы перед применением состояния
           const stateBeforeFinish = gameState ? JSON.parse(JSON.stringify(gameState)) : null;
           const res = staged.finish();
+          const manaPlan = window.__scene?.manaFx?.buildManaGainPlan?.({
+            playersBefore: stateBeforeFinish?.players || gameState.players,
+            deaths: res.deaths || [],
+            manaGainEntries: res.manaGainEvents || [],
+            tileMeshes,
+            THREE: window.THREE,
+          });
           const attackerPos = res.attackerPosUpdate || { r, c };
           gameState = res.n1;
           const finalState = gameState;
@@ -634,22 +645,17 @@
             for (const d of res.deaths) {
               try { gameState.players[d.owner].graveyard.push(CARDS[d.tplId]); } catch {}
               const deadMesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c);
-            if (deadMesh) {
-              const fromMesh = aMesh || deadMesh;
-              const dirUp = new THREE.Vector3().subVectors(deadMesh.position, fromMesh.position).normalize().multiplyScalar(0.4);
-              window.__fx.dissolveAndAsh(deadMesh, dirUp, 0.9);
+              if (deadMesh) {
+                const fromMesh = aMesh || deadMesh;
+                const dirUp = new THREE.Vector3().subVectors(deadMesh.position, fromMesh.position).normalize().multiplyScalar(0.4);
+                window.__fx.dissolveAndAsh(deadMesh, dirUp, 0.9);
+              }
+              const tplDead = CARDS[d.tplId];
+              if (tplDead?.onDeathAddHPAll) {
+                window.__interactions?.showOracleDeathBuff?.(d.owner, tplDead.onDeathAddHPAll);
+              }
             }
-            // Орб маны появляется с задержкой 400мс после начала анимации смерти
-            setTimeout(() => {
-              const p = tileMeshes[d.r][d.c].position.clone().add(new THREE.Vector3(0, 1.6, 0));
-              // Показать визуальный орб у обоих игроков; фактическое начисление маны уже в res.n1
-              animateManaGainFromWorld(p, d.owner, true);
-            }, 400);
-            const tplDead = CARDS[d.tplId];
-            if (tplDead?.onDeathAddHPAll) {
-              window.__interactions?.showOracleDeathBuff?.(d.owner, tplDead.onDeathAddHPAll);
-            }
-          }
+            try { manaPlan?.schedule?.(); } catch {}
             const pos = attackerPos;
             if (markAttackTurn && gameState.board[pos.r]?.[pos.c]?.unit) {
               gameState.board[pos.r][pos.c].unit.lastAttackTurn = gameState.turn;
