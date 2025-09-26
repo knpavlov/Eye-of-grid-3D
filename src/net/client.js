@@ -605,11 +605,7 @@ import { getServerBase } from './config.js';
         // Показать вспышку +2 маны у панели by (только визуально; фактическое значение придёт со снапшотом)
         const barEl = document.getElementById(`mana-display-${by}`);
         if (barEl) {
-          const rect = barEl.getBoundingClientRect();
-          const center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
-          // Две искры в панель — символически
-          animateManaGainFromWorld(new THREE.Vector3(0,0,0), by, true);
-          setTimeout(()=> animateManaGainFromWorld(new THREE.Vector3(0,0,0), by, true), 120);
+          animateManaGainFromWorld(new THREE.Vector3(0,0,0), by, true, null, { count: 2 });
         }
         // Принудительно обновляем UI для полного сброса состояний
         try { updateHand(); } catch {}

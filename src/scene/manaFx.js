@@ -7,7 +7,6 @@ export function buildManaGainPlan({
   THREE = (typeof window !== 'undefined' ? window.THREE : null),
   baseDelayMs = 400,
   abilityOffsetMs = 160,
-  perOrbDelayMs = 140,
 } = {}) {
   try {
     const initialMana = new Map();
@@ -20,7 +19,7 @@ export function buildManaGainPlan({
 
     const ownerState = new Map();
     const deathOrigins = new Map();
-    const abilityDelayByOwner = new Map();
+    const abilityTotals = new Map();
     const events = [];
 
     const makeKey = (death) => {
@@ -57,71 +56,52 @@ export function buildManaGainPlan({
       }
     };
 
-    const addEvent = (owner, origin, amount, slotStart, startDelay) => {
+    const registerEvent = (owner, death, origin, amount, startDelay) => {
       if (!origin || !Number.isFinite(owner)) return;
       const normalizedAmount = Math.max(0, Math.floor(amount));
       if (normalizedAmount <= 0) return;
-      const clampedSlot = Math.max(0, Math.min(9, Number.isFinite(slotStart) ? slotStart : 0));
       const originClone = typeof origin.clone === 'function' ? origin.clone() : origin;
       events.push({
         owner,
         origin: originClone,
         amount: normalizedAmount,
-        slotStart: clampedSlot,
         startDelayMs: Number.isFinite(startDelay) ? Math.max(0, startDelay) : 0,
-        delayBetweenMs: perOrbDelayMs,
       });
-    };
-
-    const processDeath = (death) => {
-      if (!death || !Number.isFinite(death.owner)) return;
-      const owner = death.owner;
-      const state = ensureOwnerState(owner);
-      if (!state) return;
-      const baseSlot = state.nextSlot;
-      const hasCapacity = baseSlot < 10;
-      const origin = resolveOrigin(death);
       const key = makeKey(death);
-      if (origin && key) {
+      if (key) {
         deathOrigins.set(key, typeof origin.clone === 'function' ? origin.clone() : origin);
       }
-      if (origin && hasCapacity) {
-        addEvent(owner, origin, 1, baseSlot, baseDelayMs);
-      }
-      state.nextSlot = Math.min(10, baseSlot + (hasCapacity ? 1 : 0));
-    };
-
-    deaths.forEach(processDeath);
-
-    const getAbilityDelay = (owner) => {
-      const used = abilityDelayByOwner.get(owner) || 0;
-      abilityDelayByOwner.set(owner, used + abilityOffsetMs);
-      return baseDelayMs + abilityOffsetMs + used;
     };
 
     for (const entry of (Array.isArray(manaGainEntries) ? manaGainEntries : [])) {
       const owner = Number.isFinite(entry?.owner) ? entry.owner : null;
-      if (owner == null) continue;
-      const rawAmount = Number(entry?.amount);
-      if (!Number.isFinite(rawAmount) || rawAmount <= 0) continue;
+      const amount = Math.max(0, Math.floor(Number(entry?.amount) || 0));
+      const key = makeKey(entry?.death);
+      if (owner == null || !key || amount <= 0) continue;
+      const mapKey = `${owner}|${key}`;
+      abilityTotals.set(mapKey, (abilityTotals.get(mapKey) || 0) + amount);
+    }
+
+    for (const death of (Array.isArray(deaths) ? deaths : [])) {
+      if (!death || !Number.isFinite(death.owner)) continue;
+      const owner = death.owner;
       const state = ensureOwnerState(owner);
-      if (!state || state.nextSlot >= 10) continue;
-      const death = entry.death;
-      let origin = null;
+      if (!state) continue;
       const key = makeKey(death);
-      if (key && deathOrigins.has(key)) {
-        origin = deathOrigins.get(key);
-      } else {
-        origin = resolveOrigin(death);
-        if (origin && key) {
-          deathOrigins.set(key, typeof origin.clone === 'function' ? origin.clone() : origin);
-        }
+      const abilityKey = key ? `${owner}|${key}` : null;
+      const abilityGain = abilityKey ? (abilityTotals.get(abilityKey) || 0) : 0;
+      const origin = resolveOrigin(death);
+      if (origin && key && !deathOrigins.has(key)) {
+        deathOrigins.set(key, typeof origin.clone === 'function' ? origin.clone() : origin);
       }
-      if (!origin) continue;
-      const capacity = Math.max(0, Math.min(Math.floor(rawAmount), 10 - state.nextSlot));
+      const capacity = Math.max(0, 10 - state.nextSlot);
       if (capacity <= 0) continue;
-      addEvent(owner, origin, capacity, state.nextSlot, getAbilityDelay(owner));
-      state.nextSlot = Math.min(10, state.nextSlot + capacity);
+      const baseGain = state.nextSlot < 10 ? 1 : 0;
+      let total = Math.max(0, Math.min(capacity, baseGain + abilityGain));
+      if (total <= 0 || !origin) continue;
+      state.nextSlot = Math.min(10, state.nextSlot + total);
+      const startDelay = baseDelayMs + (abilityGain > 0 ? abilityOffsetMs : 0);
+      registerEvent(owner, death, origin, total, startDelay);
     }
 
     const schedule = () => {
@@ -133,10 +113,9 @@ export function buildManaGainPlan({
       for (const ev of events) {
         try {
           const origin = ev.origin && typeof ev.origin.clone === 'function' ? ev.origin.clone() : ev.origin;
-          animate(origin, ev.owner, true, ev.slotStart, {
+          animate(origin, ev.owner, true, null, {
             count: ev.amount,
             startDelayMs: ev.startDelayMs,
-            delayBetweenMs: ev.delayBetweenMs,
           });
         } catch (err) {
           console.error('[manaFx] Не удалось запустить анимацию маны:', err);

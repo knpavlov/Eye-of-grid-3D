@@ -10,6 +10,9 @@ import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
 import { refreshPossessionsUI } from '../ui/possessions.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
+import { buildManaGainPlan } from '../scene/manaFx.js';
+import { capMana } from '../core/constants.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -271,11 +274,31 @@ export const handlers = {
           const owner = u.owner;
           const deathElement = gameState.board?.[r]?.[c]?.element || null;
           const deathInfo = [{ r, c, owner, tplId: u.tplId, uid: u.uid ?? null, element: deathElement }];
+          const playersBefore = Array.isArray(gameState.players)
+            ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana) || 0) }))
+            : [];
           try { gameState.players[owner].graveyard.push(CARDS[u.tplId]); } catch {}
-          const pos = getCtx().tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-          const slot = gameState.players?.[owner]?.mana || 0;
-          animateManaGainFromWorld(pos, owner, true, slot);
-          const unitMeshesCtx = getCtx().unitMeshes;
+          const ownerPlayer = gameState.players?.[owner];
+          if (ownerPlayer) {
+            ownerPlayer.mana = capMana((ownerPlayer.mana || 0) + 1);
+          }
+          const manaAbilityResult = applyManaGainOnDeaths(gameState, deathInfo, { boardState: gameState });
+          if (Array.isArray(manaAbilityResult?.logs) && manaAbilityResult.logs.length) {
+            for (const text of manaAbilityResult.logs) {
+              if (text) addLog(text);
+            }
+          }
+          const ctxLocal = getCtx();
+          const THREE = ctxLocal.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+          const manaPlan = buildManaGainPlan({
+            playersBefore,
+            deaths: deathInfo,
+            manaGainEntries: Array.isArray(manaAbilityResult?.entries) ? manaAbilityResult.entries : [],
+            tileMeshes: ctxLocal.tileMeshes,
+            THREE,
+          });
+          try { manaPlan?.schedule?.(); } catch (err) { console.error('[spells] Не удалось запустить анимацию маны:', err); }
+          const unitMeshesCtx = ctxLocal.unitMeshes;
           if (unitMeshesCtx) {
             const unitMesh = unitMeshesCtx.find(m => m.userData.row === r && m.userData.col === c);
             if (unitMesh) {
@@ -393,8 +416,32 @@ export const handlers = {
             );
           if (u.currentHP <= 0) {
             const deathElement = gameState.board?.[r]?.[c]?.element || null;
-            const deathInfo = [{ r, c, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: deathElement }];
-            try { gameState.players[u.owner].graveyard.push(CARDS[u.tplId]); } catch {}
+            const owner = u.owner;
+            const deathInfo = [{ r, c, owner, tplId: u.tplId, uid: u.uid ?? null, element: deathElement }];
+            const playersBefore = Array.isArray(gameState.players)
+              ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana) || 0) }))
+              : [];
+            try { gameState.players[owner].graveyard.push(CARDS[u.tplId]); } catch {}
+            const ownerPlayer = gameState.players?.[owner];
+            if (ownerPlayer) {
+              ownerPlayer.mana = capMana((ownerPlayer.mana || 0) + 1);
+            }
+            const manaAbilityResult = applyManaGainOnDeaths(gameState, deathInfo, { boardState: gameState });
+            if (Array.isArray(manaAbilityResult?.logs) && manaAbilityResult.logs.length) {
+              for (const text of manaAbilityResult.logs) {
+                if (text) addLog(text);
+              }
+            }
+            const ctxLocal = getCtx();
+            const THREE = ctxLocal.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+            const manaPlan = buildManaGainPlan({
+              playersBefore,
+              deaths: deathInfo,
+              manaGainEntries: Array.isArray(manaAbilityResult?.entries) ? manaAbilityResult.entries : [],
+              tileMeshes: ctxLocal.tileMeshes,
+              THREE,
+            });
+            try { manaPlan?.schedule?.(); } catch (err) { console.error('[spells] Не удалось запустить анимацию маны:', err); }
             const deadMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
             if (deadMesh) {
               window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9);
