@@ -27,6 +27,7 @@ import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
 import { getHpConditionalBonuses } from './abilityHandlers/conditionalBonuses.js';
 import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
+import { applyManaGainOnDeaths } from './abilityHandlers/manaGain.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -593,6 +594,11 @@ export function stagedAttack(state, r, c, opts = {}) {
       }
     } catch {}
 
+    const manaFromDeaths = applyManaGainOnDeaths(nFinal, deaths, { boardState: nFinal });
+    if (Array.isArray(manaFromDeaths?.logs) && manaFromDeaths.logs.length) {
+      logLines.push(...manaFromDeaths.logs);
+    }
+
     for (const d of deaths) {
       const tplD = CARDS[d.tplId];
       if (tplD?.onDeathAddHPAll) {
@@ -671,6 +677,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       attackType,
       schemeKey,
       attackProfile: profile,
+      manaGainEvents: Array.isArray(manaFromDeaths?.entries) ? manaFromDeaths.entries : [],
     };
   }
 
@@ -915,6 +922,10 @@ export function magicAttack(state, fr, fc, tr, tc) {
       }
     }
   } catch {}
+  const manaFromDeaths = applyManaGainOnDeaths(n1, deaths, { boardState: n1 });
+  if (Array.isArray(manaFromDeaths?.logs) && manaFromDeaths.logs.length) {
+    logLines.push(...manaFromDeaths.logs);
+  }
   const discardEffects = applyDeathDiscardEffects(n1, deaths, { cause: 'MAGIC' });
   if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
     logLines.push(...discardEffects.logs);
@@ -975,6 +986,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     schemeKey,
     attackProfile: profile,
     dmg,
+    manaGainEvents: Array.isArray(manaFromDeaths?.entries) ? manaFromDeaths.entries : [],
   };
 }
 
