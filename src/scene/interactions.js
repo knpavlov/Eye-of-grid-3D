@@ -16,6 +16,7 @@ import {
 } from '../core/abilities.js';
 import { capMana } from '../core/constants.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -881,16 +882,37 @@ export function placeUnitWithDirection(direction) {
     const owner = unit.owner;
     const deathElement = gameState.board?.[row]?.[col]?.element || null;
     const deathInfo = [{ r: row, c: col, owner, tplId: unit.tplId, uid: unit.uid ?? null, element: deathElement }];
-    const slotBeforeGain = gameState.players?.[owner]?.mana || 0;
+    const playersBefore = Array.isArray(gameState.players)
+      ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))
+      : [];
     try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
     const ownerPlayer = gameState.players?.[owner];
     if (ownerPlayer) {
-      ownerPlayer.mana = capMana((ownerPlayer.mana || 0) + 1);
+      const beforeMana = Math.max(0, Number(ownerPlayer.mana || 0));
+      ownerPlayer.mana = capMana(beforeMana + 1);
+    }
+    let manaBonus = null;
+    try {
+      manaBonus = applyManaGainOnDeaths(gameState, deathInfo, { boardState: gameState });
+    } catch (err) {
+      console.error('[interactions] Ошибка при расчёте бонусной маны:', err);
+      manaBonus = null;
+    }
+    if (Array.isArray(manaBonus?.logs) && manaBonus.logs.length) {
+      for (const text of manaBonus.logs) {
+        if (text) window.addLog(text);
+      }
     }
     const ctx = getCtx();
     const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
-    const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-    window.animateManaGainFromWorld(pos, owner, true, slotBeforeGain);
+    const manaPlan = buildManaGainPlan({
+      playersBefore,
+      deaths: deathInfo,
+      manaGainEntries: Array.isArray(manaBonus?.entries) ? manaBonus.entries : [],
+      tileMeshes: ctx.tileMeshes,
+      THREE,
+    });
+    try { manaPlan?.schedule?.(); } catch {}
     gameState.board[row][col].unit = null;
     const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SUMMON' });
     if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
