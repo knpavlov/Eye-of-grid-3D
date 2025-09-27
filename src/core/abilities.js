@@ -48,10 +48,12 @@ import {
   evaluateFieldFatality as evaluateFieldFatalityInternal,
 } from './abilityHandlers/fieldHazards.js';
 import { applySummonManaSteal } from './abilityHandlers/manaSteal.js';
+import { applyFieldquakeAt } from './abilityHandlers/fieldquake.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
 const inBounds = (r, c) => r >= 0 && r < 3 && c >= 0 && c < 3;
+const DIR_VECTORS = { N: [-1, 0], E: [0, 1], S: [1, 0], W: [0, -1] };
 
 function getUnitTemplate(unit) {
   if (!unit) return null;
@@ -386,6 +388,42 @@ export function collectDamageInteractions(state, context = {}) {
     }
   }
 
+  const damageFieldquakeCfg = tpl.fieldquakeOnDamage || null;
+  if (damageFieldquakeCfg) {
+    const cellElement = (attackerPos && typeof attackerPos.r === 'number' && typeof attackerPos.c === 'number')
+      ? state?.board?.[attackerPos.r]?.[attackerPos.c]?.element || null
+      : null;
+    const requireElement = damageFieldquakeCfg.requireFieldElement
+      ? normalizeElementName(damageFieldquakeCfg.requireFieldElement)
+      : null;
+    const forbidElement = damageFieldquakeCfg.requireFieldNot
+      ? normalizeElementName(damageFieldquakeCfg.requireFieldNot)
+      : null;
+    let allowed = true;
+    if (requireElement && cellElement !== requireElement) allowed = false;
+    if (forbidElement && cellElement === forbidElement) allowed = false;
+    if (allowed) {
+      const touched = new Set();
+      for (const hit of processed) {
+        if (!hit) continue;
+        const dealt = hit.dealt ?? 0;
+        if (dealt <= 0) continue;
+        if (touched.has(hit.key)) continue;
+        touched.add(hit.key);
+        result.events.push({
+          type: 'FIELDQUAKE',
+          target: { r: hit.r, c: hit.c },
+          source: { tplId: tpl.id, owner: attackerUnit.owner, name: tpl.name },
+          cause: 'DAMAGE',
+        });
+        const preventRetaliation = damageFieldquakeCfg.preventRetaliation !== false;
+        if (preventRetaliation && hit.key) {
+          result.preventRetaliation.add(hit.key);
+        }
+      }
+    }
+  }
+
   return result;
 }
 
@@ -393,6 +431,11 @@ export function applyDamageInteractionResults(state, effects = {}) {
   const logs = [];
   let attackerPosUpdate = null;
   const events = Array.isArray(effects?.events) ? effects.events : [];
+  const manaSteals = [];
+  const possessions = [];
+  const releases = [];
+  const fieldquakes = [];
+  const deaths = [];
 
   for (const ev of events) {
     if (ev?.type === 'SWAP_POSITIONS') {
@@ -501,10 +544,50 @@ export function applyDamageInteractionResults(state, effects = {}) {
       const hazard = applyFieldFatalityCheckInternal(state.board[to.r][to.c]?.unit, tplTarget, toElement);
       const fatalLog = describeFieldFatalityInternal(tplTarget, hazard, { name: targetName });
       if (fatalLog) logs.push(fatalLog);
+    } else if (ev?.type === 'FIELDQUAKE') {
+      const target = ev.target || {};
+      if (typeof target.r !== 'number' || typeof target.c !== 'number') continue;
+      const fqRes = applyFieldquakeAt(state, target.r, target.c, {
+        source: ev.source,
+        cause: ev.cause || 'DAMAGE',
+        skipManaGain: true,
+      });
+      if (!fqRes?.success) continue;
+      fieldquakes.push({
+        r: fqRes.r,
+        c: fqRes.c,
+        prevElement: fqRes.prevElement,
+        nextElement: fqRes.nextElement,
+        hpShift: fqRes.hpShift,
+        deaths: fqRes.deaths,
+      });
+      if (Array.isArray(fqRes.logs) && fqRes.logs.length) {
+        logs.push(...fqRes.logs);
+      }
+      if (Array.isArray(fqRes.manaSteals) && fqRes.manaSteals.length) {
+        manaSteals.push(...fqRes.manaSteals);
+      }
+      if (Array.isArray(fqRes.possessions) && fqRes.possessions.length) {
+        possessions.push(...fqRes.possessions);
+      }
+      if (Array.isArray(fqRes.releases) && fqRes.releases.length) {
+        releases.push(...fqRes.releases);
+      }
+      if (Array.isArray(fqRes.deaths) && fqRes.deaths.length) {
+        deaths.push(...fqRes.deaths);
+      }
     }
   }
 
-  return { attackerPosUpdate, logLines: logs };
+  return {
+    attackerPosUpdate,
+    logLines: logs,
+    manaSteals,
+    possessions,
+    releases,
+    fieldquakes,
+    deaths,
+  };
 }
 
 function normalizeElementConfig(value, defaults = {}) {
@@ -649,6 +732,47 @@ export function applyFreedonianAura(state, owner) {
   return gained;
 }
 
+function normalizeFieldquakeSummonConfig(raw) {
+  if (!raw) return null;
+  if (raw === true) return { pattern: 'ADJACENT' };
+  if (typeof raw === 'string') {
+    return { pattern: raw.trim().toUpperCase() };
+  }
+  if (typeof raw === 'object') {
+    const pattern = String(raw.pattern || raw.type || raw.mode || 'ADJACENT').toUpperCase();
+    return { ...raw, pattern };
+  }
+  return null;
+}
+
+function collectFieldquakeSummonTargets(r, c, cfg) {
+  const result = [];
+  if (!cfg) return result;
+  if (cfg.pattern === 'SELF') {
+    result.push({ r, c });
+  }
+  if (cfg.pattern === 'ADJACENT') {
+    for (const vec of Object.values(DIR_VECTORS)) {
+      const nr = r + vec[0];
+      const nc = c + vec[1];
+      if (inBounds(nr, nc)) {
+        result.push({ r: nr, c: nc });
+      }
+    }
+  }
+  if (Array.isArray(cfg.extra)) {
+    for (const entry of cfg.extra) {
+      if (!entry) continue;
+      const nr = Number.isInteger(entry.r) ? entry.r : null;
+      const nc = Number.isInteger(entry.c) ? entry.c : null;
+      if (nr != null && nc != null && inBounds(nr, nc)) {
+        result.push({ r: nr, c: nc });
+      }
+    }
+  }
+  return result;
+}
+
 export function applySummonAbilities(state, r, c) {
   const events = { possessions: [] };
   const cell = state?.board?.[r]?.[c];
@@ -687,6 +811,60 @@ export function applySummonAbilities(state, r, c) {
     for (const steal of manaSteals) {
       if (steal?.log) {
         events.logs = [...(events.logs || []), steal.log];
+      }
+    }
+  }
+
+  const fieldquakeCfg = normalizeFieldquakeSummonConfig(tpl.fieldquakeOnSummon);
+  if (fieldquakeCfg) {
+    const targets = collectFieldquakeSummonTargets(r, c, fieldquakeCfg);
+    if (targets.length) {
+      for (const target of targets) {
+        if (!target) continue;
+        const fqRes = applyFieldquakeAt(state, target.r, target.c, {
+          source: { tplId: tpl.id, owner: unit.owner, name: tpl.name },
+          cause: 'SUMMON',
+        });
+        if (!fqRes?.success) continue;
+        const entry = {
+          r: fqRes.r,
+          c: fqRes.c,
+          prevElement: fqRes.prevElement,
+          nextElement: fqRes.nextElement,
+          hpShift: fqRes.hpShift,
+          deaths: fqRes.deaths,
+          manaGains: fqRes.manaGains,
+        };
+        events.fieldquakes = [...(events.fieldquakes || []), entry];
+        if (Array.isArray(fqRes.logs) && fqRes.logs.length) {
+          events.logs = [...(events.logs || []), ...fqRes.logs];
+        }
+        if (Array.isArray(fqRes.manaSteals) && fqRes.manaSteals.length) {
+          events.manaSteals = [...(events.manaSteals || []), ...fqRes.manaSteals];
+        }
+        if (Array.isArray(fqRes.manaGains) && fqRes.manaGains.length) {
+          events.manaGains = [...(events.manaGains || []), ...fqRes.manaGains];
+        }
+        if (Array.isArray(fqRes.possessions) && fqRes.possessions.length) {
+          events.possessions.push(...fqRes.possessions);
+        }
+        if (Array.isArray(fqRes.releases) && fqRes.releases.length) {
+          events.releases = [...(events.releases || []), ...fqRes.releases];
+        }
+        if (Array.isArray(fqRes.repositions) && fqRes.repositions.length) {
+          events.repositions = [...(events.repositions || []), ...fqRes.repositions];
+        }
+        if (Array.isArray(fqRes.deaths) && fqRes.deaths.length) {
+          events.deaths = [...(events.deaths || []), ...fqRes.deaths];
+          for (const death of fqRes.deaths) {
+            const owner = death?.owner;
+            try {
+              if (owner != null && state.players?.[owner]?.graveyard) {
+                state.players[owner].graveyard.push(CARDS[death.tplId]);
+              }
+            } catch {}
+          }
+        }
       }
     }
   }

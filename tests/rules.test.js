@@ -12,6 +12,7 @@ import {
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
 import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, activationCost, hasInvisibility, getUnitProtection } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
+import { computeDynamicAttackBonus } from '../src/core/abilityHandlers/dynamicAttack.js';
 
 function makeBoard() {
   const b = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE', unit: null })));
@@ -259,6 +260,145 @@ describe('guards and hits', () => {
     };
     const hits = computeHits(state, 2, 1);
     expect(hits).toHaveLength(0);
+  });
+});
+
+describe('Новые карты Биолита и Новогуса', () => {
+  function createBaseState() {
+    const board = Array.from({ length: 3 }, () => Array.from(
+      { length: 3 },
+      () => ({ element: 'FIRE', unit: null })
+    ));
+    return {
+      board,
+      players: [
+        { deck: [], hand: [], discard: [], graveyard: [], mana: 0 },
+        { deck: [], hand: [], discard: [], graveyard: [], mana: 0 },
+      ],
+      active: 0,
+      turn: 1,
+    };
+  }
+
+  it('Behemoth Groundbreaker при призыве fieldquake-ит соседние клетки', () => {
+    const state = createBaseState();
+    state.board[1][1].element = 'BIOLITH';
+    state.board[0][1].element = 'FIRE';
+    state.board[1][0].element = 'EARTH';
+    state.board[1][2].element = 'FOREST';
+    state.board[2][1].element = 'WATER';
+    state.board[1][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_BEHEMOTH_GROUNDBREAKER',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_BEHEMOTH_GROUNDBREAKER.hp,
+    };
+    const events = applySummonAbilities(state, 1, 1);
+    expect(Array.isArray(events.fieldquakes)).toBe(true);
+    expect(events.fieldquakes).toHaveLength(4);
+    expect(state.board[0][1].element).toBe('WATER');
+    expect(state.board[1][0].element).toBe('FOREST');
+    expect(state.board[1][2].element).toBe('EARTH');
+    expect(state.board[2][1].element).toBe('FIRE');
+  });
+
+  it('Undead King Novogus на не-земном поле вызывает fieldquake цели', () => {
+    const state = createBaseState();
+    state.board[2][1].element = 'WATER';
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'EARTH_UNDEAD_KING_NOVOGUS',
+      facing: 'N',
+      currentHP: CARDS.EARTH_UNDEAD_KING_NOVOGUS.hp,
+    };
+    state.board[0][1].element = 'EARTH';
+    state.board[0][1].unit = {
+      owner: 1,
+      tplId: 'FIRE_TRICEPTAUR_BEHEMOTH',
+      facing: 'S',
+      currentHP: CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp,
+    };
+    const res = magicAttack(state, 2, 1, 0, 1);
+    expect(res).toBeTruthy();
+    const hit = res.targets.find(t => t.r === 0 && t.c === 1);
+    expect(hit?.dmg).toBeGreaterThan(0);
+    expect(res.fieldquakes).toHaveLength(1);
+    expect(res.fieldquakes[0]).toMatchObject({ r: 0, c: 1, prevElement: 'EARTH' });
+    expect(res.n1.board[0][1].element).toBe('FOREST');
+    expect(res.n1.board[0][1].unit.currentHP).toBe(CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp - hit.dmg);
+  });
+
+  it('Undead King Novogus на земле не активирует fieldquake', () => {
+    const state = createBaseState();
+    state.board[2][1].element = 'EARTH';
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'EARTH_UNDEAD_KING_NOVOGUS',
+      facing: 'N',
+      currentHP: CARDS.EARTH_UNDEAD_KING_NOVOGUS.hp,
+    };
+    state.board[0][1].element = 'EARTH';
+    state.board[0][1].unit = {
+      owner: 1,
+      tplId: 'FIRE_TRICEPTAUR_BEHEMOTH',
+      facing: 'S',
+      currentHP: CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp,
+    };
+    const res = magicAttack(state, 2, 1, 0, 1);
+    expect(res).toBeTruthy();
+    expect(res.fieldquakes).toHaveLength(0);
+    expect(res.n1.board[0][1].element).toBe('EARTH');
+    const dmg = res.targets.find(t => t.r === 0 && t.c === 1)?.dmg ?? 0;
+    expect(res.n1.board[0][1].unit.currentHP).toBe(CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp - dmg);
+  });
+
+  it('Ouroboros Dragon получает атаку по числу других биолитов', () => {
+    const state = createBaseState();
+    state.board[2][1].element = 'BIOLITH';
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_OUROBOROS_DRAGON',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_OUROBOROS_DRAGON.hp,
+    };
+    state.board[2][0].element = 'BIOLITH';
+    state.board[2][0].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_MORNING_STAR_WARRIOR',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_MORNING_STAR_WARRIOR.hp,
+    };
+    state.board[0][2].element = 'BIOLITH';
+    state.board[0][2].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_BIOLITH_STINGER',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_BIOLITH_STINGER.hp,
+    };
+    state.board[1][1].unit = {
+      owner: 1,
+      tplId: 'FIRE_TRICEPTAUR_BEHEMOTH',
+      facing: 'S',
+      currentHP: CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp,
+    };
+    const bonus = computeDynamicAttackBonus(state, 2, 1, CARDS.BIOLITH_OUROBOROS_DRAGON);
+    expect(bonus).toBeTruthy();
+    expect(bonus?.amount).toBe(2);
+    const staged = stagedAttack(state, 2, 1);
+    const fin = staged.finish();
+    const dmg = fin.targets.find(t => t.r === 1 && t.c === 1);
+    expect(dmg?.dmg).toBe(CARDS.BIOLITH_OUROBOROS_DRAGON.atk + 2);
+  });
+
+  it('Ouroboros Dragon блокирует fieldquake только стоя на биолит-поле', () => {
+    const state = createBaseState();
+    state.board[1][1].element = 'BIOLITH';
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_OUROBOROS_DRAGON', facing: 'N' };
+    let cells = computeFieldquakeLockedCells(state);
+    expect(cells).toHaveLength(9);
+    state.board[1][1].element = 'EARTH';
+    cells = computeFieldquakeLockedCells(state);
+    expect(cells).toHaveLength(0);
   });
 });
 
