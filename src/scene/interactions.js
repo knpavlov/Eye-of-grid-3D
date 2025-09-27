@@ -17,6 +17,10 @@ import {
 import { capMana } from '../core/constants.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
 import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
+import { applyDeathManaSteal } from '../core/abilityHandlers/manaSteal.js';
+import { applyDeathRepositionEffects } from '../core/abilityHandlers/deathReposition.js';
+import { createDeathEntry } from '../core/abilityHandlers/deathRecords.js';
+import { animateManaSteal } from '../ui/manaStealFx.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -60,6 +64,26 @@ export function hasPendingForcedDiscards() {
   if (!state) return false;
   const queue = Array.isArray(state.pendingDiscards) ? state.pendingDiscards : [];
   return queue.some(req => req && req.remaining > 0);
+}
+
+function processManaStealEvents(events, opts = {}) {
+  if (!Array.isArray(events) || !events.length) return;
+  const skipLog = !!opts.skipLog;
+  for (const ev of events) {
+    if (!ev) continue;
+    if (!skipLog && ev.log) {
+      try { window.addLog?.(ev.log); } catch {}
+    }
+    try {
+      if (typeof animateManaSteal === 'function') {
+        animateManaSteal(ev);
+      } else {
+        window.animateManaSteal?.(ev);
+      }
+    } catch (err) {
+      console.warn('[mana] Не удалось анимировать кражу маны:', err);
+    }
+  }
 }
 
 // Планировщик авто-завершения хода, который дожидается окончания анимаций и разблокировки ввода
@@ -880,8 +904,15 @@ export function placeUnitWithDirection(direction) {
       window.addLog(`${cardData.name}: союзники получают +${amount} HP`);
     }
     const owner = unit.owner;
-    const deathElement = gameState.board?.[row]?.[col]?.element || null;
-    const deathInfo = [{ r: row, c: col, owner, tplId: unit.tplId, uid: unit.uid ?? null, element: deathElement }];
+    const deathEntry = createDeathEntry(gameState, unit, row, col) || {
+      r: row,
+      c: col,
+      owner,
+      tplId: unit.tplId,
+      uid: unit.uid ?? null,
+      element: gameState.board?.[row]?.[col]?.element || null,
+    };
+    const deathInfo = deathEntry ? [deathEntry] : [];
     const playersBefore = Array.isArray(gameState.players)
       ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))
       : [];
@@ -891,6 +922,7 @@ export function placeUnitWithDirection(direction) {
       const beforeMana = Math.max(0, Number(ownerPlayer.mana || 0));
       ownerPlayer.mana = capMana(beforeMana + 1);
     }
+    gameState.board[row][col].unit = null;
     let manaBonus = null;
     try {
       manaBonus = applyManaGainOnDeaths(gameState, deathInfo, { boardState: gameState });
@@ -903,6 +935,8 @@ export function placeUnitWithDirection(direction) {
         if (text) window.addLog(text);
       }
     }
+    const manaStealEvents = applyDeathManaSteal(gameState, deathInfo, { cause: 'SUMMON' });
+    const repositionResult = applyDeathRepositionEffects(gameState, deathInfo);
     const ctx = getCtx();
     const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
     const manaPlan = buildManaGainPlan({
@@ -912,8 +946,14 @@ export function placeUnitWithDirection(direction) {
       tileMeshes: ctx.tileMeshes,
       THREE,
     });
+    try { window.updateUI(); } catch {}
+    processManaStealEvents(manaStealEvents);
+    if (Array.isArray(repositionResult?.logs) && repositionResult.logs.length) {
+      for (const text of repositionResult.logs) {
+        if (text) window.addLog(text);
+      }
+    }
     try { manaPlan?.schedule?.(); } catch {}
-    gameState.board[row][col].unit = null;
     const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SUMMON' });
     if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
       for (const text of discardEffects.logs) {
@@ -962,6 +1002,10 @@ export function placeUnitWithDirection(direction) {
         if (!text) continue;
         window.addLog?.(text);
       }
+    }
+    if (Array.isArray(summonEvents?.manaSteal) && summonEvents.manaSteal.length) {
+      try { window.updateUI(); } catch {}
+      processManaStealEvents(summonEvents.manaSteal, { skipLog: true });
     }
     if (Array.isArray(summonEvents?.statBuffs) && summonEvents.statBuffs.length) {
       for (const buff of summonEvents.statBuffs) {

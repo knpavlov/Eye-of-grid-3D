@@ -41,6 +41,10 @@ import {
   computeUnitProtection as computeUnitProtectionInternal,
   computeAuraProtection as computeAuraProtectionInternal,
 } from './abilityHandlers/protection.js';
+import {
+  applySummonManaSteal as applySummonManaStealInternal,
+  hasManaStealKeyword as hasManaStealKeywordInternal,
+} from './abilityHandlers/manaSteal.js';
 import { normalizeElementName } from './utils/elements.js';
 import {
   applyFieldFatalityCheck as applyFieldFatalityCheckInternal,
@@ -712,6 +716,23 @@ export function applySummonAbilities(state, r, c) {
     events.heals = [...(events.heals || []), ...reactions.heals];
   }
 
+  const manaStealEvents = applySummonManaStealInternal(state, {
+    r,
+    c,
+    unit,
+    tpl,
+    cell,
+  });
+  if (Array.isArray(manaStealEvents) && manaStealEvents.length) {
+    events.manaSteal = manaStealEvents;
+    const logs = manaStealEvents
+      .map(ev => (ev && typeof ev.log === 'string') ? ev.log : null)
+      .filter(Boolean);
+    if (logs.length) {
+      events.logs = [...(events.logs || []), ...logs];
+    }
+  }
+
   return events;
 }
 
@@ -798,6 +819,8 @@ export function computeDynamicMagicAttack(state, tpl) {
   }
   return null;
 }
+
+export const hasManaStealKeyword = hasManaStealKeywordInternal;
 
 export function getTargetElementBonus(tpl, state, hits) {
   if (!tpl || !Array.isArray(hits) || !hits.length) return null;
