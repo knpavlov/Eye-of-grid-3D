@@ -27,6 +27,7 @@ import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
 import { getHpConditionalBonuses } from './abilityHandlers/conditionalBonuses.js';
 import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
+import { buildDeathRecord } from './utils/deaths.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -581,7 +582,8 @@ export function stagedAttack(state, r, c, opts = {}) {
       const cellRef = nFinal.board?.[rr]?.[cc];
       const u = cellRef?.unit;
       if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: cellRef?.element || null });
+        const record = buildDeathRecord(nFinal, rr, cc, u);
+        if (record) deaths.push(record);
         if (cellRef) cellRef.unit = null;
       }
     }
@@ -910,7 +912,8 @@ export function magicAttack(state, fr, fc, tr, tc) {
     const cellRef = n1.board[rr][cc];
     const u = cellRef.unit;
     if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: cellRef?.element || null });
+      const record = buildDeathRecord(n1, rr, cc, u);
+      if (record) deaths.push(record);
       cellRef.unit = null;
     }
   }

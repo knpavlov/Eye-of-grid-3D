@@ -313,14 +313,13 @@ export const CARDS = {
     id: 'WATER_QUEENS_SERVANT', name: "Queen's Servant", type: 'UNIT', cost: 4, activation: 2,
     element: 'WATER', atk: 1, hp: 1,
     attackType: 'MAGIC',
-    targetAllEnemies: true,
+    attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
     blindspots: ['S'], perfectDodge: true, ignoreAlliedBlocking: true,
     manaSteal: {
       onDeath: { amount: 1 },
     },
     desc: "Magic Attack. Perfect Dodge. If Queen's Servant is destroyed, steal 1 mana from your opponent."
   },
-
   EARTH_ARELAI_THE_PROTECTOR: {
     id: 'EARTH_ARELAI_THE_PROTECTOR', name: 'Arelai the Protector', type: 'UNIT', cost: 3, activation: 2,
     element: 'EARTH', atk: 2, hp: 3,
@@ -636,6 +635,18 @@ export const CARDS = {
       { pattern: 'ADJACENT', requireSourceElement: 'WATER', id: 'ANFISA_WATER_AURA' },
     ],
     desc: 'Magic Attack. While on a Water field, Imposter Queen Anfisa gains Possession of all enemies on adjacent fields.'
+  },
+  FOREST_DANCING_TEMPTRESS: {
+    id: 'FOREST_DANCING_TEMPTRESS', name: 'Dancing Temptress', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FOREST', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    manaSteal: {
+      onDeath: { amount: 1, from: 'TARGET' },
+    },
+    deathPullFront: true,
+    desc: 'If Dancing Temptress is destroyed, steal 1 mana from the owner of the creature in front of her. That creature is moved to her former field.',
   },
   FOREST_SWALLOW_NINJA: {
     id: 'FOREST_SWALLOW_NINJA', name: 'Swallow Ninja', type: 'UNIT', cost: 3, activation: 2,
