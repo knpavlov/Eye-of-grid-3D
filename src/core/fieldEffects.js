@@ -5,12 +5,18 @@
 
 // Таблица противоположных стихий. Дублируем локально, чтобы избежать циклических
 // зависимостей между core-модулями.
-const OPPOSITES = {
+export const OPPOSITES = {
   FIRE: 'WATER',
   WATER: 'FIRE',
   EARTH: 'FOREST',
   FOREST: 'EARTH',
 };
+
+export function getOppositeElement(element) {
+  if (!element) return null;
+  const upper = String(element).toUpperCase();
+  return OPPOSITES[upper] || null;
+}
 
 export function computeCellBuff(cellElement, unitElement) {
   if (!cellElement || !unitElement) return { atk: 0, hp: 0 };

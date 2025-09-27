@@ -14,6 +14,13 @@ export function computeFieldquakeLockedCells(state) {
       const tpl = CARDS[unit.tplId];
       const lock = tpl?.fieldquakeLock;
       if (!lock) continue;
+      const requiredElement = lock.onlyWhileOnElement || lock.requireElement || lock.onElement;
+      if (requiredElement) {
+        const cellElement = state.board[r]?.[c]?.element;
+        if (cellElement !== String(requiredElement).toUpperCase()) {
+          continue;
+        }
+      }
       const add = (rr, cc) => {
         if (inBounds(rr, cc)) locked.add(`${rr},${cc}`);
       };
