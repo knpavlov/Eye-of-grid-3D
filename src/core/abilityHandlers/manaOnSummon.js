@@ -31,7 +31,7 @@ function parseElement(raw) {
 function normalizeConfigEntry(raw) {
   if (!raw) return null;
   if (raw === true) {
-    return { trigger: 'ALLY', amount: 1, excludeSelfSummon: true };
+    return { trigger: 'ALLY', amount: 1, excludeSelfSummon: true, reason: 'SUMMON_AURA' };
   }
   if (typeof raw !== 'object') return null;
   const trigger = normalizeTrigger(raw.trigger || raw.type || raw.mode);
@@ -44,6 +44,7 @@ function normalizeConfigEntry(raw) {
     trigger,
     amount: Math.max(0, amount),
     excludeSelfSummon: raw.excludeSelfSummon === true || raw.excludeSelf === true,
+    reason: typeof raw.reason === 'string' ? raw.reason.trim().toUpperCase() : null,
     log: typeof raw.log === 'string' ? raw.log : null,
     sourceFieldElement: parseElement(raw.sourceFieldElement || raw.sourceElement || raw.sourceOnElement),
     sourceFieldNotElement: parseElement(raw.sourceFieldNotElement || raw.sourceFieldNot || raw.sourceNotElement),
@@ -148,12 +149,16 @@ export function applyManaGainOnSummon(state, context = {}) {
           r,
           c,
           tplId: tpl.id,
+          tplName: tpl.name || tpl.id || 'Существо',
+          fieldElement: sourceElement,
+          reason: cfg.reason || 'SUMMON_AURA',
           log: formatLog(cfg.log, {
             amount: gained,
             name: tpl.name || tpl.id || 'Существо',
             player: (sourceOwner ?? 0) + 1,
           }),
         };
+        entry.source = entry.reason;
         events.push(entry);
       }
     }

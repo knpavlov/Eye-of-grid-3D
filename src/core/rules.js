@@ -582,10 +582,10 @@ export function stagedAttack(state, r, c, opts = {}) {
 
     const applied = applyDamageInteractionResults(nFinal, damageEffects);
     const attackerPosUpdate = applied?.attackerPosUpdate || null;
-    const damagePossessions = Array.isArray(applied?.possessions) ? applied.possessions : [];
-    const damageReleases = Array.isArray(applied?.releases) ? applied.releases : [];
-    const interactionManaSteals = Array.isArray(applied?.manaSteals) ? applied.manaSteals : [];
-    const interactionFieldquakes = Array.isArray(applied?.fieldquakes) ? applied.fieldquakes : [];
+    const damagePossessions = Array.isArray(applied?.possessions) ? [...applied.possessions] : [];
+    const damageReleases = Array.isArray(applied?.releases) ? [...applied.releases] : [];
+    const interactionManaSteals = Array.isArray(applied?.manaSteals) ? [...applied.manaSteals] : [];
+    const interactionFieldquakes = Array.isArray(applied?.fieldquakes) ? [...applied.fieldquakes] : [];
     if (attackerPosUpdate) {
       r = attackerPosUpdate.r;
       c = attackerPosUpdate.c;
@@ -593,12 +593,9 @@ export function stagedAttack(state, r, c, opts = {}) {
     if (Array.isArray(applied?.logLines) && applied.logLines.length) {
       logLines.push(...applied.logLines);
     }
-    if (Array.isArray(applied?.manaSteals) && applied.manaSteals.length) {
-      manaStealEvents.push(...applied.manaSteals);
+    if (interactionManaSteals.length) {
+      manaStealEvents.push(...interactionManaSteals);
     }
-    const appliedFieldquakes = Array.isArray(applied?.fieldquakes) ? applied.fieldquakes : [];
-    const damagePossessions = Array.isArray(applied?.possessions) ? applied.possessions : [];
-    const damageReleases = Array.isArray(applied?.releases) ? applied.releases : [];
 
     const A = nFinal.board?.[r]?.[c]?.unit;
     if (A && (ret.total || 0) > 0) {
@@ -704,12 +701,8 @@ export function stagedAttack(state, r, c, opts = {}) {
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
     const combinedReleases = [...releaseEvents.releases, ...continuous.releases, ...damageReleases];
     const combinedPossessions = [...continuous.possessions, ...damagePossessions];
-    const manaStealEvents = [...interactionManaSteals];
     if (Array.isArray(manaFromDeaths?.steals) && manaFromDeaths.steals.length) {
       manaStealEvents.push(...manaFromDeaths.steals);
-    }
-    if (Array.isArray(discardEffects?.manaSteals) && discardEffects.manaSteals.length) {
-      manaStealEvents.push(...discardEffects.manaSteals);
     }
     const manaFieldquakes = Array.isArray(manaFromDeaths?.fieldquakes) ? manaFromDeaths.fieldquakes : [];
     const combinedFieldquakes = [...interactionFieldquakes, ...manaFieldquakes];
@@ -992,6 +985,10 @@ export function magicAttack(state, fr, fc, tr, tc) {
   }
   const applied = applyDamageInteractionResults(n1, damageEffects);
   const attackerPosUpdate = applied?.attackerPosUpdate || null;
+  const damagePossessions = Array.isArray(applied?.possessions) ? [...applied.possessions] : [];
+  const damageReleases = Array.isArray(applied?.releases) ? [...applied.releases] : [];
+  const interactionManaSteals = Array.isArray(applied?.manaSteals) ? [...applied.manaSteals] : [];
+  const interactionFieldquakes = Array.isArray(applied?.fieldquakes) ? [...applied.fieldquakes] : [];
   if (attackerPosUpdate) {
     fromR = attackerPosUpdate.r;
     fromC = attackerPosUpdate.c;
@@ -999,15 +996,14 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (Array.isArray(applied?.logLines) && applied.logLines.length) {
     logLines.push(...applied.logLines);
   }
-  if (Array.isArray(applied?.manaSteals) && applied.manaSteals.length) {
-    manaStealEvents.push(...applied.manaSteals);
+  if (interactionManaSteals.length) {
+    manaStealEvents.push(...interactionManaSteals);
   }
   if (Array.isArray(applied?.deaths) && applied.deaths.length) {
-    deaths.push(...applied.deaths);
+    for (const death of applied.deaths) {
+      if (death) deaths.push(death);
+    }
   }
-  const appliedFieldquakes = Array.isArray(applied?.fieldquakes) ? applied.fieldquakes : [];
-  const damagePossessions = Array.isArray(applied?.possessions) ? applied.possessions : [];
-  const damageReleases = Array.isArray(applied?.releases) ? applied.releases : [];
 
   try {
     for (const d of deaths) {
@@ -1037,25 +1033,6 @@ export function magicAttack(state, fr, fc, tr, tc) {
     }
   }
 
-  const applied = applyDamageInteractionResults(n1, damageEffects);
-  const attackerPosUpdate = applied?.attackerPosUpdate || null;
-  const damagePossessions = Array.isArray(applied?.possessions) ? applied.possessions : [];
-  const damageReleases = Array.isArray(applied?.releases) ? applied.releases : [];
-  const interactionManaSteals = Array.isArray(applied?.manaSteals) ? applied.manaSteals : [];
-  const interactionFieldquakes = Array.isArray(applied?.fieldquakes) ? applied.fieldquakes : [];
-  if (attackerPosUpdate) {
-    fromR = attackerPosUpdate.r;
-    fromC = attackerPosUpdate.c;
-  }
-  if (Array.isArray(applied?.logLines) && applied.logLines.length) {
-    logLines.push(...applied.logLines);
-  }
-  if (Array.isArray(applied?.deaths) && applied.deaths.length) {
-    for (const death of applied.deaths) {
-      if (death) deaths.push(death);
-    }
-  }
-
   const continuous = refreshContinuousPossessions(n1);
   if (continuous.possessions.length) {
     for (const ev of continuous.possessions) {
@@ -1082,12 +1059,8 @@ export function magicAttack(state, fr, fc, tr, tc) {
   }
   const combinedReleases = [...releaseEvents.releases, ...continuous.releases, ...damageReleases];
   const combinedPossessions = [...continuous.possessions, ...damagePossessions];
-  const manaStealEvents = [...interactionManaSteals];
   if (Array.isArray(manaFromDeaths?.steals) && manaFromDeaths.steals.length) {
     manaStealEvents.push(...manaFromDeaths.steals);
-  }
-  if (Array.isArray(discardEffects?.manaSteals) && discardEffects.manaSteals.length) {
-    manaStealEvents.push(...discardEffects.manaSteals);
   }
   const manaFieldquakes = Array.isArray(manaFromDeaths?.fieldquakes) ? manaFromDeaths.fieldquakes : [];
   const combinedFieldquakes = [...interactionFieldquakes, ...manaFieldquakes];
