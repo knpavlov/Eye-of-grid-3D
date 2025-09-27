@@ -40,6 +40,9 @@ export async function ensureDeckTable() {
   await query(`
     CREATE INDEX IF NOT EXISTS idx_decks_updated_at ON decks(updated_at DESC);
   `);
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_decks_owner ON decks(owner_id);
+  `);
   return true;
 }
 
@@ -76,6 +79,18 @@ export async function listDecks() {
   return result.rows.map(mapRow);
 }
 
+export async function listDecksForOwner(ownerId, { includeShared = true } = {}) {
+  if (!isDbReady()) throw new Error('Хранилище колод недоступно');
+  if (!ownerId) return includeShared ? listDecks() : [];
+  const result = await query(`
+    SELECT id, name, description, cards, owner_id, version, updated_at
+    FROM decks
+    WHERE owner_id = $1${includeShared ? ' OR owner_id IS NULL' : ''}
+    ORDER BY updated_at DESC, name ASC;
+  `, [ownerId]);
+  return result.rows.map(mapRow);
+}
+
 export async function getDeckById(id) {
   if (!isDbReady()) throw new Error('Хранилище колод недоступно');
   const result = await query(
@@ -83,6 +98,14 @@ export async function getDeckById(id) {
     [id]
   );
   return mapRow(result.rows?.[0]);
+}
+
+export async function getDeckByIdForOwner(id, ownerId) {
+  const deck = await getDeckById(id);
+  if (!deck) return null;
+  if (!deck.ownerId) return deck;
+  if (deck.ownerId === ownerId) return deck;
+  return null;
 }
 
 export async function upsertDeckRecord(deck) {

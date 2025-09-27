@@ -1,6 +1,7 @@
 // Сетевые операции с колодами — чистые функции без привязки к DOM
 import { hydrateDeck, serializeDeck, setDecks, upsertDeck, removeDeck } from '../core/decks.js';
 import { getDecksApiBase } from './config.js';
+import { requestJson } from './httpClient.js';
 
 let lastError = null;
 
@@ -11,34 +12,6 @@ function buildUrl(path = '') {
   const base = apiBase.endsWith('/') ? apiBase.slice(0, -1) : apiBase;
   const suffix = path.startsWith('/') ? path : `/${path}`;
   return `${base}${suffix}`;
-}
-
-async function requestJson(url, options = {}) {
-  const response = await fetch(url, {
-    headers: { 'Accept': 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
-    ...options,
-  });
-  const contentType = response.headers.get('content-type') || '';
-  const isJson = contentType.includes('application/json');
-  if (!response.ok) {
-    let message = `HTTP ${response.status}`;
-    if (isJson) {
-      try {
-        const payload = await response.json();
-        if (payload?.error) message = payload.error;
-      } catch {}
-    }
-    const err = new Error(message);
-    err.status = response.status;
-    throw err;
-  }
-  if (!isJson) return {};
-  try {
-    return await response.json();
-  } catch (err) {
-    console.warn('[net/decks] Не удалось разобрать JSON ответа', err);
-    return {};
-  }
 }
 
 export function getLastSyncError() {

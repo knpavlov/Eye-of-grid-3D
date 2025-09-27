@@ -3,13 +3,15 @@ import { isDbReady, getDbError } from '../server/db.js';
 import {
   ensureDeckTable,
   seedDecks,
-  listDecks,
+  listDecksForOwner,
   getDeckById,
+  getDeckByIdForOwner,
   upsertDeckRecord,
   deleteDeckRecord,
 } from '../server/repositories/decksRepository.js';
 import { CARDS } from '../src/core/cards.js';
 import { DEFAULT_DECK_BLUEPRINTS } from '../src/core/defaultDecks.js';
+import { requireAuth } from '../server/middleware/authMiddleware.js';
 
 const router = Router();
 
@@ -57,11 +59,7 @@ function sanitizeDeckPayload(payload = {}) {
     }
   }
 
-  const ownerId = typeof payload.ownerId === 'string' && payload.ownerId.trim().length
-    ? payload.ownerId.trim().slice(0, 120)
-    : null;
-
-  return { id, name, description, cards, ownerId };
+  return { id, name, description, cards };
 }
 
 async function ensureStoragePrepared() {
@@ -76,10 +74,22 @@ async function ensureStoragePrepared() {
   storageReady = true;
 }
 
-router.get('/', async (req, res) => {
+async function ensureStorageAndHandle(req, res, next) {
   try {
     await ensureStoragePrepared();
-    const decks = await listDecks();
+    return next();
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message || 'Хранилище колод недоступно' });
+  }
+}
+
+router.use(requireAuth);
+router.use(ensureStorageAndHandle);
+
+router.get('/', async (req, res) => {
+  try {
+    const decks = await listDecksForOwner(req.user?.id, { includeShared: true });
     res.json({ decks });
   } catch (err) {
     const status = err.status || 500;
@@ -89,8 +99,7 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    await ensureStoragePrepared();
-    const deck = await getDeckById(req.params.id);
+    const deck = await getDeckByIdForOwner(req.params.id, req.user?.id);
     if (!deck) {
       return res.status(404).json({ error: 'Колода не найдена' });
     }
@@ -103,10 +112,25 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    await ensureStoragePrepared();
     const payload = sanitizeDeckPayload(req.body);
-    const saved = await upsertDeckRecord(payload);
-    res.status(payload.id ? 200 : 201).json({ deck: saved });
+    let deckId = payload.id;
+    if (payload.id) {
+      const existing = await getDeckById(payload.id);
+      if (existing) {
+        if (existing.ownerId && existing.ownerId !== req.user?.id) {
+          const err = new Error('Недостаточно прав для изменения этой колоды');
+          err.status = 403;
+          throw err;
+        }
+        if (!existing.ownerId) {
+          // Общая колода — создаём пользовательскую копию
+          deckId = undefined;
+        }
+      }
+    }
+    const saved = await upsertDeckRecord({ ...payload, id: deckId, ownerId: req.user?.id || null });
+    const status = deckId ? 200 : 201;
+    res.status(status).json({ deck: saved });
   } catch (err) {
     const status = err.status || 500;
     res.status(status).json({ error: err.message || 'Не удалось сохранить колоду' });
@@ -115,10 +139,16 @@ router.post('/', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    await ensureStoragePrepared();
     const idRaw = req.params.id;
     const id = typeof idRaw === 'string' ? idRaw.trim() : '';
     if (!id) throw deckValidationError('Идентификатор колоды обязателен');
+    const deck = await getDeckById(id);
+    if (!deck) {
+      return res.status(404).json({ error: 'Колода не найдена' });
+    }
+    if (deck.ownerId && deck.ownerId !== req.user?.id) {
+      return res.status(403).json({ error: 'Недостаточно прав для удаления этой колоды' });
+    }
     const deleted = await deleteDeckRecord(id);
     if (!deleted) {
       return res.status(404).json({ error: 'Колода не найдена' });
