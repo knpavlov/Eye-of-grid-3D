@@ -605,6 +605,11 @@ export function stagedAttack(state, r, c, opts = {}) {
       manaGainEvents.push(...manaGain.events);
     }
 
+    const manaFromDeaths = applyManaGainOnDeaths(nFinal, deaths, { boardState: nFinal });
+    if (Array.isArray(manaFromDeaths?.logs) && manaFromDeaths.logs.length) {
+      logLines.push(...manaFromDeaths.logs);
+    }
+
     for (const d of deaths) {
       const tplD = CARDS[d.tplId];
       if (tplD?.onDeathAddHPAll) {
@@ -680,6 +685,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       attackProfile: profile,
       manaSteals: manaStealEvents,
       manaGains: manaGainEvents,
+
     };
   }
 
@@ -990,8 +996,10 @@ export function magicAttack(state, fr, fc, tr, tc) {
     schemeKey,
     attackProfile: profile,
     dmg,
+
     manaSteals: manaStealEvents,
     manaGains: manaGainEvents,
+
   };
 }
 
