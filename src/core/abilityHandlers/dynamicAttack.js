@@ -11,6 +11,45 @@ function toArray(value) {
   return Array.isArray(value) ? value : [value];
 }
 
+function countAlliedElementUnits(state, owner, element, opts = {}) {
+  if (!state?.board || owner == null || !element) return 0;
+  const includeSelf = opts.includeSelf === true;
+  const selfR = typeof opts.selfR === 'number' ? opts.selfR : null;
+  const selfC = typeof opts.selfC === 'number' ? opts.selfC : null;
+  let total = 0;
+  for (let r = 0; r < BOARD_SIZE; r += 1) {
+    for (let c = 0; c < BOARD_SIZE; c += 1) {
+      if (!includeSelf && r === selfR && c === selfC) continue;
+      const unit = state.board?.[r]?.[c]?.unit;
+      if (!unit || unit.owner !== owner) continue;
+      const tpl = CARDS[unit.tplId];
+      if (!tpl) continue;
+      if (normalizeElementName(tpl.element) === element) {
+        total += 1;
+      }
+    }
+  }
+  return total;
+}
+
+function countBoardUnits(state, { element = null, excludeElement = null } = {}) {
+  if (!state?.board) return 0;
+  let total = 0;
+  for (let r = 0; r < BOARD_SIZE; r += 1) {
+    for (let c = 0; c < BOARD_SIZE; c += 1) {
+      const unit = state.board?.[r]?.[c]?.unit;
+      if (!unit) continue;
+      const tpl = CARDS[unit.tplId];
+      if (!tpl) continue;
+      const el = normalizeElementName(tpl.element);
+      if (excludeElement && el === excludeElement) continue;
+      if (element && el !== element) continue;
+      total += 1;
+    }
+  }
+  return total;
+}
+
 function normalizeTemplateSet(raw) {
   const ids = new Set();
   const names = new Set();
@@ -34,6 +73,129 @@ function normalizeTemplateSet(raw) {
     names.add(str.toLowerCase());
   }
   return { ids, names };
+}
+
+function parseAddAlliedElement(raw) {
+  if (!raw) return null;
+  const element = normalizeElementName(raw.element || raw.type || raw.elementName);
+  if (!element) return null;
+  const includeSelf = raw.includeSelf === true;
+  const amountPer = Number.isFinite(raw.amountPer ?? raw.per ?? raw.value ?? raw.amount)
+    ? Math.floor(Number(raw.amountPer ?? raw.per ?? raw.value ?? raw.amount))
+    : 1;
+  return { element, includeSelf, amountPer: amountPer === 0 ? 0 : amountPer };
+}
+
+function parseBoardCount(raw) {
+  if (!raw) return null;
+  const element = normalizeElementName(raw.element);
+  const excludeElement = normalizeElementName(raw.excludeElement || raw.exclude);
+  const amountPer = Number.isFinite(raw.amountPer ?? raw.per ?? raw.value ?? raw.amount)
+    ? Math.floor(Number(raw.amountPer ?? raw.per ?? raw.value ?? raw.amount))
+    : 1;
+  return { element, excludeElement, amountPer: amountPer === 0 ? 0 : amountPer };
+}
+
+function normalizeFormulaEntry(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const whenRaw = raw.when || raw.conditions || raw.condition || raw;
+  const valueRaw = raw.value || raw.formula || raw.result || raw;
+
+  const selfFieldElement = normalizeElementName(whenRaw.selfFieldElement || raw.selfFieldElement);
+  const selfFieldNotElement = normalizeElementName(whenRaw.selfFieldNotElement || raw.selfFieldNotElement);
+  const targetEnemyElement = normalizeElementName(whenRaw.targetEnemyElement || raw.targetEnemyElement);
+
+  const addAlliedElement = parseAddAlliedElement(valueRaw.addAlliedElement || raw.addAlliedElement);
+  const addBoardCount = parseBoardCount(valueRaw.addBoardCount || raw.addBoardCount);
+  const baseRaw = valueRaw.base ?? raw.base;
+  const base = Number.isFinite(baseRaw) ? Math.floor(Number(baseRaw)) : null;
+  const log = raw.log || valueRaw.log || null;
+
+  const hasConditions = selfFieldElement || selfFieldNotElement || targetEnemyElement;
+  if (!hasConditions) {
+    // Предотвращаем безусловное переопределение, чтобы не ломать существующую логику
+    return null;
+  }
+
+  const hasValue = base != null || addAlliedElement || addBoardCount;
+  if (!hasValue) return null;
+
+  return {
+    conditions: { selfFieldElement, selfFieldNotElement, targetEnemyElement },
+    value: { base, addAlliedElement, addBoardCount },
+    log,
+  };
+}
+
+function normalizeFormulaList(raw) {
+  const list = [];
+  for (const entry of toArray(raw)) {
+    const cfg = normalizeFormulaEntry(entry);
+    if (cfg) list.push(cfg);
+  }
+  return list;
+}
+
+function computeOverrideFromFormulas(state, r, c, tpl, opts = {}) {
+  const formulas = normalizeFormulaList(tpl?.dynamicAtkFormulas);
+  if (!formulas.length) return null;
+  const cell = state?.board?.[r]?.[c] || null;
+  const unit = cell?.unit || null;
+  if (!unit) return null;
+  const owner = unit.owner;
+  const cellElement = normalizeElementName(cell?.element);
+  const hits = Array.isArray(opts?.hits) ? opts.hits : [];
+
+  for (const formula of formulas) {
+    if (!formula) continue;
+    const { conditions, value } = formula;
+    if (conditions.selfFieldElement && conditions.selfFieldElement !== cellElement) continue;
+    if (conditions.selfFieldNotElement && conditions.selfFieldNotElement === cellElement) continue;
+
+    if (conditions.targetEnemyElement) {
+      const match = hits.some((hit) => {
+        if (!hit) return false;
+        const targetUnit = state?.board?.[hit.r]?.[hit.c]?.unit;
+        if (!targetUnit || targetUnit.owner === owner) return false;
+        const targetTpl = CARDS[targetUnit.tplId];
+        if (!targetTpl) return false;
+        const targetElement = normalizeElementName(targetTpl.element);
+        return targetElement === conditions.targetEnemyElement;
+      });
+      if (!match) continue;
+    }
+
+    let override = value.base != null ? value.base : tpl?.atk ?? 0;
+
+    if (value.addAlliedElement && owner != null) {
+      const amountPer = value.addAlliedElement.amountPer ?? 1;
+      if (amountPer !== 0) {
+        const total = countAlliedElementUnits(state, owner, value.addAlliedElement.element, {
+          includeSelf: value.addAlliedElement.includeSelf === true,
+          selfR: r,
+          selfC: c,
+        });
+        override += total * (amountPer || 0);
+      }
+    }
+
+    if (value.addBoardCount) {
+      const amountPer = value.addBoardCount.amountPer ?? 1;
+      if (amountPer !== 0) {
+        const total = countBoardUnits(state, {
+          element: value.addBoardCount.element || null,
+          excludeElement: value.addBoardCount.excludeElement || null,
+        });
+        override += total * (amountPer || 0);
+      }
+    }
+
+    const finalValue = Math.max(0, Math.floor(override));
+    const log = formula.log || `${tpl?.name || 'Существо'}: атака установлена на ${finalValue}.`;
+    return { override: finalValue, type: 'FORMULA_OVERRIDE', log };
+  }
+
+  return null;
 }
 
 function normalizeAllyTemplateConfig(raw) {
@@ -150,8 +312,12 @@ function countElementCreatures(state, element, opts = {}) {
   return count;
 }
 
-export function computeDynamicAttackBonus(state, r, c, tpl) {
+export function computeDynamicAttackBonus(state, r, c, tpl, opts = {}) {
   if (!tpl) return null;
+  const override = computeOverrideFromFormulas(state, r, c, tpl, opts);
+  if (override) {
+    return override;
+  }
   if (tpl.dynamicAtk) {
     const cfg = tpl.dynamicAtk;
     if (cfg === 'OTHERS_ON_BOARD') {

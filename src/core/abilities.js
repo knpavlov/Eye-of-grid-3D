@@ -49,9 +49,8 @@ import {
 } from './abilityHandlers/fieldHazards.js';
 import { applySummonManaSteal } from './abilityHandlers/manaSteal.js';
 import { applyFieldquakeAt } from './abilityHandlers/fieldquake.js';
+import { applyManaGainOnSummon } from './abilityHandlers/manaOnSummon.js';
 
-// локальная функция ограничения маны (без импорта во избежание циклов)
-const capMana = (m) => Math.min(10, m);
 const inBounds = (r, c) => r >= 0 && r < 3 && c >= 0 && c < 3;
 const DIR_VECTORS = { N: [-1, 0], E: [0, 1], S: [1, 0], W: [0, -1] };
 
@@ -712,26 +711,6 @@ export const hasDoubleAttack = (tpl) => !!(tpl && tpl.doubleAttack);
 // Может ли существо атаковать (крепости не могут)
 export const canAttack = (tpl) => !(tpl && tpl.fortress);
 
-// Реализация ауры Фридонийского Странника при призыве союзников
-// Возвращает количество полученных единиц маны
-export function applyFreedonianAura(state, owner) {
-  let gained = 0;
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 3; c++) {
-      const cell = state.board?.[r]?.[c];
-      const unit = cell?.unit;
-      if (!unit) continue;
-      const tpl = CARDS[unit.tplId];
-      if (tpl?.auraGainManaOnSummon && unit.owner === owner && cell.element !== 'FIRE') {
-        const pl = state.players[owner];
-        pl.mana = capMana((pl.mana || 0) + 1);
-        gained += 1;
-      }
-    }
-  }
-  return gained;
-}
-
 function normalizeFieldquakeSummonConfig(raw) {
   if (!raw) return null;
   if (raw === true) return { pattern: 'ADJACENT' };
@@ -899,6 +878,15 @@ export function applySummonAbilities(state, r, c) {
   const reactions = applyEnemySummonReactions(state, { r, c, unit, tpl });
   if (Array.isArray(reactions?.heals) && reactions.heals.length) {
     events.heals = [...(events.heals || []), ...reactions.heals];
+  }
+
+  const manaEvents = applyManaGainOnSummon(state, { r, c, unit, tpl, cell });
+  if (Array.isArray(manaEvents) && manaEvents.length) {
+    events.manaGains = [...(events.manaGains || []), ...manaEvents];
+    const manaLogs = manaEvents.map(ev => ev?.log).filter(Boolean);
+    if (manaLogs.length) {
+      events.logs = [...(events.logs || []), ...manaLogs];
+    }
   }
 
   return events;
@@ -1070,10 +1058,8 @@ export function executeUnitAction(state, action, payload = {}) {
     const cell = state.board?.[action.r]?.[action.c];
     if (cell?.unit) {
       result.summonEvents = applySummonAbilities(state, action.r, action.c);
-      result.freedonianMana = applyFreedonianAura(state, action.owner);
     } else {
       result.summonEvents = result.summonEvents || { possessions: [] };
-      result.freedonianMana = 0;
     }
     return result;
   }

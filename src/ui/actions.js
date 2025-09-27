@@ -409,10 +409,6 @@ export function confirmUnitAbilityOrientation(context, direction) {
       }
     }
 
-    if (result.freedonianMana > 0) {
-      w.addLog?.(`Фридонийский Странник приносит ${result.freedonianMana} маны.`);
-    }
-
     if (info.unitMesh?.userData) delete info.unitMesh.userData.availableActions;
     clearPendingAbilityOrientation();
     clearPendingUnitAbility();

@@ -5,7 +5,6 @@ import { highlightTiles, clearHighlights } from './highlight.js';
 import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
 import { showTooltip, hideTooltip } from '../ui/tooltip.js';
 import {
-  applyFreedonianAura,
   applySummonAbilities,
   evaluateIncarnationSummon,
   applyIncarnationSummon,
@@ -61,6 +60,34 @@ function handleManaStealAnimations(list) {
   for (const steal of list) {
     if (!steal) continue;
     try { animate(steal); } catch (err) { console.warn('[interactions] mana steal animation failed', err); }
+  }
+}
+
+function handleManaGainAnimations(list) {
+  if (typeof window === 'undefined') return;
+  if (!Array.isArray(list) || list.length === 0) return;
+  const ctx = getCtx();
+  const tileMeshes = ctx?.tileMeshes || [];
+  const THREE = ctx?.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+  for (const gain of list) {
+    if (!gain || typeof gain.owner !== 'number') continue;
+    try {
+      const tile = tileMeshes?.[gain.r]?.[gain.c] || null;
+      let pos = null;
+      if (tile && typeof tile.position?.clone === 'function' && THREE) {
+        pos = tile.position.clone();
+        pos.add(new THREE.Vector3(0, 1.2, 0));
+      }
+      if (!pos && THREE) {
+        pos = new THREE.Vector3(0, 1.2, 0);
+      }
+      if (pos) {
+        const slot = Number.isFinite(gain.before) ? gain.before : null;
+        window.animateManaGainFromWorld?.(pos, gain.owner, true, slot);
+      }
+    } catch (err) {
+      console.warn('[interactions] mana gain animation failed', err);
+    }
   }
 }
 
@@ -987,18 +1014,10 @@ export function placeUnitWithDirection(direction) {
             }
           }
         }
-        if (Array.isArray(fq.manaGains)) {
-          for (const gain of fq.manaGains) {
-            if (!gain || typeof gain.owner !== 'number') continue;
-            const tileGain = ctxScene.tileMeshes?.[gain.r]?.[gain.c];
-            if (!tileGain || !THREE) continue;
-            const pos = tileGain.position.clone().add(new THREE.Vector3(0, 1.2, 0));
-            try { window.animateManaGainFromWorld?.(pos, gain.owner, true, gain.before); } catch {}
-          }
-        }
       }
     }
     handleManaStealAnimations(summonEvents?.manaSteals);
+    handleManaGainAnimations(summonEvents?.manaGains);
     if (Array.isArray(summonEvents?.statBuffs) && summonEvents.statBuffs.length) {
       for (const buff of summonEvents.statBuffs) {
         if (!buff) continue;
@@ -1055,10 +1074,6 @@ export function placeUnitWithDirection(direction) {
           }
         }
       } catch {}
-    }
-    const gained = applyFreedonianAura(gameState, gameState.active);
-    if (gained > 0) {
-      window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
     }
   }
   // Синхронизируем состояние после призыва
