@@ -39,7 +39,9 @@ import { applySummonStatBuffs } from './abilityHandlers/summonBuffs.js';
 import {
   applyTurnStartManaEffects as applyTurnStartManaEffectsInternal,
 } from './abilityHandlers/startPhase.js';
-import { applyManaGainOnSummon } from './abilityHandlers/manaGain.js';
+import {
+  applyManaGainOnSummon as applyAuraManaGainOnSummon,
+} from './abilityHandlers/manaGain.js';
 import {
   computeUnitProtection as computeUnitProtectionInternal,
   computeAuraProtection as computeAuraProtectionInternal,
@@ -51,7 +53,9 @@ import {
   evaluateFieldFatality as evaluateFieldFatalityInternal,
 } from './abilityHandlers/fieldHazards.js';
 import { applySummonManaSteal } from './abilityHandlers/manaSteal.js';
-import { applyManaGainOnSummon } from './abilityHandlers/manaOnSummon.js';
+import {
+  applyManaGainOnSummon as applyConfigManaGainOnSummon,
+} from './abilityHandlers/manaOnSummon.js';
 import { applyFieldquakeAt } from './abilityHandlers/fieldquake.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
@@ -763,7 +767,7 @@ export function applyFreedonianAura(state, owner, context = {}) {
   const result = { total: 0, entries: [], details: [] };
   const events = Array.isArray(context.events)
     ? context.events
-    : applyManaGainOnSummon(state, {
+    : applyAuraManaGainOnSummon(state, {
         owner,
         r: context.r,
         c: context.c,
@@ -917,14 +921,27 @@ export function applySummonAbilities(state, r, c) {
     events.heals = [...(events.heals || []), ...reactions.heals];
   }
 
-  const manaAuraEvents = applyManaGainOnSummon(state, { r, c, unit, tpl, cell });
-  if (Array.isArray(manaAuraEvents) && manaAuraEvents.length) {
-    const freedonian = applyFreedonianAura(state, unit.owner, { events: manaAuraEvents, unit, tpl, r, c, cell });
+  const manaAuraEvents = applyAuraManaGainOnSummon(state, { r, c, unit, tpl, cell });
+  const manaOnSummonEvents = applyConfigManaGainOnSummon(state, { r, c, unit, tpl, cell });
+  const manaEvents = [
+    ...(Array.isArray(manaAuraEvents) ? manaAuraEvents : []),
+    ...(Array.isArray(manaOnSummonEvents) ? manaOnSummonEvents : []),
+  ];
+
+  if (manaEvents.length) {
+    const freedonian = applyFreedonianAura(state, unit.owner, { events: manaEvents, unit, tpl, r, c, cell });
     if (freedonian.total > 0) {
+      const primaryEntry = Array.isArray(freedonian.entries) && freedonian.entries.length
+        ? freedonian.entries[0]
+        : null;
       const manaEvent = {
         owner: unit.owner,
         total: freedonian.total,
         amount: freedonian.total,
+        tplId: primaryEntry?.sourceTplId || tpl.id || null,
+        tplName: primaryEntry?.sourceName || tpl.name || null,
+        r: primaryEntry?.r ?? r,
+        c: primaryEntry?.c ?? c,
         entries: freedonian.entries,
         details: freedonian.details,
         source: 'FREEDONIAN_AURA',
@@ -942,7 +959,7 @@ export function applySummonAbilities(state, r, c) {
         events.logs = [...(events.logs || []), info.log];
       }
     }
-    const otherManaEvents = manaAuraEvents.filter(ev => ev?.reason !== 'FREEDONIAN_AURA');
+    const otherManaEvents = manaEvents.filter(ev => ev?.reason !== 'FREEDONIAN_AURA');
     if (otherManaEvents.length) {
       const mapped = otherManaEvents.map(ev => ({
         owner: ev.owner,
