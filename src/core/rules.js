@@ -588,6 +588,14 @@ export function stagedAttack(state, r, c, opts = {}) {
       }
     }
 
+    const discardEffects = applyDeathDiscardEffects(nFinal, deaths, { cause: 'BATTLE' });
+    if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
+      logLines.push(...discardEffects.logs);
+    }
+    if (Array.isArray(discardEffects?.manaSteals) && discardEffects.manaSteals.length) {
+      manaStealEvents.push(...discardEffects.manaSteals);
+    }
+
     try {
       for (const d of deaths) {
         if (nFinal && nFinal.players && nFinal.players[d.owner]) {
@@ -614,14 +622,6 @@ export function stagedAttack(state, r, c, opts = {}) {
         }
         logLines.push(`${tplD.name}: союзники получают +${tplD.onDeathAddHPAll} HP`);
       }
-    }
-
-    const discardEffects = applyDeathDiscardEffects(nFinal, deaths, { cause: 'BATTLE' });
-    if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
-      logLines.push(...discardEffects.logs);
-    }
-    if (Array.isArray(discardEffects?.manaSteals) && discardEffects.manaSteals.length) {
-      manaStealEvents.push(...discardEffects.manaSteals);
     }
 
     const releaseEvents = releasePossessionsAfterDeaths(nFinal, deaths);
@@ -917,13 +917,6 @@ export function magicAttack(state, fr, fc, tr, tc) {
       cellRef.unit = null;
     }
   }
-  try {
-    for (const d of deaths) {
-      if (n1 && n1.players && n1.players[d.owner]) {
-        n1.players[d.owner].mana = capMana((n1.players[d.owner].mana || 0) + 1);
-      }
-    }
-  } catch {}
   const discardEffects = applyDeathDiscardEffects(n1, deaths, { cause: 'MAGIC' });
   if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
     logLines.push(...discardEffects.logs);
@@ -931,6 +924,13 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (Array.isArray(discardEffects?.manaSteals) && discardEffects.manaSteals.length) {
     manaStealEvents.push(...discardEffects.manaSteals);
   }
+  try {
+    for (const d of deaths) {
+      if (n1 && n1.players && n1.players[d.owner]) {
+        n1.players[d.owner].mana = capMana((n1.players[d.owner].mana || 0) + 1);
+      }
+    }
+  } catch {}
   const releaseEvents = releasePossessionsAfterDeaths(n1, deaths);
   if (releaseEvents.releases.length) {
     for (const rel of releaseEvents.releases) {
