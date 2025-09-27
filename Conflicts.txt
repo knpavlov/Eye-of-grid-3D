@@ -1,0 +1,920 @@
+# Файл Abilities.js:
+
+Первый конфликт: 
+// Проверка наличия способности "быстрота"
+export const hasFirstStrike = (tpl) => !!(tpl && tpl.firstStrike);
+
+// Проверка способности "двойная атака"
+export const hasDoubleAttack = (tpl) => !!(tpl && tpl.doubleAttack);
+
+// Может ли существо атаковать (крепости не могут)
+export const canAttack = (tpl) => !(tpl && tpl.fortress);
+
+<<<<<<< HEAD
+// Реализация ауры Фридонийского Странника при призыве союзников
+// Возвращает подробности прироста маны, чтобы UI мог выводить сообщения
+export function applyFreedonianAura(state, owner) {
+  const result = { total: 0, entries: [] };
+  if (!state || !Array.isArray(state.board) || !Array.isArray(state.players)) {
+    return result;
+  }
+  const player = state.players[owner];
+  if (!player) return result;
+
+  for (let r = 0; r < 3; r += 1) {
+    for (let c = 0; c < 3; c += 1) {
+      const cell = state.board?.[r]?.[c];
+      const unit = cell?.unit;
+      if (!unit || unit.owner !== owner) continue;
+      const tpl = CARDS[unit.tplId];
+      if (!tpl?.auraGainManaOnSummon) continue;
+      const cellElement = normalizeElementName(cell?.element || null);
+      const nativeElement = normalizeElementName(tpl.element || null);
+      if (cellElement && cellElement === nativeElement) continue;
+
+      const before = Number.isFinite(player.mana) ? player.mana : 0;
+      if (before >= 10) continue;
+      const after = capMana(before + 1);
+      const gained = after - before;
+      if (gained <= 0) continue;
+      player.mana = after;
+      result.total += gained;
+      result.entries.push({
+        owner,
+        amount: gained,
+        sourceTplId: tpl.id,
+        sourceName: tpl.name || tpl.id,
+        r,
+        c,
+        fieldElement: cellElement || null,
+      });
+    }
+  }
+
+=======
+function normalizeFieldquakeSummonConfig(raw) {
+  if (!raw) return null;
+  if (raw === true) return { pattern: 'ADJACENT' };
+  if (typeof raw === 'string') {
+    return { pattern: raw.trim().toUpperCase() };
+  }
+  if (typeof raw === 'object') {
+    const pattern = String(raw.pattern || raw.type || raw.mode || 'ADJACENT').toUpperCase();
+    return { ...raw, pattern };
+  }
+  return null;
+}
+
+function collectFieldquakeSummonTargets(r, c, cfg) {
+  const result = [];
+  if (!cfg) return result;
+  if (cfg.pattern === 'SELF') {
+    result.push({ r, c });
+  }
+  if (cfg.pattern === 'ADJACENT') {
+    for (const vec of Object.values(DIR_VECTORS)) {
+      const nr = r + vec[0];
+      const nc = c + vec[1];
+      if (inBounds(nr, nc)) {
+        result.push({ r: nr, c: nc });
+      }
+    }
+  }
+  if (Array.isArray(cfg.extra)) {
+    for (const entry of cfg.extra) {
+      if (!entry) continue;
+      const nr = Number.isInteger(entry.r) ? entry.r : null;
+      const nc = Number.isInteger(entry.c) ? entry.c : null;
+      if (nr != null && nc != null && inBounds(nr, nc)) {
+        result.push({ r: nr, c: nc });
+      }
+    }
+  }
+>>>>>>> main
+  return result;
+}
+
+Второй конфликт: 
+  const reactions = applyEnemySummonReactions(state, { r, c, unit, tpl });
+  if (Array.isArray(reactions?.heals) && reactions.heals.length) {
+    events.heals = [...(events.heals || []), ...reactions.heals];
+  }
+
+<<<<<<< HEAD
+  const auraMana = applyFreedonianAura(state, unit.owner);
+  if (auraMana.total > 0) {
+    const manaEvent = {
+      owner: unit.owner,
+      total: auraMana.total,
+      entries: auraMana.entries,
+      source: 'FREEDONIAN_AURA',
+    };
+    events.manaGains = [...(events.manaGains || []), manaEvent];
+=======
+  const manaAuraEvents = applyManaGainOnSummon(state, { r, c, unit, tpl, cell });
+  if (Array.isArray(manaAuraEvents) && manaAuraEvents.length) {
+    events.manaGains = [...(events.manaGains || []), ...manaAuraEvents.map(ev => ({
+      owner: ev.owner,
+      before: ev.before,
+      after: ev.after,
+      amount: ev.amount,
+      r: ev.r,
+      c: ev.c,
+      tplId: ev.tplId,
+    }))];
+    for (const ev of manaAuraEvents) {
+      if (ev?.log) {
+        events.logs = [...(events.logs || []), ev.log];
+      }
+    }
+>>>>>>> main
+  }
+
+  return events;
+}
+
+Третий конфликт:
+
+export function executeUnitAction(state, action, payload = {}) {
+  if (!state || !action || !action.type) {
+    return { ok: false, reason: 'INVALID_ACTION' };
+  }
+  if (action.type === 'SACRIFICE_TRANSFORM') {
+    const result = executeSacrificeAction(state, action, payload);
+    if (!result?.ok) {
+      return result;
+    }
+    const cell = state.board?.[action.r]?.[action.c];
+    if (cell?.unit) {
+      result.summonEvents = applySummonAbilities(state, action.r, action.c);
+<<<<<<< HEAD
+      const manaEvents = Array.isArray(result.summonEvents?.manaGains)
+        ? result.summonEvents.manaGains
+        : [];
+      result.manaGains = manaEvents;
+      result.freedonianMana = manaEvents.reduce((acc, ev) => acc + (ev?.total || 0), 0);
+    } else {
+      result.summonEvents = result.summonEvents || { possessions: [] };
+      result.manaGains = [];
+      result.freedonianMana = 0;
+=======
+    } else {
+      result.summonEvents = result.summonEvents || { possessions: [] };
+>>>>>>> main
+    }
+    return result;
+  }
+  return { ok: false, reason: 'UNKNOWN_ACTION' };
+}
+
+#Файл rules.js
+
+Первый конфликт:
+import { computeCellBuff } from './fieldEffects.js';
+import { normalizeElementName } from './utils/elements.js';
+import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
+import { computeTargetCountAttackBonuses } from './abilityHandlers/targetCountBonus.js';
+import { getHpConditionalBonuses } from './abilityHandlers/conditionalBonuses.js';
+import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
+<<<<<<< HEAD
+import { applyManaGainOnDeaths } from './abilityHandlers/manaGain.js';
+=======
+import { buildDeathRecord } from './utils/deaths.js';
+>>>>>>> main
+
+Второй конфликт:
+<<<<<< HEAD
+      manaGainEvents: Array.isArray(manaFromDeaths?.entries) ? manaFromDeaths.entries : [],
+=======
+      manaSteals: manaStealEvents,
+      fieldquakes: appliedFieldquakes,
+>>>>>>> main
+    };
+  }
+
+Третий конфликт:
+ const combinedReleases = [...releaseEvents.releases, ...continuous.releases, ...damageReleases];
+  const combinedPossessions = [...continuous.possessions, ...damagePossessions];
+  return {
+    n1,
+    logLines,
+    targets,
+    deaths,
+    releases: combinedReleases,
+    possessions: combinedPossessions,
+    attackerPosUpdate,
+    dodgeUpdates,
+    attackType,
+    schemeKey,
+    attackProfile: profile,
+    dmg,
+<<<<<<< HEAD
+    manaGainEvents: Array.isArray(manaFromDeaths?.entries) ? manaFromDeaths.entries : [],
+=======
+    manaSteals: manaStealEvents,
+    fieldquakes: appliedFieldquakes,
+>>>>>>> main
+  };
+} 
+
+
+#Файл interactions.js
+
+Первый конфликт:
+import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+<<<<<<< HEAD
+import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
+=======
+import { buildDeathRecord } from '../core/utils/deaths.js';
+>>>>>>> main
+
+
+Второй конлфикт:
+const owner = unit.owner;
+<<<<<<< HEAD
+    const deathElement = gameState.board?.[row]?.[col]?.element || null;
+    const deathInfo = [{ r: row, c: col, owner, tplId: unit.tplId, uid: unit.uid ?? null, element: deathElement }];
+    const playersBefore = Array.isArray(gameState.players)
+      ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))
+      : [];
+=======
+    const deathRecord = buildDeathRecord(gameState, row, col, unit);
+    const slotBeforeGain = gameState.players?.[owner]?.mana || 0;
+>>>>>>> main
+    try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
+    const ownerPlayer = gameState.players?.[owner];
+    if (ownerPlayer) {
+      const beforeMana = Math.max(0, Number(ownerPlayer.mana || 0));
+      ownerPlayer.mana = capMana(beforeMana + 1);
+    }
+
+Третий конфликт:
+<<<<<<< HEAD
+    const manaEvents = Array.isArray(summonEvents?.manaGains) ? summonEvents.manaGains : [];
+    if (manaEvents.length) {
+      try {
+        const cards = window.CARDS || {};
+        for (const manaEvent of manaEvents) {
+          const total = Number.isFinite(manaEvent?.total) ? manaEvent.total : 0;
+          if (total <= 0) continue;
+          const entries = Array.isArray(manaEvent.entries) ? manaEvent.entries : [];
+          if (manaEvent.source === 'FREEDONIAN_AURA') {
+            const names = entries
+              .map(entry => cards[entry?.sourceTplId]?.name)
+              .filter(Boolean);
+            let label = 'Фридонийский Странник';
+            if (names.length === 1) {
+              label = names[0];
+            } else if (names.length > 1) {
+              label = 'Фридонийские Странники';
+            }
+            window.addLog?.(`${label} приносит ${total} маны.`);
+            continue;
+          }
+          const ownerLabel = Number.isFinite(manaEvent?.owner)
+            ? `игрок ${manaEvent.owner + 1}`
+            : 'игрок';
+          window.addLog?.(`${ownerLabel} получает ${total} маны.`);
+        }
+      } catch (err) {
+        console.error('[summon] Не удалось обработать события маны', err);
+      }
+    }
+=======
+>>>>>>> main
+  }
+  // Синхронизируем состояние после призыва
+  try { window.applyGameState(gameState); } catch {}
+  const ctx = getCtx();
+
+
+#ФАйл actions.js
+
+Первый конфликт:
+
+
+<<<<<<< HEAD
+    const manaEvents = Array.isArray(result.manaGains) ? result.manaGains : [];
+    if (manaEvents.length) {
+      const cards = w.CARDS || {};
+      for (const manaEvent of manaEvents) {
+        const total = Number.isFinite(manaEvent?.total) ? manaEvent.total : 0;
+        if (total <= 0) continue;
+        const entries = Array.isArray(manaEvent.entries) ? manaEvent.entries : [];
+        if (manaEvent.source === 'FREEDONIAN_AURA') {
+          const names = entries
+            .map(entry => cards[entry?.sourceTplId]?.name)
+            .filter(Boolean);
+          let label = 'Фридонийский Странник';
+          if (names.length === 1) {
+            label = names[0];
+          } else if (names.length > 1) {
+            label = 'Фридонийские Странники';
+          }
+          w.addLog?.(`${label} приносит ${total} маны.`);
+          continue;
+        }
+        const ownerLabel = Number.isFinite(manaEvent?.owner)
+          ? `игрок ${manaEvent.owner + 1}`
+          : 'игрок';
+        w.addLog?.(`${ownerLabel} получает ${total} маны.`);
+      }
+    } else if (result.freedonianMana > 0) {
+      // обратная совместимость, если сервер ещё не передаёт подробные события
+      w.addLog?.(`Фридонийский Странник приносит ${result.freedonianMana} маны.`);
+    }
+
+=======
+>>>>>>> main
+    if (info.unitMesh?.userData) delete info.unitMesh.userData.availableActions;
+    clearPendingAbilityOrientation();
+    clearPendingUnitAbility();
+    interactionState.pendingDiscardSelection = null;
+    w.__ui?.panels?.hideOrientationPanel?.();
+    w.__ui?.panels?.hidePrompt?.();
+    w.__interactions?.clearSelectedUnit?.();
+    w.__ui?.panels?.hideUnitActionPanel?.();
+    w.__ui?.cancelButton?.refreshCancelButton?.();
+
+    w.updateHand?.(gameState);
+    w.updateUnits?.(gameState);
+    w.updateUI?.(gameState);
+  } catch (err) {
+    console.error('[confirmUnitAbilityOrientation]', err);
+  }
+}
+
+
+#ФАйл mana.js
+
+
+<<<<<<< HEAD
+function markOrbStable(el) {
+  try {
+    if (el && el.dataset) {
+      el.dataset.manaOrbState = 'stable';
+    }
+  } catch {}
+}
+
+function finalizeOrbVisual(el) {
+  if (!el) return;
+  try {
+    el.style.transform = '';
+    el.style.opacity = '';
+    el.style.boxShadow = '';
+    el.style.willChange = '';
+    el.style.transformOrigin = '';
+    el.style.filter = '';
+  } catch {}
+  markOrbStable(el);
+}
+
+function enforceOrbRestore(el, timeoutMs = 720) {
+  if (!el) return;
+  setTimeout(() => {
+    try {
+      if (!el.dataset || el.dataset.manaOrbState === 'stable') return;
+      finalizeOrbVisual(el);
+    } catch {}
+  }, timeoutMs);
+}
+
+function requestFrame(fn) {
+  try {
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(fn);
+      return;
+    }
+  } catch {}
+  setTimeout(fn, 16);
+}
+
+// Вспомогательный генератор эффектов раскрытия орбов на панели
+function populatePanelBurst(tl, bar, indices, sparks, { highlight = true, finalizeTargets = null } = {}) {
+  if (!tl || !bar || !Array.isArray(indices) || !indices.length) return;
+  const perOrbDelay = 0.12;
+
+  for (const [order, idx] of indices.entries()) {
+    const el = bar.children?.[idx];
+    if (!el) continue;
+
+    if (Array.isArray(finalizeTargets)) {
+      finalizeTargets.push(el);
+    }
+
+    const revealAt = Math.max(0, order * perOrbDelay);
+
+    // Подготавливаем элемент перед включением эффекта
+    tl.call(() => {
+      try {
+        el.style.willChange = 'transform, box-shadow, filter, opacity';
+        el.style.transformOrigin = '50% 50%';
+        if (el.className !== 'mana-orb') {
+          el.className = 'mana-orb';
+        }
+        el.style.opacity = '0';
+        el.style.transform = 'scale(0.58)';
+        markOrbAnimating(el);
+        enforceOrbRestore(el, 900);
+      } catch {}
+    }, null, revealAt);
+
+    if (highlight && order === 0) {
+      tl.to(bar, {
+        filter: 'brightness(2.05) drop-shadow(0 0 18px rgba(96,165,250,0.95))',
+        duration: 0.18,
+        ease: 'power2.out',
+      }, revealAt).to(bar, {
+        filter: 'none',
+        duration: 0.32,
+        ease: 'power2.inOut',
+      }, revealAt + 0.18);
+    }
+
+      tl.to(el, {
+        duration: 0.196,
+        ease: 'back.out(2.2)',
+        onStart: () => {
+          try {
+            el.style.boxShadow = '0 0 22px rgba(96,165,250,0.95), 0 0 44px rgba(56,189,248,0.85)';
+            el.style.opacity = '1';
+          } catch {}
+        },
+        onComplete: () => {
+          try { el.style.boxShadow = '0 0 12px rgba(30,160,255,0.85)'; } catch {}
+        },
+      }, revealAt)
+      .to(el, { scale: 2.5, duration: 0.196, ease: 'back.out(2.2)' }, revealAt)
+      .to(el, { scale: 1.0, duration: 0.42, ease: 'power2.inOut' }, revealAt + 0.196)
+      .call(() => finalizeOrbVisual(el), null, revealAt + 0.196 + 0.42);
+
+    const rect = el.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const sparkCount = 16;
+
+    for (let i = 0; i < sparkCount; i++) {
+      const spark = document.createElement('div');
+      spark.style.position = 'fixed';
+      spark.style.left = `${centerX}px`;
+      spark.style.top = `${centerY}px`;
+      spark.style.width = '4px';
+      spark.style.height = '4px';
+      spark.style.borderRadius = '50%';
+      spark.style.pointerEvents = 'none';
+      spark.style.background = 'radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(125,211,252,1) 60%, rgba(14,165,233,0.8) 100%)';
+      spark.style.boxShadow = '0 0 10px rgba(59,130,246,0.95)';
+      spark.style.opacity = '0';
+      spark.style.zIndex = '70';
+      document.body.appendChild(spark);
+      sparks.push(spark);
+
+      const angle = (Math.PI * 2) * (i / sparkCount) + Math.random() * 0.8;
+      const dist = 40 + Math.random() * 40;
+      const dx = Math.cos(angle) * dist;
+      const dy = Math.sin(angle) * dist;
+      const t0 = revealAt + 0.04;
+
+      tl.fromTo(spark,
+        { x: 0, y: 0, opacity: 0, scale: 0.6 },
+        { x: dx, y: dy, opacity: 1, scale: 1.2, duration: 0.154, ease: 'power2.out' },
+        t0)
+        .to(spark, {
+          opacity: 0,
+          scale: 0.3,
+          duration: 0.35,
+          ease: 'power1.in',
+          delay: 0.105,
+        }, `>-0.1`);
+    }
+  }
+
+  const totalDuration = (indices.length - 1) * perOrbDelay + 0.72;
+  tl.to({}, { duration: Math.max(0, totalDuration - tl.duration()) });
+}
+
+function cleanupSparks(sparks) {
+  if (!Array.isArray(sparks)) return;
+  for (const s of sparks) {
+    try { if (s && s.parentNode) s.parentNode.removeChild(s); } catch {}
+  }
+}
+
+export function animateManaGainFromWorld(pos, ownerIndex, visualOnlyMaybe = true, legacyArg = null, legacyOpts = {}) {
+  try {
+    let visualOnly = true;
+    let opts = {};
+    if (typeof visualOnlyMaybe === 'object' && visualOnlyMaybe !== null) {
+      opts = visualOnlyMaybe;
+      visualOnly = (visualOnlyMaybe.visualOnly != null) ? !!visualOnlyMaybe.visualOnly : true;
+    } else {
+      visualOnly = !!visualOnlyMaybe;
+      if (legacyArg && typeof legacyArg === 'object' && (!legacyOpts || Object.keys(legacyOpts).length === 0)) {
+        opts = legacyArg;
+      } else if (legacyOpts && typeof legacyOpts === 'object') {
+        opts = legacyOpts;
+      }
+    }
+    if (opts.visualOnly != null) {
+      visualOnly = !!opts.visualOnly;
+    }
+
+    const amountRaw = opts.amount ?? opts.count ?? 1;
+    const amount = Math.max(0, Math.floor(Number.isFinite(amountRaw) ? amountRaw : Number(amountRaw) || 0));
+    if (amount <= 0) return;
+
+    const startDelayMs = Math.max(0, Number.isFinite(opts.startDelayMs)
+      ? Number(opts.startDelayMs)
+      : (Number.isFinite(opts.delayMs) ? Number(opts.delayMs) : 0));
+    const floatDuration = Math.max(0.6, Number.isFinite(opts.floatDuration) ? Number(opts.floatDuration) : 1.05);
+    const floatDistance = Number.isFinite(opts.floatDistance) ? Number(opts.floatDistance) : 170;
+    const labelHoldMs = Math.max(0, Number.isFinite(opts.labelHoldMs) ? Number(opts.labelHoldMs) : 680);
+    const fadeOutMs = Math.max(180, Number.isFinite(opts.fadeOutMs) ? Number(opts.fadeOutMs) : 320);
+    const labelText = typeof opts.label === 'string' ? opts.label : `+${amount}`;
+    const flashScale = Number.isFinite(opts.flashScale) ? Math.max(1.5, Number(opts.flashScale)) : 3.6;
+    const revealTime = (() => {
+      const rise = floatDuration;
+      const safeEnd = Math.max(0.18, rise - 0.12);
+      const weighted = Math.max(0.32, Math.min(safeEnd, rise * 0.7));
+      return weighted;
+    })();
+
+    const gameState = (typeof window !== 'undefined') ? window.gameState : null;
+
+    if (visualOnly && Number.isFinite(ownerIndex)) {
+      const blocks = getBlocks();
+      if (Array.isArray(blocks)) {
+        blocks[ownerIndex] = Math.max(0, Number(blocks[ownerIndex] || 0)) + amount;
+        setBlocks(blocks);
+        try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+      }
+    }
+
+    setTimeout(() => {
+      let container = null;
+      let cleanupTriggered = false;
+      let revealTriggered = false;
+      const cleanup = () => {
+        if (cleanupTriggered) return;
+        cleanupTriggered = true;
+        try { if (container && container.parentNode) container.parentNode.removeChild(container); } catch {}
+        triggerReveal();
+      };
+
+      const triggerReveal = () => {
+        if (revealTriggered) return;
+        revealTriggered = true;
+        if (visualOnly && Number.isFinite(ownerIndex)) {
+          const blocks = getBlocks();
+          const beforeBlock = Array.isArray(blocks)
+            ? Math.max(0, Number(blocks[ownerIndex] || 0))
+            : 0;
+          const afterBlock = Math.max(0, beforeBlock - amount);
+          if (Array.isArray(blocks)) {
+            blocks[ownerIndex] = afterBlock;
+            setBlocks(blocks);
+          }
+          const targetMana = Math.max(0, Number(gameState?.players?.[ownerIndex]?.mana) || 0);
+          const prevVisible = Math.max(0, targetMana - beforeBlock);
+          const visibleNow = Math.max(0, targetMana - afterBlock);
+          const revealCount = Math.max(0, visibleNow - prevVisible);
+          if (revealCount > 0) {
+            enqueueReveal(ownerIndex, { from: prevVisible, to: visibleNow, amount: revealCount });
+          }
+          const indices = [];
+          for (let idx = prevVisible; idx < visibleNow; idx++) indices.push(idx);
+          try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+
+          const scheduleEffect = () => {
+            try {
+              const bar = document.getElementById(`mana-display-${ownerIndex}`);
+              if (bar && typeof window !== 'undefined' && window.gsap?.timeline) {
+                const sparks = [];
+                const finalizeTargets = [];
+                const finalizeReveal = () => {
+                  cleanupSparks(sparks);
+                  for (const target of finalizeTargets) {
+                    finalizeOrbVisual(target);
+                  }
+                  setRevealActive(ownerIndex, false);
+                };
+                setRevealActive(ownerIndex, true);
+                try {
+                  const tl = window.gsap.timeline({ onComplete: finalizeReveal });
+                  if (typeof tl.eventCallback === 'function') {
+                    tl.eventCallback('onInterrupt', finalizeReveal);
+                  }
+                  populatePanelBurst(tl, bar, indices, sparks, { highlight: true, finalizeTargets });
+                } catch (err) {
+                  finalizeReveal();
+                  console.error('[mana] Ошибка запуска раскрытия панели:', err);
+                }
+              }
+            } catch (err) {
+              setRevealActive(ownerIndex, false);
+              console.error('[mana] Не удалось подготовить анимацию панели маны:', err);
+            }
+          };
+
+          if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(scheduleEffect);
+          } else {
+            setTimeout(scheduleEffect, 16);
+          }
+        }
+      };
+
+      try {
+        const source = pos && typeof pos?.clone === 'function'
+          ? pos.clone()
+          : (pos ? { x: pos.x, y: pos.y, z: pos.z } : null);
+        if (!source) return;
+        const start = worldToScreen(source);
+        container = document.createElement('div');
+        container.style.position = 'fixed';
+        container.style.left = `${start.x}px`;
+        container.style.top = `${start.y}px`;
+        container.style.transform = 'translate(-50%, -50%) scale(0.72)';
+        container.style.pointerEvents = 'none';
+        container.style.zIndex = '120';
+        container.style.opacity = '0';
+        document.body.appendChild(container);
+
+        const orb = document.createElement('div');
+        orb.style.width = '28px';
+        orb.style.height = '28px';
+        orb.style.borderRadius = '50%';
+        orb.style.background = 'radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(125,211,252,0.95) 55%, rgba(14,165,233,0.55) 100%)';
+        orb.style.boxShadow = '0 0 26px rgba(56,189,248,0.9)';
+        orb.style.opacity = '0.9';
+        orb.style.transform = 'scale(0.42)';
+        container.appendChild(orb);
+
+        const labelWrapper = document.createElement('div');
+        labelWrapper.style.position = 'absolute';
+        labelWrapper.style.left = '50%';
+        labelWrapper.style.top = '50%';
+        labelWrapper.style.transform = 'translate(-50%, -50%) translate(34px, -6px)';
+        labelWrapper.style.opacity = '0';
+        container.appendChild(labelWrapper);
+
+        const label = document.createElement('span');
+        label.textContent = labelText;
+        label.style.fontFamily = 'var(--ui-font, "Montserrat", "Roboto", sans-serif)';
+        label.style.fontWeight = '700';
+        label.style.fontSize = '20px';
+        label.style.color = '#a5f3fc';
+        label.style.textShadow = '0 0 16px rgba(56,189,248,0.9), 0 0 32px rgba(14,165,233,0.75)';
+        labelWrapper.appendChild(label);
+
+        const flash = document.createElement('div');
+        flash.style.position = 'absolute';
+        flash.style.left = '50%';
+        flash.style.top = '50%';
+        flash.style.width = '18px';
+        flash.style.height = '18px';
+        flash.style.borderRadius = '50%';
+        flash.style.background = 'radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(125,211,252,0.35) 55%, rgba(14,165,233,0) 100%)';
+        flash.style.transform = 'translate(-50%, -50%) scale(0.24)';
+        flash.style.opacity = '0';
+        container.appendChild(flash);
+
+        const tl = (typeof window !== 'undefined')
+          ? window.gsap?.timeline?.({ onComplete: cleanup })
+          : null;
+        if (tl) {
+          const floatSeconds = floatDuration;
+          const holdSeconds = labelHoldMs / 1000;
+          const fadeSeconds = fadeOutMs / 1000;
+          tl.to(container, { opacity: 1, scale: 1, duration: 0.22, ease: 'back.out(1.8)' })
+            .to(container, { y: -floatDistance, duration: floatSeconds, ease: 'power1.out' }, '<')
+            .to(orb, { scale: 1, duration: 0.28, ease: 'back.out(2.1)' }, '<')
+            .to(labelWrapper, { opacity: 1, duration: 0.26, ease: 'power2.out' }, '<+0.05')
+            .to(labelWrapper, { y: -18, duration: Math.max(0.14, floatSeconds), ease: 'power1.out' }, '<')
+            .add('reveal', revealTime)
+            .call(triggerReveal, null, 'reveal')
+            .to(orb, { opacity: 0, scale: 1.45, duration: Math.max(0.2, fadeSeconds), ease: 'power1.in' }, 'reveal')
+            .to(flash, { opacity: 1, scale: flashScale, duration: 0.34, ease: 'power2.out' }, 'reveal')
+            .to(flash, { opacity: 0, scale: flashScale * 1.08, duration: 0.32, ease: 'power2.in' }, 'reveal+0.18')
+            .to(labelWrapper, { y: -46, duration: holdSeconds, ease: 'power1.out' }, 'reveal')
+            .to(labelWrapper, { opacity: 0, duration: 0.32, ease: 'power1.in' }, `reveal+=${Math.max(0.16, holdSeconds - 0.12)}`)
+            .to(container, { opacity: 0, duration: 0.34, ease: 'power1.inOut' });
+        } else {
+          container.style.opacity = '1';
+          const raf = (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function')
+            ? window.requestAnimationFrame.bind(window)
+            : (fn => setTimeout(() => fn(Date.now()), 16));
+          const startTime = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+            ? performance.now()
+            : Date.now();
+          const floatMs = floatDuration * 1000;
+          const revealMs = revealTime * 1000;
+          const totalDuration = floatMs + labelHoldMs + fadeOutMs;
+          const tick = (time) => {
+            const current = (typeof time === 'number')
+              ? time
+              : ((typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now());
+            const elapsed = Math.min(totalDuration, current - startTime);
+            const progress = elapsed / (totalDuration || 1);
+            const y = -floatDistance * progress;
+            container.style.transform = `translate(-50%, -50%) translateY(${y}px)`;
+            if (elapsed < totalDuration) {
+              raf(tick);
+            } else {
+              cleanup();
+            }
+          };
+          raf(tick);
+          setTimeout(() => { try { labelWrapper.style.opacity = '1'; } catch {} }, 90);
+          setTimeout(() => { try { flash.style.opacity = '1'; } catch {} }, Math.max(0, revealMs - 120));
+          setTimeout(() => { triggerReveal(); }, Math.max(0, revealMs));
+          setTimeout(() => { try { labelWrapper.style.opacity = '0'; } catch {} }, floatMs + labelHoldMs);
+          setTimeout(() => { cleanup(); }, totalDuration + 32);
+        }
+      } catch (err) {
+        console.error('[mana] Ошибка анимации орба маны:', err);
+        try { cleanup(); } catch {}
+      }
+    }, startDelayMs);
+  } catch (err) {
+    console.error('[mana] animateManaGainFromWorld error:', err);
+=======
+export function animateManaSteal(event) {
+  try {
+    if (!event) return;
+    const amountRaw = Number(event.amount || event.count || 0);
+    const amount = Math.max(0, Math.floor(amountRaw));
+    const fromIndex = Number.isInteger(event.from) ? event.from : null;
+    const toIndex = Number.isInteger(event.to) ? event.to : null;
+    if (amount <= 0 || fromIndex == null || toIndex == null) return;
+    const fromBar = document.getElementById(`mana-display-${fromIndex}`);
+    const toBar = document.getElementById(`mana-display-${toIndex}`);
+    if (!fromBar || !toBar) return;
+
+    const beforeFrom = Number.isFinite(event?.before?.fromMana)
+      ? event.before.fromMana
+      : (Number(event?.after?.fromMana) || 0) + amount;
+    const beforeTo = Number.isFinite(event?.before?.toMana)
+      ? event.before.toMana
+      : Math.max(0, (Number(event?.after?.toMana) || 0) - amount);
+    const afterTo = Number.isFinite(event?.after?.toMana)
+      ? event.after.toMana
+      : Math.min(10, beforeTo + amount);
+
+    const fromSlots = [];
+    for (let i = 0; i < amount; i += 1) {
+      fromSlots.push(Math.max(0, Math.min(9, beforeFrom - 1 - i)));
+    }
+    const newSlots = [];
+    for (let idx = beforeTo; idx < afterTo; idx += 1) {
+      newSlots.push(Math.max(0, Math.min(9, idx)));
+    }
+    while (newSlots.length < amount) {
+      const fallback = newSlots.length ? newSlots[newSlots.length - 1] : Math.max(0, Math.min(9, afterTo - 1));
+      newSlots.push(fallback);
+    }
+
+    const getSlotRect = (barEl, idx) => {
+      if (!barEl) return null;
+      const child = barEl.children?.[idx];
+      if (child) return child.getBoundingClientRect();
+      if (barEl.children && barEl.children.length) {
+        const last = barEl.children[Math.min(idx, barEl.children.length - 1)];
+        if (last) return last.getBoundingClientRect();
+      }
+      return barEl.getBoundingClientRect();
+    };
+
+    const spawnSteal = (fromIdx, toIdx, delayMs) => {
+      const fromRect = getSlotRect(fromBar, fromIdx);
+      if (!fromRect) return;
+      const orb = document.createElement('div');
+      orb.className = 'mana-orb--steal-fx';
+      orb.style.position = 'fixed';
+      orb.style.left = `${fromRect.left + fromRect.width / 2}px`;
+      orb.style.top = `${fromRect.top + fromRect.height / 2}px`;
+      orb.style.transform = 'translate(-50%, -50%) scale(0.9)';
+      orb.style.opacity = '0';
+      orb.style.zIndex = '90';
+      document.body.appendChild(orb);
+
+      const ensureTargetVisible = () => {
+        const targetEl = toBar.children?.[toIdx];
+        if (targetEl) {
+          targetEl.style.transition = 'opacity 220ms ease';
+          targetEl.style.opacity = '1';
+        }
+      };
+
+      const playArrival = () => {
+        const targetRect = getSlotRect(toBar, toIdx);
+        if (!targetRect) { ensureTargetVisible(); return; }
+        const spark = document.createElement('div');
+        spark.className = 'mana-orb--steal-gain';
+        spark.style.position = 'fixed';
+        spark.style.left = `${targetRect.left + targetRect.width / 2}px`;
+        spark.style.top = `${targetRect.top + targetRect.height / 2}px`;
+        spark.style.transform = 'translate(-50%, -50%) scale(0.4)';
+        spark.style.opacity = '0';
+        spark.style.zIndex = '92';
+        document.body.appendChild(spark);
+        const tlGain = window.gsap?.timeline({
+          onComplete: () => {
+            try { if (spark.parentNode) spark.parentNode.removeChild(spark); } catch {}
+            ensureTargetVisible();
+          },
+        });
+        if (tlGain) {
+          tlGain.to(spark, { duration: 0.15, opacity: 1, scale: 0.9, ease: 'power1.out' })
+            .to(spark, { duration: 0.32, opacity: 0, scale: 1.2, ease: 'power2.in' }, '>-0.05');
+        } else {
+          spark.style.transition = 'opacity 180ms ease, transform 180ms ease';
+          requestAnimationFrame(() => {
+            spark.style.opacity = '1';
+            spark.style.transform = 'translate(-50%, -50%) scale(0.9)';
+            setTimeout(() => {
+              spark.style.opacity = '0';
+              spark.style.transform = 'translate(-50%, -50%) scale(1.2)';
+              setTimeout(() => {
+                try { if (spark.parentNode) spark.parentNode.removeChild(spark); } catch {}
+                ensureTargetVisible();
+              }, 200);
+            }, 200);
+          });
+        }
+      };
+
+      const targetEl = toBar.children?.[toIdx];
+      if (targetEl) {
+        targetEl.style.opacity = '0';
+      }
+
+      const cleanup = () => {
+        try { if (orb.parentNode) orb.parentNode.removeChild(orb); } catch {}
+        playArrival();
+      };
+
+      const tl = window.gsap?.timeline({ delay: Math.max(0, delayMs) / 1000, onComplete: cleanup });
+      if (tl) {
+        tl.to(orb, { duration: 0.2, opacity: 1, scale: 1.05, ease: 'power2.out' })
+          .to(orb, { duration: 0.36, y: '-32', ease: 'power1.out' }, '>-0.06')
+          .to(orb, { duration: 0.28, opacity: 0, scale: 0.6, ease: 'power2.in' }, '>-0.2');
+      } else {
+        setTimeout(() => {
+          orb.style.transition = 'transform 260ms ease, opacity 260ms ease';
+          requestAnimationFrame(() => {
+            orb.style.opacity = '1';
+            orb.style.transform = 'translate(-50%, -80%) scale(1.05)';
+            setTimeout(() => {
+              orb.style.opacity = '0';
+              orb.style.transform = 'translate(-50%, -110%) scale(0.6)';
+              setTimeout(cleanup, 260);
+            }, 200);
+          });
+        }, Math.max(0, delayMs));
+      }
+    };
+
+    for (let i = 0; i < amount; i += 1) {
+      const fromIdx = fromSlots[i] ?? fromSlots[fromSlots.length - 1] ?? 0;
+      const toIdx = newSlots[i] ?? newSlots[newSlots.length - 1] ?? 0;
+      spawnSteal(fromIdx, toIdx, i * 140);
+    }
+  } catch (err) {
+    console.warn('[mana] animateManaSteal failed', err);
+>>>>>>> main
+  }
+}
+
+export function animateTurnManaGain(ownerIndex, beforeMana, afterMana, durationMs = 900) {
+  return new Promise(resolve => {
+    try {
+      // Проверяем, не идет ли уже анимация
+      if (getManaGainActive()) {
+        console.warn('Mana animation already in progress, skipping');
+        resolve();
+        return;
+      }
+      
+      console.log(`[MANA] Starting animation for player ${ownerIndex}: ${beforeMana} -> ${afterMana}`);
+      
+      // Устанавливаем флаги активности и синхронизируем с legacy
+      setManaGainActive(true);
+      try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
+      
+      // Готовим панель: блокируем раннее появление новых орбов и пересобираем UI
+      const startIdx = Math.max(0, Math.min(9, beforeMana));
+      const endIdx = Math.max(-1, Math.min(9, afterMana - 1));
+      setAnim({ ownerIndex, startIdx, endIdx });
+      try { if (typeof window.updateUI === 'function') window.updateUI(); } catch {}
+      
+      const bar = document.getElementById(`mana-display-${ownerIndex}`);
+      if (!bar) {
+        console.warn(`[MANA] Mana display not found for player ${ownerIndex}`);
+        setManaGainActive(false);
+        try { if (typeof window !== 'undefined' && typeof window.refreshInputLockUI === 'function') window.refreshInputLockUI(); } catch {}
+        resolve();
+        return;
+      }
+      
