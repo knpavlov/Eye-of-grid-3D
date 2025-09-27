@@ -1,6 +1,7 @@
 // UI action helpers for rotating units and triggering attacks
 // These functions rely on existing globals to minimize coupling.
 import { highlightTiles, clearHighlights } from '../scene/highlight.js';
+import { getCtx } from '../scene/context.js';
 import { enforceHandLimit } from './handLimit.js';
 import { refreshPossessionsUI } from './possessions.js';
 import {
@@ -379,6 +380,25 @@ export function confirmUnitAbilityOrientation(context, direction) {
       }
     }
 
+    if (Array.isArray(result.summonEvents?.manaGains) && result.summonEvents.manaGains.length) {
+      const ctxScene = getCtx();
+      const THREE = ctxScene.THREE || w.THREE;
+      if (THREE) {
+        for (const gain of result.summonEvents.manaGains) {
+          if (!gain || typeof gain.owner !== 'number') continue;
+          const tile = ctxScene.tileMeshes?.[gain.r]?.[gain.c];
+          if (!tile) continue;
+          try {
+            const pos = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+            const slot = typeof gain.before === 'number' ? gain.before : null;
+            w.animateManaGainFromWorld?.(pos, gain.owner, true, slot);
+          } catch (err) {
+            console.warn('[unitAbility] mana gain animation failed', err);
+          }
+        }
+      }
+    }
+
     if (result.summonEvents?.possessions?.length) {
       for (const ev of result.summonEvents.possessions) {
         const unitTaken = gameState.board?.[ev.r]?.[ev.c]?.unit;
@@ -407,10 +427,6 @@ export function confirmUnitAbilityOrientation(context, direction) {
           }
         }
       }
-    }
-
-    if (result.freedonianMana > 0) {
-      w.addLog?.(`Фридонийский Странник приносит ${result.freedonianMana} маны.`);
     }
 
     if (info.unitMesh?.userData) delete info.unitMesh.userData.availableActions;
