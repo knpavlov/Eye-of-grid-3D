@@ -104,9 +104,12 @@ function parseElementFromToken(token) {
 function normalizeElementConfig(raw) {
   if (!raw) return null;
   if (typeof raw === 'string') {
-    const match = raw.match(/^([A-Z]+)_CREATURES$/);
+    const match = raw.match(/^(ALLY_)?([A-Z]+)_CREATURES$/);
     if (match) {
-      return { type: 'ELEMENT_CREATURES', element: parseElementFromToken(match[1]) };
+      const element = parseElementFromToken(match[2]);
+      if (!element) return null;
+      const type = match[1] ? 'ALLY_ELEMENT_CREATURES' : 'ELEMENT_CREATURES';
+      return { type, element };
     }
     const direct = parseElementFromToken(raw);
     if (direct) {
@@ -139,6 +142,7 @@ function countElementCreatures(state, element, opts = {}) {
       if (opts.exclude && r === opts.exclude.r && c === opts.exclude.c) continue;
       const unit = row[c]?.unit;
       if (!unit) continue;
+      if (opts.owner != null && unit.owner !== opts.owner) continue;
       const tpl = CARDS[unit.tplId];
       if (!tpl) continue;
       const tplElement = parseElementFromToken(tpl.element);
@@ -161,12 +165,17 @@ export function computeDynamicAttackBonus(state, r, c, tpl) {
       return { amount: others, type: 'OTHERS_ON_BOARD', count: others };
     }
     const elementCfg = normalizeElementConfig(cfg);
-    if (elementCfg?.type === 'ELEMENT_CREATURES' && elementCfg.element) {
-      const count = countElementCreatures(state, elementCfg.element, { exclude: { r, c } });
+    if ((elementCfg?.type === 'ELEMENT_CREATURES' || elementCfg?.type === 'ALLY_ELEMENT_CREATURES') && elementCfg.element) {
+      const owner = state?.board?.[r]?.[c]?.unit?.owner;
+      if (elementCfg.type === 'ALLY_ELEMENT_CREATURES' && owner == null) return null;
+      const count = countElementCreatures(state, elementCfg.element, {
+        exclude: { r, c },
+        owner: elementCfg.type === 'ALLY_ELEMENT_CREATURES' ? owner : undefined,
+      });
       if (count <= 0) return null;
       return {
         amount: count,
-        type: 'ELEMENT_CREATURES',
+        type: elementCfg.type,
         element: elementCfg.element,
         count,
       };

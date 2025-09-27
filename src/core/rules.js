@@ -28,6 +28,8 @@ import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
 import { getHpConditionalBonuses } from './abilityHandlers/conditionalBonuses.js';
 import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
 import { buildDeathRecord } from './utils/deaths.js';
+import { resolveAttackOverride } from './abilityHandlers/attackOverrides.js';
+import { getTargetConditionalAttackBonus } from './abilityHandlers/targetAttackBonuses.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -95,9 +97,13 @@ export function effectiveStats(cell, unit, opts = {}) {
   const extra = typeof unit?.bonusHP === 'number' ? unit.bonusHP : 0;
   let hp = (tpl?.hp || 0) + buff.hp + extra;
   const state = opts?.state;
+  let posR = null;
+  let posC = null;
+  let auraBonus = 0;
+  let overrideInfo = null;
   if (state) {
-    const posR = typeof opts.r === 'number' ? opts.r : (opts.position?.r ?? null);
-    const posC = typeof opts.c === 'number' ? opts.c : (opts.position?.c ?? null);
+    posR = typeof opts.r === 'number' ? opts.r : (opts.position?.r ?? null);
+    posC = typeof opts.c === 'number' ? opts.c : (opts.position?.c ?? null);
     if (typeof posR === 'number' && typeof posC === 'number') {
       const aura = getAuraAttackBonus(state, posR, posC, {
         unit,
@@ -105,15 +111,27 @@ export function effectiveStats(cell, unit, opts = {}) {
         owner: opts.owner ?? unit?.owner,
       });
       if (aura) {
-        atk += aura;
+        auraBonus += aura;
+      }
+      const override = resolveAttackOverride(state, posR, posC, tpl);
+      if (override && Number.isFinite(override.atk)) {
+        atk = override.atk;
+        overrideInfo = override;
       }
     }
+  }
+  if (auraBonus) {
+    atk += auraBonus;
   }
   const hpConditional = getHpConditionalBonuses(unit, tpl);
   if (hpConditional?.attackBonus) {
     atk += hpConditional.attackBonus;
   }
-  return { atk: Math.max(0, Math.floor(atk)), hp: Math.max(0, Math.floor(hp)) };
+  const result = { atk: Math.max(0, Math.floor(atk)), hp: Math.max(0, Math.floor(hp)) };
+  if (overrideInfo) {
+    result.atkOverride = overrideInfo;
+  }
+  return result;
 }
 
 export function computeHits(state, r, c, opts = {}) {
@@ -298,6 +316,13 @@ export function stagedAttack(state, r, c, opts = {}) {
   const baseStats = effectiveStats(cellOrigin, attacker, { state: base, r, c });
   let atk = baseStats.atk;
   let logLines = [];
+  if (baseStats.atkOverride) {
+    if (baseStats.atkOverride.type === 'ALLY_ELEMENT_COUNT') {
+      logLines.push(`${tplA.name}: базовая атака = ${atk} (союзные ${baseStats.atkOverride.element}: ${baseStats.atkOverride.count}).`);
+    } else {
+      logLines.push(`${tplA.name}: базовая атака установлена = ${atk}.`);
+    }
+  }
   const damageEffects = { preventRetaliation: new Set(), events: [] };
   const randomFn = typeof opts?.rng === 'function' ? opts.rng : Math.random;
   const dodgeUpdates = [];
@@ -341,8 +366,26 @@ export function stagedAttack(state, r, c, opts = {}) {
     atk += targetBonus.amount;
     logLines.push(`${tplA.name}: +${targetBonus.amount} ATK против существ стихии ${targetBonus.element}`);
   }
+  let primaryTargetUnit = null;
+  for (const h of hitsRaw) {
+    const u = base.board?.[h.r]?.[h.c]?.unit;
+    if (u && u.owner !== attacker.owner) {
+      primaryTargetUnit = u;
+      break;
+    }
+  }
+  if (primaryTargetUnit) {
+    const conditionalBonus = getTargetConditionalAttackBonus(base, tplA, { r, c, unit: attacker }, primaryTargetUnit);
+    if (conditionalBonus) {
+      atk += conditionalBonus.amount;
+      if (conditionalBonus.log) {
+        logLines.push(conditionalBonus.log);
+      }
+    }
+  }
   const hpConditional = getHpConditionalBonuses(attacker, tplA);
   if (hpConditional?.attackBonus) {
+    atk += hpConditional.attackBonus;
     logLines.push(`${tplA.name}: +${hpConditional.attackBonus} ATK при ${hpConditional.hp} HP.`);
   }
   if (tplA.randomPlus2 && Math.random() < 0.5) {
@@ -777,6 +820,13 @@ export function magicAttack(state, fr, fc, tr, tc) {
     atk = dynMagic.amount;
     logLines.push(`${tplA.name}: сила магии = ${dynMagic.amount} (число огненных полей).`);
   }
+  if (atkStats.atkOverride) {
+    if (atkStats.atkOverride.type === 'ALLY_ELEMENT_COUNT') {
+      logLines.push(`${tplA.name}: базовая атака = ${atk} (союзные ${atkStats.atkOverride.element}: ${atkStats.atkOverride.count}).`);
+    } else {
+      logLines.push(`${tplA.name}: базовая атака установлена = ${atk}.`);
+    }
+  }
 
   const plusCfg2 = tplA.plusAtkIfTargetOnElement || (tplA.plus1IfTargetOnElement ? { element: tplA.plus1IfTargetOnElement, amount: 1 } : null);
   if (plusCfg2) {
@@ -851,6 +901,14 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (elementBonus) {
     atk += elementBonus.amount;
     logLines.push(`${tplA.name}: +${elementBonus.amount} ATK против существ стихии ${elementBonus.element}`);
+  }
+
+  const conditionalBonus = getTargetConditionalAttackBonus(n1, tplA, { r: fromR, c: fromC, unit: attacker }, mainTarget);
+  if (conditionalBonus) {
+    atk += conditionalBonus.amount;
+    if (conditionalBonus.log) {
+      logLines.push(conditionalBonus.log);
+    }
   }
 
   const randomBonus = (tplA.randomPlus2 && Math.random() < 0.5) ? 2 : 0;

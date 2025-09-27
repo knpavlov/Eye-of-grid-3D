@@ -29,7 +29,8 @@ export const CARDS = {
     element: 'FIRE', atk: 1, hp: 2,
     attackType: 'STANDARD', pierce: true,
     attacks: [ { dir: 'N', ranges: [1] } ],
-    blindspots: ['S'], auraGainManaOnSummon: true,
+    blindspots: ['S'],
+    manaOnSummon: { trigger: 'ALLY', amount: 1, sourceField: { not: 'FIRE' }, includeSelf: true },
     desc: 'While Freedonian Wanderer is on a non‑Fire field, you gain 1 mana each time you summon an allied creature.'
   },
   FIRE_PARTMOLE_FLAME_LIZARD: {
@@ -478,6 +479,46 @@ export const CARDS = {
       { type: 'ALLY_ELEMENT', element: 'BIOLITH', includeSelf: false },
     ],
     desc: 'Morning Star Warrior adds 2 to its Attack if the target creature has 5 or more HPs.\nMorning Star Warrior gains Protection equal to the number of allied Biolith creatures.'
+  },
+  BIOLITH_IMPERIAL_BIOLITH_GUARD: {
+    id: 'BIOLITH_IMPERIAL_BIOLITH_GUARD', name: 'Imperial Biolith Guard', type: 'UNIT', cost: 3, activation: 2,
+    element: 'BIOLITH', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'E', ranges: [1], group: 'SIDES', ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], group: 'SIDES', ignoreAlliedBlocking: true },
+    ],
+    blindspots: [],
+    ignoreAlliedBlocking: true,
+    manaOnSummon: { trigger: 'ALLY', amount: 1, summonField: { element: 'BIOLITH' }, includeSelf: true },
+    desc: 'Gain 1 mana each time you summon a creature to a Biolith field.'
+  },
+  BIOLITH_WORMAK_HEIR_TO_THE_BIOLITHS: {
+    id: 'BIOLITH_WORMAK_HEIR_TO_THE_BIOLITHS', name: 'Wormak Heir to the Bioliths', type: 'UNIT', cost: 4, activation: 2,
+    element: 'BIOLITH', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: [],
+    ignoreAlliedBlocking: true,
+    targetConditionalAttack: [
+      { targetElement: 'BIOLITH', requireEnemy: true, countNonElement: 'BIOLITH', amountPer: 1 },
+    ],
+    manaOnSummon: { trigger: 'ENEMY', amount: 1 },
+    desc: "If the target is an enemy Biolith, Wormak's Attack is equal to 2 plus the number of non-Biolith creatures on the board.\nGain 1 mana each time an enemy is summoned."
+  },
+  BIOLITH_TINO_SON_OF_SCION: {
+    id: 'BIOLITH_TINO_SON_OF_SCION', name: 'Tino, Son of Scion', type: 'UNIT', cost: 4, activation: 3,
+    element: 'BIOLITH', atk: 4, hp: 3,
+    attackType: 'MAGIC',
+    attacks: [],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    magicTargetsSameElement: true,
+    overrideAtkOnField: [
+      { field: 'BIOLITH', type: 'ALLY_ELEMENT_COUNT', countElement: 'BIOLITH', base: 1, includeSelf: false },
+    ],
+    manaOnSummon: { trigger: 'ALLY', amount: 1, includeSelf: true },
+    desc: "Tino's Magic Attack targets all enemies of the same element as the target.\nWhile Tino is on a Biolith field, his Attack is equal to 1 plus the number of other allied Biolith creatures.\nGain 1 mana each time you summon a creature."
   },
   BIOLITH_BIOLITH_STINGER: {
     id: 'BIOLITH_BIOLITH_STINGER', name: 'Biolith Stinger', type: 'UNIT', cost: 3, activation: 2,

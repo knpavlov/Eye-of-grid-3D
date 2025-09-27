@@ -379,6 +379,25 @@ export function confirmUnitAbilityOrientation(context, direction) {
       }
     }
 
+    if (Array.isArray(result.summonEvents?.manaGains) && result.summonEvents.manaGains.length) {
+      const ctxScene = w.__scene?.getCtx?.();
+      const animateManaGain = w.animateManaGainFromWorld;
+      const THREE = ctxScene?.THREE || w.THREE;
+      if (ctxScene && typeof animateManaGain === 'function' && THREE) {
+        for (const gain of result.summonEvents.manaGains) {
+          if (!gain || typeof gain.owner !== 'number') continue;
+          const tile = ctxScene.tileMeshes?.[gain.r]?.[gain.c];
+          if (!tile) continue;
+          try {
+            const pos = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+            animateManaGain(pos, gain.owner, true, gain.before);
+          } catch (err) {
+            console.warn('[unitAbility] mana gain animation failed', err);
+          }
+        }
+      }
+    }
+
     if (result.summonEvents?.possessions?.length) {
       for (const ev of result.summonEvents.possessions) {
         const unitTaken = gameState.board?.[ev.r]?.[ev.c]?.unit;
@@ -407,10 +426,6 @@ export function confirmUnitAbilityOrientation(context, direction) {
           }
         }
       }
-    }
-
-    if (result.freedonianMana > 0) {
-      w.addLog?.(`Фридонийский Странник приносит ${result.freedonianMana} маны.`);
     }
 
     if (info.unitMesh?.userData) delete info.unitMesh.userData.availableActions;
