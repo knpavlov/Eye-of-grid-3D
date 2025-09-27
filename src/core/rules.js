@@ -28,6 +28,7 @@ import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
 import { getHpConditionalBonuses } from './abilityHandlers/conditionalBonuses.js';
 import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
 import { applyManaGainOnDeaths } from './abilityHandlers/manaGain.js';
+import { buildDeathRecord } from './utils/deaths.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -577,12 +578,28 @@ export function stagedAttack(state, r, c, opts = {}) {
     }
 
     const deaths = [];
-    for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
-      const cellRef = nFinal.board?.[rr]?.[cc];
-      const u = cellRef?.unit;
-      if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: cellRef?.element || null });
-        if (cellRef) cellRef.unit = null;
+    for (let rr = 0; rr < 3; rr++) {
+      for (let cc = 0; cc < 3; cc++) {
+        const cellRef = nFinal.board?.[rr]?.[cc];
+        const u = cellRef?.unit;
+        if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
+          const records = buildDeathRecord(nFinal, rr, cc, u, { cause: 'BATTLE' });
+          if (Array.isArray(records) && records.length) {
+            for (const rec of records) {
+              deaths.push({
+                r: rec.r,
+                c: rec.c,
+                owner: rec.owner,
+                tplId: rec.tplId,
+                uid: rec.uid ?? null,
+                element: rec.element ?? null,
+              });
+            }
+          } else {
+            deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: cellRef?.element || null });
+          }
+          if (cellRef) cellRef.unit = null;
+        }
       }
     }
 
@@ -678,6 +695,9 @@ export function stagedAttack(state, r, c, opts = {}) {
       schemeKey,
       attackProfile: profile,
       manaGainEvents: Array.isArray(manaFromDeaths?.entries) ? manaFromDeaths.entries : [],
+      manaGainDetails: Array.isArray(manaFromDeaths?.entries) ? manaFromDeaths.entries : [],
+      manaSteals: [],
+      fieldquakes: [],
     };
   }
 
@@ -907,12 +927,28 @@ export function magicAttack(state, fr, fc, tr, tc) {
   }
 
   const deaths = [];
-  for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
-    const cellRef = n1.board[rr][cc];
-    const u = cellRef.unit;
-    if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: cellRef?.element || null });
-      cellRef.unit = null;
+  for (let rr = 0; rr < 3; rr++) {
+    for (let cc = 0; cc < 3; cc++) {
+      const cellRef = n1.board[rr][cc];
+      const u = cellRef.unit;
+      if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
+        const records = buildDeathRecord(n1, rr, cc, u, { cause: 'MAGIC' });
+        if (Array.isArray(records) && records.length) {
+          for (const rec of records) {
+            deaths.push({
+              r: rec.r,
+              c: rec.c,
+              owner: rec.owner,
+              tplId: rec.tplId,
+              uid: rec.uid ?? null,
+              element: rec.element ?? null,
+            });
+          }
+        } else {
+          deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: cellRef?.element || null });
+        }
+        cellRef.unit = null;
+      }
     }
   }
   try {
@@ -987,6 +1023,9 @@ export function magicAttack(state, fr, fc, tr, tc) {
     attackProfile: profile,
     dmg,
     manaGainEvents: Array.isArray(manaFromDeaths?.entries) ? manaFromDeaths.entries : [],
+    manaGainDetails: Array.isArray(manaFromDeaths?.entries) ? manaFromDeaths.entries : [],
+    manaSteals: [],
+    fieldquakes: [],
   };
 }
 
