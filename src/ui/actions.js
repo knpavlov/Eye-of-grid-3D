@@ -399,7 +399,13 @@ export function confirmUnitAbilityOrientation(context, direction) {
     if (manaEvents.length) {
       const cards = w.CARDS || {};
       for (const manaEvent of manaEvents) {
-        const total = Number.isFinite(manaEvent?.total) ? manaEvent.total : 0;
+        if (manaEvent?.log) {
+          w.addLog?.(manaEvent.log);
+          continue;
+        }
+        const totalRaw = Number.isFinite(manaEvent?.total) ? manaEvent.total : null;
+        const amountRaw = Number.isFinite(manaEvent?.amount) ? manaEvent.amount : null;
+        const total = totalRaw != null ? totalRaw : (amountRaw != null ? amountRaw : 0);
         if (total <= 0) continue;
         const entries = Array.isArray(manaEvent.entries) ? manaEvent.entries : [];
         if (manaEvent.source === 'FREEDONIAN_AURA') {
@@ -418,7 +424,12 @@ export function confirmUnitAbilityOrientation(context, direction) {
         const ownerLabel = Number.isFinite(manaEvent?.owner)
           ? `игрок ${manaEvent.owner + 1}`
           : 'игрок';
-        w.addLog?.(`${ownerLabel} получает ${total} маны.`);
+        const sourceName = manaEvent.tplName || cards[manaEvent.tplId]?.name || null;
+        if (sourceName) {
+          w.addLog?.(`${sourceName}: ${ownerLabel} получает ${total} маны.`);
+        } else {
+          w.addLog?.(`${ownerLabel} получает ${total} маны.`);
+        }
       }
     } else if (result.freedonianMana > 0) {
       // обратная совместимость, если сервер ещё не передаёт подробные события

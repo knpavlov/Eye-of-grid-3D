@@ -106,6 +106,145 @@ function countFieldsOfElement(boardState, element) {
   return total;
 }
 
+function normalizeSummonGainConfig(raw, tpl) {
+  if (raw == null) return null;
+  if (raw === true) {
+    return {
+      amount: 1,
+      requireAllySummon: true,
+      requireDifferentField: true,
+      reason: 'FREEDONIAN_AURA',
+    };
+  }
+  if (typeof raw === 'number') {
+    const amount = toPositiveInt(raw);
+    if (amount <= 0) return null;
+    return {
+      amount,
+      requireAllySummon: true,
+      requireDifferentField: false,
+      reason: 'SUMMON_AURA',
+    };
+  }
+  if (typeof raw === 'object') {
+    const amount = toPositiveInt(raw.amount ?? raw.plus ?? raw.value ?? raw.per ?? 1, 1);
+    if (amount <= 0) return null;
+    const requireAllySummon = raw.requireAlly != null ? !!raw.requireAlly : true;
+    const requireDifferentField = !!(raw.requireDifferentField || raw.offElement || raw.nonNative);
+    const requireFieldElement = raw.requireFieldElement ? normalizeElementName(raw.requireFieldElement) : null;
+    const forbidFieldElement = raw.forbidFieldElement ? normalizeElementName(raw.forbidFieldElement) : null;
+    const requireSummonedElement = raw.requireSummonedElement ? normalizeElementName(raw.requireSummonedElement) : null;
+    const reasonRaw = typeof raw.reason === 'string' ? raw.reason.trim().toUpperCase() : null;
+    const reason = reasonRaw || (requireDifferentField ? 'FREEDONIAN_AURA' : 'SUMMON_AURA');
+    const log = typeof raw.log === 'string' ? raw.log : null;
+    return {
+      amount,
+      requireAllySummon,
+      requireDifferentField,
+      requireFieldElement,
+      forbidFieldElement,
+      requireSummonedElement,
+      reason,
+      log,
+    };
+  }
+  return null;
+}
+
+function collectSummonManaWatchers(state) {
+  const watchers = [];
+  if (!state?.board) return watchers;
+  for (let r = 0; r < BOARD_SIZE; r += 1) {
+    for (let c = 0; c < BOARD_SIZE; c += 1) {
+      const cell = state.board?.[r]?.[c];
+      const unit = cell?.unit;
+      if (!unit) continue;
+      const tpl = CARDS[unit.tplId];
+      if (!tpl) continue;
+      const cfg = normalizeSummonGainConfig(tpl.auraGainManaOnSummon, tpl);
+      if (!cfg) continue;
+      const cellElement = normalizeElementName(cell?.element);
+      const nativeElement = normalizeElementName(tpl.element);
+      watchers.push({
+        owner: unit.owner,
+        r,
+        c,
+        tpl,
+        unit,
+        cfg,
+        cellElement: cellElement || null,
+        nativeElement: nativeElement || null,
+      });
+    }
+  }
+  return watchers;
+}
+
+export function applyManaGainOnSummon(state, context = {}) {
+  if (!state?.players) return [];
+  const unit = context.unit || null;
+  const tpl = context.tpl || (unit ? CARDS[unit.tplId] : null);
+  const owner = context.owner != null ? context.owner : unit?.owner;
+  if (owner == null) return [];
+  const r = typeof context.r === 'number' ? context.r : (context.position?.r ?? null);
+  const c = typeof context.c === 'number' ? context.c : (context.position?.c ?? null);
+  const cell = context.cell || (typeof r === 'number' && typeof c === 'number' ? state.board?.[r]?.[c] : null);
+  const summonedElement = normalizeElementName(cell?.element || tpl?.element || null);
+
+  const watchers = collectSummonManaWatchers(state);
+  if (!watchers.length) return [];
+
+  const events = [];
+  for (const watcher of watchers) {
+    if (!isUnitAlive(watcher.unit, watcher.tpl)) continue;
+    const cfg = watcher.cfg;
+    if (cfg.requireAllySummon && watcher.owner !== owner) continue;
+    if (cfg.requireDifferentField) {
+      const sameField = watcher.cellElement && watcher.cellElement === watcher.nativeElement;
+      if (sameField) continue;
+    }
+    if (cfg.requireFieldElement && watcher.cellElement !== cfg.requireFieldElement) continue;
+    if (cfg.forbidFieldElement && watcher.cellElement === cfg.forbidFieldElement) continue;
+    if (cfg.requireSummonedElement && summonedElement !== cfg.requireSummonedElement) continue;
+
+    const player = state.players[watcher.owner];
+    if (!player) continue;
+    const before = Number.isFinite(player.mana) ? player.mana : 0;
+    if (before >= 10) continue;
+
+    const gained = gainMana(state, watcher.owner, cfg.amount);
+    if (gained <= 0) continue;
+    const after = Number.isFinite(player.mana) ? player.mana : before;
+
+    const event = {
+      owner: watcher.owner,
+      before,
+      after,
+      amount: gained,
+      r: watcher.r,
+      c: watcher.c,
+      tplId: watcher.tpl?.id || watcher.tplId || watcher.unit?.tplId || null,
+      tplName: watcher.tpl?.name || null,
+      fieldElement: watcher.cellElement,
+      reason: cfg.reason || 'SUMMON_AURA',
+    };
+    if (cfg.log) {
+      try {
+        let text = cfg.log;
+        text = text.replace(/\{amount\}/g, String(gained));
+        text = text.replace(/\{owner\}/g, String((watcher.owner ?? 0) + 1));
+        text = text.replace(/\{name\}/g, watcher.tpl?.name || '');
+        event.log = text;
+      } catch {
+        event.log = cfg.log;
+      }
+    }
+    events.push(event);
+  }
+
+  return events;
+}
+
 function normalizeDeathGainConfig(raw, tpl) {
   if (raw == null) return null;
   if (typeof raw === 'number') {
@@ -345,5 +484,6 @@ export function applyManaGainOnDeaths(state, deaths, opts = {}) {
 
 export default {
   applyTurnStartManaEffects,
+  applyManaGainOnSummon,
   applyManaGainOnDeaths,
 };

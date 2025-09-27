@@ -1024,7 +1024,13 @@ export function placeUnitWithDirection(direction) {
       try {
         const cards = window.CARDS || {};
         for (const manaEvent of manaEvents) {
-          const total = Number.isFinite(manaEvent?.total) ? manaEvent.total : 0;
+          if (manaEvent?.log) {
+            window.addLog?.(manaEvent.log);
+            continue;
+          }
+          const totalRaw = Number.isFinite(manaEvent?.total) ? manaEvent.total : null;
+          const amountRaw = Number.isFinite(manaEvent?.amount) ? manaEvent.amount : null;
+          const total = totalRaw != null ? totalRaw : (amountRaw != null ? amountRaw : 0);
           if (total <= 0) continue;
           const entries = Array.isArray(manaEvent.entries) ? manaEvent.entries : [];
           if (manaEvent.source === 'FREEDONIAN_AURA') {
@@ -1043,7 +1049,12 @@ export function placeUnitWithDirection(direction) {
           const ownerLabel = Number.isFinite(manaEvent?.owner)
             ? `игрок ${manaEvent.owner + 1}`
             : 'игрок';
-          window.addLog?.(`${ownerLabel} получает ${total} маны.`);
+          const sourceName = manaEvent.tplName || cards[manaEvent.tplId]?.name || null;
+          if (sourceName) {
+            window.addLog?.(`${sourceName}: ${ownerLabel} получает ${total} маны.`);
+          } else {
+            window.addLog?.(`${ownerLabel} получает ${total} маны.`);
+          }
         }
       } catch (err) {
         console.error('[summon] Не удалось обработать события маны', err);
