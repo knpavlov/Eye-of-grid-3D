@@ -1,5 +1,6 @@
 // Модуль обработки механики "Инкарнация"
 import { CARDS } from '../cards.js';
+import { createDeathEntry } from './deathUtils.js';
 
 function getTemplate(tplOrId) {
   if (!tplOrId) return null;
@@ -69,9 +70,8 @@ export function applyIncarnationSummon(state, context = {}) {
   const cell = board?.[r]?.[c];
   const removedUnit = cell?.unit || null;
   const removedTpl = getTemplate(removedUnit?.tplId);
-  const deathInfo = removedUnit
-    ? [{ r, c, owner: removedUnit.owner, tplId: removedUnit.tplId, uid: removedUnit.uid ?? null, element: cell?.element || null }]
-    : null;
+  const deathEntry = removedUnit ? createDeathEntry(state, removedUnit, r, c) : null;
+  const deathInfo = deathEntry ? [deathEntry] : null;
   if (cell) cell.unit = null;
   return {
     ok: true,

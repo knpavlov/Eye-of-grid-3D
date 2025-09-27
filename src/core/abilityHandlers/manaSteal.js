@@ -1,5 +1,6 @@
 // Логика способности "mana steal" (кража маны)
 import { CARDS } from '../cards.js';
+import { DIR_VECTORS, inBounds } from '../constants.js';
 
 const capMana = (value) => {
   const num = Math.floor(Number(value) || 0);
@@ -188,11 +189,36 @@ function gatherEntries(tpl, trigger) {
   return list;
 }
 
-function resolveRoleIndex(owner, role) {
+function resolveRoleIndex(owner, role, extras = {}) {
   if (typeof role === 'number') return role;
   if (role === 'OWNER') return owner;
   if (role === 'OPPONENT') return owner === 0 ? 1 : 0;
+  if (role === 'FRONT_OWNER') {
+    if (extras.frontOwner != null) return extras.frontOwner;
+    return null;
+  }
   return owner;
+}
+
+function ensureFrontOwner(state, ctx) {
+  if (!state || !ctx) return null;
+  if (ctx.frontOwner != null) return ctx.frontOwner;
+  const pos = ctx.position;
+  if (!pos || typeof pos.r !== 'number' || typeof pos.c !== 'number') return null;
+  const facing = typeof ctx.facing === 'string' ? ctx.facing : ctx.unit?.facing;
+  if (!facing) return null;
+  const vec = DIR_VECTORS[facing] || DIR_VECTORS.N;
+  const fr = pos.r + vec[0];
+  const fc = pos.c + vec[1];
+  if (!inBounds(fr, fc)) return null;
+  const cell = state.board?.[fr]?.[fc];
+  const unit = cell?.unit;
+  if (!unit) return null;
+  const tpl = CARDS[unit.tplId];
+  if (!tpl) return null;
+  const hp = typeof unit.currentHP === 'number' ? unit.currentHP : tpl.hp || 0;
+  if (hp <= 0) return null;
+  return unit.owner;
 }
 
 function applyEntry(state, entry, ctx) {
@@ -215,8 +241,12 @@ function applyEntry(state, entry, ctx) {
   if (entry.min != null) amount = Math.max(amount, entry.min);
   if (amount <= 0) return null;
 
-  const fromIndex = resolveRoleIndex(owner, entry.from);
-  const toIndex = resolveRoleIndex(owner, entry.to);
+  const frontOwner = ensureFrontOwner(state, ctx);
+
+  const roleExtras = { frontOwner };
+
+  const fromIndex = resolveRoleIndex(owner, entry.from, roleExtras);
+  const toIndex = resolveRoleIndex(owner, entry.to, roleExtras);
   if (fromIndex == null || toIndex == null || fromIndex === toIndex) return null;
 
   const fromPlayer = state.players?.[fromIndex];
@@ -306,6 +336,8 @@ export function applyDeathManaSteal(state, deaths = [], context = {}) {
         element: death.element || null,
         cellElement: death.element || null,
         position: (typeof death.r === 'number' && typeof death.c === 'number') ? { r: death.r, c: death.c } : null,
+        facing: typeof death.facing === 'string' ? death.facing : null,
+        frontOwner: death.frontOwner,
         reason: context?.cause || 'DEATH',
       });
       if (ev) events.push(ev);

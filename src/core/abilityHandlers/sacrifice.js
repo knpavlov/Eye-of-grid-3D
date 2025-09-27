@@ -3,6 +3,8 @@ import { CARDS } from '../cards.js';
 import { computeCellBuff } from '../fieldEffects.js';
 import { applyFieldFatalityCheck as applyFieldFatalityCheckInternal } from './fieldHazards.js';
 import { applyDeathDiscardEffects } from './discard.js';
+import { applyDeathRepositionEffects } from './deathReposition.js';
+import { createDeathEntry } from './deathUtils.js';
 
 const FACING_ORDER = ['N', 'E', 'S', 'W'];
 
@@ -171,14 +173,15 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
   }
 
   // Удаляем существо с клетки до появления нового
-  const sacrificeDeath = currentUnit
-    ? [{ r, c, owner: currentUnit.owner, tplId: currentUnit.tplId, uid: currentUnit.uid ?? null, element: cell?.element || null }]
-    : null;
+  const sacrificeDeathEntry = currentUnit ? createDeathEntry(state, currentUnit, r, c) : null;
+  const sacrificeDeath = sacrificeDeathEntry ? [sacrificeDeathEntry] : null;
   cell.unit = null;
 
   let discardEvents = null;
+  let repositionEvents = null;
   if (sacrificeDeath) {
     discardEvents = applyDeathDiscardEffects(state, sacrificeDeath, { cause: 'SACRIFICE' });
+    repositionEvents = applyDeathRepositionEffects(state, sacrificeDeath);
   }
 
   // Удаляем карту из руки и переносим в сброс
@@ -224,6 +227,9 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
   if (Array.isArray(discardEvents?.manaSteals) && discardEvents.manaSteals.length) {
     result.events.manaSteals = [...(result.events.manaSteals || []), ...discardEvents.manaSteals];
   }
+  if (repositionEvents && Array.isArray(repositionEvents.logs) && repositionEvents.logs.length) {
+    result.events.repositionLogs = [...(result.events.repositionLogs || []), ...repositionEvents.logs];
+  }
 
   const cellElement = cell.element || null;
   const buff = computeCellBuff(cellElement, summonTpl.element);
@@ -259,7 +265,8 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
     const tplDeath = getTemplateRef(summonTpl);
     graveyard.push(tplDeath);
     cell.unit = null;
-    const replacementDeath = [{ r, c, owner: newUnit.owner, tplId: summonTpl.id, uid: newUnit.uid ?? null, element: cell?.element || null }];
+    const replacementEntry = createDeathEntry(state, newUnit, r, c);
+    const replacementDeath = replacementEntry ? [replacementEntry] : [];
 
     if (summonTpl.onDeathAddHPAll) {
       const amount = summonTpl.onDeathAddHPAll;
@@ -279,6 +286,11 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
         }
       }
       result.events.oracleBuff = { owner: newUnit.owner, amount };
+    }
+
+    const repositionReplacement = applyDeathRepositionEffects(state, replacementDeath);
+    if (repositionReplacement && Array.isArray(repositionReplacement.logs) && repositionReplacement.logs.length) {
+      result.events.repositionLogs = [...(result.events.repositionLogs || []), ...repositionReplacement.logs];
     }
 
     const discardReplacement = applyDeathDiscardEffects(state, replacementDeath, { cause: 'SACRIFICE_REPLACEMENT' });
