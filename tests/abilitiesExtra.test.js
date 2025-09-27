@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { applyTurnStartManaEffects } from '../src/core/abilityHandlers/startPhase.js';
 import { applyEnemySummonReactions } from '../src/core/abilityHandlers/summonReactions.js';
+import { applySummonAbilities } from '../src/core/abilities.js';
 import { grantManaToAllPlayers } from '../src/core/mana.js';
 
 function makeBoard() {
@@ -86,5 +87,67 @@ describe('глобальное добавление маны', () => {
     expect(res.entries).toHaveLength(2);
     expect(state.players[0].mana).toBe(10);
     expect(state.players[1].mana).toBe(10);
+  });
+});
+
+describe('аура Фридонийского странника', () => {
+  it('добавляет ману и возвращает событие для UI', () => {
+    const state = {
+      board: makeBoard(),
+      players: [
+        { mana: 2 },
+        { mana: 0 },
+      ],
+    };
+    state.board[0][0].element = 'FOREST';
+    state.board[0][0].unit = {
+      owner: 0,
+      tplId: 'FIRE_FREEDONIAN_WANDERER',
+    };
+    state.board[1][1].unit = {
+      owner: 0,
+      tplId: 'FIRE_HELLFIRE_SPITTER',
+    };
+
+    const events = applySummonAbilities(state, 1, 1);
+
+    expect(state.players[0].mana).toBe(3);
+    expect(Array.isArray(events.manaGains)).toBe(true);
+    expect(events.manaGains).toHaveLength(1);
+    const manaEvent = events.manaGains[0];
+    expect(manaEvent.total).toBe(1);
+    expect(manaEvent.owner).toBe(0);
+    expect(manaEvent.source).toBe('FREEDONIAN_AURA');
+    expect(Array.isArray(manaEvent.entries)).toBe(true);
+    expect(manaEvent.entries).toHaveLength(1);
+    const entry = manaEvent.entries[0];
+    expect(entry.amount).toBe(1);
+    expect(entry.sourceTplId).toBe('FIRE_FREEDONIAN_WANDERER');
+    expect(entry.r).toBe(0);
+    expect(entry.c).toBe(0);
+  });
+
+  it('не срабатывает на родной стихии', () => {
+    const state = {
+      board: makeBoard(),
+      players: [
+        { mana: 4 },
+        { mana: 0 },
+      ],
+    };
+    state.board[0][0].element = 'FIRE';
+    state.board[0][0].unit = {
+      owner: 0,
+      tplId: 'FIRE_FREEDONIAN_WANDERER',
+    };
+    state.board[1][1].unit = {
+      owner: 0,
+      tplId: 'FIRE_HELLFIRE_SPITTER',
+    };
+
+    const events = applySummonAbilities(state, 1, 1);
+
+    expect(state.players[0].mana).toBe(4);
+    expect((events.manaGains ?? []).length).toBe(0);
   });
 });

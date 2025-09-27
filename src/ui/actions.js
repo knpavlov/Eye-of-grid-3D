@@ -429,6 +429,72 @@ export function confirmUnitAbilityOrientation(context, direction) {
       }
     }
 
+    const manaEvents = Array.isArray(result.manaGains) ? result.manaGains : [];
+    const cards = w.CARDS || {};
+    let hasDetailedMana = false;
+    if (manaEvents.length) {
+      hasDetailedMana = true;
+      for (const manaEvent of manaEvents) {
+        if (manaEvent?.log) {
+          w.addLog?.(manaEvent.log);
+          continue;
+        }
+        const totalRaw = Number.isFinite(manaEvent?.total) ? manaEvent.total : null;
+        const amountRaw = Number.isFinite(manaEvent?.amount) ? manaEvent.amount : null;
+        const total = totalRaw != null ? totalRaw : (amountRaw != null ? amountRaw : 0);
+        if (total <= 0) continue;
+        const entries = Array.isArray(manaEvent.entries) ? manaEvent.entries : [];
+        if (manaEvent.source === 'FREEDONIAN_AURA') {
+          const names = entries
+            .map(entry => cards[entry?.sourceTplId]?.name)
+            .filter(Boolean);
+          let label = 'Фридонийский Странник';
+          if (names.length === 1) {
+            label = names[0];
+          } else if (names.length > 1) {
+            label = 'Фридонийские Странники';
+          }
+          w.addLog?.(`${label} приносит ${total} маны.`);
+          continue;
+        }
+        const ownerLabel = Number.isFinite(manaEvent?.owner)
+          ? `игрок ${manaEvent.owner + 1}`
+          : 'игрок';
+        const sourceName = manaEvent.tplName || cards[manaEvent.tplId]?.name || null;
+        if (sourceName) {
+          w.addLog?.(`${sourceName}: ${ownerLabel} получает ${total} маны.`);
+        } else {
+          w.addLog?.(`${ownerLabel} получает ${total} маны.`);
+        }
+      }
+    }
+    const manaSteals = Array.isArray(result.manaSteals) ? result.manaSteals : [];
+    if (manaSteals.length) {
+      hasDetailedMana = true;
+      const animateSteal = w.__ui?.mana?.animateManaSteal;
+      for (const steal of manaSteals) {
+        if (steal?.log) {
+          w.addLog?.(steal.log);
+        } else {
+          const amount = Number.isFinite(steal?.amount) ? steal.amount : 0;
+          if (amount > 0) {
+            const fromLabel = Number.isFinite(steal?.from) ? `игрок ${steal.from + 1}` : 'игрок';
+            const toLabel = Number.isFinite(steal?.to) ? `игрок ${steal.to + 1}` : 'игрок';
+            w.addLog?.(`${toLabel} крадёт ${amount} маны у ${fromLabel}.`);
+          }
+        }
+        if (typeof animateSteal === 'function') {
+          try { animateSteal(steal); } catch (err) {
+            console.error('[actions] Не удалось запустить анимацию кражи маны:', err);
+          }
+        }
+      }
+    }
+    if (!hasDetailedMana && result.freedonianMana > 0) {
+      // обратная совместимость, если сервер ещё не передаёт подробные события
+      w.addLog?.(`Фридонийский Странник приносит ${result.freedonianMana} маны.`);
+    }
+
     if (info.unitMesh?.userData) delete info.unitMesh.userData.availableActions;
     clearPendingAbilityOrientation();
     clearPendingUnitAbility();

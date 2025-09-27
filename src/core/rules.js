@@ -28,6 +28,8 @@ import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
 import { computeTargetCountAttackBonuses } from './abilityHandlers/targetCountBonus.js';
 import { getHpConditionalBonuses } from './abilityHandlers/conditionalBonuses.js';
 import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
+import { applyManaGainOnDeaths } from './abilityHandlers/manaGain.js';
+
 import { buildDeathRecord } from './utils/deaths.js';
 
 export function hasAdjacentGuard(state, r, c) {
@@ -580,6 +582,10 @@ export function stagedAttack(state, r, c, opts = {}) {
 
     const applied = applyDamageInteractionResults(nFinal, damageEffects);
     const attackerPosUpdate = applied?.attackerPosUpdate || null;
+    const damagePossessions = Array.isArray(applied?.possessions) ? applied.possessions : [];
+    const damageReleases = Array.isArray(applied?.releases) ? applied.releases : [];
+    const interactionManaSteals = Array.isArray(applied?.manaSteals) ? applied.manaSteals : [];
+    const interactionFieldquakes = Array.isArray(applied?.fieldquakes) ? applied.fieldquakes : [];
     if (attackerPosUpdate) {
       r = attackerPosUpdate.r;
       c = attackerPosUpdate.c;
@@ -607,13 +613,17 @@ export function stagedAttack(state, r, c, opts = {}) {
       const cellRef = nFinal.board?.[rr]?.[cc];
       const u = cellRef?.unit;
       if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-        const record = buildDeathRecord(nFinal, rr, cc, u);
-        if (record) deaths.push(record);
+        const deathRecord = buildDeathRecord(nFinal, rr, cc, u);
+        if (deathRecord) deaths.push(deathRecord);
+
         if (cellRef) cellRef.unit = null;
       }
     }
     if (Array.isArray(applied?.deaths) && applied.deaths.length) {
-      deaths.push(...applied.deaths);
+      for (const death of applied.deaths) {
+        if (death) deaths.push(death);
+      }
+
     }
 
     try {
@@ -623,6 +633,11 @@ export function stagedAttack(state, r, c, opts = {}) {
         }
       }
     } catch {}
+
+    const manaFromDeaths = applyManaGainOnDeaths(nFinal, deaths, { boardState: nFinal });
+    if (Array.isArray(manaFromDeaths?.logs) && manaFromDeaths.logs.length) {
+      logLines.push(...manaFromDeaths.logs);
+    }
 
     for (const d of deaths) {
       const tplD = CARDS[d.tplId];
@@ -689,6 +704,15 @@ export function stagedAttack(state, r, c, opts = {}) {
     const targets = step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 }));
     const combinedReleases = [...releaseEvents.releases, ...continuous.releases, ...damageReleases];
     const combinedPossessions = [...continuous.possessions, ...damagePossessions];
+    const manaStealEvents = [...interactionManaSteals];
+    if (Array.isArray(manaFromDeaths?.steals) && manaFromDeaths.steals.length) {
+      manaStealEvents.push(...manaFromDeaths.steals);
+    }
+    if (Array.isArray(discardEffects?.manaSteals) && discardEffects.manaSteals.length) {
+      manaStealEvents.push(...discardEffects.manaSteals);
+    }
+    const manaFieldquakes = Array.isArray(manaFromDeaths?.fieldquakes) ? manaFromDeaths.fieldquakes : [];
+    const combinedFieldquakes = [...interactionFieldquakes, ...manaFieldquakes];
     const dodgeFinal = refreshBoardDodgeStates(nFinal);
     if (Array.isArray(dodgeFinal?.updated) && dodgeFinal.updated.length) {
       dodgeUpdates.push(...dodgeFinal.updated);
@@ -706,8 +730,9 @@ export function stagedAttack(state, r, c, opts = {}) {
       attackType,
       schemeKey,
       attackProfile: profile,
+      manaGainEvents: Array.isArray(manaFromDeaths?.entries) ? manaFromDeaths.entries : [],
       manaSteals: manaStealEvents,
-      fieldquakes: appliedFieldquakes,
+      fieldquakes: combinedFieldquakes,
     };
   }
 
@@ -959,8 +984,9 @@ export function magicAttack(state, fr, fc, tr, tc) {
     const cellRef = n1.board[rr][cc];
     const u = cellRef.unit;
     if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-      const record = buildDeathRecord(n1, rr, cc, u);
-      if (record) deaths.push(record);
+      const deathRecord = buildDeathRecord(n1, rr, cc, u);
+      if (deathRecord) deaths.push(deathRecord);
+
       cellRef.unit = null;
     }
   }
@@ -990,6 +1016,10 @@ export function magicAttack(state, fr, fc, tr, tc) {
       }
     }
   } catch {}
+  const manaFromDeaths = applyManaGainOnDeaths(n1, deaths, { boardState: n1 });
+  if (Array.isArray(manaFromDeaths?.logs) && manaFromDeaths.logs.length) {
+    logLines.push(...manaFromDeaths.logs);
+  }
   const discardEffects = applyDeathDiscardEffects(n1, deaths, { cause: 'MAGIC' });
   if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
     logLines.push(...discardEffects.logs);
@@ -1006,6 +1036,26 @@ export function magicAttack(state, fr, fc, tr, tc) {
       logLines.push(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
     }
   }
+
+  const applied = applyDamageInteractionResults(n1, damageEffects);
+  const attackerPosUpdate = applied?.attackerPosUpdate || null;
+  const damagePossessions = Array.isArray(applied?.possessions) ? applied.possessions : [];
+  const damageReleases = Array.isArray(applied?.releases) ? applied.releases : [];
+  const interactionManaSteals = Array.isArray(applied?.manaSteals) ? applied.manaSteals : [];
+  const interactionFieldquakes = Array.isArray(applied?.fieldquakes) ? applied.fieldquakes : [];
+  if (attackerPosUpdate) {
+    fromR = attackerPosUpdate.r;
+    fromC = attackerPosUpdate.c;
+  }
+  if (Array.isArray(applied?.logLines) && applied.logLines.length) {
+    logLines.push(...applied.logLines);
+  }
+  if (Array.isArray(applied?.deaths) && applied.deaths.length) {
+    for (const death of applied.deaths) {
+      if (death) deaths.push(death);
+    }
+  }
+
   const continuous = refreshContinuousPossessions(n1);
   if (continuous.possessions.length) {
     for (const ev of continuous.possessions) {
@@ -1032,6 +1082,16 @@ export function magicAttack(state, fr, fc, tr, tc) {
   }
   const combinedReleases = [...releaseEvents.releases, ...continuous.releases, ...damageReleases];
   const combinedPossessions = [...continuous.possessions, ...damagePossessions];
+  const manaStealEvents = [...interactionManaSteals];
+  if (Array.isArray(manaFromDeaths?.steals) && manaFromDeaths.steals.length) {
+    manaStealEvents.push(...manaFromDeaths.steals);
+  }
+  if (Array.isArray(discardEffects?.manaSteals) && discardEffects.manaSteals.length) {
+    manaStealEvents.push(...discardEffects.manaSteals);
+  }
+  const manaFieldquakes = Array.isArray(manaFromDeaths?.fieldquakes) ? manaFromDeaths.fieldquakes : [];
+  const combinedFieldquakes = [...interactionFieldquakes, ...manaFieldquakes];
+
   return {
     n1,
     logLines,
@@ -1045,8 +1105,11 @@ export function magicAttack(state, fr, fc, tr, tc) {
     schemeKey,
     attackProfile: profile,
     dmg,
+
+    manaGainEvents: Array.isArray(manaFromDeaths?.entries) ? manaFromDeaths.entries : [],
     manaSteals: manaStealEvents,
-    fieldquakes: appliedFieldquakes,
+    fieldquakes: combinedFieldquakes,
+
   };
 }
 

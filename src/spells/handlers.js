@@ -10,18 +10,10 @@ import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
 import { refreshPossessionsUI } from '../ui/possessions.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { capMana } from '../core/constants.js';
+import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
 import { buildDeathRecord } from '../core/utils/deaths.js';
-
-function animateManaStealEvents(list) {
-  if (typeof window === 'undefined') return;
-  if (!Array.isArray(list) || list.length === 0) return;
-  const animate = window.__ui?.mana?.animateManaSteal;
-  if (typeof animate !== 'function') return;
-  for (const steal of list) {
-    if (!steal) continue;
-    try { animate(steal); } catch (err) { console.warn('[spells] mana steal animation failed', err); }
-  }
-}
+import { buildManaGainPlan } from '../scene/manaFx.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -280,17 +272,76 @@ export const handlers = {
           if (tMesh) window.__fx.spawnDamageText(tMesh, `-1`, '#ef4444');
         } catch {}
         if (u.currentHP <= 0) {
+          const ctx = getCtx();
           const owner = u.owner;
-          const deathRecord = buildDeathRecord(gameState, r, c, u);
+          const deathElement = gameState.board?.[r]?.[c]?.element || null;
+          const fallbackDeath = {
+            r,
+            c,
+            owner,
+            tplId: u.tplId,
+            uid: u.uid ?? null,
+            element: deathElement,
+          };
+          const record = buildDeathRecord(gameState, r, c, u);
+          const mergedDeath = record ? { ...fallbackDeath, ...record } : fallbackDeath;
+          const deathInfo = mergedDeath ? [mergedDeath] : [];
+          const playersBefore = Array.isArray(gameState.players)
+            ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))
+            : [];
           try { gameState.players[owner].graveyard.push(CARDS[u.tplId]); } catch {}
-          const pos = getCtx().tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-          const slot = gameState.players?.[owner]?.mana || 0;
-          animateManaGainFromWorld(pos, owner, true, slot);
-          const unitMeshesCtx = getCtx().unitMeshes;
+          const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+          const unitMeshesCtx = ctx.unitMeshes;
           if (unitMeshesCtx) {
             const unitMesh = unitMeshesCtx.find(m => m.userData.row === r && m.userData.col === c);
             if (unitMesh) {
-              window.__fx.dissolveAndAsh(unitMesh, new THREE.Vector3(0, 0, 0.6), 0.9);
+              try { window.__fx.dissolveAndAsh(unitMesh, new THREE.Vector3(0, 0, 0.6), 0.9); } catch {}
+            }
+          }
+          const ownerPlayer = gameState.players?.[owner];
+          if (ownerPlayer) {
+            const beforeMana = Math.max(0, Number(ownerPlayer.mana || 0));
+            ownerPlayer.mana = capMana(beforeMana + 1);
+          }
+          let manaBonus = null;
+          try {
+            manaBonus = applyManaGainOnDeaths(gameState, deathInfo, { boardState: gameState });
+          } catch (err) {
+            console.error('[spell] Ошибка при расчёте бонусной маны:', err);
+            manaBonus = null;
+          }
+          if (Array.isArray(manaBonus?.logs) && manaBonus.logs.length) {
+            for (const text of manaBonus.logs) {
+              if (text) addLog(text);
+            }
+          }
+          const manaPlan = buildManaGainPlan({
+            playersBefore,
+            deaths: deathInfo,
+            manaGainEntries: Array.isArray(manaBonus?.entries) ? manaBonus.entries : [],
+            tileMeshes: ctx.tileMeshes,
+            THREE,
+          });
+          try { manaPlan?.schedule?.(); } catch {}
+          const manaSteals = Array.isArray(manaBonus?.steals) ? manaBonus.steals : [];
+          if (manaSteals.length) {
+            const animateSteal = window.__ui?.mana?.animateManaSteal;
+            for (const steal of manaSteals) {
+              if (steal?.log) {
+                addLog(steal.log);
+              } else {
+                const amount = Number.isFinite(steal?.amount) ? steal.amount : 0;
+                if (amount > 0) {
+                  const fromLabel = Number.isFinite(steal?.from) ? `игрок ${steal.from + 1}` : 'игрок';
+                  const toLabel = Number.isFinite(steal?.to) ? `игрок ${steal.to + 1}` : 'игрок';
+                  addLog(`${toLabel} крадёт ${amount} маны у ${fromLabel}.`);
+                }
+              }
+              if (typeof animateSteal === 'function') {
+                try { animateSteal(steal); } catch (err) {
+                  console.error('[mana] Не удалось запустить анимацию кражи маны (spell):', err);
+                }
+              }
             }
           }
           gameState.board[r][c].unit = null;

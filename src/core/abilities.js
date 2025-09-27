@@ -36,7 +36,10 @@ import {
 import { hasAuraInvisibility } from './abilityHandlers/invisibilityAura.js';
 import { applyEnemySummonReactions } from './abilityHandlers/summonReactions.js';
 import { applySummonStatBuffs } from './abilityHandlers/summonBuffs.js';
-import { applyTurnStartManaEffects as applyTurnStartManaEffectsInternal } from './abilityHandlers/startPhase.js';
+import {
+  applyTurnStartManaEffects as applyTurnStartManaEffectsInternal,
+} from './abilityHandlers/startPhase.js';
+import { applyManaGainOnSummon } from './abilityHandlers/manaGain.js';
 import {
   computeUnitProtection as computeUnitProtectionInternal,
   computeAuraProtection as computeAuraProtectionInternal,
@@ -754,8 +757,40 @@ function collectFieldquakeSummonTargets(r, c, cfg) {
   return result;
 }
 
+// Реализация ауры Фридонийского Странника при призыве союзников
+// Возвращает подробности прироста маны, чтобы UI мог выводить сообщения
+export function applyFreedonianAura(state, owner, context = {}) {
+  const result = { total: 0, entries: [], details: [] };
+  const events = Array.isArray(context.events)
+    ? context.events
+    : applyManaGainOnSummon(state, {
+        owner,
+        r: context.r,
+        c: context.c,
+        unit: context.unit,
+        tpl: context.tpl,
+        cell: context.cell,
+      });
+  for (const ev of events) {
+    if (!ev || ev.owner !== owner || ev.reason !== 'FREEDONIAN_AURA') continue;
+    const tpl = CARDS[ev.tplId] || null;
+    result.total += ev.amount || 0;
+    result.entries.push({
+      owner: ev.owner,
+      amount: ev.amount || 0,
+      sourceTplId: ev.tplId || tpl?.id || null,
+      sourceName: ev.tplName || tpl?.name || ev.tplId || 'Существо',
+      r: ev.r,
+      c: ev.c,
+      fieldElement: ev.fieldElement || null,
+    });
+    result.details.push(ev);
+  }
+  return result;
+}
+
 export function applySummonAbilities(state, r, c) {
-  const events = { possessions: [] };
+  const events = { possessions: [], manaSteals: [] };
   const cell = state?.board?.[r]?.[c];
   const unit = cell?.unit;
   if (!cell || !unit) return events;
@@ -884,17 +919,48 @@ export function applySummonAbilities(state, r, c) {
 
   const manaAuraEvents = applyManaGainOnSummon(state, { r, c, unit, tpl, cell });
   if (Array.isArray(manaAuraEvents) && manaAuraEvents.length) {
-    events.manaGains = [...(events.manaGains || []), ...manaAuraEvents.map(ev => ({
-      owner: ev.owner,
-      before: ev.before,
-      after: ev.after,
-      amount: ev.amount,
-      r: ev.r,
-      c: ev.c,
-      tplId: ev.tplId,
-    }))];
-    for (const ev of manaAuraEvents) {
-      if (ev?.log) {
+    const freedonian = applyFreedonianAura(state, unit.owner, { events: manaAuraEvents, unit, tpl, r, c, cell });
+    if (freedonian.total > 0) {
+      const manaEvent = {
+        owner: unit.owner,
+        total: freedonian.total,
+        amount: freedonian.total,
+        entries: freedonian.entries,
+        details: freedonian.details,
+        source: 'FREEDONIAN_AURA',
+        reason: 'FREEDONIAN_AURA',
+      };
+      if (Array.isArray(freedonian.details) && freedonian.details.length) {
+        const before = freedonian.details[0]?.before;
+        const after = freedonian.details[freedonian.details.length - 1]?.after;
+        if (Number.isFinite(before)) manaEvent.before = before;
+        if (Number.isFinite(after)) manaEvent.after = after;
+      }
+      events.manaGains = [...(events.manaGains || []), manaEvent];
+      for (const info of freedonian.details) {
+        if (!info?.log) continue;
+        events.logs = [...(events.logs || []), info.log];
+      }
+    }
+    const otherManaEvents = manaAuraEvents.filter(ev => ev?.reason !== 'FREEDONIAN_AURA');
+    if (otherManaEvents.length) {
+      const mapped = otherManaEvents.map(ev => ({
+        owner: ev.owner,
+        before: ev.before,
+        after: ev.after,
+        amount: ev.amount,
+        total: ev.amount,
+        r: ev.r,
+        c: ev.c,
+        tplId: ev.tplId,
+        tplName: ev.tplName || null,
+        fieldElement: ev.fieldElement || null,
+        reason: ev.reason || 'SUMMON_AURA',
+        source: ev.reason || 'SUMMON_AURA',
+      }));
+      events.manaGains = [...(events.manaGains || []), ...mapped];
+      for (const ev of otherManaEvents) {
+        if (!ev?.log) continue;
         events.logs = [...(events.logs || []), ev.log];
       }
     }
@@ -1069,8 +1135,19 @@ export function executeUnitAction(state, action, payload = {}) {
     const cell = state.board?.[action.r]?.[action.c];
     if (cell?.unit) {
       result.summonEvents = applySummonAbilities(state, action.r, action.c);
+      const manaEvents = Array.isArray(result.summonEvents?.manaGains)
+        ? result.summonEvents.manaGains
+        : [];
+      result.manaGains = manaEvents;
+      result.freedonianMana = manaEvents.reduce((acc, ev) => acc + (ev?.total || 0), 0);
+      result.manaSteals = Array.isArray(result.summonEvents?.manaSteals)
+        ? result.summonEvents.manaSteals
+        : [];
     } else {
       result.summonEvents = result.summonEvents || { possessions: [] };
+      result.manaGains = [];
+      result.freedonianMana = 0;
+      result.manaSteals = [];
     }
     return result;
   }
