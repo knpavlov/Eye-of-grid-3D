@@ -7,7 +7,7 @@ import { spendAndDiscardSpell, burnSpellCard } from '../ui/spellUtils.js';
 import { getCtx } from '../scene/context.js';
 import { interactionState, resetCardSelection } from '../scene/interactions.js';
 import { discardHandCard } from '../scene/discard.js';
-import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
+import { canFieldquakeCell, applyFieldquakeToCell } from '../core/abilityHandlers/fieldquake.js';
 import { refreshPossessionsUI } from '../ui/possessions.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
 import { buildDeathRecord } from '../core/utils/deaths.js';
@@ -355,24 +355,24 @@ export const handlers = {
         c = tileMesh.userData.col;
       const cell = gameState.board[r][c];
       if (!cell) return;
-      const locked = computeFieldquakeLockedCells(gameState);
-      if (locked.some(p => p.r === r && p.c === c)) {
-        showNotification('This field is protected', 'error');
+      const check = canFieldquakeCell(gameState, r, c);
+      if (!check.ok) {
+        if (check.reason === 'LOCKED') {
+          showNotification('This field is protected', 'error');
+        } else if (check.reason === 'BIOLITH') {
+          showNotification("This cell can't be changed", 'error');
+        } else {
+          showNotification('Fieldquake cannot affect this cell', 'error');
+        }
         return;
       }
-      if (cell.element === 'BIOLITH') {
-        showNotification("This cell can't be changed", 'error');
+      const prevEl = check.prevElement;
+      const nextEl = check.nextElement;
+      const result = applyFieldquakeToCell(gameState, r, c, { respectLocks: true });
+      if (!result?.changed) {
+        showNotification('Fieldquake failed', 'error');
         return;
       }
-      const oppMap = {
-        FIRE: 'WATER',
-        WATER: 'FIRE',
-        EARTH: 'FOREST',
-        FOREST: 'EARTH',
-      };
-      const prevEl = cell.element;
-      const nextEl = oppMap[prevEl] || prevEl;
-      cell.element = nextEl;
       refreshPossessionsUI(gameState);
       try {
         const tile = getCtx().tileMeshes[r][c];
@@ -388,23 +388,21 @@ export const handlers = {
             window.socket.emit('tileCrossfade', { r, c, prev: prevEl, next: nextEl });
         } catch {}
       } catch {}
-      const u = gameState.board[r][c].unit;
+      const u = result.unit;
       if (u) {
         const tplUnit = CARDS[u.tplId];
-        const prevBuff = computeCellBuff(prevEl, tplUnit.element);
-        const nextBuff = computeCellBuff(nextEl, tplUnit.element);
-        const deltaHp = (nextBuff.hp || 0) - (prevBuff.hp || 0);
-        if (deltaHp !== 0) {
-          const before = u.currentHP;
-          u.currentHP = Math.max(0, before + deltaHp);
+        const hpShift = result.hpShift;
+        if (hpShift?.deltaHp) {
+          const before = hpShift.beforeHp;
+          const after = hpShift.afterHp;
           const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
           if (tMesh)
             window.__fx.spawnDamageText(
               tMesh,
-              `${deltaHp > 0 ? '+' : ''}${deltaHp}`,
-              deltaHp > 0 ? '#22c55e' : '#ef4444'
+              `${hpShift.deltaHp > 0 ? '+' : ''}${hpShift.deltaHp}`,
+              hpShift.deltaHp > 0 ? '#22c55e' : '#ef4444'
             );
-          if (u.currentHP <= 0) {
+          if (after <= 0) {
             const deathRecord = buildDeathRecord(gameState, r, c, u);
             try { gameState.players[u.owner].graveyard.push(CARDS[u.tplId]); } catch {}
             const deadMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);

@@ -12,6 +12,7 @@ import {
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
 import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, activationCost, hasInvisibility, getUnitProtection } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
+import { computeDynamicAttackBonus } from '../src/core/abilityHandlers/dynamicAttack.js';
 
 function makeBoard() {
   const b = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE', unit: null })));
@@ -1186,6 +1187,111 @@ describe('новые механики', () => {
     state.board[1][1].unit = { owner:0, tplId:'FIRE_DIDI_THE_ENLIGHTENED', facing:'N' };
     const cells = computeFieldquakeLockedCells(state);
     expect(cells.length).toBe(8);
+  });
+});
+
+describe('Biolith fieldquake cards', () => {
+  function makeState() {
+    return {
+      board: makeBoard(),
+      players: [
+        { deck: [], hand: [], discard: [], graveyard: [], mana: 0 },
+        { deck: [], hand: [], discard: [], graveyard: [], mana: 0 },
+      ],
+      active: 0,
+      turn: 1,
+      pendingDiscards: [],
+      nextDiscardRequestId: 0,
+    };
+  }
+
+  it('Behemoth Groundbreaker fieldquakes adjacent fields on summon', () => {
+    const state = makeState();
+    state.board[1][1].element = 'FOREST';
+    state.board[1][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_BEHEMOTH_GROUNDBREAKER',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_BEHEMOTH_GROUNDBREAKER.hp,
+    };
+    state.board[1][0].element = 'FIRE';
+    state.board[1][0].unit = {
+      owner: 1,
+      tplId: 'FIRE_FLAME_MAGUS',
+      facing: 'E',
+      currentHP: CARDS.FIRE_FLAME_MAGUS.hp,
+    };
+    const events = applySummonAbilities(state, 1, 1);
+    expect(state.board[1][0].element).toBe('WATER');
+    expect(events.fieldquakes?.some(ev => ev.r === 1 && ev.c === 0 && ev.prevElement === 'FIRE')).toBe(true);
+    expect(state.players[1].graveyard).toHaveLength(1);
+    expect(events.deaths?.length || 0).toBe(1);
+  });
+
+  it('Undead King Novogus fieldquakes damaged targets off Earth', () => {
+    const state = makeState();
+    state.board[2][1].element = 'WATER';
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_UNDEAD_KING_NOVOGUS',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_UNDEAD_KING_NOVOGUS.hp,
+    };
+    state.board[0][0].element = 'FIRE';
+    state.board[0][0].unit = {
+      owner: 1,
+      tplId: 'FIRE_GREAT_MINOS',
+      facing: 'S',
+      currentHP: CARDS.FIRE_GREAT_MINOS.hp,
+    };
+    const res = magicAttack(state, 2, 1, 0, 0);
+    expect(res).toBeTruthy();
+    expect(res.n1.board[0][0].element).toBe('WATER');
+  });
+
+  it('Undead King Novogus does not fieldquake on Earth field', () => {
+    const state = makeState();
+    state.board[2][1].element = 'EARTH';
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_UNDEAD_KING_NOVOGUS',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_UNDEAD_KING_NOVOGUS.hp,
+    };
+    state.board[0][0].element = 'FIRE';
+    state.board[0][0].unit = {
+      owner: 1,
+      tplId: 'FIRE_GREAT_MINOS',
+      facing: 'S',
+      currentHP: CARDS.FIRE_GREAT_MINOS.hp,
+    };
+    const res = magicAttack(state, 2, 1, 0, 0);
+    expect(res).toBeTruthy();
+    expect(res.n1.board[0][0].element).toBe('FIRE');
+  });
+
+  it('Ouroboros Dragon locks fields on Biolith and scales attack', () => {
+    const state = makeState();
+    state.board[1][1].element = 'BIOLITH';
+    state.board[1][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_OUROBOROS_DRAGON',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_OUROBOROS_DRAGON.hp,
+    };
+    state.board[0][0].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_BIOLITH_STINGER',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_BIOLITH_STINGER.hp,
+    };
+    const dynamic = computeDynamicAttackBonus(state, 1, 1, CARDS.BIOLITH_OUROBOROS_DRAGON);
+    expect(dynamic?.amount).toBe(1);
+    const locked = computeFieldquakeLockedCells(state);
+    expect(locked).toHaveLength(9);
+    state.board[1][1].element = 'FIRE';
+    const unlocked = computeFieldquakeLockedCells(state);
+    expect(unlocked.length).toBeLessThan(9);
   });
 });
 

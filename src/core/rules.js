@@ -949,6 +949,45 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (Array.isArray(applied?.logLines) && applied.logLines.length) {
     logLines.push(...applied.logLines);
   }
+  const postInteractionDeaths = [];
+  for (let rr = 0; rr < 3; rr++) {
+    for (let cc = 0; cc < 3; cc++) {
+      const ref = n1.board?.[rr]?.[cc];
+      const u = ref?.unit;
+      if (!u) continue;
+      if ((u.currentHP ?? CARDS[u.tplId]?.hp ?? 0) > 0) continue;
+      const record = buildDeathRecord(n1, rr, cc, u);
+      if (record) postInteractionDeaths.push(record);
+      ref.unit = null;
+    }
+  }
+  if (postInteractionDeaths.length) {
+    deaths.push(...postInteractionDeaths);
+    try {
+      for (const d of postInteractionDeaths) {
+        if (n1 && n1.players && n1.players[d.owner]) {
+          n1.players[d.owner].mana = capMana((n1.players[d.owner].mana || 0) + 1);
+        }
+      }
+    } catch {}
+    const discardExtra = applyDeathDiscardEffects(n1, postInteractionDeaths, { cause: 'MAGIC' });
+    if (Array.isArray(discardExtra.logs) && discardExtra.logs.length) {
+      logLines.push(...discardExtra.logs);
+    }
+    if (Array.isArray(discardExtra?.manaSteals) && discardExtra.manaSteals.length) {
+      manaStealEvents.push(...discardExtra.manaSteals);
+    }
+    const releaseExtra = releasePossessionsAfterDeaths(n1, postInteractionDeaths);
+    if (releaseExtra.releases.length) {
+      for (const rel of releaseExtra.releases) {
+        const unit = n1.board?.[rel.r]?.[rel.c]?.unit;
+        const tplRel = unit ? CARDS[unit.tplId] : null;
+        const name = tplRel?.name || 'Существо';
+        logLines.push(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
+      }
+    }
+    releaseEvents.releases.push(...releaseExtra.releases);
+  }
   const continuous = refreshContinuousPossessions(n1);
   if (continuous.possessions.length) {
     for (const ev of continuous.possessions) {
