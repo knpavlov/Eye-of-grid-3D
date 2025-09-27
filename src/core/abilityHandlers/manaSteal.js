@@ -160,6 +160,9 @@ function normalizeEntry(raw, trigger) {
     const txt = String(value).toUpperCase();
     if (txt === 'SELF' || txt === 'ALLY' || txt === 'OWNER') return 'OWNER';
     if (txt === 'OPPONENT' || txt === 'ENEMY') return 'OPPONENT';
+    if (txt === 'TARGET' || txt === 'TARGET_OWNER' || txt === 'VICTIM' || txt === 'FRONT' || txt === 'FRONT_OWNER') {
+      return 'TARGET';
+    }
     return fallback;
   };
 
@@ -188,10 +191,14 @@ function gatherEntries(tpl, trigger) {
   return list;
 }
 
-function resolveRoleIndex(owner, role) {
+function resolveRoleIndex(owner, role, ctx = {}) {
   if (typeof role === 'number') return role;
   if (role === 'OWNER') return owner;
   if (role === 'OPPONENT') return owner === 0 ? 1 : 0;
+  if (role === 'TARGET') {
+    if (ctx.targetOwner != null) return ctx.targetOwner;
+    return null;
+  }
   return owner;
 }
 
@@ -215,8 +222,8 @@ function applyEntry(state, entry, ctx) {
   if (entry.min != null) amount = Math.max(amount, entry.min);
   if (amount <= 0) return null;
 
-  const fromIndex = resolveRoleIndex(owner, entry.from);
-  const toIndex = resolveRoleIndex(owner, entry.to);
+  const fromIndex = resolveRoleIndex(owner, entry.from, ctx);
+  const toIndex = resolveRoleIndex(owner, entry.to, ctx);
   if (fromIndex == null || toIndex == null || fromIndex === toIndex) return null;
 
   const fromPlayer = state.players?.[fromIndex];
@@ -307,6 +314,7 @@ export function applyDeathManaSteal(state, deaths = [], context = {}) {
         cellElement: death.element || null,
         position: (typeof death.r === 'number' && typeof death.c === 'number') ? { r: death.r, c: death.c } : null,
         reason: context?.cause || 'DEATH',
+        targetOwner: death.frontOwner != null ? death.frontOwner : null,
       });
       if (ev) events.push(ev);
     }

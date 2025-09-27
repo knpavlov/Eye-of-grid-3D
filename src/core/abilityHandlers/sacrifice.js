@@ -3,6 +3,7 @@ import { CARDS } from '../cards.js';
 import { computeCellBuff } from '../fieldEffects.js';
 import { applyFieldFatalityCheck as applyFieldFatalityCheckInternal } from './fieldHazards.js';
 import { applyDeathDiscardEffects } from './discard.js';
+import { buildDeathRecord } from '../utils/deaths.js';
 
 const FACING_ORDER = ['N', 'E', 'S', 'W'];
 
@@ -172,7 +173,7 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
 
   // Удаляем существо с клетки до появления нового
   const sacrificeDeath = currentUnit
-    ? [{ r, c, owner: currentUnit.owner, tplId: currentUnit.tplId, uid: currentUnit.uid ?? null, element: cell?.element || null }]
+    ? [buildDeathRecord(state, r, c, currentUnit)].filter(Boolean)
     : null;
   cell.unit = null;
 
@@ -258,8 +259,9 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
     }
     const tplDeath = getTemplateRef(summonTpl);
     graveyard.push(tplDeath);
+    const deathRecord = buildDeathRecord(state, r, c, newUnit);
     cell.unit = null;
-    const replacementDeath = [{ r, c, owner: newUnit.owner, tplId: summonTpl.id, uid: newUnit.uid ?? null, element: cell?.element || null }];
+    const replacementDeath = deathRecord ? [deathRecord] : [];
 
     if (summonTpl.onDeathAddHPAll) {
       const amount = summonTpl.onDeathAddHPAll;
