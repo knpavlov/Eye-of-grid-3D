@@ -776,10 +776,23 @@ export function applySummonAbilities(state, r, c) {
       const manaEvent = {
         owner: unit.owner,
         total: freedonian.total,
+        amount: freedonian.total,
         entries: freedonian.entries,
+        details: freedonian.details,
         source: 'FREEDONIAN_AURA',
+        reason: 'FREEDONIAN_AURA',
       };
+      if (Array.isArray(freedonian.details) && freedonian.details.length) {
+        const before = freedonian.details[0]?.before;
+        const after = freedonian.details[freedonian.details.length - 1]?.after;
+        if (Number.isFinite(before)) manaEvent.before = before;
+        if (Number.isFinite(after)) manaEvent.after = after;
+      }
       events.manaGains = [...(events.manaGains || []), manaEvent];
+      for (const info of freedonian.details) {
+        if (!info?.log) continue;
+        events.logs = [...(events.logs || []), info.log];
+      }
     }
     const otherManaEvents = manaAuraEvents.filter(ev => ev?.reason !== 'FREEDONIAN_AURA');
     if (otherManaEvents.length) {
