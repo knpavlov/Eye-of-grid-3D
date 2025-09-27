@@ -556,6 +556,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     ensureStep1();
     const nFinal = JSON.parse(JSON.stringify(n1));
     const ret = step2();
+    const manaStealEvents = [];
 
     const applied = applyDamageInteractionResults(nFinal, damageEffects);
     const attackerPosUpdate = applied?.attackerPosUpdate || null;
@@ -617,6 +618,9 @@ export function stagedAttack(state, r, c, opts = {}) {
     if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
       logLines.push(...discardEffects.logs);
     }
+    if (Array.isArray(discardEffects?.manaSteals) && discardEffects.manaSteals.length) {
+      manaStealEvents.push(...discardEffects.manaSteals);
+    }
 
     const releaseEvents = releasePossessionsAfterDeaths(nFinal, deaths);
     if (releaseEvents.releases.length) {
@@ -671,6 +675,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       attackType,
       schemeKey,
       attackProfile: profile,
+      manaSteals: manaStealEvents,
     };
   }
 
@@ -739,6 +744,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (!allowFriendly && (!mainTarget || mainTarget.owner === attacker.owner)) return null;
 
   const logLines = [];
+  const manaStealEvents = [];
   const targets = [];
   const damageEffects = { preventRetaliation: new Set(), events: [] };
   const dodgeUpdates = [];
@@ -919,6 +925,9 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
     logLines.push(...discardEffects.logs);
   }
+  if (Array.isArray(discardEffects?.manaSteals) && discardEffects.manaSteals.length) {
+    manaStealEvents.push(...discardEffects.manaSteals);
+  }
   const releaseEvents = releasePossessionsAfterDeaths(n1, deaths);
   if (releaseEvents.releases.length) {
     for (const rel of releaseEvents.releases) {
@@ -975,6 +984,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     schemeKey,
     attackProfile: profile,
     dmg,
+    manaSteals: manaStealEvents,
   };
 }
 

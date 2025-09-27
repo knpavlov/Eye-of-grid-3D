@@ -182,6 +182,17 @@ export function playDeltaAnimations(prevState, nextState, opts = {}) {
         window.__fx?.scheduleHpPopup(change.r, change.c, change.delta, 1600);
       }
     }
+
+    const prevSteals = Array.isArray(prevState?.manaStealEvents) ? prevState.manaStealEvents : [];
+    const nextSteals = Array.isArray(nextState?.manaStealEvents) ? nextState.manaStealEvents : [];
+    const seenIds = new Set(prevSteals.map(ev => ev?.id));
+    const fresh = nextSteals.filter(ev => ev && !seenIds.has(ev.id));
+    const animateSteal = window.__ui?.mana?.animateManaSteal;
+    if (typeof animateSteal === 'function' && fresh.length) {
+      for (const ev of fresh) {
+        try { animateSteal(ev); } catch (err) { console.warn('[delta] mana steal animation failed', err); }
+      }
+    }
   } catch {}
 }
 

@@ -11,6 +11,17 @@ import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
 import { refreshPossessionsUI } from '../ui/possessions.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
 
+function animateManaStealEvents(list) {
+  if (typeof window === 'undefined') return;
+  if (!Array.isArray(list) || list.length === 0) return;
+  const animate = window.__ui?.mana?.animateManaSteal;
+  if (typeof animate !== 'function') return;
+  for (const steal of list) {
+    if (!steal) continue;
+    try { animate(steal); } catch (err) { console.warn('[spells] mana steal animation failed', err); }
+  }
+}
+
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
   const handIndices = pl.hand
@@ -289,6 +300,7 @@ export const handlers = {
               addLog(text);
             }
           }
+          animateManaStealEvents(discardEffects?.manaSteals);
           setTimeout(() => {
             refreshPossessionsUI(gameState);
             updateUnits();
@@ -403,6 +415,7 @@ export const handlers = {
               if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
                 for (const text of discardEffects.logs) addLog(text);
               }
+              animateManaStealEvents(discardEffects?.manaSteals);
               setTimeout(() => {
                 refreshPossessionsUI(gameState);
                 updateUnits();
