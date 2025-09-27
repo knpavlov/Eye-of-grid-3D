@@ -1,4 +1,7 @@
 // Главное меню игры
+import { getActiveUser } from '../auth/sessionStore.js';
+import { logout as authLogout } from './authScreen.js';
+
 let firstOpen = true;
 
 export function open(initial = false) {
@@ -13,6 +16,29 @@ export function open(initial = false) {
   const panel = document.createElement('div');
   panel.className = 'overlay-panel p-6 w-60 flex flex-col items-center gap-3';
   overlay.appendChild(panel);
+
+  const user = getActiveUser();
+  if (user) {
+    const userRow = document.createElement('div');
+    userRow.className = 'w-full flex justify-end';
+    const badge = document.createElement('div');
+    badge.className = 'flex items-center gap-2 bg-slate-800/80 border border-slate-700 rounded-full px-3 py-1 text-xs text-slate-200';
+    const name = document.createElement('span');
+    name.className = 'font-semibold text-slate-100';
+    name.textContent = user.nickname || user.email || 'Player';
+    const logoutBtn = document.createElement('button');
+    logoutBtn.className = 'text-red-300 hover:text-red-200';
+    logoutBtn.textContent = 'Log Out';
+    logoutBtn.addEventListener('click', (evt) => {
+      evt.preventDefault();
+      close();
+      authLogout();
+    });
+    badge.appendChild(name);
+    badge.appendChild(logoutBtn);
+    userRow.appendChild(badge);
+    panel.appendChild(userRow);
+  }
 
   if (firstOpen) {
     const logo = document.createElement('img');

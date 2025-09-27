@@ -3,8 +3,11 @@ import http from "http";
 import cors from "cors";
 import { Server } from "socket.io";
 import decksRouter from "./routes/decks.js";
+import authRouter from "./routes/auth.js";
 import { initDb, getDbError } from "./server/db.js";
-import { ensureDeckTable, seedDecks } from "./server/repositories/decksRepository.js";
+import { ensureDeckTable, seedDecks, getDeckAccessibleByUser } from "./server/repositories/decksRepository.js";
+import { ensureUserTable } from "./server/repositories/usersRepository.js";
+import { resolveUserFromToken, toClientProfile } from "./server/services/sessionService.js";
 import { DEFAULT_DECK_BLUEPRINTS } from "./src/core/defaultDecks.js";
 import { capMana } from "./src/core/constants.js";
 import { applyTurnStartManaEffects } from "./src/core/abilityHandlers/startPhase.js";
@@ -13,6 +16,7 @@ import { discardCardFromHand as discardCardFromHandLogic } from "./src/core/disc
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use('/auth', authRouter);
 app.use('/decks', decksRouter);
 app.get("/", (req, res) => res.send("MP server alive"));
 // ===== Debug log (in-memory) =====
@@ -36,8 +40,8 @@ app.get('/queue-status', (req, res) => {
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { 
-    origin: "*", 
+  cors: {
+    origin: "*",
     methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type"],
     credentials: false
@@ -49,8 +53,37 @@ const io = new Server(server, {
 });
 const PORT = process.env.PORT || 3001;
 
+io.use(async (socket, next) => {
+  try {
+    const handshake = socket.handshake || {};
+    const token = handshake.auth?.token
+      || handshake.headers?.authorization
+      || handshake.headers?.Authorization
+      || handshake.query?.token
+      || handshake.query?.authToken;
+    const resolved = await resolveUserFromToken(token);
+    if (resolved?.user) {
+      socket.data.user = toClientProfile(resolved.user);
+      socket.data.authToken = resolved.token;
+    } else {
+      socket.data.user = null;
+      socket.data.authToken = null;
+    }
+  } catch (err) {
+    console.warn('[server] Ошибка проверки токена сокета', err?.message || err);
+    socket.data.user = null;
+    socket.data.authToken = null;
+  }
+  next();
+});
+
 const dbReadyOnStart = await initDb();
 if (dbReadyOnStart) {
+  try {
+    await ensureUserTable();
+  } catch (err) {
+    console.error('[server] Не удалось подготовить таблицу пользователей', err);
+  }
   try {
     await ensureDeckTable();
     await seedDecks(DEFAULT_DECK_BLUEPRINTS);
@@ -74,9 +107,23 @@ function pairIfPossible() {
     const s1 = queue.shift();
     
     pushLog({ ev: 'pairIfPossible:attempt', s0: s0?.id, s1: s1?.id, s0Connected: s0?.connected, s1Connected: s1?.connected });
-    
+
     if (!s0?.connected || !s1?.connected) {
       pushLog({ ev: 'pairIfPossible:skipDisconnected', s0: s0?.id, s1: s1?.id });
+      continue;
+    }
+
+    if (!s0.data?.user || !s1.data?.user) {
+      pushLog({ ev: 'pairIfPossible:skipNoUser', s0: s0?.id, s1: s1?.id });
+      try { s0?.emit('authError', { reason: 'AUTH_REQUIRED' }); } catch {}
+      try { s1?.emit('authError', { reason: 'AUTH_REQUIRED' }); } catch {}
+      continue;
+    }
+
+    if (!s0.data?.deckId || !s1.data?.deckId) {
+      pushLog({ ev: 'pairIfPossible:skipNoDeck', s0: s0?.id, s1: s1?.id, deck0: s0.data?.deckId, deck1: s1.data?.deckId });
+      try { s0?.emit('authError', { reason: 'DECK_REQUIRED' }); } catch {}
+      try { s1?.emit('authError', { reason: 'DECK_REQUIRED' }); } catch {}
       continue;
     }
 
@@ -85,14 +132,26 @@ function pairIfPossible() {
     s0.join(room);
     s1.join(room);
 
-    matches.set(matchId, { room, sockets:[s0,s1], lastState:null, lastVer:0, timerSeconds: 100, timerId: null });
+    matches.set(matchId, {
+      room,
+      sockets:[s0,s1],
+      players:[s0.data.user, s1.data.user],
+      lastState:null,
+      lastVer:0,
+      timerSeconds: 100,
+      timerId: null,
+    });
     s0.data.matchId = matchId; s0.data.seat = 0;
     s1.data.matchId = matchId; s1.data.seat = 1;
     s0.data.queueing = false; s1.data.queueing = false;
 
     const deckIds = [s0.data.deckId, s1.data.deckId];
-    s0.emit("matchFound", { matchId, seat: 0, decks: deckIds });
-    s1.emit("matchFound", { matchId, seat: 1, decks: deckIds });
+    const players = [s0.data.user, s1.data.user].map(user => ({
+      id: user?.id,
+      nickname: user?.nickname,
+    }));
+    s0.emit("matchFound", { matchId, seat: 0, decks: deckIds, players });
+    s1.emit("matchFound", { matchId, seat: 1, decks: deckIds, players });
     pushLog({ ev: 'matchFound', matchId, sids: [s0.id, s1.id], deckIds });
 
     // Старт серверного таймера тиков (без авто-энда)
@@ -118,6 +177,24 @@ function pairIfPossible() {
 
 io.on("connection", (socket) => {
   pushLog({ ev: 'connect', sid: socket.id, transport: socket.conn.transport.name, remoteAddress: socket.conn.remoteAddress });
+  socket.on('authenticate', async ({ token } = {}) => {
+    const resolved = await resolveUserFromToken(token);
+    if (resolved?.user) {
+      socket.data.user = toClientProfile(resolved.user);
+      socket.data.authToken = resolved.token;
+      socket.emit('authState', { ok: true, user: socket.data.user });
+      pushLog({ ev: 'auth:updated', sid: socket.id, userId: socket.data.user?.id });
+    } else {
+      socket.data.user = null;
+      socket.data.authToken = null;
+      socket.emit('authState', { ok: false });
+      const idx = queue.indexOf(socket);
+      if (idx >= 0) {
+        queue.splice(idx, 1);
+        pushLog({ ev: 'auth:clearedQueue', sid: socket.id });
+      }
+    }
+  });
   // Клиентские произвольные заметки для отладки
   socket.on('debugLog', (payload = {}) => {
     try {
@@ -125,11 +202,37 @@ io.on("connection", (socket) => {
       pushLog({ ev: 'client', sid: socket.id, matchId, ...payload });
     } catch {}
   });
-  socket.on("joinQueue", (payload = {}) => {
+  socket.on("joinQueue", async (payload = {}) => {
+    if (!socket.data?.user) {
+      socket.emit('authError', { reason: 'AUTH_REQUIRED' });
+      pushLog({ ev: 'joinQueue:rejectedAuth', sid: socket.id });
+      return;
+    }
     const deckId = payload?.deckId;
     socket.data.deckId = deckId;
-    pushLog({ ev: 'joinQueue:start', sid: socket.id, currentQueueSize: queue.length, deckId });
-    
+    pushLog({ ev: 'joinQueue:start', sid: socket.id, currentQueueSize: queue.length, deckId, userId: socket.data.user?.id });
+
+    if (!deckId) {
+      socket.emit('authError', { reason: 'DECK_REQUIRED' });
+      return;
+    }
+
+    try {
+      const deck = await getDeckAccessibleByUser(deckId, socket.data.user.id);
+      if (!deck) {
+        socket.emit('authError', { reason: 'DECK_NOT_FOUND' });
+        pushLog({ ev: 'joinQueue:noDeck', sid: socket.id, deckId });
+        return;
+      }
+      socket.data.deckId = deck.id;
+      socket.data.deckOwnerId = deck.ownerId;
+      socket.data.deckSnapshot = deck;
+    } catch (err) {
+      socket.emit('authError', { reason: 'DECK_LOOKUP_FAILED' });
+      pushLog({ ev: 'joinQueue:lookupError', sid: socket.id, deckId, error: err?.message || err });
+      return;
+    }
+
     // если socket был в комнате завершённого матча — убедимся, что он вышел
     try {
       const matchId = socket.data.matchId;
@@ -155,9 +258,9 @@ io.on("connection", (socket) => {
     // Добавляем в очередь
     queue.push(socket);
     socket.data.queueing = true;
-    
-    pushLog({ ev: 'joinQueue:added', sid: socket.id, newQueueSize: queue.length, deckId });
-    
+
+    pushLog({ ev: 'joinQueue:added', sid: socket.id, newQueueSize: queue.length, deckId, userId: socket.data.user?.id });
+
     // Пытаемся создать матч
     pairIfPossible();
   });

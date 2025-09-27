@@ -454,7 +454,6 @@
         // Привязка обработчиков взаимодействия теперь в модуле interactions
         window.__interactions.setupInteractions();
         try { window.attachUIEvents && window.attachUIEvents(); } catch {}
-        try { window.__ui?.mainMenu?.open?.(true); } catch {}
       }
     try { window.init = init; window.initThreeJS = initThreeJS; window.initGame = initGame; window.animate = animate; } catch {}
 
