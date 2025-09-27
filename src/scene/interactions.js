@@ -912,6 +912,27 @@ export function placeUnitWithDirection(direction) {
       THREE,
     });
     try { manaPlan?.schedule?.(); } catch {}
+    const manaStealEvents = Array.isArray(manaBonus?.steals) ? manaBonus.steals : [];
+    if (manaStealEvents.length) {
+      const animateSteal = window.__ui?.mana?.animateManaSteal;
+      for (const steal of manaStealEvents) {
+        if (steal?.log) {
+          window.addLog?.(steal.log);
+        } else {
+          const amount = Number.isFinite(steal?.amount) ? steal.amount : 0;
+          if (amount > 0) {
+            const fromLabel = Number.isFinite(steal?.from) ? `игрок ${steal.from + 1}` : 'игрок';
+            const toLabel = Number.isFinite(steal?.to) ? `игрок ${steal.to + 1}` : 'игрок';
+            window.addLog?.(`${toLabel} крадёт ${amount} маны у ${fromLabel}.`);
+          }
+        }
+        if (typeof animateSteal === 'function') {
+          try { animateSteal(steal); } catch (err) {
+            console.error('[mana] Не удалось запустить анимацию кражи маны:', err);
+          }
+        }
+      }
+    }
     gameState.board[row][col].unit = null;
     const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SUMMON' });
     if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
@@ -1024,7 +1045,13 @@ export function placeUnitWithDirection(direction) {
       try {
         const cards = window.CARDS || {};
         for (const manaEvent of manaEvents) {
-          const total = Number.isFinite(manaEvent?.total) ? manaEvent.total : 0;
+          if (manaEvent?.log) {
+            window.addLog?.(manaEvent.log);
+            continue;
+          }
+          const totalRaw = Number.isFinite(manaEvent?.total) ? manaEvent.total : null;
+          const amountRaw = Number.isFinite(manaEvent?.amount) ? manaEvent.amount : null;
+          const total = totalRaw != null ? totalRaw : (amountRaw != null ? amountRaw : 0);
           if (total <= 0) continue;
           const entries = Array.isArray(manaEvent.entries) ? manaEvent.entries : [];
           if (manaEvent.source === 'FREEDONIAN_AURA') {
@@ -1043,10 +1070,36 @@ export function placeUnitWithDirection(direction) {
           const ownerLabel = Number.isFinite(manaEvent?.owner)
             ? `игрок ${manaEvent.owner + 1}`
             : 'игрок';
-          window.addLog?.(`${ownerLabel} получает ${total} маны.`);
+          const sourceName = manaEvent.tplName || cards[manaEvent.tplId]?.name || null;
+          if (sourceName) {
+            window.addLog?.(`${sourceName}: ${ownerLabel} получает ${total} маны.`);
+          } else {
+            window.addLog?.(`${ownerLabel} получает ${total} маны.`);
+          }
         }
       } catch (err) {
         console.error('[summon] Не удалось обработать события маны', err);
+      }
+    }
+    const manaSteals = Array.isArray(summonEvents?.manaSteals) ? summonEvents.manaSteals : [];
+    if (manaSteals.length) {
+      const animateSteal = window.__ui?.mana?.animateManaSteal;
+      for (const steal of manaSteals) {
+        if (steal?.log) {
+          window.addLog?.(steal.log);
+        } else {
+          const amount = Number.isFinite(steal?.amount) ? steal.amount : 0;
+          if (amount > 0) {
+            const fromLabel = Number.isFinite(steal?.from) ? `игрок ${steal.from + 1}` : 'игрок';
+            const toLabel = Number.isFinite(steal?.to) ? `игрок ${steal.to + 1}` : 'игрок';
+            window.addLog?.(`${toLabel} крадёт ${amount} маны у ${fromLabel}.`);
+          }
+        }
+        if (typeof animateSteal === 'function') {
+          try { animateSteal(steal); } catch (err) {
+            console.error('[summon] Не удалось запустить анимацию кражи маны:', err);
+          }
+        }
       }
     }
   }
