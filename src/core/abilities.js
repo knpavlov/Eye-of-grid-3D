@@ -37,6 +37,7 @@ import { hasAuraInvisibility } from './abilityHandlers/invisibilityAura.js';
 import { applyEnemySummonReactions } from './abilityHandlers/summonReactions.js';
 import { applySummonStatBuffs } from './abilityHandlers/summonBuffs.js';
 import { applyTurnStartManaEffects as applyTurnStartManaEffectsInternal } from './abilityHandlers/startPhase.js';
+import { applySummonManaSteal } from './abilityHandlers/manaSteal.js';
 import {
   computeUnitProtection as computeUnitProtectionInternal,
   computeAuraProtection as computeAuraProtectionInternal,
@@ -712,6 +713,15 @@ export function applySummonAbilities(state, r, c) {
     events.heals = [...(events.heals || []), ...reactions.heals];
   }
 
+  const manaStealEvents = applySummonManaSteal(state, { tpl, unit, cell, r, c });
+  if (Array.isArray(manaStealEvents) && manaStealEvents.length) {
+    events.manaStealEvents = manaStealEvents;
+    const logs = manaStealEvents.map(ev => ev?.log).filter(Boolean);
+    if (logs.length) {
+      events.logs = [...(events.logs || []), ...logs];
+    }
+  }
+
   return events;
 }
 
@@ -849,6 +859,7 @@ export const applyTurnStartManaEffects = applyTurnStartManaEffectsInternal;
 export const evaluateFieldFatality = evaluateFieldFatalityInternal;
 export const applyFieldFatalityCheck = applyFieldFatalityCheckInternal;
 export const describeFieldFatality = describeFieldFatalityInternal;
+export { hasManaStealKeyword } from './abilityHandlers/manaSteal.js';
 
 export function collectUnitActions(state, r, c) {
   const actions = [];

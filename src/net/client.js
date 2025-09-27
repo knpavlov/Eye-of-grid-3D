@@ -1,4 +1,5 @@
 import { getServerBase } from './config.js';
+import { flushManaStealFx } from '../scene/manaStealFx.js';
 
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
@@ -287,6 +288,7 @@ import { getServerBase } from './config.js';
     try {
       gameState = state;
       try { window.applyGameState(state); } catch {}
+      try { flushManaStealFx(gameState, { addLog: window.addLog }); } catch {}
       lastDigest = digest(state);
       // Сразу обновим руку, чтобы скрыть добранные карты до анимации
       try { updateHand(); } catch {}

@@ -20,6 +20,7 @@ import {
   showOracleDeathBuff,
   hasPendingForcedDiscards,
 } from '../scene/interactions.js';
+import { flushManaStealFx } from '../scene/manaStealFx.js';
 
 export function rotateUnit(unitMesh, dir) {
   try {
@@ -301,6 +302,7 @@ export function performUnitAbility(unitMesh, actionId) {
     w.updateHand?.(gameState);
     w.updateUnits?.(gameState);
     w.updateUI?.(gameState);
+    flushManaStealFx(gameState, { addLog: w.addLog });
   } catch (err) {
     console.error('[performUnitAbility]', err);
   }
@@ -412,6 +414,7 @@ export function confirmUnitAbilityOrientation(context, direction) {
     w.updateHand?.(gameState);
     w.updateUnits?.(gameState);
     w.updateUI?.(gameState);
+    flushManaStealFx(gameState, { addLog: w.addLog });
   } catch (err) {
     console.error('[confirmUnitAbilityOrientation]', err);
   }
