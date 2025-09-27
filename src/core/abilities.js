@@ -629,23 +629,46 @@ export const hasDoubleAttack = (tpl) => !!(tpl && tpl.doubleAttack);
 export const canAttack = (tpl) => !(tpl && tpl.fortress);
 
 // Реализация ауры Фридонийского Странника при призыве союзников
-// Возвращает количество полученных единиц маны
+// Возвращает подробности прироста маны, чтобы UI мог выводить сообщения
 export function applyFreedonianAura(state, owner) {
-  let gained = 0;
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 3; c++) {
+  const result = { total: 0, entries: [] };
+  if (!state || !Array.isArray(state.board) || !Array.isArray(state.players)) {
+    return result;
+  }
+  const player = state.players[owner];
+  if (!player) return result;
+
+  for (let r = 0; r < 3; r += 1) {
+    for (let c = 0; c < 3; c += 1) {
       const cell = state.board?.[r]?.[c];
       const unit = cell?.unit;
-      if (!unit) continue;
+      if (!unit || unit.owner !== owner) continue;
       const tpl = CARDS[unit.tplId];
-      if (tpl?.auraGainManaOnSummon && unit.owner === owner && cell.element !== 'FIRE') {
-        const pl = state.players[owner];
-        pl.mana = capMana((pl.mana || 0) + 1);
-        gained += 1;
-      }
+      if (!tpl?.auraGainManaOnSummon) continue;
+      const cellElement = normalizeElementName(cell?.element || null);
+      const nativeElement = normalizeElementName(tpl.element || null);
+      if (cellElement && cellElement === nativeElement) continue;
+
+      const before = Number.isFinite(player.mana) ? player.mana : 0;
+      if (before >= 10) continue;
+      const after = capMana(before + 1);
+      const gained = after - before;
+      if (gained <= 0) continue;
+      player.mana = after;
+      result.total += gained;
+      result.entries.push({
+        owner,
+        amount: gained,
+        sourceTplId: tpl.id,
+        sourceName: tpl.name || tpl.id,
+        r,
+        c,
+        fieldElement: cellElement || null,
+      });
     }
   }
-  return gained;
+
+  return result;
 }
 
 export function applySummonAbilities(state, r, c) {
@@ -710,6 +733,17 @@ export function applySummonAbilities(state, r, c) {
   const reactions = applyEnemySummonReactions(state, { r, c, unit, tpl });
   if (Array.isArray(reactions?.heals) && reactions.heals.length) {
     events.heals = [...(events.heals || []), ...reactions.heals];
+  }
+
+  const auraMana = applyFreedonianAura(state, unit.owner);
+  if (auraMana.total > 0) {
+    const manaEvent = {
+      owner: unit.owner,
+      total: auraMana.total,
+      entries: auraMana.entries,
+      source: 'FREEDONIAN_AURA',
+    };
+    events.manaGains = [...(events.manaGains || []), manaEvent];
   }
 
   return events;
@@ -881,9 +915,14 @@ export function executeUnitAction(state, action, payload = {}) {
     const cell = state.board?.[action.r]?.[action.c];
     if (cell?.unit) {
       result.summonEvents = applySummonAbilities(state, action.r, action.c);
-      result.freedonianMana = applyFreedonianAura(state, action.owner);
+      const manaEvents = Array.isArray(result.summonEvents?.manaGains)
+        ? result.summonEvents.manaGains
+        : [];
+      result.manaGains = manaEvents;
+      result.freedonianMana = manaEvents.reduce((acc, ev) => acc + (ev?.total || 0), 0);
     } else {
       result.summonEvents = result.summonEvents || { possessions: [] };
+      result.manaGains = [];
       result.freedonianMana = 0;
     }
     return result;
