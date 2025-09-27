@@ -1,5 +1,6 @@
 // Сетевые операции с колодами — чистые функции без привязки к DOM
 import { hydrateDeck, serializeDeck, setDecks, upsertDeck, removeDeck } from '../core/decks.js';
+import { getAuthToken } from '../auth/session.js';
 import { getDecksApiBase } from './config.js';
 
 let lastError = null;
@@ -14,9 +15,15 @@ function buildUrl(path = '') {
 }
 
 async function requestJson(url, options = {}) {
+  const token = getAuthToken();
+  const baseHeaders = {
+      'Accept': 'application/json',
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  };
   const response = await fetch(url, {
-    headers: { 'Accept': 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
     ...options,
+    headers: { ...baseHeaders, ...(options.headers || {}) },
   });
   const contentType = response.headers.get('content-type') || '';
   const isJson = contentType.includes('application/json');

@@ -3,11 +3,12 @@ import { isDbReady, getDbError } from '../server/db.js';
 import {
   ensureDeckTable,
   seedDecks,
-  listDecks,
-  getDeckById,
-  upsertDeckRecord,
-  deleteDeckRecord,
+  listDecksForUser,
+  getDeckAccessibleToUser,
+  upsertDeckOwnedBy,
+  deleteDeckOwnedBy,
 } from '../server/repositories/decksRepository.js';
+import { requireAuth } from '../server/middleware/auth.js';
 import { CARDS } from '../src/core/cards.js';
 import { DEFAULT_DECK_BLUEPRINTS } from '../src/core/defaultDecks.js';
 
@@ -57,11 +58,7 @@ function sanitizeDeckPayload(payload = {}) {
     }
   }
 
-  const ownerId = typeof payload.ownerId === 'string' && payload.ownerId.trim().length
-    ? payload.ownerId.trim().slice(0, 120)
-    : null;
-
-  return { id, name, description, cards, ownerId };
+  return { id, name, description, cards };
 }
 
 async function ensureStoragePrepared() {
@@ -76,10 +73,12 @@ async function ensureStoragePrepared() {
   storageReady = true;
 }
 
+router.use(requireAuth);
+
 router.get('/', async (req, res) => {
   try {
     await ensureStoragePrepared();
-    const decks = await listDecks();
+    const decks = await listDecksForUser(req.user.id);
     res.json({ decks });
   } catch (err) {
     const status = err.status || 500;
@@ -90,7 +89,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     await ensureStoragePrepared();
-    const deck = await getDeckById(req.params.id);
+    const deck = await getDeckAccessibleToUser(req.params.id, req.user.id);
     if (!deck) {
       return res.status(404).json({ error: 'Колода не найдена' });
     }
@@ -105,7 +104,7 @@ router.post('/', async (req, res) => {
   try {
     await ensureStoragePrepared();
     const payload = sanitizeDeckPayload(req.body);
-    const saved = await upsertDeckRecord(payload);
+    const saved = await upsertDeckOwnedBy(req.user.id, payload);
     res.status(payload.id ? 200 : 201).json({ deck: saved });
   } catch (err) {
     const status = err.status || 500;
@@ -119,7 +118,7 @@ router.delete('/:id', async (req, res) => {
     const idRaw = req.params.id;
     const id = typeof idRaw === 'string' ? idRaw.trim() : '';
     if (!id) throw deckValidationError('Идентификатор колоды обязателен');
-    const deleted = await deleteDeckRecord(id);
+    const deleted = await deleteDeckOwnedBy(id, req.user.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Колода не найдена' });
     }
