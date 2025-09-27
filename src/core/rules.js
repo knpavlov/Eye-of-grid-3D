@@ -28,6 +28,9 @@ import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
 import { getHpConditionalBonuses } from './abilityHandlers/conditionalBonuses.js';
 import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
 import { applyManaGainOnDeaths } from './abilityHandlers/manaGain.js';
+import { applyDeathManaSteal } from './abilityHandlers/manaSteal.js';
+import { applyDeathRepositionEffects } from './abilityHandlers/deathReposition.js';
+import { createDeathEntry } from './abilityHandlers/deathSummary.js';
 
 export function hasAdjacentGuard(state, r, c) {
   const target = state.board?.[r]?.[c]?.unit;
@@ -578,15 +581,17 @@ export function stagedAttack(state, r, c, opts = {}) {
 
     const deaths = [];
     for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
-      const cellRef = nFinal.board?.[rr]?.[cc];
-      const u = cellRef?.unit;
-      if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-        deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: cellRef?.element || null });
-        if (cellRef) cellRef.unit = null;
-      }
+    const cellRef = nFinal.board?.[rr]?.[cc];
+    const u = cellRef?.unit;
+    if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
+      const deathEntry = createDeathEntry(nFinal, u, rr, cc)
+        || { r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: cellRef?.element || null };
+      deaths.push(deathEntry);
+      if (cellRef) cellRef.unit = null;
     }
+  }
 
-    try {
+  try {
       for (const d of deaths) {
         if (nFinal && nFinal.players && nFinal.players[d.owner]) {
           nFinal.players[d.owner].mana = capMana((nFinal.players[d.owner].mana || 0) + 1);
@@ -597,6 +602,18 @@ export function stagedAttack(state, r, c, opts = {}) {
     const manaFromDeaths = applyManaGainOnDeaths(nFinal, deaths, { boardState: nFinal });
     if (Array.isArray(manaFromDeaths?.logs) && manaFromDeaths.logs.length) {
       logLines.push(...manaFromDeaths.logs);
+    }
+
+    const manaStealEvents = applyDeathManaSteal(nFinal, deaths, { cause: 'BATTLE' });
+    if (Array.isArray(manaStealEvents) && manaStealEvents.length) {
+      for (const ev of manaStealEvents) {
+        if (ev?.log) logLines.push(ev.log);
+      }
+    }
+
+    const repositionInfo = applyDeathRepositionEffects(nFinal, deaths);
+    if (Array.isArray(repositionInfo?.logs) && repositionInfo.logs.length) {
+      logLines.push(...repositionInfo.logs);
     }
 
     for (const d of deaths) {
@@ -678,6 +695,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       schemeKey,
       attackProfile: profile,
       manaGainEvents: Array.isArray(manaFromDeaths?.entries) ? manaFromDeaths.entries : [],
+      manaStealEvents: Array.isArray(manaStealEvents) ? manaStealEvents : [],
     };
   }
 
@@ -911,7 +929,9 @@ export function magicAttack(state, fr, fc, tr, tc) {
     const cellRef = n1.board[rr][cc];
     const u = cellRef.unit;
     if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
-      deaths.push({ r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: cellRef?.element || null });
+      const deathEntry = createDeathEntry(n1, u, rr, cc)
+        || { r: rr, c: cc, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: cellRef?.element || null };
+      deaths.push(deathEntry);
       cellRef.unit = null;
     }
   }
@@ -925,6 +945,16 @@ export function magicAttack(state, fr, fc, tr, tc) {
   const manaFromDeaths = applyManaGainOnDeaths(n1, deaths, { boardState: n1 });
   if (Array.isArray(manaFromDeaths?.logs) && manaFromDeaths.logs.length) {
     logLines.push(...manaFromDeaths.logs);
+  }
+  const manaStealEvents = applyDeathManaSteal(n1, deaths, { cause: 'MAGIC' });
+  if (Array.isArray(manaStealEvents) && manaStealEvents.length) {
+    for (const ev of manaStealEvents) {
+      if (ev?.log) logLines.push(ev.log);
+    }
+  }
+  const repositionInfo = applyDeathRepositionEffects(n1, deaths);
+  if (Array.isArray(repositionInfo?.logs) && repositionInfo.logs.length) {
+    logLines.push(...repositionInfo.logs);
   }
   const discardEffects = applyDeathDiscardEffects(n1, deaths, { cause: 'MAGIC' });
   if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
@@ -987,6 +1017,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     attackProfile: profile,
     dmg,
     manaGainEvents: Array.isArray(manaFromDeaths?.entries) ? manaFromDeaths.entries : [],
+    manaStealEvents: Array.isArray(manaStealEvents) ? manaStealEvents : [],
   };
 }
 

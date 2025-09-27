@@ -10,6 +10,9 @@ import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
 import { refreshPossessionsUI } from '../ui/possessions.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { applyDeathManaSteal } from '../core/abilityHandlers/manaSteal.js';
+import { applyDeathRepositionEffects } from '../core/abilityHandlers/deathReposition.js';
+import { createDeathEntry } from '../core/abilityHandlers/deathSummary.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -269,8 +272,9 @@ export const handlers = {
         } catch {}
         if (u.currentHP <= 0) {
           const owner = u.owner;
-          const deathElement = gameState.board?.[r]?.[c]?.element || null;
-          const deathInfo = [{ r, c, owner, tplId: u.tplId, uid: u.uid ?? null, element: deathElement }];
+          const deathEntry = createDeathEntry(gameState, u, r, c)
+            || { r, c, owner, tplId: u.tplId, uid: u.uid ?? null, element: gameState.board?.[r]?.[c]?.element || null };
+          const deathInfo = [deathEntry];
           try { gameState.players[owner].graveyard.push(CARDS[u.tplId]); } catch {}
           const pos = getCtx().tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
           const slot = gameState.players?.[owner]?.mana || 0;
@@ -288,6 +292,17 @@ export const handlers = {
             for (const text of discardEffects.logs) {
               addLog(text);
             }
+          }
+          const stealEvents = applyDeathManaSteal(gameState, deathInfo, { cause: 'SPELL' }) || [];
+          if (stealEvents.length) {
+            for (const ev of stealEvents) {
+              if (ev?.log) addLog(ev.log);
+            }
+            try { window.__ui?.manaSteal?.playEvents?.(stealEvents); } catch {}
+          }
+          const reposition = applyDeathRepositionEffects(gameState, deathInfo);
+          if (Array.isArray(reposition?.logs) && reposition.logs.length) {
+            for (const text of reposition.logs) addLog(text);
           }
           setTimeout(() => {
             refreshPossessionsUI(gameState);
@@ -392,8 +407,9 @@ export const handlers = {
               deltaHp > 0 ? '#22c55e' : '#ef4444'
             );
           if (u.currentHP <= 0) {
-            const deathElement = gameState.board?.[r]?.[c]?.element || null;
-            const deathInfo = [{ r, c, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: deathElement }];
+            const deathEntry = createDeathEntry(gameState, u, r, c)
+              || { r, c, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: gameState.board?.[r]?.[c]?.element || null };
+            const deathInfo = [deathEntry];
             try { gameState.players[u.owner].graveyard.push(CARDS[u.tplId]); } catch {}
             const deadMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
             if (deadMesh) {
@@ -402,6 +418,17 @@ export const handlers = {
               const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SPELL' });
               if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
                 for (const text of discardEffects.logs) addLog(text);
+              }
+              const stealEvents = applyDeathManaSteal(gameState, deathInfo, { cause: 'SPELL' }) || [];
+              if (stealEvents.length) {
+                for (const ev of stealEvents) {
+                  if (ev?.log) addLog(ev.log);
+                }
+                try { window.__ui?.manaSteal?.playEvents?.(stealEvents); } catch {}
+              }
+              const reposition = applyDeathRepositionEffects(gameState, deathInfo);
+              if (Array.isArray(reposition?.logs) && reposition.logs.length) {
+                for (const text of reposition.logs) addLog(text);
               }
               setTimeout(() => {
                 refreshPossessionsUI(gameState);

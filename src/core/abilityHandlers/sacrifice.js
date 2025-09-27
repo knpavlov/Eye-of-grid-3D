@@ -3,6 +3,9 @@ import { CARDS } from '../cards.js';
 import { computeCellBuff } from '../fieldEffects.js';
 import { applyFieldFatalityCheck as applyFieldFatalityCheckInternal } from './fieldHazards.js';
 import { applyDeathDiscardEffects } from './discard.js';
+import { applyDeathManaSteal } from './manaSteal.js';
+import { applyDeathRepositionEffects } from './deathReposition.js';
+import { createDeathEntry } from './deathSummary.js';
 
 const FACING_ORDER = ['N', 'E', 'S', 'W'];
 
@@ -172,13 +175,25 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
 
   // Удаляем существо с клетки до появления нового
   const sacrificeDeath = currentUnit
-    ? [{ r, c, owner: currentUnit.owner, tplId: currentUnit.tplId, uid: currentUnit.uid ?? null, element: cell?.element || null }]
+    ? [createDeathEntry(state, currentUnit, r, c)
+      || { r, c, owner: currentUnit.owner, tplId: currentUnit.tplId, uid: currentUnit.uid ?? null, element: cell?.element || null }]
     : null;
   cell.unit = null;
 
   let discardEvents = null;
   if (sacrificeDeath) {
     discardEvents = applyDeathDiscardEffects(state, sacrificeDeath, { cause: 'SACRIFICE' });
+  }
+
+  let manaStealEvents = [];
+  let repositionLogs = [];
+  if (sacrificeDeath) {
+    const steal = applyDeathManaSteal(state, sacrificeDeath, { cause: 'SACRIFICE' }) || [];
+    if (steal.length) manaStealEvents = manaStealEvents.concat(steal);
+    const reposition = applyDeathRepositionEffects(state, sacrificeDeath);
+    if (Array.isArray(reposition?.logs) && reposition.logs.length) {
+      repositionLogs = repositionLogs.concat(reposition.logs);
+    }
   }
 
   // Удаляем карту из руки и переносим в сброс
@@ -218,6 +233,13 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
     events: {},
   };
 
+  if (repositionLogs.length) {
+    result.events.repositionLogs = repositionLogs.slice();
+  }
+  if (manaStealEvents.length) {
+    result.events.manaStealEvents = (result.events.manaStealEvents || []).concat(manaStealEvents);
+  }
+
   if (discardEvents && Array.isArray(discardEvents.logs) && discardEvents.logs.length) {
     result.events.discardLogs = discardEvents.logs.slice();
   }
@@ -256,7 +278,8 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
     const tplDeath = getTemplateRef(summonTpl);
     graveyard.push(tplDeath);
     cell.unit = null;
-    const replacementDeath = [{ r, c, owner: newUnit.owner, tplId: summonTpl.id, uid: newUnit.uid ?? null, element: cell?.element || null }];
+    const replacementDeath = [createDeathEntry(state, newUnit, r, c)
+      || { r, c, owner: newUnit.owner, tplId: summonTpl.id, uid: newUnit.uid ?? null, element: cell?.element || null }];
 
     if (summonTpl.onDeathAddHPAll) {
       const amount = summonTpl.onDeathAddHPAll;
@@ -281,6 +304,15 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
     const discardReplacement = applyDeathDiscardEffects(state, replacementDeath, { cause: 'SACRIFICE_REPLACEMENT' });
     if (discardReplacement && Array.isArray(discardReplacement.logs) && discardReplacement.logs.length) {
       result.events.discardLogs = (result.events.discardLogs || []).concat(discardReplacement.logs);
+    }
+    const stealReplacement = applyDeathManaSteal(state, replacementDeath, { cause: 'SACRIFICE_REPLACEMENT' }) || [];
+    if (stealReplacement.length) {
+      manaStealEvents = manaStealEvents.concat(stealReplacement);
+      result.events.manaStealEvents = (result.events.manaStealEvents || []).concat(stealReplacement);
+    }
+    const repositionReplacement = applyDeathRepositionEffects(state, replacementDeath);
+    if (Array.isArray(repositionReplacement?.logs) && repositionReplacement.logs.length) {
+      result.events.repositionLogs = (result.events.repositionLogs || []).concat(repositionReplacement.logs);
     }
   }
 
