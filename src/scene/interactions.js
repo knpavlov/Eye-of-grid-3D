@@ -13,8 +13,8 @@ import {
   describeFieldFatality,
   isIncarnationCard,
 } from '../core/abilities.js';
-import { capMana } from '../core/constants.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { applyManaGainOnDeaths, snapshotPlayersMana } from '../core/abilityHandlers/manaGain.js';
 import { buildDeathRecord } from '../core/utils/deaths.js';
 
 // Centralized interaction state
@@ -887,19 +887,31 @@ export function placeUnitWithDirection(direction) {
     }
     const owner = unit.owner;
     const deathRecord = buildDeathRecord(gameState, row, col, unit);
-    const slotBeforeGain = gameState.players?.[owner]?.mana || 0;
+    const playersBefore = snapshotPlayersMana(gameState.players);
     try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
-    const ownerPlayer = gameState.players?.[owner];
-    if (ownerPlayer) {
-      ownerPlayer.mana = capMana((ownerPlayer.mana || 0) + 1);
-    }
     const ctx = getCtx();
     const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
     const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-    window.animateManaGainFromWorld(pos, owner, true, slotBeforeGain);
     gameState.board[row][col].unit = null;
     const deathInfo = deathRecord ? [deathRecord] : [];
+    const manaGain = applyManaGainOnDeaths(gameState, deathInfo, {
+      cause: 'SUMMON',
+      beforePlayers,
+    });
+    const manaEvents = Array.isArray(manaGain?.events) ? manaGain.events : [];
+    const ownerManaEvent = manaEvents.find(ev => ev && ev.owner === owner) || null;
+    if (ownerManaEvent) {
+      const slotBeforeGain = typeof ownerManaEvent.beforeMana === 'number'
+        ? ownerManaEvent.beforeMana
+        : (playersBefore?.[owner]?.mana ?? gameState.players?.[owner]?.mana ?? 0);
+      window.animateManaGainFromWorld(pos, owner, true, slotBeforeGain);
+    }
     const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SUMMON' });
+    if (Array.isArray(manaGain?.logs) && manaGain.logs.length) {
+      for (const text of manaGain.logs) {
+        if (text) window.addLog(text);
+      }
+    }
     if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
       for (const text of discardEffects.logs) {
         window.addLog(text);
