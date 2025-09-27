@@ -29,7 +29,13 @@ export const CARDS = {
     element: 'FIRE', atk: 1, hp: 2,
     attackType: 'STANDARD', pierce: true,
     attacks: [ { dir: 'N', ranges: [1] } ],
-    blindspots: ['S'], auraGainManaOnSummon: true,
+    blindspots: ['S'],
+    manaOnSummon: {
+      trigger: 'ALLY',
+      sourceFieldNotElement: 'FIRE',
+      excludeSelfSummon: true,
+      log: 'Фридонийский Странник приносит {amount} маны.',
+    },
     desc: 'While Freedonian Wanderer is on a non‑Fire field, you gain 1 mana each time you summon an allied creature.'
   },
   FIRE_PARTMOLE_FLAME_LIZARD: {
@@ -288,6 +294,38 @@ export const CARDS = {
     desc: 'Magic Attack. While on a Water field, Aluhja Priestess gains Dodge attempt.'
   },
 
+  WATER_MOVING_ISLE_OF_KADENA: {
+    id: 'WATER_MOVING_ISLE_OF_KADENA', name: 'Moving Isle of Kadena', type: 'UNIT', cost: 4, activation: 2,
+    element: 'WATER', atk: 1, hp: 4,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'E', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'S', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], ignoreAlliedBlocking: true },
+    ],
+    blindspots: [], fortress: true, ignoreAlliedBlocking: true,
+    diesOnElement: 'FIRE',
+    manaSteal: {
+      onSummon: {
+        amount: { type: 'FIELD_COUNT', element: 'WATER' },
+        forbidFieldElement: 'WATER',
+      },
+    },
+    desc: 'Fortress. If Moving Isle of Kadena is summoned to a non-Water field, steal mana from your opponent equal to the number of Water fields. Destroy Moving Isle of Kadena if it is on a Fire field.'
+  },
+
+  WATER_QUEENS_SERVANT: {
+    id: 'WATER_QUEENS_SERVANT', name: "Queen's Servant", type: 'UNIT', cost: 4, activation: 2,
+    element: 'WATER', atk: 1, hp: 1,
+    attackType: 'MAGIC',
+    attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
+    blindspots: ['S'], perfectDodge: true, ignoreAlliedBlocking: true,
+    manaSteal: {
+      onDeath: { amount: 1 },
+    },
+    desc: "Magic Attack. Perfect Dodge. If Queen's Servant is destroyed, steal 1 mana from your opponent."
+  },
   EARTH_ARELAI_THE_PROTECTOR: {
     id: 'EARTH_ARELAI_THE_PROTECTOR', name: 'Arelai the Protector', type: 'UNIT', cost: 3, activation: 2,
     element: 'EARTH', atk: 2, hp: 3,
@@ -346,6 +384,17 @@ export const CARDS = {
     dynamicAtk: 'EARTH_CREATURES',
     allyDeathGainMana: { amount: 1, requireFieldElement: 'EARTH', adjacency: 'ORTHOGONAL' },
     desc: "Undead Dragon's Attack is equal to 5 plus the number of other Earth creatures on the board. While Undead Dragon is on an Earth field, gain 1 additional mana whenever an adjacent allied creature is destroyed."
+  },
+
+  EARTH_UNDEAD_KING_NOVOGUS: {
+    id: 'EARTH_UNDEAD_KING_NOVOGUS', name: 'Undead King Novogus', type: 'UNIT', cost: 6, activation: 3,
+    element: 'EARTH', atk: 2, hp: 6,
+    attackType: 'MAGIC',
+    attacks: [],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    fieldquakeOnDamage: { requireFieldNot: 'EARTH' },
+    desc: "Magic Attack. If Undead King Novogus is on a non-Earth field and damages a creature, fieldquake the target creature's field. The target creature cannot counterattack."
   },
 
   EARTH_SE_HOLLYN_FORTRESS: {
@@ -431,6 +480,29 @@ export const CARDS = {
     desc: 'Allied creatures on adjacent fields gain +1 Protection.'
   },
 
+  BIOLITH_BEHEMOTH_GROUNDBREAKER: {
+    id: 'BIOLITH_BEHEMOTH_GROUNDBREAKER', name: 'Behemoth Groundbreaker', type: 'UNIT', cost: 4, activation: 3,
+    element: 'BIOLITH', atk: 3, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    fieldquakeOnSummon: { pattern: 'ADJACENT' },
+    desc: 'When Behemoth Groundbreaker is summoned, fieldquake all adjacent fields.'
+  },
+
+  BIOLITH_OUROBOROS_DRAGON: {
+    id: 'BIOLITH_OUROBOROS_DRAGON', name: 'Ouroboros Dragon', type: 'UNIT', cost: 7, activation: 4,
+    element: 'BIOLITH', atk: 7, hp: 10,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY', ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    dynamicAtk: 'BIOLITH_CREATURES',
+    fieldquakeLock: { type: 'ALL_WHEN_ON_ELEMENT', element: 'BIOLITH' },
+    desc: "Ouroboros Dragon's Attack is equal to 7 plus the number of other Biolith creatures on the board. While Ouroboros Dragon is on a Biolith field, no field can be fieldquaked or exchanged."
+  },
+
   BIOLITH_MORNING_STAR_WARRIOR: {
     id: 'BIOLITH_MORNING_STAR_WARRIOR', name: 'Morning Star Warrior', type: 'UNIT', cost: 4, activation: 2,
     element: 'BIOLITH', atk: 2, hp: 3,
@@ -459,6 +531,66 @@ export const CARDS = {
     swapOnDamage: true,
     swapOnDamageAllowZero: true,
     desc: 'Dodge attempt. If Biolith Stinger damages (but does not destroy) a creature, it switches locations with that creature (which cannot counterattack).'
+  },
+  BIOLITH_IMPERIAL_BIOLITH_GUARD: {
+    id: 'BIOLITH_IMPERIAL_BIOLITH_GUARD', name: 'Imperial Biolith Guard', type: 'UNIT', cost: 3, activation: 2,
+    element: 'BIOLITH', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'E', ranges: [1], group: 'SIDE_SWEEP', ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], group: 'SIDE_SWEEP', ignoreAlliedBlocking: true },
+    ],
+    blindspots: [],
+    ignoreAlliedBlocking: true,
+    manaOnSummon: {
+      trigger: 'ALLY',
+      summonFieldElement: 'BIOLITH',
+      excludeSelfSummon: true,
+      log: 'Imperial Biolith Guard генерирует {amount} ману за биолитовый призыв.',
+    },
+    desc: 'Gain 1 mana each time you summon a creature to a Biolith field.'
+  },
+  BIOLITH_WORMAK_HEIR: {
+    id: 'BIOLITH_WORMAK_HEIR', name: 'Wormak Heir to the Bioliths', type: 'UNIT', cost: 4, activation: 2,
+    element: 'BIOLITH', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: [],
+    ignoreAlliedBlocking: true,
+    targetCountAttack: {
+      match: { owner: 'ENEMY', element: 'BIOLITH' },
+      count: { type: 'NON_ELEMENT', element: 'BIOLITH' },
+      baseValue: 2,
+      amountPer: 1,
+      log: 'Wormak Heir to the Bioliths: атака против биолитов установлена на {targetValue} (небиолитовых существ: {count}).',
+    },
+    manaOnSummon: {
+      trigger: 'ENEMY',
+      log: 'Wormak Heir to the Bioliths получает {amount} ману за призыв врага.',
+    },
+    desc: "If the target is an enemy Biolith, Wormak's Attack is equal to 2 plus the number of non-Biolith creatures on the board.\nGain 1 mana each time an enemy is summoned."
+  },
+  BIOLITH_TINO_SON_OF_SCION: {
+    id: 'BIOLITH_TINO_SON_OF_SCION', name: 'Tino, Son of Scion', type: 'UNIT', cost: 4, activation: 3,
+    element: 'BIOLITH', atk: 3, hp: 4,
+    attackType: 'MAGIC',
+    attacks: [],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    magicTargetsSameElement: true,
+    dynamicAtkAlliedElementOnField: {
+      element: 'BIOLITH',
+      baseValue: 1,
+      amountPer: 1,
+      requireFieldElement: 'BIOLITH',
+      includeSelf: false,
+    },
+    manaOnSummon: {
+      trigger: 'ALLY',
+      excludeSelfSummon: true,
+      log: 'Tino, Son of Scion приносит {amount} ману.',
+    },
+    desc: "Tino's Magic Attack targets all enemies of the same element as the target.\nWhile Tino is on a Biolith field, his Attack is equal to 1 plus the number of other allied Biolith creatures.\nGain 1 mana each time you summon a creature."
   },
 
   EARTH_NOVOGUS_GRAVEKEEPER: {
@@ -634,6 +766,18 @@ export const CARDS = {
       { pattern: 'ADJACENT', requireSourceElement: 'WATER', id: 'ANFISA_WATER_AURA' },
     ],
     desc: 'Magic Attack. While on a Water field, Imposter Queen Anfisa gains Possession of all enemies on adjacent fields.'
+  },
+  FOREST_DANCING_TEMPTRESS: {
+    id: 'FOREST_DANCING_TEMPTRESS', name: 'Dancing Temptress', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FOREST', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    manaSteal: {
+      onDeath: { amount: 1, from: 'TARGET' },
+    },
+    deathPullFront: true,
+    desc: 'If Dancing Temptress is destroyed, steal 1 mana from the owner of the creature in front of her. That creature is moved to her former field.',
   },
   FOREST_SWALLOW_NINJA: {
     id: 'FOREST_SWALLOW_NINJA', name: 'Swallow Ninja', type: 'UNIT', cost: 3, activation: 2,

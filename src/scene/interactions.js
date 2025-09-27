@@ -54,6 +54,17 @@ function adjustPendingAutoEnd(delta) {
   gs.pendingAutoEndRequests = next > 0 ? next : 0;
 }
 
+function handleManaStealAnimations(list) {
+  if (typeof window === 'undefined') return;
+  if (!Array.isArray(list) || list.length === 0) return;
+  const animate = window.__ui?.mana?.animateManaSteal;
+  if (typeof animate !== 'function') return;
+  for (const steal of list) {
+    if (!steal) continue;
+    try { animate(steal); } catch (err) { console.warn('[interactions] mana steal animation failed', err); }
+  }
+}
+
 export function hasPendingForcedDiscards() {
   if (typeof window === 'undefined') return false;
   const state = window.gameState;
@@ -806,6 +817,7 @@ export function placeUnitWithDirection(direction) {
           window.addLog(text);
         }
       }
+      handleManaStealAnimations(discardInfo?.manaSteals);
     }
   }
   const unit = {
@@ -945,12 +957,14 @@ export function placeUnitWithDirection(direction) {
       }
     }
     gameState.board[row][col].unit = null;
+    const deathInfo = deathRecord ? [deathRecord] : [];
     const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SUMMON' });
     if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
       for (const text of discardEffects.logs) {
         window.addLog(text);
       }
     }
+    handleManaStealAnimations(discardEffects?.manaSteals);
     // При мгновенной смерти существо считается призванным, поэтому передаём ход оппоненту
     endTurnAfterSummon();
     // очищаем возможные состояния выбора цели, чтобы не блокировать интерфейс после мгновенной смерти
@@ -994,6 +1008,70 @@ export function placeUnitWithDirection(direction) {
         window.addLog?.(text);
       }
     }
+    if (Array.isArray(summonEvents?.fieldquakes) && summonEvents.fieldquakes.length) {
+      const ctxScene = getCtx();
+      const boardApi = window.__board || {};
+      const getTileMaterial = boardApi.getTileMaterial || window.getTileMaterial || null;
+      const THREE = ctxScene.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+      for (const fq of summonEvents.fieldquakes) {
+        if (!fq) continue;
+        const { r: fqR, c: fqC } = fq;
+        const tile = ctxScene.tileMeshes?.[fqR]?.[fqC] || null;
+        if (tile && getTileMaterial && typeof window.__fx?.dissolveTileCrossfade === 'function') {
+          try {
+            const prevMat = getTileMaterial(fq.prevElement);
+            const nextMat = getTileMaterial(fq.nextElement);
+            if (prevMat && nextMat) {
+              window.__fx.dissolveTileCrossfade(tile, prevMat, nextMat, 0.9);
+            }
+          } catch (err) {
+            console.warn('[summon-fieldquake] tile crossfade error', err);
+          }
+        }
+        if (fq.hpShift && fq.hpShift.delta) {
+          const mesh = ctxScene.unitMeshes.find(m => m.userData.row === fqR && m.userData.col === fqC);
+          if (mesh) {
+            try {
+              const color = fq.hpShift.delta > 0 ? '#22c55e' : '#ef4444';
+              window.__fx?.spawnDamageText?.(mesh, `${fq.hpShift.delta > 0 ? '+' : ''}${fq.hpShift.delta}`, color);
+            } catch {}
+          }
+        }
+        if (Array.isArray(fq.deaths)) {
+          for (const death of fq.deaths) {
+            if (!death) continue;
+            const mesh = ctxScene.unitMeshes.find(m => m.userData.row === death.r && m.userData.col === death.c);
+            if (mesh && THREE) {
+              try { window.__fx?.dissolveAndAsh?.(mesh, new THREE.Vector3(0, 0, 0.6), 0.9); } catch {}
+            }
+          }
+        }
+        if (Array.isArray(fq.manaGains)) {
+          for (const gain of fq.manaGains) {
+            if (!gain || typeof gain.owner !== 'number') continue;
+            const tileGain = ctxScene.tileMeshes?.[gain.r]?.[gain.c];
+            if (!tileGain || !THREE) continue;
+            const pos = tileGain.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+            try { window.animateManaGainFromWorld?.(pos, gain.owner, true, gain.before); } catch {}
+          }
+        }
+      }
+    }
+    if (Array.isArray(summonEvents?.manaGains) && summonEvents.manaGains.length) {
+      const ctxScene = getCtx();
+      const THREE = ctxScene.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+      for (const gain of summonEvents.manaGains) {
+        if (!gain || typeof gain.owner !== 'number') continue;
+        const tile = ctxScene.tileMeshes?.[gain.r]?.[gain.c];
+        if (!tile || !THREE) continue;
+        try {
+          const pos = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+          const slot = typeof gain.before === 'number' ? gain.before : null;
+          window.animateManaGainFromWorld?.(pos, gain.owner, true, slot);
+        } catch {}
+      }
+    }
+    handleManaStealAnimations(summonEvents?.manaSteals);
     if (Array.isArray(summonEvents?.statBuffs) && summonEvents.statBuffs.length) {
       for (const buff of summonEvents.statBuffs) {
         if (!buff) continue;

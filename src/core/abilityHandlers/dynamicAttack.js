@@ -150,6 +150,47 @@ function countElementCreatures(state, element, opts = {}) {
   return count;
 }
 
+function countAlliedElementCreatures(state, owner, element, opts = {}) {
+  if (!state?.board || owner == null || !element) return 0;
+  let total = 0;
+  for (let r = 0; r < BOARD_SIZE; r += 1) {
+    for (let c = 0; c < BOARD_SIZE; c += 1) {
+      if (!opts.includeSelf && opts.exclude && r === opts.exclude.r && c === opts.exclude.c) continue;
+      const cell = state.board?.[r]?.[c];
+      const unit = cell?.unit;
+      if (!unit || unit.owner !== owner) continue;
+      const tpl = CARDS[unit.tplId];
+      if (!tpl) continue;
+      if (normalizeElementName(tpl.element) === element) {
+        total += 1;
+      }
+    }
+  }
+  return total;
+}
+
+function normalizeAlliedElementOnFieldConfig(raw) {
+  const configs = [];
+  for (const entry of toArray(raw)) {
+    if (!entry) continue;
+    const element = parseElementFromToken(entry.element || entry.allyElement || entry.targetElement || entry.elementType);
+    if (!element) continue;
+    const fieldElement = parseElementFromToken(entry.requireFieldElement || entry.fieldElement || entry.onElement || entry.sourceField);
+    const baseValueRaw = entry.baseValue ?? entry.base ?? entry.start ?? entry.min ?? null;
+    const amountPerRaw = entry.amountPer ?? entry.per ?? entry.amount ?? entry.delta ?? 1;
+    const baseValue = baseValueRaw != null && Number.isFinite(Number(baseValueRaw)) ? Math.floor(Number(baseValueRaw)) : 0;
+    const amountPer = Number.isFinite(Number(amountPerRaw)) ? Number(amountPerRaw) : 1;
+    configs.push({
+      element,
+      fieldElement,
+      baseValue,
+      amountPer,
+      includeSelf: entry.includeSelf === true,
+    });
+  }
+  return configs;
+}
+
 export function computeDynamicAttackBonus(state, r, c, tpl) {
   if (!tpl) return null;
   if (tpl.dynamicAtk) {
@@ -189,6 +230,36 @@ export function computeDynamicAttackBonus(state, r, c, tpl) {
       count: effective,
       matcher: allyCfg.matcher,
     };
+  }
+  const elementFieldCfgs = normalizeAlliedElementOnFieldConfig(tpl.dynamicAtkAlliedElementOnField);
+  if (elementFieldCfgs.length) {
+    const cell = state?.board?.[r]?.[c] || null;
+    const owner = cell?.unit?.owner;
+    const cellElement = normalizeElementName(cell?.element);
+    if (owner != null) {
+      for (const cfg of elementFieldCfgs) {
+        if (cfg.fieldElement && cfg.fieldElement !== cellElement) continue;
+        const count = countAlliedElementCreatures(state, owner, cfg.element, {
+          includeSelf: cfg.includeSelf,
+          exclude: cfg.includeSelf ? null : { r, c },
+        });
+        const targetRaw = cfg.baseValue + cfg.amountPer * count;
+        const targetValue = Math.floor(targetRaw);
+        const baseAtk = Number.isFinite(tpl.atk) ? tpl.atk : 0;
+        const amount = targetValue - baseAtk;
+        if (amount !== 0) {
+          return {
+            amount,
+            type: 'ALLY_ELEMENT_ON_FIELD',
+            element: cfg.element,
+            count,
+            baseValue: cfg.baseValue,
+            targetValue,
+            requiredField: cfg.fieldElement || null,
+          };
+        }
+      }
+    }
   }
   return null;
 }

@@ -659,6 +659,31 @@
             setTimeout(() => {
               updateUnits(finalState); updateUI();
               for (const l of res.logLines.reverse()) addLog(l);
+              if (Array.isArray(res.fieldquakes) && res.fieldquakes.length) {
+                const boardApi = window.__board || {};
+                const getTileMaterial = boardApi.getTileMaterial || window.getTileMaterial || null;
+                const THREE = window.THREE || ctx.THREE;
+                for (const fq of res.fieldquakes) {
+                  if (!fq) continue;
+                  const tile = tileMeshes?.[fq.r]?.[fq.c];
+                  if (tile && getTileMaterial && window.__fx?.dissolveTileCrossfade) {
+                    try {
+                      const prevMat = getTileMaterial(fq.prevElement);
+                      const nextMat = getTileMaterial(fq.nextElement);
+                      if (prevMat && nextMat) window.__fx.dissolveTileCrossfade(tile, prevMat, nextMat, 0.9);
+                    } catch (err) { console.warn('[battle-fieldquake] tile fx failed', err); }
+                  }
+                  if (fq.hpShift && fq.hpShift.delta && THREE) {
+                    const mesh = unitMeshes.find(m => m.userData.row === fq.r && m.userData.col === fq.c);
+                    if (mesh) {
+                      try {
+                        const color = fq.hpShift.delta > 0 ? '#22c55e' : '#ef4444';
+                        window.__fx?.spawnDamageText?.(mesh, `${fq.hpShift.delta > 0 ? '+' : ''}${fq.hpShift.delta}`, color);
+                      } catch {}
+                    }
+                  }
+                }
+              }
               try { schedulePush('battle-finish', { force: true }); } catch {}
               if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
                 window.__interactions.interactionState.autoEndTurnAfterAttack = false;
@@ -678,6 +703,31 @@
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем обновим визуально
         setTimeout(() => {
           updateUnits(finalState); updateUI(); for (const l of res.logLines.reverse()) addLog(l);
+          if (Array.isArray(res.fieldquakes) && res.fieldquakes.length) {
+            const boardApi = window.__board || {};
+            const getTileMaterial = boardApi.getTileMaterial || window.getTileMaterial || null;
+            const THREE = window.THREE || ctx.THREE;
+            for (const fq of res.fieldquakes) {
+              if (!fq) continue;
+              const tile = tileMeshes?.[fq.r]?.[fq.c];
+              if (tile && getTileMaterial && window.__fx?.dissolveTileCrossfade) {
+                try {
+                  const prevMat = getTileMaterial(fq.prevElement);
+                  const nextMat = getTileMaterial(fq.nextElement);
+                  if (prevMat && nextMat) window.__fx.dissolveTileCrossfade(tile, prevMat, nextMat, 0.9);
+                } catch (err) { console.warn('[battle-fieldquake] tile fx failed', err); }
+              }
+              if (fq.hpShift && fq.hpShift.delta && THREE) {
+                const mesh = unitMeshes.find(m => m.userData.row === fq.r && m.userData.col === fq.c);
+                if (mesh) {
+                  try {
+                    const color = fq.hpShift.delta > 0 ? '#22c55e' : '#ef4444';
+                    window.__fx?.spawnDamageText?.(mesh, `${fq.hpShift.delta > 0 ? '+' : ''}${fq.hpShift.delta}`, color);
+                  } catch {}
+                }
+              }
+            }
+          }
           const pos2 = attackerPos;
           if (markAttackTurn && gameState.board[pos2.r]?.[pos2.c]?.unit) {
             gameState.board[pos2.r][pos2.c].unit.lastAttackTurn = gameState.turn;
@@ -757,6 +807,31 @@
       if (!res) { showNotification('Incorrect target', 'error'); return; }
       const attackerPosMagic = res.attackerPosUpdate || from;
       for (const l of res.logLines.reverse()) addLog(l);
+      if (Array.isArray(res.fieldquakes) && res.fieldquakes.length) {
+        const boardApi = window.__board || {};
+        const getTileMaterial = boardApi.getTileMaterial || window.getTileMaterial || null;
+        const THREE = window.THREE || ctx.THREE;
+        for (const fq of res.fieldquakes) {
+          if (!fq) continue;
+          const tile = tileMeshes?.[fq.r]?.[fq.c];
+          if (tile && getTileMaterial && window.__fx?.dissolveTileCrossfade) {
+            try {
+              const prevMat = getTileMaterial(fq.prevElement);
+              const nextMat = getTileMaterial(fq.nextElement);
+              if (prevMat && nextMat) window.__fx.dissolveTileCrossfade(tile, prevMat, nextMat, 0.9);
+            } catch (err) { console.warn('[magic-fieldquake] tile fx failed', err); }
+          }
+          if (fq.hpShift && fq.hpShift.delta && THREE) {
+            const mesh = unitMeshes.find(m => m.userData.row === fq.r && m.userData.col === fq.c);
+            if (mesh) {
+              try {
+                const color = fq.hpShift.delta > 0 ? '#22c55e' : '#ef4444';
+                window.__fx?.spawnDamageText?.(mesh, `${fq.hpShift.delta > 0 ? '+' : ''}${fq.hpShift.delta}`, color);
+              } catch {}
+            }
+          }
+        }
+      }
       const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
       if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }
       // вспышка по цели
@@ -801,6 +876,31 @@
         if (attackerUnit) attackerUnit.lastAttackTurn = window.gameState.turn;
         setTimeout(() => {
           updateUnits(); updateUI();
+          if (Array.isArray(res.fieldquakes) && res.fieldquakes.length) {
+            const boardApi = window.__board || {};
+            const getTileMaterial = boardApi.getTileMaterial || window.getTileMaterial || null;
+            const THREE = window.THREE || ctx.THREE;
+            for (const fq of res.fieldquakes) {
+              if (!fq) continue;
+              const tile = tileMeshes?.[fq.r]?.[fq.c];
+              if (tile && getTileMaterial && window.__fx?.dissolveTileCrossfade) {
+                try {
+                  const prevMat = getTileMaterial(fq.prevElement);
+                  const nextMat = getTileMaterial(fq.nextElement);
+                  if (prevMat && nextMat) window.__fx.dissolveTileCrossfade(tile, prevMat, nextMat, 0.9);
+                } catch (err) { console.warn('[magic-fieldquake] tile fx failed', err); }
+              }
+              if (fq.hpShift && fq.hpShift.delta && THREE) {
+                const mesh = unitMeshes.find(m => m.userData.row === fq.r && m.userData.col === fq.c);
+                if (mesh) {
+                  try {
+                    const color = fq.hpShift.delta > 0 ? '#22c55e' : '#ef4444';
+                    window.__fx?.spawnDamageText?.(mesh, `${fq.hpShift.delta > 0 ? '+' : ''}${fq.hpShift.delta}`, color);
+                  } catch {}
+                }
+              }
+            }
+          }
           try { schedulePush('magic-battle-finish', { force: true }); } catch {}
           if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
             window.__interactions.interactionState.autoEndTurnAfterAttack = false;
@@ -820,6 +920,31 @@
           try { window.__interactions?.logDodgeUpdates?.(res.dodgeUpdates, gameState, attackerName); } catch {}
         }
         updateUnits(); updateUI();
+        if (Array.isArray(res.fieldquakes) && res.fieldquakes.length) {
+          const boardApi = window.__board || {};
+          const getTileMaterial = boardApi.getTileMaterial || window.getTileMaterial || null;
+          const THREE = window.THREE || ctx.THREE;
+          for (const fq of res.fieldquakes) {
+            if (!fq) continue;
+            const tile = tileMeshes?.[fq.r]?.[fq.c];
+            if (tile && getTileMaterial && window.__fx?.dissolveTileCrossfade) {
+              try {
+                const prevMat = getTileMaterial(fq.prevElement);
+                const nextMat = getTileMaterial(fq.nextElement);
+                if (prevMat && nextMat) window.__fx.dissolveTileCrossfade(tile, prevMat, nextMat, 0.9);
+              } catch (err) { console.warn('[magic-fieldquake] tile fx failed', err); }
+            }
+            if (fq.hpShift && fq.hpShift.delta && THREE) {
+              const mesh = unitMeshes.find(m => m.userData.row === fq.r && m.userData.col === fq.c);
+              if (mesh) {
+                try {
+                  const color = fq.hpShift.delta > 0 ? '#22c55e' : '#ef4444';
+                  window.__fx?.spawnDamageText?.(mesh, `${fq.hpShift.delta > 0 ? '+' : ''}${fq.hpShift.delta}`, color);
+                } catch {}
+              }
+            }
+          }
+        }
         const attackerCell2 = gameState.board?.[attackerPosMagic.r]?.[attackerPosMagic.c];
         const attackerUnit2 = attackerCell2?.unit;
         if (attackerUnit2) attackerUnit2.lastAttackTurn = gameState.turn;

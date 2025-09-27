@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   computeCellBuff,
   effectiveStats,
@@ -12,6 +12,7 @@ import {
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
 import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, activationCost, hasInvisibility, getUnitProtection } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
+import { computeDynamicAttackBonus } from '../src/core/abilityHandlers/dynamicAttack.js';
 
 function makeBoard() {
   const b = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({ element: 'FIRE', unit: null })));
@@ -259,6 +260,145 @@ describe('guards and hits', () => {
     };
     const hits = computeHits(state, 2, 1);
     expect(hits).toHaveLength(0);
+  });
+});
+
+describe('Новые карты Биолита и Новогуса', () => {
+  function createBaseState() {
+    const board = Array.from({ length: 3 }, () => Array.from(
+      { length: 3 },
+      () => ({ element: 'FIRE', unit: null })
+    ));
+    return {
+      board,
+      players: [
+        { deck: [], hand: [], discard: [], graveyard: [], mana: 0 },
+        { deck: [], hand: [], discard: [], graveyard: [], mana: 0 },
+      ],
+      active: 0,
+      turn: 1,
+    };
+  }
+
+  it('Behemoth Groundbreaker при призыве fieldquake-ит соседние клетки', () => {
+    const state = createBaseState();
+    state.board[1][1].element = 'BIOLITH';
+    state.board[0][1].element = 'FIRE';
+    state.board[1][0].element = 'EARTH';
+    state.board[1][2].element = 'FOREST';
+    state.board[2][1].element = 'WATER';
+    state.board[1][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_BEHEMOTH_GROUNDBREAKER',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_BEHEMOTH_GROUNDBREAKER.hp,
+    };
+    const events = applySummonAbilities(state, 1, 1);
+    expect(Array.isArray(events.fieldquakes)).toBe(true);
+    expect(events.fieldquakes).toHaveLength(4);
+    expect(state.board[0][1].element).toBe('WATER');
+    expect(state.board[1][0].element).toBe('FOREST');
+    expect(state.board[1][2].element).toBe('EARTH');
+    expect(state.board[2][1].element).toBe('FIRE');
+  });
+
+  it('Undead King Novogus на не-земном поле вызывает fieldquake цели', () => {
+    const state = createBaseState();
+    state.board[2][1].element = 'WATER';
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'EARTH_UNDEAD_KING_NOVOGUS',
+      facing: 'N',
+      currentHP: CARDS.EARTH_UNDEAD_KING_NOVOGUS.hp,
+    };
+    state.board[0][1].element = 'EARTH';
+    state.board[0][1].unit = {
+      owner: 1,
+      tplId: 'FIRE_TRICEPTAUR_BEHEMOTH',
+      facing: 'S',
+      currentHP: CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp,
+    };
+    const res = magicAttack(state, 2, 1, 0, 1);
+    expect(res).toBeTruthy();
+    const hit = res.targets.find(t => t.r === 0 && t.c === 1);
+    expect(hit?.dmg).toBeGreaterThan(0);
+    expect(res.fieldquakes).toHaveLength(1);
+    expect(res.fieldquakes[0]).toMatchObject({ r: 0, c: 1, prevElement: 'EARTH' });
+    expect(res.n1.board[0][1].element).toBe('FOREST');
+    expect(res.n1.board[0][1].unit.currentHP).toBe(CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp - hit.dmg);
+  });
+
+  it('Undead King Novogus на земле не активирует fieldquake', () => {
+    const state = createBaseState();
+    state.board[2][1].element = 'EARTH';
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'EARTH_UNDEAD_KING_NOVOGUS',
+      facing: 'N',
+      currentHP: CARDS.EARTH_UNDEAD_KING_NOVOGUS.hp,
+    };
+    state.board[0][1].element = 'EARTH';
+    state.board[0][1].unit = {
+      owner: 1,
+      tplId: 'FIRE_TRICEPTAUR_BEHEMOTH',
+      facing: 'S',
+      currentHP: CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp,
+    };
+    const res = magicAttack(state, 2, 1, 0, 1);
+    expect(res).toBeTruthy();
+    expect(res.fieldquakes).toHaveLength(0);
+    expect(res.n1.board[0][1].element).toBe('EARTH');
+    const dmg = res.targets.find(t => t.r === 0 && t.c === 1)?.dmg ?? 0;
+    expect(res.n1.board[0][1].unit.currentHP).toBe(CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp - dmg);
+  });
+
+  it('Ouroboros Dragon получает атаку по числу других биолитов', () => {
+    const state = createBaseState();
+    state.board[2][1].element = 'BIOLITH';
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_OUROBOROS_DRAGON',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_OUROBOROS_DRAGON.hp,
+    };
+    state.board[2][0].element = 'BIOLITH';
+    state.board[2][0].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_MORNING_STAR_WARRIOR',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_MORNING_STAR_WARRIOR.hp,
+    };
+    state.board[0][2].element = 'BIOLITH';
+    state.board[0][2].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_BIOLITH_STINGER',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_BIOLITH_STINGER.hp,
+    };
+    state.board[1][1].unit = {
+      owner: 1,
+      tplId: 'FIRE_TRICEPTAUR_BEHEMOTH',
+      facing: 'S',
+      currentHP: CARDS.FIRE_TRICEPTAUR_BEHEMOTH.hp,
+    };
+    const bonus = computeDynamicAttackBonus(state, 2, 1, CARDS.BIOLITH_OUROBOROS_DRAGON);
+    expect(bonus).toBeTruthy();
+    expect(bonus?.amount).toBe(2);
+    const staged = stagedAttack(state, 2, 1);
+    const fin = staged.finish();
+    const dmg = fin.targets.find(t => t.r === 1 && t.c === 1);
+    expect(dmg?.dmg).toBe(CARDS.BIOLITH_OUROBOROS_DRAGON.atk + 2);
+  });
+
+  it('Ouroboros Dragon блокирует fieldquake только стоя на биолит-поле', () => {
+    const state = createBaseState();
+    state.board[1][1].element = 'BIOLITH';
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_OUROBOROS_DRAGON', facing: 'N' };
+    let cells = computeFieldquakeLockedCells(state);
+    expect(cells).toHaveLength(9);
+    state.board[1][1].element = 'EARTH';
+    cells = computeFieldquakeLockedCells(state);
+    expect(cells).toHaveLength(0);
   });
 });
 
@@ -1517,6 +1657,155 @@ describe('Новые способности существ', () => {
     expect(hasInvisibility(state, 1, 1)).toBe(false);
     expect(hasInvisibility(state, 0, 1)).toBe(true);
     expect(hasInvisibility(state, 0, 2)).toBe(false);
+  });
+});
+
+describe('Биолитовые пополнения', () => {
+  it('Фридонийский Странник создаёт событие получения маны', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[0][0].element = 'EARTH';
+    state.board[0][0].unit = { owner: 0, tplId: 'FIRE_FREEDONIAN_WANDERER', facing: 'S' };
+    state.board[1][1].element = 'FOREST';
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'N' };
+    const events = applySummonAbilities(state, 1, 1);
+    expect(Array.isArray(events.manaGains)).toBe(true);
+    expect(events.manaGains.length).toBeGreaterThanOrEqual(1);
+    const gain = events.manaGains.find(g => g.tplId === 'FIRE_FREEDONIAN_WANDERER');
+    expect(gain).toBeTruthy();
+    expect(gain?.owner).toBe(0);
+    expect(state.players[0].mana).toBe(1);
+  });
+
+  it('Imperial Biolith Guard получает ману за призыв на биолитовом поле', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[0][0].element = 'BIOLITH';
+    state.board[0][0].unit = { owner: 0, tplId: 'BIOLITH_IMPERIAL_BIOLITH_GUARD', facing: 'S' };
+    state.board[1][1].element = 'BIOLITH';
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_BOMBER', facing: 'N' };
+    const events = applySummonAbilities(state, 1, 1);
+    const gain = events.manaGains?.find(g => g.tplId === 'BIOLITH_IMPERIAL_BIOLITH_GUARD');
+    expect(gain).toBeTruthy();
+    expect(state.players[0].mana).toBe(1);
+  });
+
+  it('Imperial Biolith Guard не приносит ману при собственном призыве', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'BIOLITH';
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_IMPERIAL_BIOLITH_GUARD', facing: 'N' };
+    const events = applySummonAbilities(state, 1, 1);
+    const gain = events.manaGains?.find(g => g.tplId === 'BIOLITH_IMPERIAL_BIOLITH_GUARD');
+    expect(gain).toBeFalsy();
+    expect(state.players[0].mana).toBe(0);
+  });
+
+  it('Wormak получает ману при призыве врага и увеличивает урон по биолитам', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(1);
+    try {
+      const stateMana = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+      stateMana.board[0][0].unit = { owner: 0, tplId: 'BIOLITH_WORMAK_HEIR', facing: 'S' };
+      stateMana.board[1][1].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'N' };
+      const manaEvents = applySummonAbilities(stateMana, 1, 1);
+      const manaGain = manaEvents.manaGains?.find(g => g.tplId === 'BIOLITH_WORMAK_HEIR');
+      expect(manaGain).toBeTruthy();
+      expect(stateMana.players[0].mana).toBe(1);
+
+      const stateAttack = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+      stateAttack.board[2][1].element = 'BIOLITH';
+      stateAttack.board[2][1].unit = {
+        owner: 0,
+        tplId: 'BIOLITH_WORMAK_HEIR',
+        facing: 'N',
+        currentHP: CARDS.BIOLITH_WORMAK_HEIR.hp,
+      };
+      stateAttack.board[1][1].element = 'BIOLITH';
+      stateAttack.board[1][1].unit = {
+        owner: 1,
+        tplId: 'BIOLITH_BIOLITH_STINGER',
+        facing: 'S',
+        currentHP: CARDS.BIOLITH_BIOLITH_STINGER.hp,
+      };
+      stateAttack.board[0][0].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'E', currentHP: 1 };
+      stateAttack.board[0][2].unit = { owner: 1, tplId: 'EARTH_NOVOGUS_GOLEM', facing: 'W', currentHP: CARDS.EARTH_NOVOGUS_GOLEM.hp };
+      const battle = stagedAttack(stateAttack, 2, 1);
+      const fin = battle.finish();
+      const target = fin.targets.find(t => t.r === 1 && t.c === 1);
+      expect(target?.dmg).toBe(4);
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+
+  it('Tino генерирует ману при призыве союзника и масштабирует атаку на биолите', () => {
+    const stateMana = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    stateMana.board[0][0].element = 'BIOLITH';
+    stateMana.board[0][0].unit = { owner: 0, tplId: 'BIOLITH_TINO_SON_OF_SCION', facing: 'S' };
+    stateMana.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_BOMBER', facing: 'N' };
+    const manaEvents = applySummonAbilities(stateMana, 1, 1);
+    const manaGain = manaEvents.manaGains?.find(g => g.tplId === 'BIOLITH_TINO_SON_OF_SCION');
+    expect(manaGain).toBeTruthy();
+    expect(stateMana.players[0].mana).toBe(1);
+
+    const buildState = (allies) => {
+      const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+      state.board[2][1].element = 'BIOLITH';
+      state.board[2][1].unit = {
+        owner: 0,
+        tplId: 'BIOLITH_TINO_SON_OF_SCION',
+        facing: 'N',
+        currentHP: CARDS.BIOLITH_TINO_SON_OF_SCION.hp,
+      };
+      state.board[1][1].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'S', currentHP: 3 };
+      const slots = [ [2, 0], [2, 2], [1, 0] ];
+      for (let i = 0; i < allies && i < slots.length; i += 1) {
+        const [r, c] = slots[i];
+        state.board[r][c].element = 'BIOLITH';
+        state.board[r][c].unit = { owner: 0, tplId: 'BIOLITH_BIOLITH_STINGER', facing: 'N', currentHP: 1 };
+      }
+      return state;
+    };
+
+    const stateNoAllies = buildState(0);
+    const resultLow = magicAttack(stateNoAllies, 2, 1, 1, 1);
+    expect(resultLow).toBeTruthy();
+    const hitLow = resultLow.targets.find(t => t.r === 1 && t.c === 1);
+    expect(hitLow?.dmg).toBe(1);
+
+    const stateAllies = buildState(3);
+    const resultHigh = magicAttack(stateAllies, 2, 1, 1, 1);
+    expect(resultHigh).toBeTruthy();
+    const hitHigh = resultHigh.targets.find(t => t.r === 1 && t.c === 1);
+    expect(hitHigh?.dmg).toBeGreaterThanOrEqual(4);
+  });
+
+  it('Tino не приносит ману при собственном призыве', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'BIOLITH';
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_TINO_SON_OF_SCION', facing: 'N' };
+    const events = applySummonAbilities(state, 1, 1);
+    const gain = events.manaGains?.find(g => g.tplId === 'BIOLITH_TINO_SON_OF_SCION');
+    expect(gain).toBeFalsy();
+    expect(state.players[0].mana).toBe(0);
+  });
+
+  it('Tino может выбрать в качестве цели любую клетку для магической атаки', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[2][1].element = 'BIOLITH';
+    state.board[2][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_TINO_SON_OF_SCION',
+      facing: 'N',
+      currentHP: CARDS.BIOLITH_TINO_SON_OF_SCION.hp,
+    };
+    state.board[0][2].unit = {
+      owner: 1,
+      tplId: 'FIRE_FLAME_MAGUS',
+      facing: 'S',
+      currentHP: CARDS.FIRE_FLAME_MAGUS.hp,
+    };
+    const result = magicAttack(state, 2, 1, 0, 2);
+    expect(result).toBeTruthy();
+    const coords = Array.isArray(result.targets) ? result.targets.map(t => `${t.r},${t.c}`) : [];
+    expect(coords).toContain('0,2');
   });
 });
 

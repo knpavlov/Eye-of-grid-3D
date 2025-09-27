@@ -1,5 +1,6 @@
 // Модуль обработки механики "Инкарнация"
 import { CARDS } from '../cards.js';
+import { buildDeathRecord } from '../utils/deaths.js';
 
 function getTemplate(tplOrId) {
   if (!tplOrId) return null;
@@ -70,7 +71,7 @@ export function applyIncarnationSummon(state, context = {}) {
   const removedUnit = cell?.unit || null;
   const removedTpl = getTemplate(removedUnit?.tplId);
   const deathInfo = removedUnit
-    ? [{ r, c, owner: removedUnit.owner, tplId: removedUnit.tplId, uid: removedUnit.uid ?? null, element: cell?.element || null }]
+    ? [buildDeathRecord(state, r, c, removedUnit)].filter(Boolean)
     : null;
   if (cell) cell.unit = null;
   return {

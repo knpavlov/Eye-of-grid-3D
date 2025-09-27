@@ -25,9 +25,11 @@ import {
 import { computeCellBuff } from './fieldEffects.js';
 import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
+import { computeTargetCountAttackBonuses } from './abilityHandlers/targetCountBonus.js';
 import { getHpConditionalBonuses } from './abilityHandlers/conditionalBonuses.js';
 import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
 import { applyManaGainOnDeaths } from './abilityHandlers/manaGain.js';
+
 import { buildDeathRecord } from './utils/deaths.js';
 
 export function hasAdjacentGuard(state, r, c) {
@@ -311,8 +313,26 @@ export function stagedAttack(state, r, c, opts = {}) {
     atk += dynamicBonus.amount;
     if (dynamicBonus.type === 'ELEMENT_CREATURES' && dynamicBonus.element) {
       logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount} (существа стихии ${dynamicBonus.element})`);
+    } else if (dynamicBonus.type === 'ALLY_ELEMENT_ON_FIELD' && dynamicBonus.element) {
+      const fieldNote = dynamicBonus.requiredField ? ` на поле ${dynamicBonus.requiredField}` : '';
+      const allies = typeof dynamicBonus.count === 'number'
+        ? ` (${dynamicBonus.count} союзных существ стихии ${dynamicBonus.element}${fieldNote})`
+        : '';
+      logLines.push(`${tplA.name}: атака установлена на ${dynamicBonus.targetValue}${allies}.`);
     } else {
-      logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount}`);
+      const delta = dynamicBonus.amount;
+      const direction = delta > 0 ? 'увеличена' : 'уменьшена';
+      logLines.push(`${tplA.name}: атака ${direction} на ${Math.abs(delta)}.`);
+    }
+  }
+  const targetCountBonuses = computeTargetCountAttackBonuses(base, { unit: attacker }, hitsRaw, tplA);
+  if (targetCountBonuses.length) {
+    for (const bonus of targetCountBonuses) {
+      if (!bonus || !Number.isFinite(bonus.amount)) continue;
+      atk += bonus.amount;
+      if (bonus.log) {
+        logLines.push(bonus.log);
+      }
     }
   }
   const targetBonus = getTargetElementBonus(tplA, base, hitsRaw);
@@ -558,6 +578,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     ensureStep1();
     const nFinal = JSON.parse(JSON.stringify(n1));
     const ret = step2();
+    const manaStealEvents = [];
 
     const applied = applyDamageInteractionResults(nFinal, damageEffects);
     const attackerPosUpdate = applied?.attackerPosUpdate || null;
@@ -572,6 +593,12 @@ export function stagedAttack(state, r, c, opts = {}) {
     if (Array.isArray(applied?.logLines) && applied.logLines.length) {
       logLines.push(...applied.logLines);
     }
+    if (Array.isArray(applied?.manaSteals) && applied.manaSteals.length) {
+      manaStealEvents.push(...applied.manaSteals);
+    }
+    const appliedFieldquakes = Array.isArray(applied?.fieldquakes) ? applied.fieldquakes : [];
+    const damagePossessions = Array.isArray(applied?.possessions) ? applied.possessions : [];
+    const damageReleases = Array.isArray(applied?.releases) ? applied.releases : [];
 
     const A = nFinal.board?.[r]?.[c]?.unit;
     if (A && (ret.total || 0) > 0) {
@@ -588,6 +615,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
         const deathRecord = buildDeathRecord(nFinal, rr, cc, u);
         if (deathRecord) deaths.push(deathRecord);
+
         if (cellRef) cellRef.unit = null;
       }
     }
@@ -595,6 +623,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       for (const death of applied.deaths) {
         if (death) deaths.push(death);
       }
+
     }
 
     try {
@@ -633,6 +662,9 @@ export function stagedAttack(state, r, c, opts = {}) {
     const discardEffects = applyDeathDiscardEffects(nFinal, deaths, { cause: 'BATTLE' });
     if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
       logLines.push(...discardEffects.logs);
+    }
+    if (Array.isArray(discardEffects?.manaSteals) && discardEffects.manaSteals.length) {
+      manaStealEvents.push(...discardEffects.manaSteals);
     }
 
     const releaseEvents = releasePossessionsAfterDeaths(nFinal, deaths);
@@ -769,6 +801,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (!allowFriendly && (!mainTarget || mainTarget.owner === attacker.owner)) return null;
 
   const logLines = [];
+  const manaStealEvents = [];
   const targets = [];
   const damageEffects = { preventRetaliation: new Set(), events: [] };
   const dodgeUpdates = [];
@@ -783,6 +816,23 @@ export function magicAttack(state, fr, fc, tr, tc) {
 
   const atkStats = effectiveStats(originCell, attacker, { state: n1, r: fromR, c: fromC });
   let atk = atkStats.atk || 0;
+  const dynAttackBonus = computeDynamicAttackBonus(n1, fromR, fromC, tplA);
+  if (dynAttackBonus?.amount) {
+    atk += dynAttackBonus.amount;
+    if (dynAttackBonus.type === 'ELEMENT_CREATURES' && dynAttackBonus.element) {
+      logLines.push(`${tplA.name}: атака увеличена на ${dynAttackBonus.amount} (существа стихии ${dynAttackBonus.element})`);
+    } else if (dynAttackBonus.type === 'ALLY_ELEMENT_ON_FIELD' && dynAttackBonus.element) {
+      const fieldNote = dynAttackBonus.requiredField ? ` на поле ${dynAttackBonus.requiredField}` : '';
+      const allies = typeof dynAttackBonus.count === 'number'
+        ? ` (${dynAttackBonus.count} союзных существ стихии ${dynAttackBonus.element}${fieldNote})`
+        : '';
+      logLines.push(`${tplA.name}: атака установлена на ${dynAttackBonus.targetValue}${allies}.`);
+    } else {
+      const delta = dynAttackBonus.amount;
+      const direction = delta > 0 ? 'увеличена' : 'уменьшена';
+      logLines.push(`${tplA.name}: атака ${direction} на ${Math.abs(delta)}.`);
+    }
+  }
   const dynMagic = computeDynamicMagicAttack(n1, tplA);
   if (dynMagic) {
     atk = dynMagic.amount;
@@ -936,9 +986,29 @@ export function magicAttack(state, fr, fc, tr, tc) {
     if (u && (u.currentHP ?? CARDS[u.tplId].hp) <= 0) {
       const deathRecord = buildDeathRecord(n1, rr, cc, u);
       if (deathRecord) deaths.push(deathRecord);
+
       cellRef.unit = null;
     }
   }
+  const applied = applyDamageInteractionResults(n1, damageEffects);
+  const attackerPosUpdate = applied?.attackerPosUpdate || null;
+  if (attackerPosUpdate) {
+    fromR = attackerPosUpdate.r;
+    fromC = attackerPosUpdate.c;
+  }
+  if (Array.isArray(applied?.logLines) && applied.logLines.length) {
+    logLines.push(...applied.logLines);
+  }
+  if (Array.isArray(applied?.manaSteals) && applied.manaSteals.length) {
+    manaStealEvents.push(...applied.manaSteals);
+  }
+  if (Array.isArray(applied?.deaths) && applied.deaths.length) {
+    deaths.push(...applied.deaths);
+  }
+  const appliedFieldquakes = Array.isArray(applied?.fieldquakes) ? applied.fieldquakes : [];
+  const damagePossessions = Array.isArray(applied?.possessions) ? applied.possessions : [];
+  const damageReleases = Array.isArray(applied?.releases) ? applied.releases : [];
+
   try {
     for (const d of deaths) {
       if (n1 && n1.players && n1.players[d.owner]) {
@@ -954,6 +1024,9 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
     logLines.push(...discardEffects.logs);
   }
+  if (Array.isArray(discardEffects?.manaSteals) && discardEffects.manaSteals.length) {
+    manaStealEvents.push(...discardEffects.manaSteals);
+  }
   const releaseEvents = releasePossessionsAfterDeaths(n1, deaths);
   if (releaseEvents.releases.length) {
     for (const rel of releaseEvents.releases) {
@@ -963,6 +1036,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
       logLines.push(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
     }
   }
+
   const applied = applyDamageInteractionResults(n1, damageEffects);
   const attackerPosUpdate = applied?.attackerPosUpdate || null;
   const damagePossessions = Array.isArray(applied?.possessions) ? applied.possessions : [];
@@ -981,6 +1055,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
       if (death) deaths.push(death);
     }
   }
+
   const continuous = refreshContinuousPossessions(n1);
   if (continuous.possessions.length) {
     for (const ev of continuous.possessions) {
@@ -1016,6 +1091,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
   }
   const manaFieldquakes = Array.isArray(manaFromDeaths?.fieldquakes) ? manaFromDeaths.fieldquakes : [];
   const combinedFieldquakes = [...interactionFieldquakes, ...manaFieldquakes];
+
   return {
     n1,
     logLines,
@@ -1029,9 +1105,11 @@ export function magicAttack(state, fr, fc, tr, tc) {
     schemeKey,
     attackProfile: profile,
     dmg,
+
     manaGainEvents: Array.isArray(manaFromDeaths?.entries) ? manaFromDeaths.entries : [],
     manaSteals: manaStealEvents,
     fieldquakes: combinedFieldquakes,
+
   };
 }
 

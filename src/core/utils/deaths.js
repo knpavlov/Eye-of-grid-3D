@@ -1,3 +1,4 @@
+
 // Утилиты для формирования записей о погибших существах (чистая логика)
 import { normalizeElementName } from './elements.js';
 
