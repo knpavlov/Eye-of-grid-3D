@@ -32,6 +32,7 @@ import * as HandCount from './ui/handCount.js';
 import { updateUI } from './ui/update.js';
 import * as UIActions from './ui/actions.js';
 import * as SceneEffects from './scene/effects.js';
+import * as ManaFx from './scene/manaFx.js';
 import * as UISpellUtils from './ui/spellUtils.js';
 import * as Spells from './spells/handlers.js';
 import './ui/statusChip.js';
@@ -163,6 +164,7 @@ try {
     worldToScreen: sceneWorldToScreen,
     animate: sceneAnimate,
     getCtx: getSceneCtx,
+    manaFx: ManaFx,
   };
   window.__board = {
     createBoard: Board.createBoard,

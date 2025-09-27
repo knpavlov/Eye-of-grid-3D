@@ -1,5 +1,6 @@
 // Pointer and drag interactions for Three.js scene
 import { getCtx } from './context.js';
+import { buildManaGainPlan } from './manaFx.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
 import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
@@ -13,9 +14,12 @@ import {
   describeFieldFatality,
   isIncarnationCard,
 } from '../core/abilities.js';
-import { capMana } from '../core/constants.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { applyManaGainOnDeaths, snapshotPlayersMana } from '../core/abilityHandlers/manaGain.js';
 import { buildDeathRecord } from '../core/utils/deaths.js';
+/*
+import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
+*/
 
 // Centralized interaction state
 export const interactionState = {
@@ -591,22 +595,31 @@ function performMagicAttack(from, targetMesh) {
     hitVisuals.push({ mesh, dmg });
   }
 
+  const manaPlan = buildManaGainPlan({
+    playersBefore: gameState.players,
+    deaths: res.deaths || [],
+    manaGainEntries: res.manaGainEvents || [],
+    tileMeshes,
+    THREE,
+  });
+
   const deathVisuals = [];
   for (const d of res.deaths || []) {
     const mesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c) || null;
     let manaOrigin = null;
     try {
-      const tile = tileMeshes?.[d.r]?.[d.c];
-      if (tile?.position?.clone) {
-        manaOrigin = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+      manaOrigin = manaPlan?.getOrigin?.(d) || null;
+      if (!manaOrigin) {
+        const tile = tileMeshes?.[d.r]?.[d.c];
+        if (tile?.position?.clone) {
+          manaOrigin = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+        }
       }
     } catch {}
-    const manaSlot = gameState.players?.[d.owner]?.mana || 0;
     deathVisuals.push({
       death: d,
       mesh,
       manaOrigin,
-      manaSlot,
       tpl: CARDS[d.tplId] || null,
     });
   }
@@ -649,12 +662,8 @@ function performMagicAttack(from, targetMesh) {
       if (info.mesh) {
         try { window.__fx?.dissolveAndAsh?.(info.mesh, new THREE.Vector3(0, 0, 0.6), 0.9); } catch {}
       }
-      if (info.manaOrigin) {
-        setTimeout(() => {
-          try { window.animateManaGainFromWorld?.(info.manaOrigin, info.death.owner, true, info.manaSlot); } catch {}
-        }, 400);
-      }
     }
+    try { manaPlan?.schedule?.(); } catch {}
   };
 
   playHitEffects();
@@ -887,19 +896,66 @@ export function placeUnitWithDirection(direction) {
     }
     const owner = unit.owner;
     const deathRecord = buildDeathRecord(gameState, row, col, unit);
-    const slotBeforeGain = gameState.players?.[owner]?.mana || 0;
+    const playersBefore = snapshotPlayersMana(gameState.players);
     try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
-    const ownerPlayer = gameState.players?.[owner];
-    if (ownerPlayer) {
-      ownerPlayer.mana = capMana((ownerPlayer.mana || 0) + 1);
-    }
     const ctx = getCtx();
     const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
     const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-    window.animateManaGainFromWorld(pos, owner, true, slotBeforeGain);
+/*
+    const deathElement = gameState.board?.[row]?.[col]?.element || null;
+    const deathInfo = [{ r: row, c: col, owner, tplId: unit.tplId, uid: unit.uid ?? null, element: deathElement }];
+    const playersBefore = Array.isArray(gameState.players)
+      ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))
+      : [];
+    try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
+    const ownerPlayer = gameState.players?.[owner];
+    if (ownerPlayer) {
+      const beforeMana = Math.max(0, Number(ownerPlayer.mana || 0));
+      ownerPlayer.mana = capMana(beforeMana + 1);
+    }
+    let manaBonus = null;
+    try {
+      manaBonus = applyManaGainOnDeaths(gameState, deathInfo, { boardState: gameState });
+    } catch (err) {
+      console.error('[interactions] Ошибка при расчёте бонусной маны:', err);
+      manaBonus = null;
+    }
+    if (Array.isArray(manaBonus?.logs) && manaBonus.logs.length) {
+      for (const text of manaBonus.logs) {
+        if (text) window.addLog(text);
+      }
+    }
+    const ctx = getCtx();
+    const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+    const manaPlan = buildManaGainPlan({
+      playersBefore,
+      deaths: deathInfo,
+      manaGainEntries: Array.isArray(manaBonus?.entries) ? manaBonus.entries : [],
+      tileMeshes: ctx.tileMeshes,
+      THREE,
+    });
+    try { manaPlan?.schedule?.(); } catch {}
+*/
     gameState.board[row][col].unit = null;
     const deathInfo = deathRecord ? [deathRecord] : [];
+    const manaGain = applyManaGainOnDeaths(gameState, deathInfo, {
+      cause: 'SUMMON',
+      beforePlayers,
+    });
+    const manaEvents = Array.isArray(manaGain?.events) ? manaGain.events : [];
+    const ownerManaEvent = manaEvents.find(ev => ev && ev.owner === owner) || null;
+    if (ownerManaEvent) {
+      const slotBeforeGain = typeof ownerManaEvent.beforeMana === 'number'
+        ? ownerManaEvent.beforeMana
+        : (playersBefore?.[owner]?.mana ?? gameState.players?.[owner]?.mana ?? 0);
+      window.animateManaGainFromWorld(pos, owner, true, slotBeforeGain);
+    }
     const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SUMMON' });
+    if (Array.isArray(manaGain?.logs) && manaGain.logs.length) {
+      for (const text of manaGain.logs) {
+        if (text) window.addLog(text);
+      }
+    }
     if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
       for (const text of discardEffects.logs) {
         window.addLog(text);

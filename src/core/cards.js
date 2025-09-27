@@ -348,6 +348,37 @@ export const CARDS = {
     protectionEqualsEmptyFields: true,
     desc: 'Novogus Golem gains Protection equal to the number of empty fields.'
   },
+  EARTH_NOVOGUS_CATAPULT: {
+    id: 'EARTH_NOVOGUS_CATAPULT', name: 'Novogus Catapult', type: 'UNIT', cost: 3, activation: 1,
+    element: 'EARTH', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [2], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'], ignoreAlliedBlocking: true,
+    gainManaOnDeath: { mode: 'COUNT_FIELDS_OF_ELEMENT', element: 'EARTH' },
+    desc: 'If Novogus Catapult is destroyed, you gain mana equal to the number of Earth fields.'
+  },
+  EARTH_SKELETON_SOLDIER: {
+    id: 'EARTH_SKELETON_SOLDIER', name: 'Skeleton Soldier', type: 'UNIT', cost: 2, activation: 1,
+    element: 'EARTH', atk: 1, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'N', ranges: [1], group: 'FRONT_LEFT', ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], group: 'FRONT_LEFT', ignoreAlliedBlocking: true }
+    ],
+    blindspots: ['S', 'E'], ignoreAlliedBlocking: true,
+    gainManaOnDeath: 1,
+    desc: 'If Skeleton Soldier is destroyed, you gain 1 additional mana.'
+  },
+  EARTH_UNDEAD_DRAGON: {
+    id: 'EARTH_UNDEAD_DRAGON', name: 'Undead Dragon', type: 'UNIT', cost: 7, activation: 4,
+    element: 'EARTH', atk: 5, hp: 8,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY', ignoreAlliedBlocking: true } ],
+    blindspots: ['S'], ignoreAlliedBlocking: true,
+    dynamicAtk: 'EARTH_CREATURES',
+    allyDeathGainMana: { amount: 1, requireFieldElement: 'EARTH', adjacency: 'ORTHOGONAL' },
+    desc: "Undead Dragon's Attack is equal to 5 plus the number of other Earth creatures on the board. While Undead Dragon is on an Earth field, gain 1 additional mana whenever an adjacent allied creature is destroyed."
+  },
 
   EARTH_SE_HOLLYN_FORTRESS: {
     id: 'EARTH_SE_HOLLYN_FORTRESS', name: 'Se Hollyn Fortress', type: 'UNIT', cost: 4, activation: 2,
@@ -716,6 +747,20 @@ export const CARDS = {
     blindspots: ['S'], ignoreAlliedBlocking: true, pierce: true,
     deathDiscardOnNonElement: { element: 'FOREST', count: { type: 'FIELD_COUNT', element: 'FOREST' } },
     desc: 'If Elven Rider is destroyed on a non-Wood field, your opponent must discard cards equal to the number of Wood fields.'
+  },
+  FOREST_INQUISITOR_KOOG: {
+    id: 'FOREST_INQUISITOR_KOOG', name: 'Inquisitor Koog', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FOREST', atk: 2, hp: 4,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'E', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], ignoreAlliedBlocking: true }
+    ],
+    blindspots: ['S'], ignoreAlliedBlocking: true,
+    plusAtkVsElement: { element: 'FOREST', amount: 1 },
+    gainManaOnDeath: 'ENEMIES',
+    desc: 'Inquisitor Koog adds 1 to his attack if the target creature is a Wood creature. If Inquisitor Koog is destroyed, you gain additional mana equal to the number of enemies.'
   },
   FOREST_JUNO_FOREST_DRAGON: {
     id: 'FOREST_JUNO_FOREST_DRAGON', name: 'Juno Forest Dragon', type: 'UNIT', cost: 7, activation: 4,
