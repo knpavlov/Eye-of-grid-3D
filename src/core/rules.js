@@ -305,8 +305,16 @@ export function stagedAttack(state, r, c, opts = {}) {
   const hitsRaw = computeHits(base, r, c, { ...opts, profile });
   if (!hitsRaw.length) return { empty: true };
 
-  const dynamicBonus = computeDynamicAttackBonus(base, r, c, tplA);
-  if (dynamicBonus?.amount) {
+  const dynamicBonus = computeDynamicAttackBonus(base, r, c, tplA, { hits: hitsRaw });
+  if (dynamicBonus?.override != null) {
+    const prev = atk;
+    atk = dynamicBonus.override;
+    if (dynamicBonus.log) {
+      logLines.push(dynamicBonus.log);
+    } else if (prev !== atk) {
+      logLines.push(`${tplA.name}: атака установлена на ${atk}.`);
+    }
+  } else if (dynamicBonus?.amount) {
     atk += dynamicBonus.amount;
     if (dynamicBonus.type === 'ELEMENT_CREATURES' && dynamicBonus.element) {
       logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount} (существа стихии ${dynamicBonus.element})`);
