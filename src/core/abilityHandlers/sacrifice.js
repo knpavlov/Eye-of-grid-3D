@@ -3,6 +3,9 @@ import { CARDS } from '../cards.js';
 import { computeCellBuff } from '../fieldEffects.js';
 import { applyFieldFatalityCheck as applyFieldFatalityCheckInternal } from './fieldHazards.js';
 import { applyDeathDiscardEffects } from './discard.js';
+import { applyDeathManaSteal } from './manaSteal.js';
+import { applyDeathRepositionEffects } from './deathReposition.js';
+import { createDeathEntry } from '../utils/deaths.js';
 
 const FACING_ORDER = ['N', 'E', 'S', 'W'];
 
@@ -255,8 +258,9 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
     }
     const tplDeath = getTemplateRef(summonTpl);
     graveyard.push(tplDeath);
+    const replacementEntry = createDeathEntry(state, newUnit, r, c);
     cell.unit = null;
-    const replacementDeath = [{ r, c, owner: newUnit.owner, tplId: summonTpl.id, uid: newUnit.uid ?? null, element: cell?.element || null }];
+    const replacementDeath = replacementEntry ? [replacementEntry] : [];
 
     if (summonTpl.onDeathAddHPAll) {
       const amount = summonTpl.onDeathAddHPAll;
@@ -281,6 +285,21 @@ export function executeSacrificeAction(state, action = {}, payload = {}) {
     const discardReplacement = applyDeathDiscardEffects(state, replacementDeath, { cause: 'SACRIFICE_REPLACEMENT' });
     if (discardReplacement && Array.isArray(discardReplacement.logs) && discardReplacement.logs.length) {
       result.events.discardLogs = (result.events.discardLogs || []).concat(discardReplacement.logs);
+    }
+
+    if (replacementDeath.length) {
+      const reposition = applyDeathRepositionEffects(state, replacementDeath);
+      if (Array.isArray(reposition?.logs) && reposition.logs.length) {
+        result.events.logs = (result.events.logs || []).concat(reposition.logs);
+      }
+      const manaStealEvents = applyDeathManaSteal(state, replacementDeath, { cause: 'SACRIFICE_REPLACEMENT' });
+      if (Array.isArray(manaStealEvents) && manaStealEvents.length) {
+        result.events.manaStealEvents = manaStealEvents;
+        const logs = manaStealEvents.map(ev => ev?.log).filter(Boolean);
+        if (logs.length) {
+          result.events.logs = (result.events.logs || []).concat(logs);
+        }
+      }
     }
   }
 

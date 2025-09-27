@@ -17,6 +17,10 @@ import {
 import { capMana } from '../core/constants.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
 import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
+import { applyDeathManaSteal } from '../core/abilityHandlers/manaSteal.js';
+import { applyDeathRepositionEffects } from '../core/abilityHandlers/deathReposition.js';
+import { createDeathEntry } from '../core/utils/deaths.js';
+import { flushManaStealFx } from './manaStealFx.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -616,6 +620,8 @@ function performMagicAttack(from, targetMesh) {
     appliedState = window.gameState || res.n1;
   } catch { appliedState = res.n1; }
 
+  flushManaStealFx(appliedState, { addLog: window.addLog });
+
   const attackerCoords = res.attackerPosUpdate || { r: from.r, c: from.c };
   const attackerState = appliedState?.board?.[attackerCoords.r]?.[attackerCoords.c]?.unit;
   if (attackerState) attackerState.lastAttackTurn = appliedState.turn;
@@ -806,6 +812,19 @@ export function placeUnitWithDirection(direction) {
           window.addLog(text);
         }
       }
+      const reposition = applyDeathRepositionEffects(gameState, applied.death);
+      if (Array.isArray(reposition?.logs)) {
+        for (const text of reposition.logs) {
+          window.addLog(text);
+        }
+      }
+      const manaStealEvents = applyDeathManaSteal(gameState, applied.death, { cause: 'INCARNATION' });
+      if (Array.isArray(manaStealEvents)) {
+        for (const ev of manaStealEvents) {
+          if (ev?.log) window.addLog(ev.log);
+        }
+      }
+      flushManaStealFx(gameState, { addLog: window.addLog });
     }
   }
   const unit = {
@@ -879,9 +898,9 @@ export function placeUnitWithDirection(direction) {
       showOracleDeathBuff(unit.owner, amount);
       window.addLog(`${cardData.name}: союзники получают +${amount} HP`);
     }
+    const deathEntry = createDeathEntry(gameState, unit, row, col);
+    const deathInfo = deathEntry ? [deathEntry] : [];
     const owner = unit.owner;
-    const deathElement = gameState.board?.[row]?.[col]?.element || null;
-    const deathInfo = [{ r: row, c: col, owner, tplId: unit.tplId, uid: unit.uid ?? null, element: deathElement }];
     const playersBefore = Array.isArray(gameState.players)
       ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))
       : [];
@@ -919,6 +938,21 @@ export function placeUnitWithDirection(direction) {
       for (const text of discardEffects.logs) {
         window.addLog(text);
       }
+    }
+    if (deathInfo.length) {
+      const reposition = applyDeathRepositionEffects(gameState, deathInfo);
+      if (Array.isArray(reposition?.logs)) {
+        for (const text of reposition.logs) {
+          window.addLog(text);
+        }
+      }
+      const manaStealEvents = applyDeathManaSteal(gameState, deathInfo, { cause: 'SUMMON' });
+      if (Array.isArray(manaStealEvents)) {
+        for (const ev of manaStealEvents) {
+          if (ev?.log) window.addLog(ev.log);
+        }
+      }
+      flushManaStealFx(gameState, { addLog: window.addLog });
     }
     // При мгновенной смерти существо считается призванным, поэтому передаём ход оппоненту
     endTurnAfterSummon();
@@ -963,6 +997,7 @@ export function placeUnitWithDirection(direction) {
         window.addLog?.(text);
       }
     }
+    flushManaStealFx(gameState, { addLog: window.addLog });
     if (Array.isArray(summonEvents?.statBuffs) && summonEvents.statBuffs.length) {
       for (const buff of summonEvents.statBuffs) {
         if (!buff) continue;
