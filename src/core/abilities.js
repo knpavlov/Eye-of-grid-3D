@@ -706,7 +706,7 @@ export function applyFreedonianAura(state, owner, context = {}) {
 }
 
 export function applySummonAbilities(state, r, c) {
-  const events = { possessions: [] };
+  const events = { possessions: [], manaSteals: [] };
   const cell = state?.board?.[r]?.[c];
   const unit = cell?.unit;
   if (!cell || !unit) return events;
@@ -979,10 +979,14 @@ export function executeUnitAction(state, action, payload = {}) {
         : [];
       result.manaGains = manaEvents;
       result.freedonianMana = manaEvents.reduce((acc, ev) => acc + (ev?.total || 0), 0);
+      result.manaSteals = Array.isArray(result.summonEvents?.manaSteals)
+        ? result.summonEvents.manaSteals
+        : [];
     } else {
       result.summonEvents = result.summonEvents || { possessions: [] };
       result.manaGains = [];
       result.freedonianMana = 0;
+      result.manaSteals = [];
     }
     return result;
   }

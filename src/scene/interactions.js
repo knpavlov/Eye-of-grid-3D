@@ -912,6 +912,27 @@ export function placeUnitWithDirection(direction) {
       THREE,
     });
     try { manaPlan?.schedule?.(); } catch {}
+    const manaStealEvents = Array.isArray(manaBonus?.steals) ? manaBonus.steals : [];
+    if (manaStealEvents.length) {
+      const animateSteal = window.__ui?.mana?.animateManaSteal;
+      for (const steal of manaStealEvents) {
+        if (steal?.log) {
+          window.addLog?.(steal.log);
+        } else {
+          const amount = Number.isFinite(steal?.amount) ? steal.amount : 0;
+          if (amount > 0) {
+            const fromLabel = Number.isFinite(steal?.from) ? `игрок ${steal.from + 1}` : 'игрок';
+            const toLabel = Number.isFinite(steal?.to) ? `игрок ${steal.to + 1}` : 'игрок';
+            window.addLog?.(`${toLabel} крадёт ${amount} маны у ${fromLabel}.`);
+          }
+        }
+        if (typeof animateSteal === 'function') {
+          try { animateSteal(steal); } catch (err) {
+            console.error('[mana] Не удалось запустить анимацию кражи маны:', err);
+          }
+        }
+      }
+    }
     gameState.board[row][col].unit = null;
     const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SUMMON' });
     if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
@@ -1058,6 +1079,27 @@ export function placeUnitWithDirection(direction) {
         }
       } catch (err) {
         console.error('[summon] Не удалось обработать события маны', err);
+      }
+    }
+    const manaSteals = Array.isArray(summonEvents?.manaSteals) ? summonEvents.manaSteals : [];
+    if (manaSteals.length) {
+      const animateSteal = window.__ui?.mana?.animateManaSteal;
+      for (const steal of manaSteals) {
+        if (steal?.log) {
+          window.addLog?.(steal.log);
+        } else {
+          const amount = Number.isFinite(steal?.amount) ? steal.amount : 0;
+          if (amount > 0) {
+            const fromLabel = Number.isFinite(steal?.from) ? `игрок ${steal.from + 1}` : 'игрок';
+            const toLabel = Number.isFinite(steal?.to) ? `игрок ${steal.to + 1}` : 'игрок';
+            window.addLog?.(`${toLabel} крадёт ${amount} маны у ${fromLabel}.`);
+          }
+        }
+        if (typeof animateSteal === 'function') {
+          try { animateSteal(steal); } catch (err) {
+            console.error('[summon] Не удалось запустить анимацию кражи маны:', err);
+          }
+        }
       }
     }
   }

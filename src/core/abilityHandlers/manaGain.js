@@ -425,7 +425,7 @@ export function applyTurnStartManaEffects(state, playerIndex) {
 }
 
 export function applyManaGainOnDeaths(state, deaths, opts = {}) {
-  const result = { total: 0, entries: [], logs: [] };
+  const result = { total: 0, entries: [], logs: [], steals: [], fieldquakes: [] };
   if (!state?.players || !Array.isArray(deaths) || deaths.length === 0) {
     return result;
   }
