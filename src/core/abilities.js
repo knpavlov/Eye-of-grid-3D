@@ -51,6 +51,12 @@ import {
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
 const inBounds = (r, c) => r >= 0 && r < 3 && c >= 0 && c < 3;
+const ADJACENT_VECTORS = [
+  [-1, 0],
+  [1, 0],
+  [0, -1],
+  [0, 1],
+];
 
 function getUnitTemplate(unit) {
   if (!unit) return null;
@@ -664,11 +670,95 @@ export function applyFreedonianAura(state, owner) {
         r,
         c,
         fieldElement: cellElement || null,
+        before,
+        after,
       });
     }
   }
 
   return result;
+}
+
+// Нормализация конфигурации для fieldquake-последствий при призыве
+export function normalizeFieldquakeSummonConfig(raw) {
+  if (!raw) return null;
+  if (raw === true) return { pattern: 'ADJACENT' };
+  if (typeof raw === 'string') {
+    return { pattern: raw.trim().toUpperCase() };
+  }
+  if (typeof raw === 'object') {
+    const pattern = String(raw.pattern || raw.type || raw.mode || 'ADJACENT').toUpperCase();
+    return { ...raw, pattern };
+  }
+  return null;
+}
+
+// Подбор целевых клеток для эффектов fieldquake при появлении существа
+export function collectFieldquakeSummonTargets(r, c, cfg) {
+  const result = [];
+  if (!cfg) return result;
+  if (cfg.pattern === 'SELF') {
+    result.push({ r, c });
+  }
+  if (cfg.pattern === 'ADJACENT') {
+    for (const vec of ADJACENT_VECTORS) {
+      const nr = r + vec[0];
+      const nc = c + vec[1];
+      if (inBounds(nr, nc)) {
+        result.push({ r: nr, c: nc });
+      }
+    }
+  }
+  if (Array.isArray(cfg.extra)) {
+    for (const entry of cfg.extra) {
+      if (!entry) continue;
+      const nr = Number.isInteger(entry.r) ? entry.r : null;
+      const nc = Number.isInteger(entry.c) ? entry.c : null;
+      if (nr != null && nc != null && inBounds(nr, nc)) {
+        result.push({ r: nr, c: nc });
+      }
+    }
+  }
+  return result;
+}
+
+// Универсальный обработчик прироста маны при призыве (включая Фридонийца)
+export function applyManaGainOnSummon(state, ctx = {}) {
+  const owner = (ctx && Number.isInteger(ctx.owner))
+    ? ctx.owner
+    : (Number.isInteger(ctx?.unit?.owner) ? ctx.unit.owner : null);
+  const summary = owner != null ? applyFreedonianAura(state, owner) : { total: 0, entries: [] };
+  const events = [];
+  if (Array.isArray(summary.entries)) {
+    for (const entry of summary.entries) {
+      const amount = Number.isFinite(entry?.amount) ? entry.amount : 0;
+      if (amount <= 0) continue;
+      events.push({
+        owner: entry.owner,
+        amount,
+        before: Number.isFinite(entry?.before) ? entry.before : null,
+        after: Number.isFinite(entry?.after) ? entry.after : null,
+        r: entry.r,
+        c: entry.c,
+        tplId: entry.sourceTplId || null,
+        sourceName: entry.sourceName || null,
+        fieldElement: entry.fieldElement || null,
+        source: 'FREEDONIAN_AURA',
+        type: 'AURA_GAIN',
+      });
+    }
+  }
+
+  const summaryEvent = summary.total > 0
+    ? {
+        owner,
+        total: summary.total,
+        entries: summary.entries,
+        source: 'FREEDONIAN_AURA',
+      }
+    : null;
+
+  return { summary: summaryEvent, events };
 }
 
 export function applySummonAbilities(state, r, c) {
@@ -735,15 +825,12 @@ export function applySummonAbilities(state, r, c) {
     events.heals = [...(events.heals || []), ...reactions.heals];
   }
 
-  const auraMana = applyFreedonianAura(state, unit.owner);
-  if (auraMana.total > 0) {
-    const manaEvent = {
-      owner: unit.owner,
-      total: auraMana.total,
-      entries: auraMana.entries,
-      source: 'FREEDONIAN_AURA',
-    };
-    events.manaGains = [...(events.manaGains || []), manaEvent];
+  const manaGain = applyManaGainOnSummon(state, { r, c, unit, tpl, cell });
+  if (manaGain?.summary?.total > 0) {
+    events.manaGains = [...(events.manaGains || []), manaGain.summary];
+  }
+  if (Array.isArray(manaGain?.events) && manaGain.events.length) {
+    events.manaGainDetails = [...(events.manaGainDetails || []), ...manaGain.events];
   }
 
   return events;
