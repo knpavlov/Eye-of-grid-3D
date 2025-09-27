@@ -1,5 +1,7 @@
-// Обработка начисления маны за смерти существ (без визуальной логики)
+// Обработка прироста маны (строгая игровая логика без визуальных побочных эффектов)
+import { CARDS } from '../cards.js';
 import { capMana } from '../constants.js';
+import { normalizeElementName } from '../utils/elements.js';
 
 function sanitizeGain(rawValue, fallback = 1) {
   if (!Number.isFinite(rawValue)) return fallback;
@@ -11,64 +13,25 @@ function clampMana(value) {
   return Math.max(0, Number.isFinite(value) ? Math.floor(value) : 0);
 }
 
-export function applyManaGainOnDeaths(state, deaths, context = {}) {
-  const result = { events: [], logs: [] };
-  if (!state || !Array.isArray(state.players) || !Array.isArray(deaths) || !deaths.length) {
-    return result;
-  }
-
-  const players = state.players;
-  const cause = context.cause || null;
-  const beforePlayers = Array.isArray(context.beforePlayers) ? context.beforePlayers : null;
-  const baseGain = sanitizeGain(context.gainPerDeath, 1);
-
-  for (const death of deaths) {
-    if (!death || typeof death.owner !== 'number') continue;
-    const player = players[death.owner];
-    if (!player) continue;
-
-    const rewardRaw = sanitizeGain(death?.manaReward, baseGain);
-    if (rewardRaw <= 0) continue;
-
-    const before = clampMana(player.mana);
-    const after = capMana(before + rewardRaw);
-    player.mana = after;
-
-    const gained = after - before;
-    const event = {
-      owner: death.owner,
-      amount: gained,
-      beforeMana: before,
-      afterMana: after,
-      death,
-      cause,
-    };
-    if (beforePlayers) {
-      event.playersBefore = beforePlayers;
-    }
-    if (death?.element) {
-      event.element = death.element;
-    }
-    result.events.push(event);
-  }
-
-  result.total = result.events.reduce((sum, ev) => sum + (ev.amount || 0), 0);
-  return result;
+function toPositiveInt(value, fallback = 0) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return Math.max(0, Math.floor(fallback));
+  return Math.max(0, Math.floor(num));
 }
 
-export function snapshotPlayersMana(players) {
-  if (!Array.isArray(players)) return [];
-  return players.map(pl => ({ mana: clampMana(pl?.mana) }));
+function applyManaDelta(state, playerIndex, amount) {
+  const fallback = { gained: 0, before: 0, after: 0 };
+  if (!state?.players || !state.players[playerIndex]) return fallback;
+  const delta = toPositiveInt(amount);
+  const player = state.players[playerIndex];
+  const before = clampMana(player.mana);
+  if (delta <= 0) {
+    return { gained: 0, before, after: before };
+  }
+  const after = capMana(before + delta);
+  player.mana = after;
+  return { gained: after - before, before, after };
 }
-
-export default { applyManaGainOnDeaths, snapshotPlayersMana };
-/*
-// Модуль обработки эффектов прироста маны (чистая игровая логика)
-import { CARDS } from '../cards.js';
-import { normalizeElementName } from '../utils/elements.js';
-
-const BOARD_SIZE = 3;
-const capMana = (m) => Math.min(10, m);
 
 function normalizeElement(value, fallback = null) {
   const normalized = normalizeElementName(typeof value === 'string' ? value : null);
@@ -89,13 +52,19 @@ function normalizeManaGainConfig(raw, tpl) {
     }
     return null;
   }
+  if (raw === true) {
+    return {
+      element: normalizeElement(tpl?.element),
+      amount: 1,
+    };
+  }
   if (typeof raw === 'string') {
     return {
       element: normalizeElement(raw, tpl?.element),
       amount: 1,
     };
   }
-  if (typeof raw === 'number' && Number.isFinite(raw)) {
+  if (typeof raw === 'number') {
     const amount = Math.max(0, Math.floor(raw));
     if (amount <= 0) return null;
     return {
@@ -105,10 +74,10 @@ function normalizeManaGainConfig(raw, tpl) {
   }
   if (typeof raw === 'object') {
     const element = normalizeElement(
-      raw.element || raw.base || raw.reference || raw.field,
+      raw.element ?? raw.base ?? raw.reference ?? raw.field,
       tpl?.element,
     );
-    const amountRaw = raw.amount || raw.value || raw.plus || raw.gain;
+    const amountRaw = raw.amount ?? raw.value ?? raw.plus ?? raw.gain ?? raw.delta ?? 1;
     const amount = Math.max(0, Math.floor(Number.isFinite(amountRaw) ? amountRaw : 1));
     if (!element || amount <= 0) return null;
     return { element, amount };
@@ -124,29 +93,14 @@ function isUnitAlive(unit, tpl) {
   return true;
 }
 
-function toPositiveInt(value, fallback = 0) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return Math.max(0, Math.floor(fallback));
-  return Math.max(0, Math.floor(num));
-}
-
-function gainMana(state, playerIndex, amount) {
-  if (!state?.players || !state.players[playerIndex]) return 0;
-  const delta = toPositiveInt(amount);
-  if (delta <= 0) return 0;
-  const player = state.players[playerIndex];
-  const before = typeof player.mana === 'number' ? player.mana : 0;
-  const after = capMana(before + delta);
-  player.mana = after;
-  return after - before;
-}
-
 function countEnemyUnits(boardState, owner) {
-  if (!boardState?.board) return 0;
+  const board = boardState?.board;
+  if (!Array.isArray(board)) return 0;
   let count = 0;
-  for (let r = 0; r < BOARD_SIZE; r += 1) {
-    for (let c = 0; c < BOARD_SIZE; c += 1) {
-      const unit = boardState.board?.[r]?.[c]?.unit;
+  for (const row of board) {
+    if (!Array.isArray(row)) continue;
+    for (const cell of row) {
+      const unit = cell?.unit;
       if (!unit) continue;
       if (owner != null && unit.owner === owner) continue;
       count += 1;
@@ -156,19 +110,32 @@ function countEnemyUnits(boardState, owner) {
 }
 
 function countFieldsOfElement(boardState, element) {
-  if (!boardState?.board) return 0;
+  const board = boardState?.board;
+  if (!Array.isArray(board)) return 0;
   const normalized = normalizeElementName(element);
   if (!normalized) return 0;
   let total = 0;
-  for (let r = 0; r < BOARD_SIZE; r += 1) {
-    for (let c = 0; c < BOARD_SIZE; c += 1) {
-      const cellElement = normalizeElementName(boardState.board?.[r]?.[c]?.element);
+  for (const row of board) {
+    if (!Array.isArray(row)) continue;
+    for (const cell of row) {
+      const cellElement = normalizeElementName(cell?.element);
       if (cellElement && cellElement === normalized) {
         total += 1;
       }
     }
   }
   return total;
+}
+
+function clampWithBounds(value, min, max) {
+  let result = value;
+  if (typeof min === 'number') {
+    result = Math.max(result, min);
+  }
+  if (typeof max === 'number') {
+    result = Math.min(result, max);
+  }
+  return result;
 }
 
 function normalizeDeathGainConfig(raw, tpl) {
@@ -219,17 +186,6 @@ function normalizeDeathGainConfig(raw, tpl) {
     }
   }
   return null;
-}
-
-function clampWithBounds(value, min, max) {
-  let result = value;
-  if (typeof min === 'number') {
-    result = Math.max(result, min);
-  }
-  if (typeof max === 'number') {
-    result = Math.min(result, max);
-  }
-  return result;
 }
 
 function computeDeathGainAmount(boardState, death, cfg) {
@@ -285,10 +241,13 @@ function normalizeAllyDeathConfig(raw) {
 
 function collectAllyDeathWatchers(boardState) {
   const watchers = [];
-  if (!boardState?.board) return watchers;
-  for (let r = 0; r < BOARD_SIZE; r += 1) {
-    for (let c = 0; c < BOARD_SIZE; c += 1) {
-      const cell = boardState.board?.[r]?.[c];
+  const board = boardState?.board;
+  if (!Array.isArray(board)) return watchers;
+  for (let r = 0; r < board.length; r += 1) {
+    const row = board[r];
+    if (!Array.isArray(row)) continue;
+    for (let c = 0; c < row.length; c += 1) {
+      const cell = row[c];
       const unit = cell?.unit;
       if (!unit) continue;
       const tpl = CARDS[unit.tplId];
@@ -324,70 +283,115 @@ export function applyTurnStartManaEffects(state, playerIndex) {
       const cell = row[c];
       const unit = cell?.unit;
       if (!unit || unit.owner !== playerIndex) continue;
+
       const tpl = CARDS[unit.tplId];
-      if (!tpl) continue;
+      if (!tpl || tpl.type !== 'UNIT') continue;
       if (!isUnitAlive(unit, tpl)) continue;
+
       const cfg = normalizeManaGainConfig(tpl.manaGainOnNonElement, tpl);
       if (!cfg) continue;
+
       const nativeElement = normalizeElement(cfg.element || tpl.element);
       if (!nativeElement) continue;
+
       const cellElement = normalizeElement(cell?.element || null);
-      if (cellElement === nativeElement) continue;
-      const gained = gainMana(state, playerIndex, cfg.amount || 0);
-      if (gained > 0) {
-        result.total += gained;
-        result.entries.push({
-          r,
-          c,
-          tplId: tpl.id,
-          amount: gained,
-          fieldElement: cellElement,
-        });
-      }
+      if (cellElement && cellElement === nativeElement) continue;
+
+      const { gained } = applyManaDelta(state, playerIndex, cfg.amount || 0);
+      if (gained <= 0) continue;
+
+      result.total += gained;
+      result.entries.push({
+        r,
+        c,
+        tplId: tpl.id,
+        amount: gained,
+        fieldElement: cellElement,
+        nativeElement,
+      });
     }
   }
 
   return result;
 }
 
-export function applyManaGainOnDeaths(state, deaths, opts = {}) {
-  const result = { total: 0, entries: [], logs: [] };
+export function applyManaGainOnDeaths(state, deaths, context = {}) {
+  const result = { total: 0, entries: [], logs: [], events: [] };
   if (!state?.players || !Array.isArray(deaths) || deaths.length === 0) {
     return result;
   }
-  const boardState = opts.boardState || state;
+
+  const boardState = context.boardState || state;
+  const cause = context.cause || null;
+  const beforePlayers = Array.isArray(context.beforePlayers) ? context.beforePlayers : null;
+  const baseGain = sanitizeGain(context.gainPerDeath, 0);
+  const watchers = collectAllyDeathWatchers(boardState);
 
   for (const death of deaths) {
-    if (!death) continue;
-    const tpl = CARDS[death.tplId];
-    if (!tpl) continue;
-    const cfg = normalizeDeathGainConfig(tpl.gainManaOnDeath, tpl);
-    if (!cfg) continue;
-    const amount = computeDeathGainAmount(boardState, death, cfg);
-    if (amount <= 0) continue;
-    const gained = gainMana(state, death.owner, amount);
-    if (gained <= 0) continue;
-    result.total += gained;
-    result.entries.push({
-      type: 'SELF_DEATH',
-      owner: death.owner,
-      amount: gained,
-      sourceTplId: tpl.id,
-      sourceName: tpl.name || tpl.id,
-      death,
-    });
-    const playerLabel = (death.owner != null) ? death.owner + 1 : '?';
-    result.logs.push(`${tpl.name || tpl.id}: игрок ${playerLabel} получает +${gained} маны за разрушение.`);
-  }
+    if (!death || death.owner == null) continue;
 
-  const watchers = collectAllyDeathWatchers(boardState);
-  if (watchers.length) {
-    for (const death of deaths) {
-      if (!death || death.owner == null) continue;
+    const tpl = CARDS[death.tplId];
+    let handledByConfig = false;
+    if (tpl) {
+      const cfg = normalizeDeathGainConfig(tpl.gainManaOnDeath, tpl);
+      if (cfg) {
+        const amount = computeDeathGainAmount(boardState, death, cfg);
+        if (amount > 0) {
+          const { gained, before, after } = applyManaDelta(state, death.owner, amount);
+          if (gained > 0) {
+            handledByConfig = true;
+            result.total += gained;
+            result.entries.push({
+              type: 'SELF_DEATH',
+              owner: death.owner,
+              amount: gained,
+              sourceTplId: tpl.id,
+              sourceName: tpl.name || tpl.id,
+              death,
+            });
+            const playerLabel = (death.owner != null) ? death.owner + 1 : '?';
+            result.logs.push(`${tpl.name || tpl.id}: игрок ${playerLabel} получает +${gained} маны за разрушение.`);
+            const event = {
+              owner: death.owner,
+              amount: gained,
+              beforeMana: before,
+              afterMana: after,
+              death,
+              cause,
+            };
+            if (beforePlayers) event.playersBefore = beforePlayers;
+            result.events.push(event);
+          }
+        }
+      }
+    }
+
+    if (!handledByConfig) {
+      const rewardRaw = sanitizeGain(death?.manaReward, baseGain);
+      if (rewardRaw > 0) {
+        const { gained, before, after } = applyManaDelta(state, death.owner, rewardRaw);
+        if (gained > 0) {
+          result.total += gained;
+          const event = {
+            owner: death.owner,
+            amount: gained,
+            beforeMana: before,
+            afterMana: after,
+            death,
+            cause,
+          };
+          if (beforePlayers) event.playersBefore = beforePlayers;
+          if (death?.element) event.element = death.element;
+          result.events.push(event);
+        }
+      }
+    }
+
+    if (watchers.length) {
       for (const watcher of watchers) {
         if (watcher.owner !== death.owner) continue;
         if (watcher.requireAdjacent && !isAdjacent(watcher.r, watcher.c, death.r, death.c)) continue;
-        const gained = gainMana(state, watcher.owner, watcher.amount);
+        const { gained, before, after } = applyManaDelta(state, watcher.owner, watcher.amount);
         if (gained <= 0) continue;
         result.total += gained;
         result.entries.push({
@@ -401,6 +405,14 @@ export function applyManaGainOnDeaths(state, deaths, opts = {}) {
         });
         const playerLabel = watcher.owner + 1;
         result.logs.push(`${watcher.name}: игрок ${playerLabel} получает +${gained} маны за гибель союзника.`);
+        result.events.push({
+          owner: watcher.owner,
+          amount: gained,
+          beforeMana: before,
+          afterMana: after,
+          death,
+          cause: watcher.tplId,
+        });
       }
     }
   }
@@ -408,8 +420,13 @@ export function applyManaGainOnDeaths(state, deaths, opts = {}) {
   return result;
 }
 
+export function snapshotPlayersMana(players) {
+  if (!Array.isArray(players)) return [];
+  return players.map(pl => ({ mana: clampMana(pl?.mana) }));
+}
+
 export default {
   applyTurnStartManaEffects,
   applyManaGainOnDeaths,
+  snapshotPlayersMana,
 };
-*/
