@@ -313,7 +313,7 @@ export const CARDS = {
     id: 'WATER_QUEENS_SERVANT', name: "Queen's Servant", type: 'UNIT', cost: 4, activation: 2,
     element: 'WATER', atk: 1, hp: 1,
     attackType: 'MAGIC',
-    targetAllEnemies: true,
+    attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
     blindspots: ['S'], perfectDodge: true, ignoreAlliedBlocking: true,
     manaSteal: {
       onDeath: { amount: 1 },
@@ -805,6 +805,18 @@ export const CARDS = {
     blindspots: ['S'], ignoreAlliedBlocking: true,
     deathDiscardOnElement: { element: 'FOREST', count: 1 },
     desc: 'If Samurai Nagirashu is destroyed on a Wood field, your opponent must discard 1 card.'
+  },
+  NEUTRAL_DANCING_TEMPTRESS: {
+    id: 'NEUTRAL_DANCING_TEMPTRESS', name: 'Dancing Temptress', type: 'UNIT', cost: 3, activation: 2,
+    element: 'NEUTRAL', atk: 1, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    deathPullFrontToSelf: true,
+    manaSteal: {
+      onDeath: { amount: 1, from: 'FRONT_OWNER' },
+    },
+    desc: 'Если Dancing Temptress уничтожена, владелец существа перед ней теряет 1 ману, а само существо перемещается на её поле.'
   },
   NEUTRAL_WHITE_CUBIC: {
     id: 'NEUTRAL_WHITE_CUBIC', name: 'White Cubic', type: 'UNIT', cost: 1, activation: 1,
