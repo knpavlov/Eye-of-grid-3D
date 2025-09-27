@@ -625,6 +625,9 @@
             tileMeshes,
             THREE: window.THREE,
           });
+          if (Array.isArray(res.manaStealEvents) && res.manaStealEvents.length) {
+            try { window.__ui?.manaSteal?.playEvents?.(res.manaStealEvents); } catch {}
+          }
           const attackerPos = res.attackerPosUpdate || { r, c };
           gameState = res.n1;
           const finalState = gameState;

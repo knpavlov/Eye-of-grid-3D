@@ -179,6 +179,18 @@ export function playDeltaAnimations(prevState, nextState, opts = {}) {
       try { manaPlan?.schedule?.(); } catch {}
     }
 
+    try {
+      const prevEvents = Array.isArray(prevState?.manaStealEvents) ? prevState.manaStealEvents : [];
+      const nextEvents = Array.isArray(nextState?.manaStealEvents) ? nextState.manaStealEvents : [];
+      const prevIds = new Set(prevEvents.map(ev => ev?.id));
+      const fresh = nextEvents.filter(ev => ev && !prevIds.has(ev.id));
+      if (fresh.length) {
+        window.__ui?.manaSteal?.playEvents?.(fresh);
+      }
+    } catch (err) {
+      console.warn('[delta] Не удалось обработать события кражи маны', err);
+    }
+
     const hpChanges = [];
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) {

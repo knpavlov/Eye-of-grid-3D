@@ -364,6 +364,17 @@ export function confirmUnitAbilityOrientation(context, direction) {
         if (text) w.addLog?.(text);
       }
     }
+    if (Array.isArray(result.events?.repositionLogs) && result.events.repositionLogs.length) {
+      for (const text of result.events.repositionLogs) {
+        if (text) w.addLog?.(text);
+      }
+    }
+    if (Array.isArray(result.events?.manaStealEvents) && result.events.manaStealEvents.length) {
+      for (const ev of result.events.manaStealEvents) {
+        if (ev?.log) w.addLog?.(ev.log);
+      }
+      try { w.__ui?.manaSteal?.playEvents?.(result.events.manaStealEvents); } catch {}
+    }
 
     if (result.summonEvents?.possessions?.length) {
       for (const ev of result.summonEvents.possessions) {

@@ -17,6 +17,9 @@ import {
 import { capMana } from '../core/constants.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
 import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
+import { applyDeathManaSteal } from '../core/abilityHandlers/manaSteal.js';
+import { applyDeathRepositionEffects } from '../core/abilityHandlers/deathReposition.js';
+import { createDeathEntry } from '../core/abilityHandlers/deathSummary.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -589,6 +592,8 @@ function performMagicAttack(from, targetMesh) {
     THREE,
   });
 
+  const stealEvents = Array.isArray(res.manaStealEvents) ? res.manaStealEvents : [];
+
   const deathVisuals = [];
   for (const d of res.deaths || []) {
     const mesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c) || null;
@@ -615,6 +620,10 @@ function performMagicAttack(from, targetMesh) {
     window.applyGameState(res.n1);
     appliedState = window.gameState || res.n1;
   } catch { appliedState = res.n1; }
+
+  if (stealEvents.length) {
+    try { window.__ui?.manaSteal?.playEvents?.(stealEvents); } catch {}
+  }
 
   const attackerCoords = res.attackerPosUpdate || { r: from.r, c: from.c };
   const attackerState = appliedState?.board?.[attackerCoords.r]?.[attackerCoords.c]?.unit;
@@ -880,8 +889,9 @@ export function placeUnitWithDirection(direction) {
       window.addLog(`${cardData.name}: союзники получают +${amount} HP`);
     }
     const owner = unit.owner;
-    const deathElement = gameState.board?.[row]?.[col]?.element || null;
-    const deathInfo = [{ r: row, c: col, owner, tplId: unit.tplId, uid: unit.uid ?? null, element: deathElement }];
+    const deathEntry = createDeathEntry(gameState, unit, row, col)
+      || { r: row, c: col, owner, tplId: unit.tplId, uid: unit.uid ?? null, element: gameState.board?.[row]?.[col]?.element || null };
+    const deathInfo = [deathEntry];
     const playersBefore = Array.isArray(gameState.players)
       ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))
       : [];
@@ -917,6 +927,19 @@ export function placeUnitWithDirection(direction) {
     const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SUMMON' });
     if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
       for (const text of discardEffects.logs) {
+        window.addLog(text);
+      }
+    }
+    const stealEvents = applyDeathManaSteal(gameState, deathInfo, { cause: 'SUMMON' }) || [];
+    if (stealEvents.length) {
+      for (const ev of stealEvents) {
+        if (ev?.log) window.addLog(ev.log);
+      }
+      try { window.__ui?.manaSteal?.playEvents?.(stealEvents); } catch {}
+    }
+    const repositionInfo = applyDeathRepositionEffects(gameState, deathInfo);
+    if (Array.isArray(repositionInfo?.logs) && repositionInfo.logs.length) {
+      for (const text of repositionInfo.logs) {
         window.addLog(text);
       }
     }
@@ -962,6 +985,12 @@ export function placeUnitWithDirection(direction) {
         if (!text) continue;
         window.addLog?.(text);
       }
+    }
+    if (Array.isArray(summonEvents?.manaStealEvents) && summonEvents.manaStealEvents.length) {
+      for (const ev of summonEvents.manaStealEvents) {
+        if (ev?.log) window.addLog?.(ev.log);
+      }
+      try { window.__ui?.manaSteal?.playEvents?.(summonEvents.manaStealEvents); } catch {}
     }
     if (Array.isArray(summonEvents?.statBuffs) && summonEvents.statBuffs.length) {
       for (const buff of summonEvents.statBuffs) {

@@ -4,6 +4,7 @@ import {
   hasPerfectDodge,
   hasFirstStrike,
   hasDoubleAttack,
+  hasManaStealKeyword,
   rotateCost,
   resolveAttackProfile,
   isUnitPossessed,
@@ -114,6 +115,9 @@ function collectStatuses(state, unit, tpl, { r, c, cell }) {
   }
   if (hasDoubleAttack(tpl)) {
     statuses.push({ key: 'double-attack', text: 'Double Attack' });
+  }
+  if (hasManaStealKeyword(tpl)) {
+    statuses.push({ key: 'mana-steal', text: 'Mana steal' });
   }
   if (tpl?.fieldquakeLock) {
     statuses.push({ key: 'fieldquake', text: 'Fieldquake lock aura' });

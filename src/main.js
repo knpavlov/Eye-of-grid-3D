@@ -24,6 +24,7 @@ import { getCtx as getSceneCtx } from './scene/context.js';
 import * as UINotifications from './ui/notifications.js';
 import * as UILog from './ui/log.js';
 import * as UIMana from './ui/mana.js';
+import * as UIManaSteal from './ui/manaSteal.js';
 import * as UIPanels from './ui/panels.js';
 // UI modules
 import * as TurnTimer from './ui/turnTimer.js';
@@ -193,6 +194,7 @@ try {
   window.__ui.notifications = UINotifications;
   window.__ui.log = UILog;
   window.__ui.mana = UIMana;
+  window.__ui.manaSteal = UIManaSteal;
   window.__ui.panels = UIPanels;
   window.__ui.handCount = HandCount;
   window.__ui.actions = UIActions;

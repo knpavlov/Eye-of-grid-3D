@@ -37,6 +37,7 @@ import { hasAuraInvisibility } from './abilityHandlers/invisibilityAura.js';
 import { applyEnemySummonReactions } from './abilityHandlers/summonReactions.js';
 import { applySummonStatBuffs } from './abilityHandlers/summonBuffs.js';
 import { applyTurnStartManaEffects as applyTurnStartManaEffectsInternal } from './abilityHandlers/startPhase.js';
+import { applySummonManaSteal, hasManaStealKeyword as baseHasManaSteal } from './abilityHandlers/manaSteal.js';
 import {
   computeUnitProtection as computeUnitProtectionInternal,
   computeAuraProtection as computeAuraProtectionInternal,
@@ -625,6 +626,9 @@ export const hasFirstStrike = (tpl) => !!(tpl && tpl.firstStrike);
 // Проверка способности "двойная атака"
 export const hasDoubleAttack = (tpl) => !!(tpl && tpl.doubleAttack);
 
+// Наличие ключевого слова кражи маны
+export const hasManaStealKeyword = (tpl) => baseHasManaSteal(tpl);
+
 // Может ли существо атаковать (крепости не могут)
 export const canAttack = (tpl) => !(tpl && tpl.fortress);
 
@@ -710,6 +714,16 @@ export function applySummonAbilities(state, r, c) {
   const reactions = applyEnemySummonReactions(state, { r, c, unit, tpl });
   if (Array.isArray(reactions?.heals) && reactions.heals.length) {
     events.heals = [...(events.heals || []), ...reactions.heals];
+  }
+
+  const stealEntries = applySummonManaSteal(state, { tpl, unit, cell, r, c });
+  if (stealEntries.length) {
+    events.manaStealEvents = [...(events.manaStealEvents || []), ...stealEntries];
+    for (const entry of stealEntries) {
+      if (entry?.log) {
+        events.logs = [...(events.logs || []), entry.log];
+      }
+    }
   }
 
   return events;
