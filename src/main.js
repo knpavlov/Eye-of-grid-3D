@@ -42,6 +42,9 @@ import * as DeckSelect from './ui/deckSelect.js';
 import * as MainMenu from './ui/mainMenu.js';
 import * as DeckBuilder from './ui/deckBuilder.js';
 import * as DeckNetwork from './net/decks.js';
+import authService, { onSessionChange as onAuthSessionChange } from './net/auth.js';
+import { ensureAuthenticated } from './ui/authScreen.js';
+import { initUserPanel, updateUserPanel } from './ui/userPanel.js';
 import { playDeltaAnimations } from './scene/delta.js';
 import { createMetaObjects } from './scene/meta.js';
 import * as SummonLock from './ui/summonLock.js';
@@ -137,9 +140,57 @@ if (typeof window !== 'undefined' && !window.gameState) {
   try { applyGameState(s); } catch {}
 }
 
-if (typeof window !== 'undefined') {
-  DeckNetwork.refreshDecks().catch(err => console.warn('[main] Не удалось синхронизировать колоды с сервером', err));
+function handleSessionProfile(user) {
+  try {
+    updateUserPanel(user || null);
+  } catch {}
 }
+
+async function refreshDecksForUser() {
+  try {
+    await DeckNetwork.refreshDecks({ persistLocal: false });
+  } catch (err) {
+    console.warn('[main] Не удалось синхронизировать колоды с сервером', err);
+  }
+}
+
+async function runMainMenuFlow() {
+  const session = await ensureAuthenticated({
+    onSuccess: (payload) => {
+      handleSessionProfile(payload?.user || null);
+    },
+  });
+  handleSessionProfile(session?.user || null);
+  await refreshDecksForUser();
+  try { window.__ui?.mainMenu?.open?.(true); } catch {}
+}
+
+function initSessionListeners() {
+  if (typeof window === 'undefined') return;
+  initUserPanel({
+    onLogout: async () => {
+      try { await authService.logoutCurrent(); } catch {}
+      updateUserPanel(null);
+      await runMainMenuFlow();
+    },
+  });
+  onAuthSessionChange(async (session) => {
+    const user = session?.user || null;
+    handleSessionProfile(user);
+    if (user) {
+      await refreshDecksForUser();
+    }
+  });
+  try {
+    window.addEventListener('mp:sessionProfile', (event) => {
+      handleSessionProfile(event.detail?.user || null);
+    });
+  } catch {}
+  window.__app = window.__app || {};
+  window.__app.showMainMenu = runMainMenuFlow;
+}
+
+initSessionListeners();
 
 // Унифицированное применение нового состояния игры
 export function applyGameState(state) {

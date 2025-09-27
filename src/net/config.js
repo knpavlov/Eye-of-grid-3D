@@ -72,10 +72,22 @@ export function getDecksApiBase() {
   return `${base.replace(/\/+$/, '')}/decks`;
 }
 
+export function getAuthApiBase() {
+  const override = readWindowOverride('__AUTH_API_BASE');
+  if (override) {
+    if (override.startsWith('http://') || override.startsWith('https://') || override.startsWith('/')) {
+      return override;
+    }
+  }
+  const base = getServerBase();
+  return `${base.replace(/\/+$/, '')}/auth`;
+}
+
 export function getResolvedConfig() {
   return {
     serverBase: getServerBase(),
     decksApiBase: getDecksApiBase(),
+    authApiBase: getAuthApiBase(),
   };
 }
 
@@ -90,6 +102,11 @@ try {
       },
       decksApiBase: {
         get: getDecksApiBase,
+        enumerable: true,
+        configurable: true,
+      },
+      authApiBase: {
+        get: getAuthApiBase,
         enumerable: true,
         configurable: true,
       },

@@ -1,4 +1,5 @@
 import { getServerBase } from './config.js';
+import { getAuthToken, onSessionChange } from './tokenStorage.js';
 
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
@@ -73,14 +74,54 @@ import { getServerBase } from './config.js';
   function hideStartCountdown(){ startModal?.remove(); startModal=null; }
 
   // ===== 4) Socket + sync =====
-  const socket = io(SERVER_URL, { 
+  let currentToken = getAuthToken();
+  const socket = io(SERVER_URL, {
     transports: ['websocket', 'polling'],
     upgrade: true,
     rememberUpgrade: true,
     timeout: 20000,
-    forceNew: true
+    forceNew: true,
+    autoConnect: !!currentToken,
+    auth: { token: currentToken || '' }
   });
   try { window.socket = socket; } catch {}
+  function applySocketToken(token) {
+    currentToken = token || null;
+    if (!socket.auth) socket.auth = {};
+    socket.auth.token = currentToken || '';
+  }
+
+  function handleSessionChange(session) {
+    const nextToken = session?.token || null;
+    const prevToken = currentToken;
+    applySocketToken(nextToken);
+    if (!nextToken) {
+      if (socket.connected) {
+        try { socket.disconnect(); } catch {}
+      }
+      return;
+    }
+    if (!socket.connected) {
+      try { socket.connect(); } catch {}
+      return;
+    }
+    if (prevToken && nextToken && prevToken !== nextToken) {
+      try { socket.disconnect(); } catch {}
+      try { socket.connect(); } catch {}
+    }
+  }
+
+  applySocketToken(currentToken);
+  onSessionChange(handleSessionChange);
+  if (!currentToken) {
+    try { socket.disconnect(); } catch {}
+  }
+
+  socket.on('sessionProfile', (payload) => {
+    try {
+      window.dispatchEvent(new CustomEvent('mp:sessionProfile', { detail: payload }));
+    } catch {}
+  });
   // NET_ACTIVE, MY_SEAT, APPLYING уже объявлены выше в глобальной области
 
   // --- SENDING: «обёртки» + DIGEST-пуллер ---
@@ -994,3 +1035,4 @@ import { getServerBase } from './config.js';
 
   // Close MP bootstrap IIFE
 })();
+
