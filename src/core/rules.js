@@ -25,6 +25,7 @@ import {
 import { computeCellBuff } from './fieldEffects.js';
 import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
+import { computeTargetCountAttackBonuses } from './abilityHandlers/targetCountBonus.js';
 import { getHpConditionalBonuses } from './abilityHandlers/conditionalBonuses.js';
 import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
 import { buildDeathRecord } from './utils/deaths.js';
@@ -310,8 +311,26 @@ export function stagedAttack(state, r, c, opts = {}) {
     atk += dynamicBonus.amount;
     if (dynamicBonus.type === 'ELEMENT_CREATURES' && dynamicBonus.element) {
       logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount} (существа стихии ${dynamicBonus.element})`);
+    } else if (dynamicBonus.type === 'ALLY_ELEMENT_ON_FIELD' && dynamicBonus.element) {
+      const fieldNote = dynamicBonus.requiredField ? ` на поле ${dynamicBonus.requiredField}` : '';
+      const allies = typeof dynamicBonus.count === 'number'
+        ? ` (${dynamicBonus.count} союзных существ стихии ${dynamicBonus.element}${fieldNote})`
+        : '';
+      logLines.push(`${tplA.name}: атака установлена на ${dynamicBonus.targetValue}${allies}.`);
     } else {
-      logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount}`);
+      const delta = dynamicBonus.amount;
+      const direction = delta > 0 ? 'увеличена' : 'уменьшена';
+      logLines.push(`${tplA.name}: атака ${direction} на ${Math.abs(delta)}.`);
+    }
+  }
+  const targetCountBonuses = computeTargetCountAttackBonuses(base, { unit: attacker }, hitsRaw, tplA);
+  if (targetCountBonuses.length) {
+    for (const bonus of targetCountBonuses) {
+      if (!bonus || !Number.isFinite(bonus.amount)) continue;
+      atk += bonus.amount;
+      if (bonus.log) {
+        logLines.push(bonus.log);
+      }
     }
   }
   const targetBonus = getTargetElementBonus(tplA, base, hitsRaw);
@@ -772,6 +791,23 @@ export function magicAttack(state, fr, fc, tr, tc) {
 
   const atkStats = effectiveStats(originCell, attacker, { state: n1, r: fromR, c: fromC });
   let atk = atkStats.atk || 0;
+  const dynAttackBonus = computeDynamicAttackBonus(n1, fromR, fromC, tplA);
+  if (dynAttackBonus?.amount) {
+    atk += dynAttackBonus.amount;
+    if (dynAttackBonus.type === 'ELEMENT_CREATURES' && dynAttackBonus.element) {
+      logLines.push(`${tplA.name}: атака увеличена на ${dynAttackBonus.amount} (существа стихии ${dynAttackBonus.element})`);
+    } else if (dynAttackBonus.type === 'ALLY_ELEMENT_ON_FIELD' && dynAttackBonus.element) {
+      const fieldNote = dynAttackBonus.requiredField ? ` на поле ${dynAttackBonus.requiredField}` : '';
+      const allies = typeof dynAttackBonus.count === 'number'
+        ? ` (${dynAttackBonus.count} союзных существ стихии ${dynAttackBonus.element}${fieldNote})`
+        : '';
+      logLines.push(`${tplA.name}: атака установлена на ${dynAttackBonus.targetValue}${allies}.`);
+    } else {
+      const delta = dynAttackBonus.amount;
+      const direction = delta > 0 ? 'увеличена' : 'уменьшена';
+      logLines.push(`${tplA.name}: атака ${direction} на ${Math.abs(delta)}.`);
+    }
+  }
   const dynMagic = computeDynamicMagicAttack(n1, tplA);
   if (dynMagic) {
     atk = dynMagic.amount;

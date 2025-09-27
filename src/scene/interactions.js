@@ -5,7 +5,6 @@ import { highlightTiles, clearHighlights } from './highlight.js';
 import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
 import { showTooltip, hideTooltip } from '../ui/tooltip.js';
 import {
-  applyFreedonianAura,
   applySummonAbilities,
   evaluateIncarnationSummon,
   applyIncarnationSummon,
@@ -998,6 +997,20 @@ export function placeUnitWithDirection(direction) {
         }
       }
     }
+    if (Array.isArray(summonEvents?.manaGains) && summonEvents.manaGains.length) {
+      const ctxScene = getCtx();
+      const THREE = ctxScene.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+      for (const gain of summonEvents.manaGains) {
+        if (!gain || typeof gain.owner !== 'number') continue;
+        const tile = ctxScene.tileMeshes?.[gain.r]?.[gain.c];
+        if (!tile || !THREE) continue;
+        try {
+          const pos = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+          const slot = typeof gain.before === 'number' ? gain.before : null;
+          window.animateManaGainFromWorld?.(pos, gain.owner, true, slot);
+        } catch {}
+      }
+    }
     handleManaStealAnimations(summonEvents?.manaSteals);
     if (Array.isArray(summonEvents?.statBuffs) && summonEvents.statBuffs.length) {
       for (const buff of summonEvents.statBuffs) {
@@ -1055,10 +1068,6 @@ export function placeUnitWithDirection(direction) {
           }
         }
       } catch {}
-    }
-    const gained = applyFreedonianAura(gameState, gameState.active);
-    if (gained > 0) {
-      window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
     }
   }
   // Синхронизируем состояние после призыва
