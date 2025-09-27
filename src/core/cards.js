@@ -34,6 +34,7 @@ export const CARDS = {
       trigger: 'ALLY',
       sourceFieldNotElement: 'FIRE',
       excludeSelfSummon: true,
+      reason: 'FREEDONIAN_AURA',
       log: 'Фридонийский Странник приносит {amount} маны.',
     },
     desc: 'While Freedonian Wanderer is on a non‑Fire field, you gain 1 mana each time you summon an allied creature.'

@@ -39,7 +39,7 @@ import { applySummonStatBuffs } from './abilityHandlers/summonBuffs.js';
 import {
   applyTurnStartManaEffects as applyTurnStartManaEffectsInternal,
 } from './abilityHandlers/startPhase.js';
-import { applyManaGainOnSummon } from './abilityHandlers/manaGain.js';
+import { applyManaGainOnSummon as applyAuraManaGainOnSummon } from './abilityHandlers/manaGain.js';
 import {
   computeUnitProtection as computeUnitProtectionInternal,
   computeAuraProtection as computeAuraProtectionInternal,
@@ -51,7 +51,7 @@ import {
   evaluateFieldFatality as evaluateFieldFatalityInternal,
 } from './abilityHandlers/fieldHazards.js';
 import { applySummonManaSteal } from './abilityHandlers/manaSteal.js';
-import { applyManaGainOnSummon } from './abilityHandlers/manaOnSummon.js';
+import { applyManaGainOnSummon as applySummonManaGain } from './abilityHandlers/manaOnSummon.js';
 import { applyFieldquakeAt } from './abilityHandlers/fieldquake.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
@@ -757,13 +757,26 @@ function collectFieldquakeSummonTargets(r, c, cfg) {
   return result;
 }
 
+function collectManaOnSummonEvents(state, context = {}) {
+  const result = [];
+  const primary = applySummonManaGain(state, context);
+  if (Array.isArray(primary) && primary.length) {
+    result.push(...primary);
+  }
+  const legacy = applyAuraManaGainOnSummon(state, context);
+  if (Array.isArray(legacy) && legacy.length) {
+    result.push(...legacy);
+  }
+  return result;
+}
+
 // Реализация ауры Фридонийского Странника при призыве союзников
 // Возвращает подробности прироста маны, чтобы UI мог выводить сообщения
 export function applyFreedonianAura(state, owner, context = {}) {
   const result = { total: 0, entries: [], details: [] };
   const events = Array.isArray(context.events)
     ? context.events
-    : applyManaGainOnSummon(state, {
+    : collectManaOnSummonEvents(state, {
         owner,
         r: context.r,
         c: context.c,
@@ -917,7 +930,7 @@ export function applySummonAbilities(state, r, c) {
     events.heals = [...(events.heals || []), ...reactions.heals];
   }
 
-  const manaAuraEvents = applyManaGainOnSummon(state, { r, c, unit, tpl, cell });
+  const manaAuraEvents = collectManaOnSummonEvents(state, { r, c, unit, tpl, cell });
   if (Array.isArray(manaAuraEvents) && manaAuraEvents.length) {
     const freedonian = applyFreedonianAura(state, unit.owner, { events: manaAuraEvents, unit, tpl, r, c, cell });
     if (freedonian.total > 0) {
@@ -930,6 +943,14 @@ export function applySummonAbilities(state, r, c) {
         source: 'FREEDONIAN_AURA',
         reason: 'FREEDONIAN_AURA',
       };
+      const freedonianSource = freedonian.details?.[0]?.tplId || freedonian.entries?.[0]?.sourceTplId || null;
+      if (freedonianSource) {
+        manaEvent.tplId = freedonianSource;
+        const freedonianTpl = CARDS[freedonianSource];
+        if (freedonianTpl?.name) {
+          manaEvent.tplName = freedonianTpl.name;
+        }
+      }
       if (Array.isArray(freedonian.details) && freedonian.details.length) {
         const before = freedonian.details[0]?.before;
         const after = freedonian.details[freedonian.details.length - 1]?.after;
