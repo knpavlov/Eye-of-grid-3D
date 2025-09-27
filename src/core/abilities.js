@@ -44,13 +44,23 @@ import {
 import {
   applySummonManaSteal as applySummonManaStealInternal,
   hasManaStealKeyword as hasManaStealKeywordInternal,
+  applyDeathManaSteal,
 } from './abilityHandlers/manaSteal.js';
+import { applyManaGainOnDeaths } from './abilityHandlers/manaGain.js';
 import { normalizeElementName } from './utils/elements.js';
 import {
   applyFieldFatalityCheck as applyFieldFatalityCheckInternal,
   describeFieldFatality as describeFieldFatalityInternal,
   evaluateFieldFatality as evaluateFieldFatalityInternal,
 } from './abilityHandlers/fieldHazards.js';
+import {
+  applyFieldquakeToCell,
+  normalizeFieldquakeOnSummonConfig,
+  normalizeFieldquakeOnDamageConfig,
+} from './abilityHandlers/fieldquake.js';
+import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
+import { createDeathEntry } from './abilityHandlers/deathRecords.js';
+import { applyDeathRepositionEffects } from './abilityHandlers/deathReposition.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -327,6 +337,19 @@ export function collectDamageInteractions(state, context = {}) {
   const { attackerPos, attackerUnit, tpl, hits } = context;
   if (!tpl || !attackerUnit || !Array.isArray(hits) || !hits.length) return result;
 
+  const fieldquakeCfg = normalizeFieldquakeOnDamageConfig(tpl.fieldquakeOnDamage);
+  const attackerCellElement = (typeof attackerPos?.r === 'number' && typeof attackerPos?.c === 'number')
+    ? (state.board?.[attackerPos.r]?.[attackerPos.c]?.element || null)
+    : null;
+  const fieldquakeTargets = new Set();
+
+  const attackerRef = {
+    uid: getUnitUid(attackerUnit),
+    r: attackerPos?.r,
+    c: attackerPos?.c,
+    tplId: tpl.id,
+  };
+
   const processed = [];
   for (const h of hits) {
     if (!h) continue;
@@ -336,9 +359,27 @@ export function collectDamageInteractions(state, context = {}) {
     const target = cell?.unit;
     if (!target) continue;
     const tplTarget = getUnitTemplate(target);
+    const key = `${h.r},${h.c}`;
+    if (
+      fieldquakeCfg
+      && dealt > 0
+      && !fieldquakeTargets.has(key)
+      && (fieldquakeCfg.requireAttackerElement ? attackerCellElement === fieldquakeCfg.requireAttackerElement : true)
+      && (fieldquakeCfg.requireAttackerNotElement ? attackerCellElement !== fieldquakeCfg.requireAttackerNotElement : true)
+    ) {
+      result.events.push({
+        type: 'FIELDQUAKE',
+        target: { r: h.r, c: h.c },
+        source: attackerRef,
+        config: fieldquakeCfg,
+      });
+      if (fieldquakeCfg.preventRetaliation !== false) {
+        result.preventRetaliation.add(key);
+      }
+      fieldquakeTargets.add(key);
+    }
     const alive = (target.currentHP ?? tplTarget?.hp ?? 0) > 0;
     if (!alive) continue;
-    const key = `${h.r},${h.c}`;
     processed.push({
       r: h.r,
       c: h.c,
@@ -359,13 +400,6 @@ export function collectDamageInteractions(state, context = {}) {
   if (!processed.length) {
     return result;
   }
-
-  const attackerRef = {
-    uid: getUnitUid(attackerUnit),
-    r: attackerPos?.r,
-    c: attackerPos?.c,
-    tplId: tpl.id,
-  };
 
   const reposition = collectRepositionOnDamage(state, {
     attackerRef,
@@ -504,6 +538,37 @@ export function applyDamageInteractionResults(state, effects = {}) {
       const hazard = applyFieldFatalityCheckInternal(state.board[to.r][to.c]?.unit, tplTarget, toElement);
       const fatalLog = describeFieldFatalityInternal(tplTarget, hazard, { name: targetName });
       if (fatalLog) logs.push(fatalLog);
+    } else if (ev?.type === 'FIELDQUAKE') {
+      const tr = Number(ev.target?.r);
+      const tc = Number(ev.target?.c);
+      if (!Number.isInteger(tr) || !Number.isInteger(tc)) continue;
+      const fq = applyFieldquakeToCell(state, tr, tc, { respectLocks: ev.config?.respectLocks !== false });
+      if (!fq?.changed) {
+        if (fq?.reason === 'LOCKED') {
+          logs.push('Fieldquake заблокирован защитой поля.');
+        }
+        continue;
+      }
+      const prev = fq.prevElement || 'UNKNOWN';
+      const next = fq.nextElement || prev;
+      logs.push(`Изменение поля: ${prev}→${next} на (${tr},${tc}).`);
+      const unit = state.board?.[tr]?.[tc]?.unit;
+      const tplUnit = unit ? CARDS[unit.tplId] : null;
+      if (unit && tplUnit && fq.hpShift?.deltaHp) {
+        const delta = fq.hpShift.deltaHp;
+        const before = fq.hpShift.beforeHp;
+        const after = fq.hpShift.afterHp;
+        const name = tplUnit.name || 'Цель';
+        if (delta > 0) {
+          logs.push(`${name} усиливается на поле ${next}: HP ${before}→${after}.`);
+        } else if (delta < 0) {
+          logs.push(`${name} теряет силу на поле ${next}: HP ${before}→${after}.`);
+        }
+      }
+      if (unit && tplUnit && fq.fatality?.dies) {
+        const fatalLog = describeFieldFatalityInternal(tplUnit, fq.fatality, { name: tplUnit.name || 'Цель' });
+        if (fatalLog) logs.push(fatalLog);
+      }
     }
   }
 
@@ -659,6 +724,124 @@ export function applySummonAbilities(state, r, c) {
   if (!cell || !unit) return events;
   const tpl = getUnitTemplate(unit);
   if (!tpl) return events;
+
+  const fieldquakeSummonCfg = normalizeFieldquakeOnSummonConfig(tpl.fieldquakeOnSummon);
+  if (fieldquakeSummonCfg) {
+    const coords = new Set();
+    const addPos = (rr, cc) => {
+      if (!inBounds(rr, cc)) return;
+      const key = `${rr},${cc}`;
+      if (coords.has(key)) return;
+      coords.add(key);
+    };
+    if (Array.isArray(fieldquakeSummonCfg.cells) && fieldquakeSummonCfg.cells.length) {
+      for (const pos of fieldquakeSummonCfg.cells) {
+        if (Number.isInteger(pos?.r) && Number.isInteger(pos?.c)) addPos(pos.r, pos.c);
+      }
+    } else {
+      const pattern = fieldquakeSummonCfg.pattern || 'ADJACENT';
+      if (pattern === 'ALL') {
+        for (let rr = 0; rr < 3; rr += 1) {
+          for (let cc = 0; cc < 3; cc += 1) {
+            if (rr === r && cc === c) continue;
+            addPos(rr, cc);
+          }
+        }
+      } else if (pattern === 'SELF') {
+        addPos(r, c);
+      } else if (pattern === 'FRONT') {
+        const facing = unit.facing || 'N';
+        const vectors = { N: [-1, 0], S: [1, 0], E: [0, 1], W: [0, -1] };
+        const vec = vectors[facing] || vectors.N;
+        addPos(r + vec[0], c + vec[1]);
+      } else {
+        const dirs = [ [-1, 0], [1, 0], [0, -1], [0, 1] ];
+        for (const [dr, dc] of dirs) addPos(r + dr, c + dc);
+      }
+    }
+    const deaths = [];
+    for (const key of coords) {
+      const [rr, cc] = key.split(',').map(Number);
+      const fq = applyFieldquakeToCell(state, rr, cc, { respectLocks: fieldquakeSummonCfg.respectLocks !== false });
+      if (!fq?.changed) {
+        if (fq?.reason === 'LOCKED') {
+          events.logs = [...(events.logs || []), `Fieldquake заблокирован на (${rr},${cc}).`];
+        }
+        continue;
+      }
+      const prevLabel = fq.prevElement || 'UNKNOWN';
+      const nextLabel = fq.nextElement || prevLabel;
+      events.fieldquakes = [...(events.fieldquakes || []), {
+        r: fq.r,
+        c: fq.c,
+        prevElement: fq.prevElement,
+        nextElement: fq.nextElement,
+        source: { tplId: tpl.id, owner: unit.owner },
+      }];
+      events.logs = [...(events.logs || []), `${tpl.name}: изменение поля ${prevLabel}→${nextLabel} на (${fq.r},${fq.c}).`];
+      const affectedUnit = state.board?.[rr]?.[cc]?.unit;
+      const affectedTpl = affectedUnit ? CARDS[affectedUnit.tplId] : null;
+      if (affectedUnit && affectedTpl && fq.hpShift?.deltaHp) {
+        const delta = fq.hpShift.deltaHp;
+        const before = fq.hpShift.beforeHp;
+        const after = fq.hpShift.afterHp;
+        const name = affectedTpl.name || 'Существо';
+        if (delta > 0) {
+          events.logs.push(`${name} усиливается на поле ${nextLabel}: HP ${before}→${after}.`);
+        } else if (delta < 0) {
+          events.logs.push(`${name} теряет силу на поле ${nextLabel}: HP ${before}→${after}.`);
+        }
+      }
+      if (affectedUnit && affectedTpl && fq.fatality?.dies) {
+        const fatalLog = describeFieldFatalityInternal(affectedTpl, fq.fatality, { name: affectedTpl.name || 'Существо' });
+        if (fatalLog) events.logs.push(fatalLog);
+      }
+      if (affectedUnit && (affectedUnit.currentHP ?? affectedTpl?.hp ?? 0) <= 0) {
+        const deathEntry = createDeathEntry(state, affectedUnit, rr, cc) || {
+          r: rr,
+          c: cc,
+          owner: affectedUnit.owner,
+          tplId: affectedUnit.tplId,
+          uid: affectedUnit.uid ?? null,
+          element: state.board?.[rr]?.[cc]?.element || null,
+        };
+        deaths.push(deathEntry);
+        try { state.players?.[affectedUnit.owner]?.graveyard?.push(CARDS[affectedUnit.tplId]); } catch {}
+        state.board[rr][cc].unit = null;
+      }
+    }
+    if (deaths.length) {
+      events.deaths = [...(events.deaths || []), ...deaths];
+      for (const d of deaths) {
+        try {
+          const pl = state.players?.[d.owner];
+          if (pl) pl.mana = capMana((pl.mana || 0) + 1);
+        } catch {}
+      }
+      const manaBonus = applyManaGainOnDeaths(state, deaths, { boardState: state });
+      if (Array.isArray(manaBonus?.logs) && manaBonus.logs.length) {
+        events.logs = [...(events.logs || []), ...manaBonus.logs];
+      }
+      const manaStealEvents = applyDeathManaSteal(state, deaths, { cause: 'SUMMON' });
+      if (Array.isArray(manaStealEvents) && manaStealEvents.length) {
+        events.manaSteal = [...(events.manaSteal || []), ...manaStealEvents];
+        const stealLogs = manaStealEvents
+          .map(ev => (ev && typeof ev.log === 'string') ? ev.log : null)
+          .filter(Boolean);
+        if (stealLogs.length) {
+          events.logs = [...(events.logs || []), ...stealLogs];
+        }
+      }
+      const repositionLog = applyDeathRepositionEffects(state, deaths);
+      if (Array.isArray(repositionLog?.logs) && repositionLog.logs.length) {
+        events.logs = [...(events.logs || []), ...repositionLog.logs];
+      }
+      const discardEffects = applyDeathDiscardEffects(state, deaths, { cause: 'SUMMON' });
+      if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
+        events.logs = [...(events.logs || []), ...discardEffects.logs];
+      }
+    }
+  }
 
   const summonBuffs = applySummonStatBuffs(state, r, c);
   if (Array.isArray(summonBuffs?.logs) && summonBuffs.logs.length) {
