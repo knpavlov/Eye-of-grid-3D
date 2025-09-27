@@ -16,6 +16,7 @@ import {
 import { capMana } from '../core/constants.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
 import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
+import { buildDeathRecord } from '../core/utils/deaths.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -880,7 +881,17 @@ export function placeUnitWithDirection(direction) {
     }
     const owner = unit.owner;
     const deathElement = gameState.board?.[row]?.[col]?.element || null;
-    const deathInfo = [{ r: row, c: col, owner, tplId: unit.tplId, uid: unit.uid ?? null, element: deathElement }];
+    const fallbackDeath = {
+      r: row,
+      c: col,
+      owner,
+      tplId: unit.tplId,
+      uid: unit.uid ?? null,
+      element: deathElement,
+    };
+    const record = buildDeathRecord(gameState, row, col, unit);
+    const mergedDeath = record ? { ...fallbackDeath, ...record } : fallbackDeath;
+    const deathInfo = mergedDeath ? [mergedDeath] : [];
     const playersBefore = Array.isArray(gameState.players)
       ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))
       : [];
