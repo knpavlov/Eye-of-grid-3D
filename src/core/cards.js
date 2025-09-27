@@ -313,12 +313,25 @@ export const CARDS = {
     id: 'WATER_QUEENS_SERVANT', name: "Queen's Servant", type: 'UNIT', cost: 4, activation: 2,
     element: 'WATER', atk: 1, hp: 1,
     attackType: 'MAGIC',
-    targetAllEnemies: true,
+    attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
     blindspots: ['S'], perfectDodge: true, ignoreAlliedBlocking: true,
     manaSteal: {
       onDeath: { amount: 1 },
     },
     desc: "Magic Attack. Perfect Dodge. If Queen's Servant is destroyed, steal 1 mana from your opponent."
+  },
+
+  WATER_DANCING_TEMPTRESS: {
+    id: 'WATER_DANCING_TEMPTRESS', name: 'Dancing Temptress', type: 'UNIT', cost: 3, activation: 2,
+    element: 'WATER', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    deathPullFrontToSelf: true,
+    manaSteal: {
+      onDeath: { amount: 1, from: 'FRONT_OWNER', to: 'OWNER' },
+    },
+    desc: 'Standard Attack. Blind spot behind. If Dancing Temptress is destroyed, steal 1 mana from the owner of the creature in front of her and move that creature onto her field.'
   },
 
   EARTH_ARELAI_THE_PROTECTOR: {
