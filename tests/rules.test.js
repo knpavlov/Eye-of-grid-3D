@@ -1520,3 +1520,85 @@ describe('Новые способности существ', () => {
   });
 });
 
+describe('новые биолит-карты', () => {
+  it('Behemoth Groundbreaker запускает fieldquake соседних клеток при призыве', () => {
+    const state = {
+      board: makeBoard(),
+      players: [ { mana: 0, graveyard: [] }, { mana: 0, graveyard: [] } ],
+      turn: 1,
+    };
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_BEHEMOTH_GROUNDBREAKER', facing: 'N', currentHP: 4 };
+    const events = applySummonAbilities(state, 1, 1);
+    expect(state.board[0][1].element).toBe('WATER');
+    expect(state.board[2][1].element).toBe('WATER');
+    expect(state.board[1][0].element).toBe('WATER');
+    expect(state.board[1][2].element).toBe('WATER');
+    expect(Array.isArray(events.fieldquakes)).toBe(true);
+    expect(events.fieldquakes.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('Undead King Novogus меняет поле цели вне Земли', () => {
+    const state = {
+      board: makeBoard(),
+      players: [ { mana: 0, graveyard: [] }, { mana: 0, graveyard: [] } ],
+      turn: 1,
+    };
+    state.board[1][1].element = 'FIRE';
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_UNDEAD_KING_NOVOGUS', facing: 'N', currentHP: 6 };
+    state.board[0][1].element = 'FIRE';
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 2 };
+    const res = magicAttack(state, 1, 1, 0, 1);
+    expect(res).toBeTruthy();
+    expect(res.n1.board[0][1].element).toBe('WATER');
+  });
+
+  it('Undead King Novogus не запускает fieldquake на Земле', () => {
+    const state = {
+      board: makeBoard(),
+      players: [ { mana: 0, graveyard: [] }, { mana: 0, graveyard: [] } ],
+      turn: 1,
+    };
+    state.board[1][1].element = 'EARTH';
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_UNDEAD_KING_NOVOGUS', facing: 'N', currentHP: 6 };
+    state.board[0][1].element = 'FIRE';
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 2 };
+    const res = magicAttack(state, 1, 1, 0, 1);
+    expect(res).toBeTruthy();
+    expect(res.n1.board[0][1].element).toBe('FIRE');
+  });
+
+  it('Ouroboros Dragon блокирует fieldquake на Биолите', () => {
+    const state = {
+      board: makeBoard(),
+      players: [ { mana: 0, graveyard: [] }, { mana: 0, graveyard: [] } ],
+      turn: 1,
+    };
+    state.board[1][1].element = 'BIOLITH';
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_OUROBOROS_DRAGON', facing: 'N', currentHP: 10 };
+    const locked = computeFieldquakeLockedCells(state).map(p => `${p.r},${p.c}`);
+    expect(locked.length).toBe(9);
+    expect(locked).toContain('0,0');
+    expect(locked).toContain('2,2');
+    state.board[1][1].element = 'FIRE';
+    const unlocked = computeFieldquakeLockedCells(state);
+    expect(unlocked.length).toBe(0);
+  });
+
+  it('Ouroboros Dragon усиливается от других биолитов', () => {
+    const state = {
+      board: makeBoard(),
+      players: [ { mana: 0, graveyard: [] }, { mana: 0, graveyard: [] } ],
+      turn: 1,
+    };
+    state.board[1][1].element = 'FIRE';
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_OUROBOROS_DRAGON', facing: 'N', currentHP: 10 };
+    state.board[2][0].unit = { owner: 0, tplId: 'BIOLITH_MORNING_STAR_WARRIOR', facing: 'N', currentHP: 3 };
+    state.board[2][2].unit = { owner: 0, tplId: 'BIOLITH_BIOLITH_STINGER', facing: 'N', currentHP: 1 };
+    state.board[0][1].unit = { owner: 1, tplId: 'FIRE_PARTMOLE_FLAME_LIZARD', facing: 'S', currentHP: 4 };
+    const staged = stagedAttack(state, 1, 1, { chosenDir: 'N' });
+    const fin = staged.finish();
+    const target = fin.targets.find(t => t.r === 0 && t.c === 1);
+    expect(target.dmg).toBe(9);
+  });
+});
+

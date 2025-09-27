@@ -12,6 +12,13 @@ const OPPOSITES = {
   FOREST: 'EARTH',
 };
 
+export function getOppositeElement(element) {
+  if (!element) return null;
+  const key = String(element).toUpperCase();
+  if (key === 'BIOLITH') return null;
+  return OPPOSITES[key] || null;
+}
+
 export function computeCellBuff(cellElement, unitElement) {
   if (!cellElement || !unitElement) return { atk: 0, hp: 0 };
   if (cellElement === 'BIOLITH') return { atk: 0, hp: 0 };
