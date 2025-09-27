@@ -10,6 +10,19 @@ import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
 import { refreshPossessionsUI } from '../ui/possessions.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { applyManaGainOnDeaths, snapshotPlayersMana } from '../core/abilityHandlers/manaGain.js';
+import { buildDeathRecord } from '../core/utils/deaths.js';
+
+function animateManaStealEvents(list) {
+  if (typeof window === 'undefined') return;
+  if (!Array.isArray(list) || list.length === 0) return;
+  const animate = window.__ui?.mana?.animateManaSteal;
+  if (typeof animate !== 'function') return;
+  for (const steal of list) {
+    if (!steal) continue;
+    try { animate(steal); } catch (err) { console.warn('[spells] mana steal animation failed', err); }
+  }
+}
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -269,12 +282,10 @@ export const handlers = {
         } catch {}
         if (u.currentHP <= 0) {
           const owner = u.owner;
-          const deathElement = gameState.board?.[r]?.[c]?.element || null;
-          const deathInfo = [{ r, c, owner, tplId: u.tplId, uid: u.uid ?? null, element: deathElement }];
+          const deathRecord = buildDeathRecord(gameState, r, c, u);
+          const playersBefore = snapshotPlayersMana(gameState.players);
           try { gameState.players[owner].graveyard.push(CARDS[u.tplId]); } catch {}
           const pos = getCtx().tileMeshes[r][c].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-          const slot = gameState.players?.[owner]?.mana || 0;
-          animateManaGainFromWorld(pos, owner, true, slot);
           const unitMeshesCtx = getCtx().unitMeshes;
           if (unitMeshesCtx) {
             const unitMesh = unitMeshesCtx.find(m => m.userData.row === r && m.userData.col === c);
@@ -283,12 +294,31 @@ export const handlers = {
             }
           }
           gameState.board[r][c].unit = null;
+          const deathInfo = deathRecord ? [deathRecord] : [];
+          const manaGain = applyManaGainOnDeaths(gameState, deathInfo, {
+            cause: 'SPELL',
+            beforePlayers,
+          });
+          const manaEvents = Array.isArray(manaGain?.events) ? manaGain.events : [];
+          const ownerEvent = manaEvents.find(ev => ev && ev.owner === owner) || null;
+          if (ownerEvent) {
+            const slot = typeof ownerEvent.beforeMana === 'number'
+              ? ownerEvent.beforeMana
+              : (playersBefore?.[owner]?.mana ?? gameState.players?.[owner]?.mana ?? 0);
+            animateManaGainFromWorld(pos, owner, true, slot);
+          }
           const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SPELL' });
+          if (Array.isArray(manaGain?.logs) && manaGain.logs.length) {
+            for (const text of manaGain.logs) {
+              if (text) addLog(text);
+            }
+          }
           if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
             for (const text of discardEffects.logs) {
               addLog(text);
             }
           }
+          animateManaStealEvents(discardEffects?.manaSteals);
           setTimeout(() => {
             refreshPossessionsUI(gameState);
             updateUnits();
@@ -392,17 +422,40 @@ export const handlers = {
               deltaHp > 0 ? '#22c55e' : '#ef4444'
             );
           if (u.currentHP <= 0) {
-            const deathElement = gameState.board?.[r]?.[c]?.element || null;
-            const deathInfo = [{ r, c, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: deathElement }];
+            const playersBefore = snapshotPlayersMana(gameState.players);
+            const deathRecord = buildDeathRecord(gameState, r, c, u);
             try { gameState.players[u.owner].graveyard.push(CARDS[u.tplId]); } catch {}
             const deadMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
             if (deadMesh) {
               window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9);
+              const ctxRef = getCtx();
+              const tileRef = ctxRef?.tileMeshes?.[r]?.[c] || null;
+              const THREERef = ctxRef?.THREE || (typeof window !== 'undefined' ? window.THREE : null);
+              const pos = tileRef && THREERef
+                ? tileRef.position.clone().add(new THREERef.Vector3(0, 1.2, 0))
+                : null;
               gameState.board[r][c].unit = null;
+              const deathInfo = deathRecord ? [deathRecord] : [];
+              const manaGain = applyManaGainOnDeaths(gameState, deathInfo, {
+                cause: 'SPELL',
+                beforePlayers,
+              });
+              const manaEvents = Array.isArray(manaGain?.events) ? manaGain.events : [];
+              const ownerEvent = manaEvents.find(ev => ev && ev.owner === u.owner) || null;
+              if (ownerEvent && pos) {
+                const slot = typeof ownerEvent.beforeMana === 'number'
+                  ? ownerEvent.beforeMana
+                  : (playersBefore?.[u.owner]?.mana ?? gameState.players?.[u.owner]?.mana ?? 0);
+                animateManaGainFromWorld(pos, u.owner, true, slot);
+              }
               const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SPELL' });
+              if (Array.isArray(manaGain?.logs) && manaGain.logs.length) {
+                for (const text of manaGain.logs) addLog(text);
+              }
               if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
                 for (const text of discardEffects.logs) addLog(text);
               }
+              animateManaStealEvents(discardEffects?.manaSteals);
               setTimeout(() => {
                 refreshPossessionsUI(gameState);
                 updateUnits();

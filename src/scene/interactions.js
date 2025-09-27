@@ -14,9 +14,12 @@ import {
   describeFieldFatality,
   isIncarnationCard,
 } from '../core/abilities.js';
-import { capMana } from '../core/constants.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { applyManaGainOnDeaths, snapshotPlayersMana } from '../core/abilityHandlers/manaGain.js';
+import { buildDeathRecord } from '../core/utils/deaths.js';
+/*
 import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
+*/
 
 // Centralized interaction state
 export const interactionState = {
@@ -52,6 +55,17 @@ function adjustPendingAutoEnd(delta) {
   const current = Math.max(0, Number(gs.pendingAutoEndRequests) || 0);
   const next = current + delta;
   gs.pendingAutoEndRequests = next > 0 ? next : 0;
+}
+
+function handleManaStealAnimations(list) {
+  if (typeof window === 'undefined') return;
+  if (!Array.isArray(list) || list.length === 0) return;
+  const animate = window.__ui?.mana?.animateManaSteal;
+  if (typeof animate !== 'function') return;
+  for (const steal of list) {
+    if (!steal) continue;
+    try { animate(steal); } catch (err) { console.warn('[interactions] mana steal animation failed', err); }
+  }
 }
 
 export function hasPendingForcedDiscards() {
@@ -806,6 +820,7 @@ export function placeUnitWithDirection(direction) {
           window.addLog(text);
         }
       }
+      handleManaStealAnimations(discardInfo?.manaSteals);
     }
   }
   const unit = {
@@ -880,6 +895,13 @@ export function placeUnitWithDirection(direction) {
       window.addLog(`${cardData.name}: союзники получают +${amount} HP`);
     }
     const owner = unit.owner;
+    const deathRecord = buildDeathRecord(gameState, row, col, unit);
+    const playersBefore = snapshotPlayersMana(gameState.players);
+    try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
+    const ctx = getCtx();
+    const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+    const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
+/*
     const deathElement = gameState.board?.[row]?.[col]?.element || null;
     const deathInfo = [{ r: row, c: col, owner, tplId: unit.tplId, uid: unit.uid ?? null, element: deathElement }];
     const playersBefore = Array.isArray(gameState.players)
@@ -913,13 +935,33 @@ export function placeUnitWithDirection(direction) {
       THREE,
     });
     try { manaPlan?.schedule?.(); } catch {}
+*/
     gameState.board[row][col].unit = null;
+    const deathInfo = deathRecord ? [deathRecord] : [];
+    const manaGain = applyManaGainOnDeaths(gameState, deathInfo, {
+      cause: 'SUMMON',
+      beforePlayers,
+    });
+    const manaEvents = Array.isArray(manaGain?.events) ? manaGain.events : [];
+    const ownerManaEvent = manaEvents.find(ev => ev && ev.owner === owner) || null;
+    if (ownerManaEvent) {
+      const slotBeforeGain = typeof ownerManaEvent.beforeMana === 'number'
+        ? ownerManaEvent.beforeMana
+        : (playersBefore?.[owner]?.mana ?? gameState.players?.[owner]?.mana ?? 0);
+      window.animateManaGainFromWorld(pos, owner, true, slotBeforeGain);
+    }
     const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SUMMON' });
+    if (Array.isArray(manaGain?.logs) && manaGain.logs.length) {
+      for (const text of manaGain.logs) {
+        if (text) window.addLog(text);
+      }
+    }
     if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
       for (const text of discardEffects.logs) {
         window.addLog(text);
       }
     }
+    handleManaStealAnimations(discardEffects?.manaSteals);
     // При мгновенной смерти существо считается призванным, поэтому передаём ход оппоненту
     endTurnAfterSummon();
     // очищаем возможные состояния выбора цели, чтобы не блокировать интерфейс после мгновенной смерти
@@ -963,6 +1005,7 @@ export function placeUnitWithDirection(direction) {
         window.addLog?.(text);
       }
     }
+    handleManaStealAnimations(summonEvents?.manaSteals);
     if (Array.isArray(summonEvents?.statBuffs) && summonEvents.statBuffs.length) {
       for (const buff of summonEvents.statBuffs) {
         if (!buff) continue;

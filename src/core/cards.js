@@ -288,6 +288,38 @@ export const CARDS = {
     desc: 'Magic Attack. While on a Water field, Aluhja Priestess gains Dodge attempt.'
   },
 
+  WATER_MOVING_ISLE_OF_KADENA: {
+    id: 'WATER_MOVING_ISLE_OF_KADENA', name: 'Moving Isle of Kadena', type: 'UNIT', cost: 4, activation: 2,
+    element: 'WATER', atk: 1, hp: 4,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'E', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'S', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], ignoreAlliedBlocking: true },
+    ],
+    blindspots: [], fortress: true, ignoreAlliedBlocking: true,
+    diesOnElement: 'FIRE',
+    manaSteal: {
+      onSummon: {
+        amount: { type: 'FIELD_COUNT', element: 'WATER' },
+        forbidFieldElement: 'WATER',
+      },
+    },
+    desc: 'Fortress. If Moving Isle of Kadena is summoned to a non-Water field, steal mana from your opponent equal to the number of Water fields. Destroy Moving Isle of Kadena if it is on a Fire field.'
+  },
+
+  WATER_QUEENS_SERVANT: {
+    id: 'WATER_QUEENS_SERVANT', name: "Queen's Servant", type: 'UNIT', cost: 4, activation: 2,
+    element: 'WATER', atk: 1, hp: 1,
+    attackType: 'MAGIC',
+    attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
+    blindspots: ['S'], perfectDodge: true, ignoreAlliedBlocking: true,
+    manaSteal: {
+      onDeath: { amount: 1 },
+    },
+    desc: "Magic Attack. Perfect Dodge. If Queen's Servant is destroyed, steal 1 mana from your opponent."
+  },
   EARTH_ARELAI_THE_PROTECTOR: {
     id: 'EARTH_ARELAI_THE_PROTECTOR', name: 'Arelai the Protector', type: 'UNIT', cost: 3, activation: 2,
     element: 'EARTH', atk: 2, hp: 3,
@@ -634,6 +666,18 @@ export const CARDS = {
       { pattern: 'ADJACENT', requireSourceElement: 'WATER', id: 'ANFISA_WATER_AURA' },
     ],
     desc: 'Magic Attack. While on a Water field, Imposter Queen Anfisa gains Possession of all enemies on adjacent fields.'
+  },
+  FOREST_DANCING_TEMPTRESS: {
+    id: 'FOREST_DANCING_TEMPTRESS', name: 'Dancing Temptress', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FOREST', atk: 1, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    manaSteal: {
+      onDeath: { amount: 1, from: 'TARGET' },
+    },
+    deathPullFront: true,
+    desc: 'If Dancing Temptress is destroyed, steal 1 mana from the owner of the creature in front of her. That creature is moved to her former field.',
   },
   FOREST_SWALLOW_NINJA: {
     id: 'FOREST_SWALLOW_NINJA', name: 'Swallow Ninja', type: 'UNIT', cost: 3, activation: 2,

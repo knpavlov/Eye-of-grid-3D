@@ -1,5 +1,7 @@
-// Логика эффектов принудительного сброса карт
+// Логика эффектов принудительного сброса карт и прочих реакций на смерть
 import { CARDS } from '../cards.js';
+import { applyDeathManaSteal } from './manaSteal.js';
+import { applyDeathRepositionEffects } from './deathReposition.js';
 
 const DEFAULT_TIMER_MS = 20000;
 
@@ -99,8 +101,24 @@ export function applyDeathDiscardEffects(state, deaths = [], context = {}) {
   const events = { logs: [], requests: [] };
   if (!state || !Array.isArray(deaths) || deaths.length === 0) return events;
 
+  const reposition = applyDeathRepositionEffects(state, deaths, context);
+  if (Array.isArray(reposition?.logs) && reposition.logs.length) {
+    events.logs.push(...reposition.logs);
+  }
+  if (Array.isArray(reposition?.moves) && reposition.moves.length) {
+    events.repositions = reposition.moves.slice();
+  }
+
   const queue = ensureQueue(state);
   if (!queue) return events;
+
+  const manaSteals = applyDeathManaSteal(state, deaths, context);
+  if (Array.isArray(manaSteals) && manaSteals.length) {
+    events.manaSteals = [...manaSteals];
+    for (const steal of manaSteals) {
+      if (steal?.log) events.logs.push(steal.log);
+    }
+  }
 
   for (const death of deaths) {
     if (!death) continue;

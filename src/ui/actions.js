@@ -365,6 +365,20 @@ export function confirmUnitAbilityOrientation(context, direction) {
       }
     }
 
+    const animateManaSteal = w.__ui?.mana?.animateManaSteal;
+    if (typeof animateManaSteal === 'function') {
+      if (Array.isArray(result.events?.manaSteals) && result.events.manaSteals.length) {
+        for (const steal of result.events.manaSteals) {
+          try { animateManaSteal(steal); } catch (err) { console.warn('[unitAbility] mana steal animation failed', err); }
+        }
+      }
+      if (Array.isArray(result.summonEvents?.manaSteals) && result.summonEvents.manaSteals.length) {
+        for (const steal of result.summonEvents.manaSteals) {
+          try { animateManaSteal(steal); } catch (err) { console.warn('[unitAbility] mana steal animation failed', err); }
+        }
+      }
+    }
+
     if (result.summonEvents?.possessions?.length) {
       for (const ev of result.summonEvents.possessions) {
         const unitTaken = gameState.board?.[ev.r]?.[ev.c]?.unit;
