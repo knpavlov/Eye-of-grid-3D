@@ -6,7 +6,6 @@ import { highlightTiles, clearHighlights } from './highlight.js';
 import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
 import { showTooltip, hideTooltip } from '../ui/tooltip.js';
 import {
-  applyFreedonianAura,
   applySummonAbilities,
   evaluateIncarnationSummon,
   applyIncarnationSummon,
@@ -1020,9 +1019,35 @@ export function placeUnitWithDirection(direction) {
         }
       } catch {}
     }
-    const gained = applyFreedonianAura(gameState, gameState.active);
-    if (gained > 0) {
-      window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
+    const manaEvents = Array.isArray(summonEvents?.manaGains) ? summonEvents.manaGains : [];
+    if (manaEvents.length) {
+      try {
+        const cards = window.CARDS || {};
+        for (const manaEvent of manaEvents) {
+          const total = Number.isFinite(manaEvent?.total) ? manaEvent.total : 0;
+          if (total <= 0) continue;
+          const entries = Array.isArray(manaEvent.entries) ? manaEvent.entries : [];
+          if (manaEvent.source === 'FREEDONIAN_AURA') {
+            const names = entries
+              .map(entry => cards[entry?.sourceTplId]?.name)
+              .filter(Boolean);
+            let label = 'Фридонийский Странник';
+            if (names.length === 1) {
+              label = names[0];
+            } else if (names.length > 1) {
+              label = 'Фридонийские Странники';
+            }
+            window.addLog?.(`${label} приносит ${total} маны.`);
+            continue;
+          }
+          const ownerLabel = Number.isFinite(manaEvent?.owner)
+            ? `игрок ${manaEvent.owner + 1}`
+            : 'игрок';
+          window.addLog?.(`${ownerLabel} получает ${total} маны.`);
+        }
+      } catch (err) {
+        console.error('[summon] Не удалось обработать события маны', err);
+      }
     }
   }
   // Синхронизируем состояние после призыва

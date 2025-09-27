@@ -395,7 +395,33 @@ export function confirmUnitAbilityOrientation(context, direction) {
       }
     }
 
-    if (result.freedonianMana > 0) {
+    const manaEvents = Array.isArray(result.manaGains) ? result.manaGains : [];
+    if (manaEvents.length) {
+      const cards = w.CARDS || {};
+      for (const manaEvent of manaEvents) {
+        const total = Number.isFinite(manaEvent?.total) ? manaEvent.total : 0;
+        if (total <= 0) continue;
+        const entries = Array.isArray(manaEvent.entries) ? manaEvent.entries : [];
+        if (manaEvent.source === 'FREEDONIAN_AURA') {
+          const names = entries
+            .map(entry => cards[entry?.sourceTplId]?.name)
+            .filter(Boolean);
+          let label = 'Фридонийский Странник';
+          if (names.length === 1) {
+            label = names[0];
+          } else if (names.length > 1) {
+            label = 'Фридонийские Странники';
+          }
+          w.addLog?.(`${label} приносит ${total} маны.`);
+          continue;
+        }
+        const ownerLabel = Number.isFinite(manaEvent?.owner)
+          ? `игрок ${manaEvent.owner + 1}`
+          : 'игрок';
+        w.addLog?.(`${ownerLabel} получает ${total} маны.`);
+      }
+    } else if (result.freedonianMana > 0) {
+      // обратная совместимость, если сервер ещё не передаёт подробные события
       w.addLog?.(`Фридонийский Странник приносит ${result.freedonianMana} маны.`);
     }
 
