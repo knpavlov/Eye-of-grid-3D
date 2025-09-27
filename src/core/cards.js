@@ -349,6 +349,17 @@ export const CARDS = {
     desc: 'Novogus Golem gains Protection equal to the number of empty fields.'
   },
 
+  EARTH_UNDEAD_KING_NOVOGUS: {
+    id: 'EARTH_UNDEAD_KING_NOVOGUS', name: 'Undead King Novogus', type: 'UNIT', cost: 6, activation: 3,
+    element: 'EARTH', atk: 2, hp: 6,
+    attackType: 'MAGIC',
+    attacks: [],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    fieldquakeOnDamage: { requireFieldNot: 'EARTH' },
+    desc: "Magic Attack. If Undead King Novogus is on a non-Earth field and damages a creature, fieldquake the target creature's field. The target creature cannot counterattack."
+  },
+
   EARTH_SE_HOLLYN_FORTRESS: {
     id: 'EARTH_SE_HOLLYN_FORTRESS', name: 'Se Hollyn Fortress', type: 'UNIT', cost: 4, activation: 2,
     element: 'EARTH', atk: 1, hp: 4,
@@ -430,6 +441,29 @@ export const CARDS = {
       { stat: 'PROTECTION', amount: 1, scope: 'ADJACENT', target: 'ALLY' },
     ],
     desc: 'Allied creatures on adjacent fields gain +1 Protection.'
+  },
+
+  BIOLITH_BEHEMOTH_GROUNDBREAKER: {
+    id: 'BIOLITH_BEHEMOTH_GROUNDBREAKER', name: 'Behemoth Groundbreaker', type: 'UNIT', cost: 4, activation: 3,
+    element: 'BIOLITH', atk: 3, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    fieldquakeOnSummon: { pattern: 'ADJACENT' },
+    desc: 'When Behemoth Groundbreaker is summoned, fieldquake all adjacent fields.'
+  },
+
+  BIOLITH_OUROBOROS_DRAGON: {
+    id: 'BIOLITH_OUROBOROS_DRAGON', name: 'Ouroboros Dragon', type: 'UNIT', cost: 7, activation: 4,
+    element: 'BIOLITH', atk: 7, hp: 10,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY', ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    dynamicAtk: 'BIOLITH_CREATURES',
+    fieldquakeLock: { type: 'ALL_WHEN_ON_ELEMENT', element: 'BIOLITH' },
+    desc: "Ouroboros Dragon's Attack is equal to 7 plus the number of other Biolith creatures on the board. While Ouroboros Dragon is on a Biolith field, no field can be fieldquaked or exchanged."
   },
 
   BIOLITH_MORNING_STAR_WARRIOR: {

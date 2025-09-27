@@ -949,6 +949,55 @@ export function placeUnitWithDirection(direction) {
         window.addLog?.(text);
       }
     }
+    if (Array.isArray(summonEvents?.fieldquakes) && summonEvents.fieldquakes.length) {
+      const ctxScene = getCtx();
+      const boardApi = window.__board || {};
+      const getTileMaterial = boardApi.getTileMaterial || window.getTileMaterial || null;
+      const THREE = ctxScene.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+      for (const fq of summonEvents.fieldquakes) {
+        if (!fq) continue;
+        const { r: fqR, c: fqC } = fq;
+        const tile = ctxScene.tileMeshes?.[fqR]?.[fqC] || null;
+        if (tile && getTileMaterial && typeof window.__fx?.dissolveTileCrossfade === 'function') {
+          try {
+            const prevMat = getTileMaterial(fq.prevElement);
+            const nextMat = getTileMaterial(fq.nextElement);
+            if (prevMat && nextMat) {
+              window.__fx.dissolveTileCrossfade(tile, prevMat, nextMat, 0.9);
+            }
+          } catch (err) {
+            console.warn('[summon-fieldquake] tile crossfade error', err);
+          }
+        }
+        if (fq.hpShift && fq.hpShift.delta) {
+          const mesh = ctxScene.unitMeshes.find(m => m.userData.row === fqR && m.userData.col === fqC);
+          if (mesh) {
+            try {
+              const color = fq.hpShift.delta > 0 ? '#22c55e' : '#ef4444';
+              window.__fx?.spawnDamageText?.(mesh, `${fq.hpShift.delta > 0 ? '+' : ''}${fq.hpShift.delta}`, color);
+            } catch {}
+          }
+        }
+        if (Array.isArray(fq.deaths)) {
+          for (const death of fq.deaths) {
+            if (!death) continue;
+            const mesh = ctxScene.unitMeshes.find(m => m.userData.row === death.r && m.userData.col === death.c);
+            if (mesh && THREE) {
+              try { window.__fx?.dissolveAndAsh?.(mesh, new THREE.Vector3(0, 0, 0.6), 0.9); } catch {}
+            }
+          }
+        }
+        if (Array.isArray(fq.manaGains)) {
+          for (const gain of fq.manaGains) {
+            if (!gain || typeof gain.owner !== 'number') continue;
+            const tileGain = ctxScene.tileMeshes?.[gain.r]?.[gain.c];
+            if (!tileGain || !THREE) continue;
+            const pos = tileGain.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+            try { window.animateManaGainFromWorld?.(pos, gain.owner, true, gain.before); } catch {}
+          }
+        }
+      }
+    }
     handleManaStealAnimations(summonEvents?.manaSteals);
     if (Array.isArray(summonEvents?.statBuffs) && summonEvents.statBuffs.length) {
       for (const buff of summonEvents.statBuffs) {
