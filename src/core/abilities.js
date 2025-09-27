@@ -48,6 +48,8 @@ import {
   evaluateFieldFatality as evaluateFieldFatalityInternal,
 } from './abilityHandlers/fieldHazards.js';
 import { applySummonManaSteal } from './abilityHandlers/manaSteal.js';
+import { buildFieldquakeLockSet, applyFieldquakeToCell } from './abilityHandlers/fieldquake.js';
+import { buildDeathRecord } from './utils/deaths.js';
 
 // локальная функция ограничения маны (без импорта во избежание циклов)
 const capMana = (m) => Math.min(10, m);
@@ -89,6 +91,169 @@ function normalizeElements(value) {
     if (el) set.add(el);
   }
   return set;
+}
+
+function resolveSummonFieldquakePattern(cfg) {
+  if (!cfg) return 'ADJACENT';
+  if (typeof cfg === 'string') return cfg.toUpperCase();
+  if (typeof cfg === 'object') {
+    const pattern = cfg.pattern || cfg.type || cfg.mode;
+    if (pattern) return String(pattern).toUpperCase();
+  }
+  return 'ADJACENT';
+}
+
+function collectSummonFieldquakeTargets(r, c, cfg) {
+  const pattern = resolveSummonFieldquakePattern(cfg);
+  const list = [];
+  if (pattern === 'SELF' || pattern === 'ORIGIN') {
+    list.push({ r, c });
+    return list;
+  }
+  if (pattern === 'ROW') {
+    for (let cc = 0; cc < 3; cc += 1) {
+      if (cc === c) continue;
+      list.push({ r, c: cc });
+    }
+    return list;
+  }
+  if (pattern === 'COLUMN' || pattern === 'COL') {
+    for (let rr = 0; rr < 3; rr += 1) {
+      if (rr === r) continue;
+      list.push({ r: rr, c });
+    }
+    return list;
+  }
+  // По умолчанию работаем с четырьмя соседними клетками
+  const offsets = [ [-1, 0], [1, 0], [0, -1], [0, 1] ];
+  for (const [dr, dc] of offsets) {
+    const rr = r + dr;
+    const cc = c + dc;
+    if (!inBounds(rr, cc)) continue;
+    list.push({ r: rr, c: cc });
+  }
+  return list;
+}
+
+function collectPendingDeaths(state, cells) {
+  const deaths = [];
+  for (const pos of cells || []) {
+    if (!pos) continue;
+    const cell = state.board?.[pos.r]?.[pos.c];
+    const unit = cell?.unit;
+    if (!unit) continue;
+    const tpl = CARDS[unit.tplId];
+    const hp = (typeof unit.currentHP === 'number') ? unit.currentHP : (tpl?.hp || 0);
+    if (hp > 0) continue;
+    const record = buildDeathRecord(state, pos.r, pos.c, unit);
+    if (record) deaths.push(record);
+  }
+  return deaths;
+}
+
+function finalizeFieldquakeDeaths(state, deathRecords, opts = {}) {
+  const result = { deaths: [], logs: [], manaSteals: [], releases: [], possessions: [], dodgeUpdates: [] };
+  if (!Array.isArray(deathRecords) || !deathRecords.length) return result;
+
+  const processed = [];
+  for (const record of deathRecords) {
+    if (!record) continue;
+    const cell = state.board?.[record.r]?.[record.c];
+    const unit = cell?.unit;
+    if (!unit) continue;
+    const tpl = CARDS[unit.tplId];
+    if (!tpl) continue;
+    processed.push({ record, cell, unit, tpl });
+  }
+  if (!processed.length) return result;
+
+  for (const item of processed) {
+    const { record, cell, unit, tpl } = item;
+    const owner = unit.owner;
+    const player = state.players?.[owner];
+    if (player) {
+      player.mana = capMana((player.mana || 0) + 1);
+      if (Array.isArray(player.graveyard)) player.graveyard.push(tpl);
+    }
+    cell.unit = null;
+    result.deaths.push(record);
+  }
+
+  for (const item of processed) {
+    const { tpl, record } = item;
+    if (!tpl?.onDeathAddHPAll) continue;
+    const amount = tpl.onDeathAddHPAll;
+    const owner = record.owner;
+    for (let rr = 0; rr < 3; rr += 1) {
+      for (let cc = 0; cc < 3; cc += 1) {
+        if (rr === record.r && cc === record.c) continue;
+        const ally = state.board?.[rr]?.[cc]?.unit;
+        if (!ally || ally.owner !== owner) continue;
+        const tplAlly = CARDS[ally.tplId];
+        if (!tplAlly) continue;
+        const cellElement = state.board?.[rr]?.[cc]?.element;
+        const buff = computeCellBuff(cellElement, tplAlly.element);
+        ally.bonusHP = (ally.bonusHP || 0) + amount;
+        const maxHP = (tplAlly.hp || 0) + buff.hp + (ally.bonusHP || 0);
+        const before = ally.currentHP ?? tplAlly.hp;
+        ally.currentHP = Math.min(maxHP, before + amount);
+      }
+    }
+    result.logs.push(`${tpl.name}: союзники получают +${tpl.onDeathAddHPAll} HP`);
+  }
+
+  const discardEffects = applyDeathDiscardEffects(state, result.deaths, { cause: opts.cause || 'ABILITY' });
+  if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
+    result.logs.push(...discardEffects.logs);
+  }
+  if (Array.isArray(discardEffects?.manaSteals) && discardEffects.manaSteals.length) {
+    result.manaSteals.push(...discardEffects.manaSteals);
+  }
+  if (Array.isArray(discardEffects?.repositions) && discardEffects.repositions.length) {
+    result.repositions = discardEffects.repositions.slice();
+  }
+  if (Array.isArray(discardEffects?.requests) && discardEffects.requests.length) {
+    result.discardRequests = discardEffects.requests.slice();
+  }
+
+  const releaseEvents = releasePossessionsAfterDeaths(state, result.deaths);
+  if (releaseEvents.releases.length) {
+    result.releases.push(...releaseEvents.releases);
+    for (const rel of releaseEvents.releases) {
+      const unit = state.board?.[rel.r]?.[rel.c]?.unit;
+      const tplRel = unit ? CARDS[unit.tplId] : null;
+      const name = tplRel?.name || 'Существо';
+      result.logs.push(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
+    }
+  }
+
+  const continuous = refreshContinuousPossessions(state);
+  if (continuous.possessions.length) {
+    result.possessions.push(...continuous.possessions);
+    for (const ev of continuous.possessions) {
+      const takenUnit = state.board?.[ev.r]?.[ev.c]?.unit;
+      const tplTaken = takenUnit ? CARDS[takenUnit.tplId] : null;
+      const name = tplTaken?.name || 'Существо';
+      const ownerLabel = (ev.newOwner != null) ? ev.newOwner + 1 : '?';
+      result.logs.push(`${name}: контроль переходит к игроку ${ownerLabel}.`);
+    }
+  }
+  if (continuous.releases.length) {
+    result.releases.push(...continuous.releases);
+    for (const rel of continuous.releases) {
+      const unit = state.board?.[rel.r]?.[rel.c]?.unit;
+      const tplRel = unit ? CARDS[unit.tplId] : null;
+      const name = tplRel?.name || 'Существо';
+      result.logs.push(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
+    }
+  }
+
+  const dodgeInfo = refreshBoardDodgeStates(state);
+  if (Array.isArray(dodgeInfo?.updated) && dodgeInfo.updated.length) {
+    result.dodgeUpdates = dodgeInfo.updated.slice();
+  }
+
+  return result;
 }
 
 function buildSchemeMap(tpl) {
@@ -386,6 +551,33 @@ export function collectDamageInteractions(state, context = {}) {
     }
   }
 
+  const fieldquakeCfg = tpl.fieldquakeOnDamage;
+  if (fieldquakeCfg) {
+    const attackerElement = normalizeElementName(state.board?.[attackerPos?.r]?.[attackerPos?.c]?.element);
+    const requireEl = normalizeElementName(fieldquakeCfg.requireElement || fieldquakeCfg.onlyOnElement);
+    const forbidEl = normalizeElementName(fieldquakeCfg.requireNotElement || fieldquakeCfg.forbidElement || fieldquakeCfg.excludeElement);
+    let enabled = true;
+    if (requireEl && attackerElement !== requireEl) enabled = false;
+    if (forbidEl && attackerElement === forbidEl) enabled = false;
+    if (enabled) {
+      for (const info of processed) {
+        if (!info || (info.dealt ?? 0) <= 0) continue;
+        if (info.target?.owner === attackerUnit.owner) continue;
+        result.events.push({
+          type: 'FIELDQUAKE',
+          target: { r: info.r, c: info.c },
+          source: attackerRef,
+          sourceTplId: tpl.id,
+          preventRetaliation: fieldquakeCfg.preventRetaliation === true,
+          log: fieldquakeCfg.log || `${tpl.name}: fieldquake shakes the target field.`,
+        });
+        if (fieldquakeCfg.preventRetaliation) {
+          result.preventRetaliation.add(info.key);
+        }
+      }
+    }
+  }
+
   return result;
 }
 
@@ -393,6 +585,8 @@ export function applyDamageInteractionResults(state, effects = {}) {
   const logs = [];
   let attackerPosUpdate = null;
   const events = Array.isArray(effects?.events) ? effects.events : [];
+  const fieldquakeResults = [];
+  let cachedLocks = null;
 
   for (const ev of events) {
     if (ev?.type === 'SWAP_POSITIONS') {
@@ -501,10 +695,27 @@ export function applyDamageInteractionResults(state, effects = {}) {
       const hazard = applyFieldFatalityCheckInternal(state.board[to.r][to.c]?.unit, tplTarget, toElement);
       const fatalLog = describeFieldFatalityInternal(tplTarget, hazard, { name: targetName });
       if (fatalLog) logs.push(fatalLog);
+    } else if (ev?.type === 'FIELDQUAKE') {
+      const target = ev.target || {};
+      if (typeof target.r !== 'number' || typeof target.c !== 'number') continue;
+      if (!cachedLocks) cachedLocks = buildFieldquakeLockSet(state);
+      const res = applyFieldquakeToCell(state, target.r, target.c, { lockedSet: cachedLocks });
+      if (!res?.ok) continue;
+      fieldquakeResults.push({
+        r: res.r,
+        c: res.c,
+        prevElement: res.prevElement,
+        nextElement: res.nextElement,
+        hpDelta: res.hpDelta,
+        hpAfter: res.hpAfter,
+        unitAffected: res.unitAffected,
+        sourceTplId: ev.sourceTplId || null,
+      });
+      if (ev.log) logs.push(ev.log);
     }
   }
 
-  return { attackerPosUpdate, logLines: logs };
+  return { attackerPosUpdate, logLines: logs, fieldquakes: fieldquakeResults };
 }
 
 function normalizeElementConfig(value, defaults = {}) {
@@ -687,6 +898,62 @@ export function applySummonAbilities(state, r, c) {
     for (const steal of manaSteals) {
       if (steal?.log) {
         events.logs = [...(events.logs || []), steal.log];
+      }
+    }
+  }
+
+  if (tpl.fieldquakeOnSummon) {
+    const targets = collectSummonFieldquakeTargets(r, c, tpl.fieldquakeOnSummon);
+    if (targets.length) {
+      const lockedSet = buildFieldquakeLockSet(state);
+      const appliedQuakes = [];
+      for (const target of targets) {
+        const res = applyFieldquakeToCell(state, target.r, target.c, { lockedSet });
+        if (res?.ok) appliedQuakes.push(res);
+      }
+      if (appliedQuakes.length) {
+        const quakeLog = `${tpl.name}: fieldquake ripples through nearby fields.`;
+        events.logs = [...(events.logs || []), quakeLog];
+        events.fieldquakes = [
+          ...(events.fieldquakes || []),
+          ...appliedQuakes.map(item => ({
+            r: item.r,
+            c: item.c,
+            prevElement: item.prevElement,
+            nextElement: item.nextElement,
+            hpDelta: item.hpDelta,
+            hpAfter: item.hpAfter,
+            unitAffected: item.unitAffected,
+          })),
+        ];
+        const pendingDeaths = collectPendingDeaths(state, appliedQuakes);
+        if (pendingDeaths.length) {
+          const outcome = finalizeFieldquakeDeaths(state, pendingDeaths, { cause: 'FIELDQUAKE_SUMMON' });
+          if (outcome.deaths.length) {
+            events.deaths = [...(events.deaths || []), ...outcome.deaths];
+          }
+          if (Array.isArray(outcome.logs) && outcome.logs.length) {
+            events.logs = [...(events.logs || []), ...outcome.logs];
+          }
+          if (Array.isArray(outcome.manaSteals) && outcome.manaSteals.length) {
+            events.manaSteals = [...(events.manaSteals || []), ...outcome.manaSteals];
+          }
+          if (Array.isArray(outcome.releases) && outcome.releases.length) {
+            events.releases = [...(events.releases || []), ...outcome.releases];
+          }
+          if (Array.isArray(outcome.possessions) && outcome.possessions.length) {
+            events.possessions = [...(events.possessions || []), ...outcome.possessions];
+          }
+          if (Array.isArray(outcome.dodgeUpdates) && outcome.dodgeUpdates.length) {
+            events.dodgeUpdates = [...(events.dodgeUpdates || []), ...outcome.dodgeUpdates];
+          }
+          if (Array.isArray(outcome.discardRequests) && outcome.discardRequests.length) {
+            events.discardRequests = [...(events.discardRequests || []), ...outcome.discardRequests];
+          }
+          if (Array.isArray(outcome.repositions) && outcome.repositions.length) {
+            events.repositions = [...(events.repositions || []), ...outcome.repositions];
+          }
+        }
       }
     }
   }

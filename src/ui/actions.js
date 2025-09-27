@@ -96,19 +96,30 @@ export function performUnitAttack(unitMesh) {
     const usesMagic = profile?.attackType === 'MAGIC';
     if (usesMagic) {
       const allowFriendly = !!tpl.friendlyFire;
-      const cells = [];
-      let hasEnemy = false;
-      for (let rr = 0; rr < 3; rr++) {
-        for (let cc = 0; cc < 3; cc++) {
-          if (rr === r && cc === c) continue; // нельзя бить себя
-          const u = gameState.board?.[rr]?.[cc]?.unit;
-          if (allowFriendly || (u && u.owner !== unit.owner)) {
+      const collectFn = window.collectMagicAttackCandidates;
+      let cells = [];
+      if (typeof collectFn === 'function') {
+        cells = collectFn(gameState, r, c) || [];
+      } else {
+        for (let rr = 0; rr < 3; rr++) {
+          for (let cc = 0; cc < 3; cc++) {
+            if (rr === r && cc === c) continue;
+            const u = gameState.board?.[rr]?.[cc]?.unit;
+            if (!u) continue;
+            if (!allowFriendly && u.owner === unit.owner) continue;
             cells.push({ r: rr, c: cc });
           }
-          if (u && u.owner !== unit.owner) hasEnemy = true;
         }
       }
-      if (!cells.length || (!allowFriendly && !hasEnemy)) {
+      const hasEnemy = cells.some(pos => {
+        const u = gameState.board?.[pos.r]?.[pos.c]?.unit;
+        return u && u.owner !== unit.owner;
+      });
+      const hasFriendly = cells.some(pos => {
+        const u = gameState.board?.[pos.r]?.[pos.c]?.unit;
+        return u && u.owner === unit.owner;
+      });
+      if (!cells.length || (!hasEnemy && !(allowFriendly && hasFriendly))) {
         window.__ui?.notifications?.show('No available targets for magic attack', 'error');
         return;
       }

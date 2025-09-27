@@ -622,6 +622,23 @@
           gameState = res.n1;
           const finalState = gameState;
           try { window.applyGameState(finalState); } catch {}
+          if (Array.isArray(res.fieldquakes) && res.fieldquakes.length) {
+            try {
+              const getMaterial = window.getTileMaterial || window.__board?.getTileMaterial;
+              for (const quake of res.fieldquakes) {
+                if (!quake) continue;
+                const { r: qr, c: qc, prevElement, nextElement } = quake;
+                if (typeof qr !== 'number' || typeof qc !== 'number') continue;
+                const tile = tileMeshes?.[qr]?.[qc];
+                if (!tile) continue;
+                try {
+                  const prevMat = typeof getMaterial === 'function' ? getMaterial(prevElement) : null;
+                  const nextMat = typeof getMaterial === 'function' ? getMaterial(nextElement) : null;
+                  window.__fx?.dissolveTileCrossfade?.(tile, prevMat, nextMat, 0.9);
+                } catch {}
+              }
+            } catch {}
+          }
           if (Array.isArray(res.dodgeUpdates) && res.dodgeUpdates.length) {
             try { window.__interactions?.logDodgeUpdates?.(res.dodgeUpdates, finalState, attackerName); } catch {}
           }

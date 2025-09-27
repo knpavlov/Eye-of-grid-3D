@@ -85,6 +85,99 @@ function attackCellsFromProfile(profile, tpl, facing, opts = {}) {
   return res;
 }
 
+export function collectMagicAttackCandidates(state, r, c, opts = {}) {
+  const result = [];
+  const seen = new Set();
+  const board = state?.board;
+  const cell = board?.[r]?.[c];
+  const unit = cell?.unit;
+  if (!board || !unit) return result;
+
+  const tpl = CARDS[unit.tplId];
+  if (!tpl) return result;
+
+  const profile = resolveAttackProfile(state, r, c, tpl, { unit, cell });
+  const attackType = profile?.attackType || tpl.attackType || 'STANDARD';
+  if (attackType !== 'MAGIC') return result;
+
+  const allowFriendly = !!(tpl.friendlyFire || opts.includeAllies);
+  const addCell = (rr, cc) => {
+    if (!inBounds(rr, cc)) return;
+    if (rr === r && cc === c) return;
+    const key = `${rr},${cc}`;
+    if (seen.has(key)) return;
+    const targetUnit = board?.[rr]?.[cc]?.unit;
+    if (!targetUnit) return;
+    if (!allowFriendly && targetUnit.owner === unit.owner) return;
+    seen.add(key);
+    result.push({ r: rr, c: cc });
+  };
+
+  const pushByBoardScan = (predicate) => {
+    for (let rr = 0; rr < board.length; rr += 1) {
+      const row = board[rr];
+      if (!Array.isArray(row)) continue;
+      for (let cc = 0; cc < row.length; cc += 1) {
+        if (!predicate(rr, cc)) continue;
+        addCell(rr, cc);
+      }
+    }
+  };
+
+  if (tpl.targetAllEnemies) {
+    pushByBoardScan((rr, cc) => {
+      const u = board?.[rr]?.[cc]?.unit;
+      return !!u && u.owner !== unit.owner;
+    });
+    return result;
+  }
+
+  if (tpl.targetAllNonElement) {
+    const forbidden = normalizeElementName(tpl.targetAllNonElement);
+    pushByBoardScan((rr, cc) => {
+      const cellInfo = board?.[rr]?.[cc];
+      const u = cellInfo?.unit;
+      if (!u || u.owner === unit.owner) return false;
+      if (!forbidden) return true;
+      const cellElement = normalizeElementName(cellInfo?.element);
+      return cellElement !== forbidden;
+    });
+    return result;
+  }
+
+  if (tpl.magicAttackAnywhere || profile?.magicAttackAnywhere) {
+    pushByBoardScan((rr, cc) => {
+      if (rr === r && cc === c) return false;
+      const u = board?.[rr]?.[cc]?.unit;
+      if (!u) return false;
+      if (!allowFriendly && u.owner === unit.owner) return false;
+      return true;
+    });
+    return result;
+  }
+
+  const attackCells = attackCellsFromProfile(profile, tpl, unit.facing, { union: true });
+  for (const info of attackCells) {
+    const vec = DIR_VECTORS[info.dirAbs];
+    if (!vec) continue;
+    const targetR = r + vec[0] * info.range;
+    const targetC = c + vec[1] * info.range;
+    addCell(targetR, targetC);
+  }
+
+  if (!result.length) {
+    pushByBoardScan((rr, cc) => {
+      if (rr === r && cc === c) return false;
+      const u = board?.[rr]?.[cc]?.unit;
+      if (!u) return false;
+      if (!allowFriendly && u.owner === unit.owner) return false;
+      return true;
+    });
+  }
+
+  return result;
+}
+
 // Compute effective stats (handles temp buffs if present on cell)
 export function effectiveStats(cell, unit, opts = {}) {
   const tpl = unit ? CARDS[unit.tplId] : null;
@@ -301,6 +394,7 @@ export function stagedAttack(state, r, c, opts = {}) {
   const damageEffects = { preventRetaliation: new Set(), events: [] };
   const randomFn = typeof opts?.rng === 'function' ? opts.rng : Math.random;
   const dodgeUpdates = [];
+  const fieldquakeEvents = [];
 
   const hitsRaw = computeHits(base, r, c, { ...opts, profile });
   if (!hitsRaw.length) return { empty: true };
@@ -568,6 +662,9 @@ export function stagedAttack(state, r, c, opts = {}) {
     if (Array.isArray(applied?.logLines) && applied.logLines.length) {
       logLines.push(...applied.logLines);
     }
+    if (Array.isArray(applied?.fieldquakes) && applied.fieldquakes.length) {
+      fieldquakeEvents.push(...applied.fieldquakes);
+    }
 
     const A = nFinal.board?.[r]?.[c]?.unit;
     if (A && (ret.total || 0) > 0) {
@@ -678,6 +775,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       schemeKey,
       attackProfile: profile,
       manaSteals: manaStealEvents,
+      fieldquakes: fieldquakeEvents,
     };
   }
 
@@ -696,6 +794,7 @@ export function stagedAttack(state, r, c, opts = {}) {
     get n1() { ensureStep1(); return n1; },
     get targetsPreview() { return step1Damages.map(h => ({ r: h.r, c: h.c, dmg: h.dealt || 0 })); },
     get dodgeSnapshots() { ensureStep1(); return dodgeUpdates.slice(); },
+    get fieldquakeSnapshots() { return fieldquakeEvents.slice(); },
   };
 }
 
@@ -745,11 +844,18 @@ export function magicAttack(state, fr, fc, tr, tc) {
   const mainTarget = n1.board?.[targetR]?.[targetC]?.unit;
   if (!allowFriendly && (!mainTarget || mainTarget.owner === attacker.owner)) return null;
 
+  if (!tplA.targetAllEnemies && !tplA.targetAllNonElement) {
+    const candidates = collectMagicAttackCandidates(n1, fromR, fromC);
+    const allowed = candidates.some(pos => pos.r === targetR && pos.c === targetC);
+    if (!allowed) return null;
+  }
+
   const logLines = [];
   const manaStealEvents = [];
   const targets = [];
   const damageEffects = { preventRetaliation: new Set(), events: [] };
   const dodgeUpdates = [];
+  const fieldquakeEvents = [];
   const hitsSummary = new Map();
   const addSummary = (r, c, dealt, extra = {}) => {
     const key = `${r},${c}`;
@@ -949,6 +1055,9 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (Array.isArray(applied?.logLines) && applied.logLines.length) {
     logLines.push(...applied.logLines);
   }
+  if (Array.isArray(applied?.fieldquakes) && applied.fieldquakes.length) {
+    fieldquakeEvents.push(...applied.fieldquakes);
+  }
   const continuous = refreshContinuousPossessions(n1);
   if (continuous.possessions.length) {
     for (const ev of continuous.possessions) {
@@ -988,6 +1097,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     attackProfile: profile,
     dmg,
     manaSteals: manaStealEvents,
+    fieldquakes: fieldquakeEvents,
   };
 }
 
