@@ -514,6 +514,7 @@ export const CARDS = {
     manaOnSummon: {
       trigger: 'ALLY',
       summonFieldElement: 'BIOLITH',
+      excludeSelfSummon: true,
       log: 'Imperial Biolith Guard генерирует {amount} ману за биолитовый призыв.',
     },
     desc: 'Gain 1 mana each time you summon a creature to a Biolith field.'
@@ -555,6 +556,7 @@ export const CARDS = {
     },
     manaOnSummon: {
       trigger: 'ALLY',
+      excludeSelfSummon: true,
       log: 'Tino, Son of Scion приносит {amount} ману.',
     },
     desc: "Tino's Magic Attack targets all enemies of the same element as the target.\nWhile Tino is on a Biolith field, his Attack is equal to 1 plus the number of other allied Biolith creatures.\nGain 1 mana each time you summon a creature."

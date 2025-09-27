@@ -1688,6 +1688,16 @@ describe('Биолитовые пополнения', () => {
     expect(state.players[0].mana).toBe(1);
   });
 
+  it('Imperial Biolith Guard не приносит ману при собственном призыве', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'BIOLITH';
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_IMPERIAL_BIOLITH_GUARD', facing: 'N' };
+    const events = applySummonAbilities(state, 1, 1);
+    const gain = events.manaGains?.find(g => g.tplId === 'BIOLITH_IMPERIAL_BIOLITH_GUARD');
+    expect(gain).toBeFalsy();
+    expect(state.players[0].mana).toBe(0);
+  });
+
   it('Wormak получает ману при призыве врага и увеличивает урон по биолитам', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(1);
     try {
@@ -1765,6 +1775,16 @@ describe('Биолитовые пополнения', () => {
     expect(resultHigh).toBeTruthy();
     const hitHigh = resultHigh.targets.find(t => t.r === 1 && t.c === 1);
     expect(hitHigh?.dmg).toBeGreaterThanOrEqual(4);
+  });
+
+  it('Tino не приносит ману при собственном призыве', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].element = 'BIOLITH';
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_TINO_SON_OF_SCION', facing: 'N' };
+    const events = applySummonAbilities(state, 1, 1);
+    const gain = events.manaGains?.find(g => g.tplId === 'BIOLITH_TINO_SON_OF_SCION');
+    expect(gain).toBeFalsy();
+    expect(state.players[0].mana).toBe(0);
   });
 
   it('Tino может выбрать в качестве цели любую клетку для магической атаки', () => {
