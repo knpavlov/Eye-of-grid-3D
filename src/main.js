@@ -73,6 +73,7 @@ try {
   window.computeHits = Rules.computeHits;
   window.stagedAttack = Rules.stagedAttack;
   window.magicAttack = Rules.magicAttack;
+  window.collectMagicAttackCandidates = Rules.collectMagicAttackCandidates;
   window.resolveAttackProfile = Rules.resolveAttackProfile;
   window.refreshBoardDodgeStates = Rules.refreshBoardDodgeStates;
 

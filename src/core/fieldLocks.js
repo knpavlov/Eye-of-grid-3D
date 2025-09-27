@@ -2,6 +2,7 @@
 // Чистая логика без зависимостей от визуализации
 import { CARDS } from './cards.js';
 import { DIR_VECTORS, inBounds } from './constants.js';
+import { normalizeElementName } from './utils/elements.js';
 
 // Возвращает массив координат {r,c} клеток, которые нельзя fieldquake/exchange
 export function computeFieldquakeLockedCells(state) {
@@ -14,6 +15,12 @@ export function computeFieldquakeLockedCells(state) {
       const tpl = CARDS[unit.tplId];
       const lock = tpl?.fieldquakeLock;
       if (!lock) continue;
+      const cellElement = state.board?.[r]?.[c]?.element || null;
+      const normalizedCell = normalizeElementName(cellElement);
+      const requireElement = normalizeElementName(lock.requireElement || lock.onElement);
+      if (requireElement && normalizedCell !== requireElement) continue;
+      const forbidElement = normalizeElementName(lock.forbidElement || lock.excludeElement);
+      if (forbidElement && normalizedCell === forbidElement) continue;
       const add = (rr, cc) => {
         if (inBounds(rr, cc)) locked.add(`${rr},${cc}`);
       };

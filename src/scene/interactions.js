@@ -577,6 +577,7 @@ function performMagicAttack(from, targetMesh) {
   const res = window.magicAttack(gameState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
   if (!res) { showNotification('Incorrect target', 'error'); return false; }
   for (const l of res.logLines.reverse()) window.addLog(l);
+  const quakeEvents = Array.isArray(res.fieldquakes) ? res.fieldquakes : [];
   const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
   if (aMesh) {
     try {
@@ -616,6 +617,26 @@ function performMagicAttack(from, targetMesh) {
     window.applyGameState(res.n1);
     appliedState = window.gameState || res.n1;
   } catch { appliedState = res.n1; }
+
+  if (quakeEvents.length) {
+    try {
+      const ctx = getCtx();
+      const { tileMeshes } = ctx;
+      const getMaterial = window.getTileMaterial || window.__board?.getTileMaterial;
+      for (const quake of quakeEvents) {
+        if (!quake) continue;
+        const { r: qr, c: qc, prevElement, nextElement } = quake;
+        if (typeof qr !== 'number' || typeof qc !== 'number') continue;
+        const tile = tileMeshes?.[qr]?.[qc];
+        if (!tile) continue;
+        try {
+          const prevMat = typeof getMaterial === 'function' ? getMaterial(prevElement) : null;
+          const nextMat = typeof getMaterial === 'function' ? getMaterial(nextElement) : null;
+          window.__fx?.dissolveTileCrossfade?.(tile, prevMat, nextMat, 0.9);
+        } catch {}
+      }
+    } catch {}
+  }
 
   const attackerCoords = res.attackerPosUpdate || { r: from.r, c: from.c };
   const attackerState = appliedState?.board?.[attackerCoords.r]?.[attackerCoords.c]?.unit;
@@ -949,6 +970,25 @@ export function placeUnitWithDirection(direction) {
         window.addLog?.(text);
       }
     }
+    if (Array.isArray(summonEvents?.fieldquakes) && summonEvents.fieldquakes.length) {
+      try {
+        const ctxLocal = getCtx();
+        const { tileMeshes } = ctxLocal;
+        const getMaterial = window.getTileMaterial || window.__board?.getTileMaterial;
+        for (const quake of summonEvents.fieldquakes) {
+          if (!quake) continue;
+          const { r: qr, c: qc, prevElement, nextElement } = quake;
+          if (typeof qr !== 'number' || typeof qc !== 'number') continue;
+          const tile = tileMeshes?.[qr]?.[qc];
+          if (!tile) continue;
+          try {
+            const prevMat = typeof getMaterial === 'function' ? getMaterial(prevElement) : null;
+            const nextMat = typeof getMaterial === 'function' ? getMaterial(nextElement) : null;
+            window.__fx?.dissolveTileCrossfade?.(tile, prevMat, nextMat, 0.9);
+          } catch {}
+        }
+      } catch {}
+    }
     handleManaStealAnimations(summonEvents?.manaSteals);
     if (Array.isArray(summonEvents?.statBuffs) && summonEvents.statBuffs.length) {
       for (const buff of summonEvents.statBuffs) {
@@ -1006,6 +1046,26 @@ export function placeUnitWithDirection(direction) {
           }
         }
       } catch {}
+    }
+    if (Array.isArray(summonEvents?.deaths) && summonEvents.deaths.length) {
+      const ctxLocal = getCtx();
+      const { unitMeshes, tileMeshes } = ctxLocal;
+      const THREE = ctxLocal.THREE || window.THREE;
+      for (const death of summonEvents.deaths) {
+        if (!death) continue;
+        const { r: dr, c: dc, owner } = death;
+        const mesh = unitMeshes?.find?.(m => m.userData.row === dr && m.userData.col === dc);
+        if (mesh) {
+          try { window.__fx?.dissolveAndAsh?.(mesh, new THREE.Vector3(0, 0, 0.6), 0.9); } catch {}
+        }
+        const tile = tileMeshes?.[dr]?.[dc];
+        if (tile?.position?.clone) {
+          const origin = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+          setTimeout(() => {
+            try { window.animateManaGainFromWorld?.(origin, owner, true, gameState.players?.[owner]?.mana || 0); } catch {}
+          }, 400);
+        }
+      }
     }
     const gained = applyFreedonianAura(gameState, gameState.active);
     if (gained > 0) {
@@ -1080,19 +1140,30 @@ export function placeUnitWithDirection(direction) {
       }
       if (usesMagic) {
         const allowFriendly = !!tpl.friendlyFire;
-        const cells = [];
-        let hasEnemy = false;
-        for (let rr = 0; rr < 3; rr++) {
-          for (let cc = 0; cc < 3; cc++) {
-            if (rr === row && cc === col) continue;
-            const u = gameState.board?.[rr]?.[cc]?.unit;
-            if (allowFriendly || (u && u.owner !== unit.owner)) {
+        const collectFn = window.collectMagicAttackCandidates;
+        let cells = [];
+        if (typeof collectFn === 'function') {
+          cells = collectFn(gameState, row, col) || [];
+        } else {
+          for (let rr = 0; rr < 3; rr++) {
+            for (let cc = 0; cc < 3; cc++) {
+              if (rr === row && cc === col) continue;
+              const u = gameState.board?.[rr]?.[cc]?.unit;
+              if (!u) continue;
+              if (!allowFriendly && u.owner === unit.owner) continue;
               cells.push({ r: rr, c: cc });
             }
-            if (u && u.owner !== unit.owner) hasEnemy = true;
           }
         }
-        if (cells.length && (allowFriendly || hasEnemy)) {
+        const hasEnemy = cells.some(pos => {
+          const u = gameState.board?.[pos.r]?.[pos.c]?.unit;
+          return u && u.owner !== unit.owner;
+        });
+        const hasFriendly = cells.some(pos => {
+          const u = gameState.board?.[pos.r]?.[pos.c]?.unit;
+          return u && u.owner === unit.owner;
+        });
+        if (cells.length && (hasEnemy || (allowFriendly && hasFriendly))) {
           interactionState.magicFrom = { r: row, c: col, cancelMode: 'summon', owner: unit.owner };
           interactionState.autoEndTurnAfterAttack = true;
           highlightTiles(cells);
