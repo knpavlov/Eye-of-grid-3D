@@ -221,6 +221,16 @@ export const CARDS = {
     desc: 'When Tritonan Ice Guard is summoned to a non-Water field, draw a card.'
   },
 
+  WATER_MONK_ELDER_OF_OKUNADA: {
+    id: 'WATER_MONK_ELDER_OF_OKUNADA', name: 'Monk Elder of Okunada', type: 'UNIT', cost: 1, activation: 1,
+    element: 'WATER', atk: 0, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    grantDodgeAdjacentAllies: 1,
+    desc: 'All allied creatures on adjacent fields gain one Dodge attempt.'
+  },
+
   WATER_DRAGON_OF_VOICE_SEA: {
     id: 'WATER_DRAGON_OF_VOICE_SEA', name: 'Dragon of Voice Sea', type: 'UNIT', cost: 7, activation: 4,
     element: 'WATER', atk: 5, hp: 8,
