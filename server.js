@@ -101,29 +101,56 @@ const matches = new Map(); // matchId -> { room, sockets:[s0,s1], lastState, las
 
 function pairIfPossible() {
   pushLog({ ev: 'pairIfPossible:start', queueSize: queue.length });
-  
+
+  // Проверяем готовность сокета к игре и фиксируем причину, если она есть
+  const determineIssue = (socket) => {
+    if (!socket) return 'MISSING';
+    if (!socket.connected) return 'DISCONNECTED';
+    if (!socket.data?.user) return 'AUTH_REQUIRED';
+    if (!socket.data?.deckId) return 'DECK_REQUIRED';
+    return null;
+  };
+
+  const requeueSockets = (socketsToReturn) => {
+    if (!Array.isArray(socketsToReturn) || !socketsToReturn.length) return;
+    for (let i = socketsToReturn.length - 1; i >= 0; i -= 1) {
+      const sock = socketsToReturn[i];
+      if (!sock?.connected) continue;
+      if (queue.includes(sock)) continue;
+      queue.unshift(sock);
+      if (sock.data) sock.data.queueing = true;
+      pushLog({ ev: 'pairIfPossible:requeue', sid: sock.id, queueSize: queue.length });
+    }
+  };
+
+  const handleIssue = (socket, issue) => {
+    if (!socket || !issue) return;
+    if (socket.data) socket.data.queueing = false;
+    if (issue === 'AUTH_REQUIRED') {
+      try { socket.emit('authError', { reason: 'AUTH_REQUIRED' }); } catch {}
+    } else if (issue === 'DECK_REQUIRED') {
+      try { socket.emit('authError', { reason: 'DECK_REQUIRED' }); } catch {}
+    }
+  };
+
   while (queue.length >= 2) {
     const s0 = queue.shift();
     const s1 = queue.shift();
-    
+
     pushLog({ ev: 'pairIfPossible:attempt', s0: s0?.id, s1: s1?.id, s0Connected: s0?.connected, s1Connected: s1?.connected });
 
-    if (!s0?.connected || !s1?.connected) {
-      pushLog({ ev: 'pairIfPossible:skipDisconnected', s0: s0?.id, s1: s1?.id });
-      continue;
-    }
+    const sockets = [s0, s1];
+    const issues = sockets.map(determineIssue);
+    const ready = sockets.filter((sock, index) => !issues[index]);
 
-    if (!s0.data?.user || !s1.data?.user) {
-      pushLog({ ev: 'pairIfPossible:skipNoUser', s0: s0?.id, s1: s1?.id });
-      try { s0?.emit('authError', { reason: 'AUTH_REQUIRED' }); } catch {}
-      try { s1?.emit('authError', { reason: 'AUTH_REQUIRED' }); } catch {}
-      continue;
-    }
-
-    if (!s0.data?.deckId || !s1.data?.deckId) {
-      pushLog({ ev: 'pairIfPossible:skipNoDeck', s0: s0?.id, s1: s1?.id, deck0: s0.data?.deckId, deck1: s1.data?.deckId });
-      try { s0?.emit('authError', { reason: 'DECK_REQUIRED' }); } catch {}
-      try { s1?.emit('authError', { reason: 'DECK_REQUIRED' }); } catch {}
+    if (ready.length < sockets.length) {
+      requeueSockets(ready);
+      sockets.forEach((sock, index) => {
+        const issue = issues[index];
+        if (!issue) return;
+        pushLog({ ev: 'pairIfPossible:skip', sid: sock?.id, issue });
+        handleIssue(sock, issue);
+      });
       continue;
     }
 

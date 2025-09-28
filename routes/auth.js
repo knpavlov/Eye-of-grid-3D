@@ -17,9 +17,11 @@ function sanitizeEmail(raw) {
   return raw.trim().toLowerCase();
 }
 
-function sanitizeNickname(raw, fallback) {
-  const base = typeof raw === 'string' && raw.trim() ? raw.trim() : fallback;
-  const safe = base || 'Player';
+function sanitizeNickname(raw) {
+  if (typeof raw !== 'string' || !raw.trim()) {
+    throw new Error('Ник обязателен');
+  }
+  const safe = raw.trim();
   return safe.length > 32 ? safe.slice(0, 32) : safe;
 }
 
@@ -63,7 +65,12 @@ router.post('/register', async (req, res) => {
     if (existing) {
       return res.status(409).json({ error: 'Пользователь с таким email уже существует' });
     }
-    const nickname = sanitizeNickname(req.body?.nickname, email.split('@')[0] || 'Player');
+    let nickname;
+    try {
+      nickname = sanitizeNickname(req.body?.nickname);
+    } catch (err) {
+      return res.status(400).json({ error: err?.message || 'Ник обязателен' });
+    }
     const { hash, salt } = await hashPassword(password);
     const user = await createUser({ email, passwordHash: hash, passwordSalt: salt, nickname });
     const payload = createAuthPayload(user);
