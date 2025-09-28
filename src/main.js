@@ -49,6 +49,7 @@ import * as SummonLock from './ui/summonLock.js';
 import * as CancelButton from './ui/cancelButton.js';
 import { initDebugControls } from './ui/debugControls.js';
 import { initDiscardManager, syncWithState as syncDiscardManager } from './ui/discardManager.js';
+import { playFieldquakeFx, playFieldquakeFxBatch } from './scene/fieldquakeFx.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -207,6 +208,8 @@ try {
   window.__ui.mainMenu = MainMenu;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
+  window.playFieldquakeFx = playFieldquakeFx;
+  window.playFieldquakeFxBatch = playFieldquakeFxBatch;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
   window.burnSpellCard = UISpellUtils.burnSpellCard;
   window.__spells = Spells;
