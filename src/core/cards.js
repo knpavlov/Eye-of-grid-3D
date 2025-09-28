@@ -382,7 +382,7 @@ export const CARDS = {
     id: 'EARTH_NOVOGUS_CATAPULT', name: 'Novogus Catapult', type: 'UNIT', cost: 3, activation: 1,
     element: 'EARTH', atk: 2, hp: 4,
     attackType: 'STANDARD',
-    attacks: [ { dir: 'N', ranges: [2], ignoreAlliedBlocking: true } ],
+    attacks: [ { dir: 'N', ranges: [2], ignoreBlocking: true, ignoreAlliedBlocking: true } ],
     blindspots: ['S'], ignoreAlliedBlocking: true,
     gainManaOnDeath: { mode: 'COUNT_FIELDS_OF_ELEMENT', element: 'EARTH' },
     desc: 'If Novogus Catapult is destroyed, you gain mana equal to the number of Earth fields.'
