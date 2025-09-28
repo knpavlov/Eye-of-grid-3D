@@ -54,6 +54,15 @@ export function updateUI(gameState) {
     const t0 = doc.getElementById('player-title-0');
     const t1 = doc.getElementById('player-title-1');
     if (leftSide && rightSide && t0 && t1) {
+      const fallbackTitles = ['Игрок 1', 'Игрок 2'];
+      const name0 = typeof state.players?.[0]?.name === 'string' && state.players[0].name.trim()
+        ? state.players[0].name.trim()
+        : fallbackTitles[0];
+      const name1 = typeof state.players?.[1]?.name === 'string' && state.players[1].name.trim()
+        ? state.players[1].name.trim()
+        : fallbackTitles[1];
+      t0.textContent = name0;
+      t1.textContent = name1;
       leftSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
       rightSide.querySelectorAll('.overlay-panel').forEach(el => el.classList.remove('active-player-panel'));
       t0.classList.remove('title-pulse');
@@ -89,11 +98,19 @@ export function updateUI(gameState) {
   const ci0 = doc.getElementById('control-info-0'); if (ci0) ci0.textContent = `Контроль: ${controlA}`;
   const ci1 = doc.getElementById('control-info-1'); if (ci1) ci1.textContent = `Контроль: ${controlB}`;
 
+  const playerNames = [
+    (typeof state.players?.[0]?.name === 'string' && state.players[0].name.trim()) ? state.players[0].name.trim() : 'Player 1',
+    (typeof state.players?.[1]?.name === 'string' && state.players[1].name.trim()) ? state.players[1].name.trim() : 'Player 2',
+  ];
   if (controlA >= 5) {
-    try { window.__ui && window.__ui.notifications && window.__ui.notifications.show('Player 1 wins!', 'success'); } catch {}
+    try {
+      window.__ui && window.__ui.notifications && window.__ui.notifications.show(`${playerNames[0]} wins!`, 'success');
+    } catch {}
     state.winner = 0;
   } else if (controlB >= 5) {
-    try { window.__ui && window.__ui.notifications && window.__ui.notifications.show('Player 2 wins!', 'success'); } catch {}
+    try {
+      window.__ui && window.__ui.notifications && window.__ui.notifications.show(`${playerNames[1]} wins!`, 'success');
+    } catch {}
     state.winner = 1;
   }
 }

@@ -7,6 +7,10 @@ let firstOpen = true;
 export function open(initial = false) {
   if (typeof document === 'undefined') return;
   if (initial) firstOpen = true;
+  const existing = document.getElementById('main-menu-overlay');
+  if (existing) {
+    try { document.body.removeChild(existing); } catch {}
+  }
   const overlay = document.createElement('div');
   overlay.id = 'main-menu-overlay';
   // На стартовом экране фон полностью непрозрачный, чтобы скрыть игровое поле
@@ -27,6 +31,7 @@ export function open(initial = false) {
     name.className = 'font-semibold text-slate-100';
     name.textContent = user.nickname || user.email || 'Player';
     const logoutBtn = document.createElement('button');
+    logoutBtn.type = 'button';
     logoutBtn.className = 'text-red-300 hover:text-red-200';
     logoutBtn.textContent = 'Log Out';
     logoutBtn.addEventListener('click', (evt) => {

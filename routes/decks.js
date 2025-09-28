@@ -7,6 +7,7 @@ import {
   getDeckAccessibleByUser,
   upsertDeckForUser,
   deleteDeckForUser,
+  ensureDefaultDecksForUser,
 } from '../server/repositories/decksRepository.js';
 import { CARDS } from '../src/core/cards.js';
 import { DEFAULT_DECK_BLUEPRINTS } from '../src/core/defaultDecks.js';
@@ -78,6 +79,7 @@ router.use(requireAuth);
 router.get('/', async (req, res) => {
   try {
     await ensureStoragePrepared();
+    await ensureDefaultDecksForUser(req.user.id, DEFAULT_DECK_BLUEPRINTS);
     const decks = await listDecksForUser(req.user.id, { includeShared: true });
     res.json({ decks });
   } catch (err) {

@@ -71,12 +71,48 @@ export function randomBoard() {
   return board;
 }
 
-export function startGame(deck0 = DEFAULT_DECK, deck1 = DEFAULT_DECK) {
+export function startGame(deck0 = DEFAULT_DECK, deck1 = DEFAULT_DECK, options = {}) {
+  const playerConfigs = Array.isArray(options.players) ? options.players : [];
+  const fallbackNames = ['Player 1', 'Player 2'];
+  const getPlayerMeta = (index) => {
+    const cfg = playerConfigs[index] || {};
+    const nickname = typeof cfg.nickname === 'string' && cfg.nickname.trim()
+      ? cfg.nickname.trim()
+      : null;
+    const explicitName = typeof cfg.name === 'string' && cfg.name.trim()
+      ? cfg.name.trim()
+      : null;
+    const name = nickname || explicitName || fallbackNames[index] || `Player ${index + 1}`;
+    const userId = typeof cfg.id === 'string' && cfg.id.trim() ? cfg.id.trim() : null;
+    return { name, nickname, userId };
+  };
+  const meta0 = getPlayerMeta(0);
+  const meta1 = getPlayerMeta(1);
   const state = {
     board: randomBoard(),
     players: [
-      { name: 'Player 1', deck: shuffle(deck0.filter(Boolean)), hand: [], discard: [], graveyard: [], mana: 2, maxMana: 10 },
-      { name: 'Player 2', deck: shuffle(deck1.filter(Boolean)), hand: [], discard: [], graveyard: [], mana: 0, maxMana: 10 },
+      {
+        name: meta0.name,
+        nickname: meta0.nickname,
+        userId: meta0.userId,
+        deck: shuffle(deck0.filter(Boolean)),
+        hand: [],
+        discard: [],
+        graveyard: [],
+        mana: 2,
+        maxMana: 10,
+      },
+      {
+        name: meta1.name,
+        nickname: meta1.nickname,
+        userId: meta1.userId,
+        deck: shuffle(deck1.filter(Boolean)),
+        hand: [],
+        discard: [],
+        graveyard: [],
+        mana: 0,
+        maxMana: 10,
+      },
     ],
     active: 0,
     turn: 1,

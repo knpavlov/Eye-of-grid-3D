@@ -66,6 +66,40 @@ export async function seedDecks(blueprints = []) {
   return inserted;
 }
 
+export async function ensureDefaultDecksForUser(ownerId, blueprints = []) {
+  if (!isDbReady()) return [];
+  const userId = typeof ownerId === 'string' && ownerId.trim() ? ownerId.trim() : null;
+  if (!userId) return [];
+  try {
+    const existing = await query('SELECT COUNT(*) AS cnt FROM decks WHERE owner_id = $1;', [userId]);
+    const count = Number(existing.rows?.[0]?.cnt || existing.rows?.[0]?.count || 0);
+    if (count > 0) return [];
+  } catch (err) {
+    console.warn('[decksRepository] Не удалось проверить стартовые колоды пользователя', userId, err);
+    return [];
+  }
+
+  const created = [];
+  for (const blueprint of Array.isArray(blueprints) ? blueprints : []) {
+    if (!blueprint) continue;
+    const cards = Array.isArray(blueprint.cards) ? blueprint.cards : [];
+    if (!cards.length) continue;
+    const name = typeof blueprint.name === 'string' && blueprint.name.trim()
+      ? blueprint.name.trim()
+      : 'Starter Deck';
+    const description = typeof blueprint.description === 'string'
+      ? blueprint.description
+      : '';
+    try {
+      const saved = await upsertDeckForUser({ name, description, cards }, userId);
+      if (saved) created.push(saved);
+    } catch (err) {
+      console.warn('[decksRepository] Не удалось создать стартовую колоду для пользователя', userId, blueprint?.id || name, err);
+    }
+  }
+  return created;
+}
+
 async function getDeckRow(id) {
   if (!isDbReady()) throw new Error('Хранилище колод недоступно');
   const result = await query(
