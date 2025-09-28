@@ -1,4 +1,5 @@
 import { getServerBase } from './config.js';
+import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
 
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
@@ -690,10 +691,13 @@ import { getServerBase } from './config.js';
 
   // ===== 10) Tile crossfade sync =====
   socket.on('tileCrossfade', ({ r, c, prev, next }) => {
-    try {
-      const tile = tileMeshes?.[r]?.[c]; if (!tile) return;
-      window.__fx?.dissolveTileCrossfade(tile, getTileMaterial(prev), getTileMaterial(next), 0.9);
-    } catch {}
+    const handled = playFieldquakeFx({ r, c, prevElement: prev, nextElement: next }, { broadcast: false });
+    if (!handled) {
+      try {
+        const tile = tileMeshes?.[r]?.[c]; if (!tile) return;
+        window.__fx?.dissolveTileCrossfade(tile, getTileMaterial(prev), getTileMaterial(next), 0.9);
+      } catch {}
+    }
   });
 
   // ===== 5) Queue / start =====

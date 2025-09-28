@@ -629,6 +629,20 @@
           gameState = res.n1;
           const finalState = gameState;
           try { window.applyGameState(finalState); } catch {}
+          if (Array.isArray(res.fieldquakes) && res.fieldquakes.length) {
+            const broadcastFx = (typeof NET_ON === 'function' ? NET_ON() : false)
+              && typeof MY_SEAT === 'number'
+              && MY_SEAT === gameState.active;
+            for (const fq of res.fieldquakes) {
+              if (!fq) continue;
+              try {
+                window.playFieldquakeFx?.(
+                  { r: fq.r, c: fq.c, prevElement: fq.prevElement, nextElement: fq.nextElement },
+                  { broadcast: broadcastFx },
+                );
+              } catch {}
+            }
+          }
           if (Array.isArray(res.dodgeUpdates) && res.dodgeUpdates.length) {
             try { window.__interactions?.logDodgeUpdates?.(res.dodgeUpdates, finalState, attackerName); } catch {}
           }
@@ -793,6 +807,20 @@
         }
         gameState = res.n1;
         try { window.applyGameState(gameState); } catch {}
+        if (Array.isArray(res.fieldquakes) && res.fieldquakes.length) {
+          const broadcastFx = (typeof NET_ON === 'function' ? NET_ON() : false)
+            && typeof MY_SEAT === 'number'
+            && MY_SEAT === gameState.active;
+          for (const fq of res.fieldquakes) {
+            if (!fq) continue;
+            try {
+              window.playFieldquakeFx?.(
+                { r: fq.r, c: fq.c, prevElement: fq.prevElement, nextElement: fq.nextElement },
+                { broadcast: broadcastFx },
+              );
+            } catch {}
+          }
+        }
         if (Array.isArray(res.dodgeUpdates) && res.dodgeUpdates.length) {
           try { window.__interactions?.logDodgeUpdates?.(res.dodgeUpdates, gameState, attackerName); } catch {}
         }
@@ -816,6 +844,20 @@
       } else {
         // Если смертей нет — применяем состояние сразу
         gameState = res.n1; try { window.applyGameState(gameState); } catch {}
+        if (Array.isArray(res.fieldquakes) && res.fieldquakes.length) {
+          const broadcastFx = (typeof NET_ON === 'function' ? NET_ON() : false)
+            && typeof MY_SEAT === 'number'
+            && MY_SEAT === gameState.active;
+          for (const fq of res.fieldquakes) {
+            if (!fq) continue;
+            try {
+              window.playFieldquakeFx?.(
+                { r: fq.r, c: fq.c, prevElement: fq.prevElement, nextElement: fq.nextElement },
+                { broadcast: broadcastFx },
+              );
+            } catch {}
+          }
+        }
         if (Array.isArray(res.dodgeUpdates) && res.dodgeUpdates.length) {
           try { window.__interactions?.logDodgeUpdates?.(res.dodgeUpdates, gameState, attackerName); } catch {}
         }
