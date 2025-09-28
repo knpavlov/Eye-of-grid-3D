@@ -9,6 +9,24 @@ function clampChance(value) {
   return num;
 }
 
+function normalizeChanceValue(value, defaultChance = 0.5) {
+  if (value == null) return defaultChance;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return defaultChance;
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) return defaultChance;
+    if (parsed < 0) return defaultChance;
+    if (parsed > 1) return 1;
+    return parsed;
+  }
+  const num = Number(value);
+  if (!Number.isFinite(num)) return defaultChance;
+  if (num < 0) return defaultChance;
+  if (num > 1) return 1;
+  return num;
+}
+
 function normalizeAttempts(value) {
   if (value == null) return null;
   const num = Number(value);
@@ -52,7 +70,7 @@ export function getDodgeConfig(tpl) {
     if (source.keyword) keyword = source.keyword;
   }
 
-  const normalizedChance = clampChance(chance);
+  const normalizedChance = normalizeChanceValue(chance, 0.5);
   const normalizedAttempts = normalizeAttempts(attempts);
   const limited = normalizedAttempts != null;
   const normalizedKeyword = keyword
@@ -76,17 +94,18 @@ export function ensureDodgeState(unit, tpl, configOverride = null) {
   }
 
   const limited = cfg.successes != null;
+  const chance = normalizeChanceValue(cfg.chance, 0.5);
   const max = limited ? cfg.successes : null;
   const existing = unit.dodgeState;
   if (existing && existing.version === 1 && existing.keyword === cfg.keyword &&
-      existing.limited === limited && existing.max === max && existing.chance === cfg.chance) {
+      existing.limited === limited && existing.max === max && existing.chance === chance) {
     return existing;
   }
 
   const state = {
     version: 1,
     keyword: cfg.keyword,
-    chance: cfg.chance,
+    chance,
     limited,
     max,
     remaining: limited ? max : null,

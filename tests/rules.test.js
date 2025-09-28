@@ -827,7 +827,7 @@ describe('новые способности (Хильда и Диос)', () => {
     state.board[2][0].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'N', currentHP: 1 };
     state.board[2][2].unit = { owner: 1, tplId: 'EARTH_VERZAR_FOOT_SOLDIER', facing: 'N', currentHP: 2 };
 
-    const res = stagedAttack(state, 1, 1);
+    const res = stagedAttack(state, 1, 1, { rng: () => 0.9 }); // высокое значение исключает срабатывание dodge
     const fin = res.finish();
     const target = fin.targets.find(t => t.r === 0 && t.c === 1);
     expect(target?.dmg).toBe(4);
