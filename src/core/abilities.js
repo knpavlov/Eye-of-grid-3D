@@ -45,6 +45,7 @@ import {
   applySummonManaSteal as applySummonManaStealInternal,
   hasManaStealKeyword as hasManaStealKeywordInternal,
 } from './abilityHandlers/manaSteal.js';
+import { applyManaGainOnSummon } from './abilityHandlers/manaOnSummon.js';
 import { normalizeElementName } from './utils/elements.js';
 import {
   applyFieldFatalityCheck as applyFieldFatalityCheckInternal,
@@ -58,8 +59,6 @@ import {
   collectFieldquakeDeaths,
 } from './abilityHandlers/fieldquake.js';
 
-// локальная функция ограничения маны (без импорта во избежание циклов)
-const capMana = (m) => Math.min(10, m);
 const inBounds = (r, c) => r >= 0 && r < 3 && c >= 0 && c < 3;
 
 function getUnitTemplate(unit) {
@@ -705,26 +704,6 @@ export const hasDoubleAttack = (tpl) => !!(tpl && tpl.doubleAttack);
 // Может ли существо атаковать (крепости не могут)
 export const canAttack = (tpl) => !(tpl && tpl.fortress);
 
-// Реализация ауры Фридонийского Странника при призыве союзников
-// Возвращает количество полученных единиц маны
-export function applyFreedonianAura(state, owner) {
-  let gained = 0;
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 3; c++) {
-      const cell = state.board?.[r]?.[c];
-      const unit = cell?.unit;
-      if (!unit) continue;
-      const tpl = CARDS[unit.tplId];
-      if (tpl?.auraGainManaOnSummon && unit.owner === owner && cell.element !== 'FIRE') {
-        const pl = state.players[owner];
-        pl.mana = capMana((pl.mana || 0) + 1);
-        gained += 1;
-      }
-    }
-  }
-  return gained;
-}
-
 export function applySummonAbilities(state, r, c) {
   const events = { possessions: [] };
   const cell = state?.board?.[r]?.[c];
@@ -884,6 +863,17 @@ export function applySummonAbilities(state, r, c) {
       .filter(Boolean);
     if (logs.length) {
       events.logs = [...(events.logs || []), ...logs];
+    }
+  }
+
+  const manaGainEvents = applyManaGainOnSummon(state, { r, c, unit, tpl, cell });
+  if (Array.isArray(manaGainEvents) && manaGainEvents.length) {
+    events.manaGainEvents = [...(events.manaGainEvents || []), ...manaGainEvents];
+    const gainLogs = manaGainEvents
+      .map(ev => (ev && typeof ev.log === 'string') ? ev.log : null)
+      .filter(Boolean);
+    if (gainLogs.length) {
+      events.logs = [...(events.logs || []), ...gainLogs];
     }
   }
 
@@ -1058,10 +1048,8 @@ export function executeUnitAction(state, action, payload = {}) {
     const cell = state.board?.[action.r]?.[action.c];
     if (cell?.unit) {
       result.summonEvents = applySummonAbilities(state, action.r, action.c);
-      result.freedonianMana = applyFreedonianAura(state, action.owner);
     } else {
       result.summonEvents = result.summonEvents || { possessions: [] };
-      result.freedonianMana = 0;
     }
     return result;
   }

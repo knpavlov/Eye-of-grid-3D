@@ -6,7 +6,6 @@ import { highlightTiles, clearHighlights } from './highlight.js';
 import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
 import { showTooltip, hideTooltip } from '../ui/tooltip.js';
 import {
-  applyFreedonianAura,
   applySummonAbilities,
   evaluateIncarnationSummon,
   applyIncarnationSummon,
@@ -45,7 +44,60 @@ export const interactionState = {
   spellDragHandled: false,
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
+  // список событий получения маны, которые можно отменить при отмене призыва
+  pendingSummonManaGain: null,
 };
+
+function normalizeManaGainEntries(entries) {
+  if (!Array.isArray(entries)) return [];
+  const res = [];
+  for (const entry of entries) {
+    const owner = (entry && typeof entry.owner === 'number') ? entry.owner : null;
+    const amountRaw = entry ? Number(entry.amount) : 0;
+    const amount = Number.isFinite(amountRaw) ? Math.max(0, Math.floor(amountRaw)) : 0;
+    if (owner == null || amount <= 0) continue;
+    res.push({ owner, amount });
+  }
+  return res;
+}
+
+function setPendingSummonManaGain(entries) {
+  const normalized = normalizeManaGainEntries(entries);
+  interactionState.pendingSummonManaGain = normalized.length ? normalized : null;
+}
+
+export function clearPendingSummonManaGain() {
+  interactionState.pendingSummonManaGain = null;
+}
+
+export function undoPendingSummonManaGain() {
+  if (typeof window === 'undefined') {
+    interactionState.pendingSummonManaGain = null;
+    return;
+  }
+  const gs = window.gameState;
+  if (!gs || !Array.isArray(gs.players)) {
+    interactionState.pendingSummonManaGain = null;
+    return;
+  }
+  const entries = Array.isArray(interactionState.pendingSummonManaGain)
+    ? interactionState.pendingSummonManaGain
+    : [];
+  if (!entries.length) return;
+  for (const entry of entries) {
+    if (!entry) continue;
+    const owner = entry.owner;
+    const amount = entry.amount;
+    if (owner == null || amount <= 0) continue;
+    const player = gs.players[owner];
+    if (!player) continue;
+    const before = Number.isFinite(player.mana) ? player.mana : 0;
+    const after = Math.max(0, before - amount);
+    player.mana = after;
+  }
+  interactionState.pendingSummonManaGain = null;
+  try { window.updateUI?.(gs); } catch {}
+}
 
 const AUTO_END_TURN_RETRY_MS = 120;
 const AUTO_END_TURN_MAX_ATTEMPTS = 60;
@@ -593,6 +645,8 @@ function performMagicAttack(from, targetMesh) {
   const res = window.magicAttack(gameState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
   if (!res) { showNotification('Incorrect target', 'error'); return false; }
 
+  clearPendingSummonManaGain();
+
   const pendingFieldquakes = Array.isArray(res.fieldquakes) ? res.fieldquakes.filter(Boolean) : [];
   if (pendingFieldquakes.length) {
     const broadcastFx = (typeof window.NET_ON === 'function' ? window.NET_ON() : false)
@@ -744,6 +798,7 @@ function performChosenAttack(from, targetMesh) {
   const hits = window.computeHits(gameState, from.r, from.c, opts);
   if (!hits.length) { showNotification('Incorrect target', 'error'); return false; }
   window.performBattleSequence(from.r, from.c, true, opts);
+  clearPendingSummonManaGain();
   return true;
 }
 
@@ -985,7 +1040,26 @@ export function placeUnitWithDirection(direction) {
   const placedTpl = placedUnit ? window.CARDS?.[placedUnit.tplId] : null;
   const placedAlive = placedUnit && ((placedUnit.currentHP ?? placedTpl?.hp ?? cardData.hp) > 0);
   if (placedAlive) {
+    const playersBeforeMana = Array.isArray(gameState.players)
+      ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))
+      : [];
     const summonEvents = applySummonAbilities(gameState, row, col);
+    const manaGainEntries = Array.isArray(summonEvents?.manaGainEvents)
+      ? summonEvents.manaGainEvents
+      : [];
+    setPendingSummonManaGain(manaGainEntries);
+    let summonManaPlan = null;
+    if (manaGainEntries.length) {
+      const ctxLocal = getCtx();
+      const THREE = ctxLocal.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+      summonManaPlan = buildManaGainPlan({
+        playersBefore: playersBeforeMana,
+        deaths: Array.isArray(summonEvents?.deaths) ? summonEvents.deaths : [],
+        manaGainEntries,
+        tileMeshes: ctxLocal.tileMeshes,
+        THREE,
+      });
+    }
     const drawEvents = Array.isArray(summonEvents?.draws) && summonEvents.draws.length
       ? summonEvents.draws
       : (summonEvents?.draw?.count > 0 ? [summonEvents.draw] : []);
@@ -1083,10 +1157,7 @@ export function placeUnitWithDirection(direction) {
         }
       } catch {}
     }
-    const gained = applyFreedonianAura(gameState, gameState.active);
-    if (gained > 0) {
-      window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
-    }
+    try { summonManaPlan?.schedule?.(); } catch {}
   }
   // Синхронизируем состояние после призыва
   try { window.applyGameState(gameState); } catch {}
@@ -1126,6 +1197,7 @@ export function placeUnitWithDirection(direction) {
         // Если существо погибло мгновенно, не запускаем выбор целей и выходим из обработки анимации
         interactionState.autoEndTurnAfterAttack = false;
         try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+        clearPendingSummonManaGain();
         // Визуальная часть завершилась, а ход уже должен перейти оппоненту
         endTurnAfterSummon();
         if (unlockTriggered) {
@@ -1143,6 +1215,7 @@ export function placeUnitWithDirection(direction) {
         }
         endTurnAfterSummon();
         try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+        clearPendingSummonManaGain();
         return;
       }
       const profile = window.resolveAttackProfile
@@ -1152,6 +1225,7 @@ export function placeUnitWithDirection(direction) {
       if (wasIncarnation) {
         interactionState.autoEndTurnAfterAttack = false;
         if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
+        clearPendingSummonManaGain();
         return;
       }
       if (usesMagic) {
@@ -1182,6 +1256,7 @@ export function placeUnitWithDirection(direction) {
         } else {
           if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
           endTurnAfterSummon();
+          clearPendingSummonManaGain();
         }
       } else {
         const attacks = Array.isArray(profile?.attacks) ? profile.attacks : (tpl?.attacks || []);
@@ -1216,6 +1291,7 @@ export function placeUnitWithDirection(direction) {
             }
             interactionState.autoEndTurnAfterAttack = true;
             window.performBattleSequence(row, col, true, opts);
+            clearPendingSummonManaGain();
           }
           if (unlockTriggered) {
             const delay = 1200;
@@ -1224,9 +1300,13 @@ export function placeUnitWithDirection(direction) {
         } else {
           if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
           endTurnAfterSummon();
+          clearPendingSummonManaGain();
         }
       }
       try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+      if (!interactionState.magicFrom && !interactionState.pendingAttack) {
+        clearPendingSummonManaGain();
+      }
     },
   });
   gsap.to(card.scale, { x: 1, y: 1, z: 1, duration: 0.5, ease: 'power2.inOut' });

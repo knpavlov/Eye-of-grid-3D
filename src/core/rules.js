@@ -25,6 +25,7 @@ import {
 import { computeCellBuff } from './fieldEffects.js';
 import { normalizeElementName } from './utils/elements.js';
 import { computeDynamicAttackBonus } from './abilityHandlers/dynamicAttack.js';
+import { computeTargetCountAttack } from './abilityHandlers/targetCountAttack.js';
 import { getHpConditionalBonuses } from './abilityHandlers/conditionalBonuses.js';
 import { applyDeathDiscardEffects } from './abilityHandlers/discard.js';
 import { applyManaGainOnDeaths } from './abilityHandlers/manaGain.js';
@@ -307,6 +308,31 @@ export function stagedAttack(state, r, c, opts = {}) {
 
   const hitsRaw = computeHits(base, r, c, { ...opts, profile });
   if (!hitsRaw.length) return { empty: true };
+
+  let primaryTarget = null;
+  if (opts?.target && Number.isInteger(opts.target.r) && Number.isInteger(opts.target.c)) {
+    primaryTarget = { r: opts.target.r, c: opts.target.c };
+  } else {
+    const enemyHit = hitsRaw.find(hit => {
+      const unit = base.board?.[hit.r]?.[hit.c]?.unit;
+      return unit && unit.owner !== attacker.owner;
+    });
+    if (enemyHit) {
+      primaryTarget = { r: enemyHit.r, c: enemyHit.c };
+    } else if (hitsRaw.length) {
+      primaryTarget = { r: hitsRaw[0].r, c: hitsRaw[0].c };
+    }
+  }
+
+  if (primaryTarget) {
+    const targetScaling = computeTargetCountAttack(base, { r, c }, primaryTarget, tplA, { attackerUnit: attacker });
+    if (targetScaling) {
+      atk = targetScaling.targetValue;
+      if (targetScaling.log) {
+        logLines.push(targetScaling.log);
+      }
+    }
+  }
 
   const dynamicBonus = computeDynamicAttackBonus(base, r, c, tplA);
   if (dynamicBonus?.amount) {

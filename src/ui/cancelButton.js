@@ -1,5 +1,5 @@
 // Кнопка отмены действий при установке карты или выборе цели
-import { interactionState, returnCardToHand } from '../scene/interactions.js';
+import { interactionState, returnCardToHand, undoPendingSummonManaGain } from '../scene/interactions.js';
 import { clearHighlights } from '../scene/highlight.js';
 import { capMana } from '../core/constants.js';
 import { refreshPossessionsUI } from './possessions.js';
@@ -14,13 +14,15 @@ function refundSummon(row, col) {
   if (!tpl) return;
   const player = gs.players[unit.owner];
   // возврат маны
-  player.mana += tpl.cost;
+  player.mana = capMana((player.mana || 0) + tpl.cost);
   // вернуть карту из сброса в руку
   const idx = player.discard.findIndex(c => c.id === tpl.id);
   if (idx >= 0) player.discard.splice(idx, 1);
   player.hand.push(tpl);
   // убрать юнита с поля
   cell.unit = null;
+  // отменить бонусную ману от способностей призыва
+  try { undoPendingSummonManaGain(); } catch {}
   refreshPossessionsUI(gs);
 }
 
