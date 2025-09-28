@@ -179,6 +179,45 @@ export function playDeltaAnimations(prevState, nextState, opts = {}) {
       try { manaPlan?.schedule?.(); } catch {}
     }
 
+    let turnStartManaPlan = null;
+    try {
+      const prevTurn = Number.isFinite(prevState?.turn) ? prevState.turn : null;
+      const nextTurn = Number.isFinite(nextState?.turn) ? nextState.turn : null;
+      if (prevTurn != null && nextTurn != null && nextTurn > prevTurn) {
+        const entriesRaw = Array.isArray(nextState.__turnManaGainEntries)
+          ? nextState.__turnManaGainEntries
+          : [];
+        const manaEntries = entriesRaw.filter((entry) => Number.isFinite(entry?.amount) && entry.amount > 0);
+        if (manaEntries.length) {
+          const owner = Number.isFinite(nextState?.active)
+            ? nextState.active
+            : (Number.isFinite(prevState?.active) ? prevState.active : null);
+          const playersBefore = Array.isArray(prevState?.players)
+            ? prevState.players.map((pl, idx) => {
+                const manaRaw = Number(pl?.mana ?? 0);
+                const manaBefore = Math.max(0, Number.isFinite(manaRaw) ? manaRaw : 0);
+                if (idx === owner) {
+                  const afterBase = Math.min(10, manaBefore + 2);
+                  return { mana: afterBase };
+                }
+                return { mana: manaBefore };
+              })
+            : [];
+          turnStartManaPlan = buildManaGainPlan({
+            playersBefore,
+            manaGainEntries: manaEntries,
+            tileMeshes,
+            THREE: window.THREE || ctx.THREE,
+            baseDelayMs: 520,
+            abilityOffsetMs: 180,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('[delta] Не удалось подготовить анимацию маны начала хода:', err);
+    }
+    try { turnStartManaPlan?.schedule?.(); } catch {}
+
     const hpChanges = [];
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) {
