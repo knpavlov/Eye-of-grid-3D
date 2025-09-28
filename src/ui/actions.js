@@ -687,6 +687,15 @@ export async function endTurn() {
       for (const entry of manaEffects.entries) {
         const tpl = cards[entry.tplId];
         const sourceName = tpl?.name || 'Существо';
+        if (typeof entry.customLog === 'string' && entry.customLog.trim()) {
+          w.addLog?.(entry.customLog);
+          continue;
+        }
+        if (entry.reason === 'ALLY_PRESENCE') {
+          const allies = entry.allies != null ? entry.allies : '?';
+          w.addLog?.(`${sourceName}: дополнительная мана +${entry.amount} за союзных существ (всего: ${allies}).`);
+          continue;
+        }
         const field = entry.fieldElement ? `поле ${entry.fieldElement}` : 'нейтральное поле';
         w.addLog?.(`${sourceName}: дополнительная мана +${entry.amount} (${field}).`);
       }
