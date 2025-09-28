@@ -1,5 +1,6 @@
 // Анимация различий между предыдущим и новым состоянием
 import { buildManaGainPlan } from './manaFx.js';
+import { playFieldquakeFxBatch } from './fieldquakeFx.js';
 
 export function playDeltaAnimations(prevState, nextState, opts = {}) {
   try {
@@ -18,6 +19,7 @@ export function playDeltaAnimations(prevState, nextState, opts = {}) {
     const CARDS = window.CARDS || {};
 
     const includeActive = !!opts.includeActive;
+    const skipFieldquakeFx = opts.skipFieldquakeFx === true;
     const isActivePlayer = (typeof window.MY_SEAT === 'number' && gameState && typeof gameState.active === 'number' && window.MY_SEAT === gameState.active);
 
     if (!includeActive && isActivePlayer) {
@@ -45,6 +47,26 @@ export function playDeltaAnimations(prevState, nextState, opts = {}) {
 
     const prevB = prevState.board || [];
     const nextB = nextState.board || [];
+
+    if (!skipFieldquakeFx) {
+      const fieldquakeEvents = [];
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const prevCell = prevB?.[r]?.[c] || null;
+          const nextCell = nextB?.[r]?.[c] || null;
+          const prevElRaw = typeof prevCell?.element === 'string' ? prevCell.element : null;
+          const nextElRaw = typeof nextCell?.element === 'string' ? nextCell.element : null;
+          if (!prevElRaw || !nextElRaw) continue;
+          const prevEl = prevElRaw.toUpperCase();
+          const nextEl = nextElRaw.toUpperCase();
+          if (prevEl === nextEl) continue;
+          fieldquakeEvents.push({ r, c, prevElement: prevEl, nextElement: nextEl });
+        }
+      }
+      if (fieldquakeEvents.length) {
+        try { playFieldquakeFxBatch(fieldquakeEvents, { broadcast: false }); } catch {}
+      }
+    }
 
     const nextPosByUid = new Map();
     const nextSigPositions = new Map();

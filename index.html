@@ -626,6 +626,27 @@
             THREE: window.THREE,
           });
           const attackerPos = res.attackerPosUpdate || { r, c };
+          const pendingFieldquakes = Array.isArray(res.fieldquakes) ? res.fieldquakes.slice() : [];
+          if (pendingFieldquakes.length) {
+            const nextActive = typeof res?.n1?.active === 'number' ? res.n1.active : gameState?.active;
+            const broadcastFx = (typeof NET_ON === 'function' ? NET_ON() : false)
+              && typeof MY_SEAT === 'number'
+              && typeof nextActive === 'number'
+              && MY_SEAT === nextActive;
+            try {
+              const batchFn = window.playFieldquakeFxBatch
+                || ((events, options) => {
+                  for (const fq of events) {
+                    if (!fq) continue;
+                    window.playFieldquakeFx?.(
+                      { r: fq.r, c: fq.c, prevElement: fq.prevElement, nextElement: fq.nextElement },
+                      options,
+                    );
+                  }
+                });
+              batchFn(pendingFieldquakes, { broadcast: broadcastFx });
+            } catch {}
+          }
           gameState = res.n1;
           const finalState = gameState;
           try { window.applyGameState(finalState); } catch {}
@@ -791,6 +812,27 @@
             window.__interactions?.showOracleDeathBuff?.(d.owner, tplDead.onDeathAddHPAll);
           }
         }
+        const pendingFieldquakes = Array.isArray(res.fieldquakes) ? res.fieldquakes.slice() : [];
+        if (pendingFieldquakes.length) {
+          const nextActive = typeof res?.n1?.active === 'number' ? res.n1.active : gameState?.active;
+          const broadcastFx = (typeof NET_ON === 'function' ? NET_ON() : false)
+            && typeof MY_SEAT === 'number'
+            && typeof nextActive === 'number'
+            && MY_SEAT === nextActive;
+          try {
+            const batchFn = window.playFieldquakeFxBatch
+              || ((events, options) => {
+                for (const fq of events) {
+                  if (!fq) continue;
+                  window.playFieldquakeFx?.(
+                    { r: fq.r, c: fq.c, prevElement: fq.prevElement, nextElement: fq.nextElement },
+                    options,
+                  );
+                }
+              });
+            batchFn(pendingFieldquakes, { broadcast: broadcastFx });
+          } catch {}
+        }
         gameState = res.n1;
         try { window.applyGameState(gameState); } catch {}
         if (Array.isArray(res.dodgeUpdates) && res.dodgeUpdates.length) {
@@ -815,6 +857,27 @@
         }, 1000);
       } else {
         // Если смертей нет — применяем состояние сразу
+        const pendingFieldquakes = Array.isArray(res.fieldquakes) ? res.fieldquakes.slice() : [];
+        if (pendingFieldquakes.length) {
+          const nextActive = typeof res?.n1?.active === 'number' ? res.n1.active : gameState?.active;
+          const broadcastFx = (typeof NET_ON === 'function' ? NET_ON() : false)
+            && typeof MY_SEAT === 'number'
+            && typeof nextActive === 'number'
+            && MY_SEAT === nextActive;
+          try {
+            const batchFn = window.playFieldquakeFxBatch
+              || ((events, options) => {
+                for (const fq of events) {
+                  if (!fq) continue;
+                  window.playFieldquakeFx?.(
+                    { r: fq.r, c: fq.c, prevElement: fq.prevElement, nextElement: fq.nextElement },
+                    options,
+                  );
+                }
+              });
+            batchFn(pendingFieldquakes, { broadcast: broadcastFx });
+          } catch {}
+        }
         gameState = res.n1; try { window.applyGameState(gameState); } catch {}
         if (Array.isArray(res.dodgeUpdates) && res.dodgeUpdates.length) {
           try { window.__interactions?.logDodgeUpdates?.(res.dodgeUpdates, gameState, attackerName); } catch {}
