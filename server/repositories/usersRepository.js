@@ -27,6 +27,11 @@ export async function ensureUsersTable() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+  // Обновляем схему ранее созданной таблицы, чтобы добавить отсутствующие поля
+  await query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS display_name TEXT;
+  `);
   await query(`
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(LOWER(email));
   `);
