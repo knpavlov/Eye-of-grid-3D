@@ -563,6 +563,8 @@ export function stagedAttack(state, r, c, opts = {}) {
 
     const applied = applyDamageInteractionResults(nFinal, damageEffects);
     const attackerPosUpdate = applied?.attackerPosUpdate || null;
+    const interactionDeaths = Array.isArray(applied?.deaths) ? applied.deaths.slice() : [];
+    const fieldquakeEvents = Array.isArray(applied?.fieldquakes) ? applied.fieldquakes.slice() : [];
     if (attackerPosUpdate) {
       r = attackerPosUpdate.r;
       c = attackerPosUpdate.c;
@@ -579,7 +581,10 @@ export function stagedAttack(state, r, c, opts = {}) {
       logLines.push(`Retaliation to ${CARDS[A.tplId]?.name || 'Attacker'}: ${ret.total || 0} (HP ${before}→${A.currentHP})`);
     }
 
-    const deaths = [];
+    const deaths = interactionDeaths.slice();
+    const seenDeathKeys = new Set(deaths.map(d => (d?.uid != null)
+      ? `UID:${d.uid}`
+      : `POS:${d?.r},${d?.c}`));
     for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
       const cellRef = nFinal.board?.[rr]?.[cc];
       const u = cellRef?.unit;
@@ -592,7 +597,11 @@ export function stagedAttack(state, r, c, opts = {}) {
           uid: u.uid ?? null,
           element: cellRef?.element || null,
         };
-        deaths.push(deathEntry);
+        const key = (deathEntry.uid != null) ? `UID:${deathEntry.uid}` : `POS:${deathEntry.r},${deathEntry.c}`;
+        if (!seenDeathKeys.has(key)) {
+          deaths.push(deathEntry);
+          seenDeathKeys.add(key);
+        }
         if (cellRef) cellRef.unit = null;
       }
     }
@@ -703,6 +712,7 @@ export function stagedAttack(state, r, c, opts = {}) {
       schemeKey,
       attackProfile: profile,
       manaGainEvents: Array.isArray(manaFromDeaths?.entries) ? manaFromDeaths.entries : [],
+      fieldquakes: fieldquakeEvents,
     };
   }
 
@@ -931,7 +941,21 @@ export function magicAttack(state, fr, fc, tr, tc) {
     }
   }
 
-  const deaths = [];
+  const applied = applyDamageInteractionResults(n1, damageEffects);
+  const attackerPosUpdate = applied?.attackerPosUpdate || null;
+  if (attackerPosUpdate) {
+    fromR = attackerPosUpdate.r;
+    fromC = attackerPosUpdate.c;
+  }
+  if (Array.isArray(applied?.logLines) && applied.logLines.length) {
+    logLines.push(...applied.logLines);
+  }
+  const interactionDeaths = Array.isArray(applied?.deaths) ? applied.deaths.slice() : [];
+  const fieldquakeEvents = Array.isArray(applied?.fieldquakes) ? applied.fieldquakes.slice() : [];
+  const deaths = interactionDeaths.slice();
+  const seenDeathKeys = new Set(deaths.map(d => (d?.uid != null)
+    ? `UID:${d.uid}`
+    : `POS:${d?.r},${d?.c}`));
   for (let rr = 0; rr < 3; rr++) for (let cc = 0; cc < 3; cc++) {
     const cellRef = n1.board[rr][cc];
     const u = cellRef.unit;
@@ -944,7 +968,11 @@ export function magicAttack(state, fr, fc, tr, tc) {
         uid: u.uid ?? null,
         element: cellRef?.element || null,
       };
-      deaths.push(deathEntry);
+      const key = (deathEntry.uid != null) ? `UID:${deathEntry.uid}` : `POS:${deathEntry.r},${deathEntry.c}`;
+      if (!seenDeathKeys.has(key)) {
+        deaths.push(deathEntry);
+        seenDeathKeys.add(key);
+      }
       cellRef.unit = null;
     }
   }
@@ -986,15 +1014,6 @@ export function magicAttack(state, fr, fc, tr, tc) {
       logLines.push(`${name}: контроль возвращается к игроку ${rel.owner + 1}.`);
     }
   }
-  const applied = applyDamageInteractionResults(n1, damageEffects);
-  const attackerPosUpdate = applied?.attackerPosUpdate || null;
-  if (attackerPosUpdate) {
-    fromR = attackerPosUpdate.r;
-    fromC = attackerPosUpdate.c;
-  }
-  if (Array.isArray(applied?.logLines) && applied.logLines.length) {
-    logLines.push(...applied.logLines);
-  }
   const continuous = refreshContinuousPossessions(n1);
   if (continuous.possessions.length) {
     for (const ev of continuous.possessions) {
@@ -1034,6 +1053,7 @@ export function magicAttack(state, fr, fc, tr, tc) {
     attackProfile: profile,
     dmg,
     manaGainEvents: Array.isArray(manaFromDeaths?.entries) ? manaFromDeaths.entries : [],
+    fieldquakes: fieldquakeEvents,
   };
 }
 

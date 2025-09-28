@@ -10,6 +10,7 @@ import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
 import { refreshPossessionsUI } from '../ui/possessions.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -361,21 +362,9 @@ export const handlers = {
       const nextEl = oppMap[prevEl] || prevEl;
       cell.element = nextEl;
       refreshPossessionsUI(gameState);
-      try {
-        const tile = getCtx().tileMeshes[r][c];
-        const mat = getTileMaterial(nextEl);
-        window.__fx.dissolveTileCrossfade(
-          tile,
-          getTileMaterial(prevEl),
-          mat,
-          0.9
-        );
-        try {
-          if (NET_ON() && MY_SEAT === gameState.active && window.socket)
-            window.socket.emit('tileCrossfade', { r, c, prev: prevEl, next: nextEl });
-        } catch {}
-      } catch {}
       const u = gameState.board[r][c].unit;
+      let hpShift = null;
+      let unitDied = false;
       if (u) {
         const tplUnit = CARDS[u.tplId];
         const prevBuff = computeCellBuff(prevEl, tplUnit.element);
@@ -384,33 +373,32 @@ export const handlers = {
         if (deltaHp !== 0) {
           const before = u.currentHP;
           u.currentHP = Math.max(0, before + deltaHp);
-          const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-          if (tMesh)
-            window.__fx.spawnDamageText(
-              tMesh,
-              `${deltaHp > 0 ? '+' : ''}${deltaHp}`,
-              deltaHp > 0 ? '#22c55e' : '#ef4444'
-            );
-          if (u.currentHP <= 0) {
-            const deathElement = gameState.board?.[r]?.[c]?.element || null;
-            const deathInfo = [{ r, c, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: deathElement }];
-            try { gameState.players[u.owner].graveyard.push(CARDS[u.tplId]); } catch {}
-            const deadMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-            if (deadMesh) {
-              window.__fx.dissolveAndAsh(deadMesh, new THREE.Vector3(0, 0, 0.6), 0.9);
-              gameState.board[r][c].unit = null;
-              const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SPELL' });
-              if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
-                for (const text of discardEffects.logs) addLog(text);
-              }
-              setTimeout(() => {
-                refreshPossessionsUI(gameState);
-                updateUnits();
-                updateUI();
-              }, 1000);
-            }
-          }
+          hpShift = { delta: deltaHp, before, after: u.currentHP };
         }
+        if ((u.currentHP ?? 0) <= 0) {
+          unitDied = true;
+        }
+      }
+
+      playFieldquakeFx(
+        { r, c, prevElement: prevEl, nextElement: nextEl, hpShift, unitDied },
+        { activeSeat: gameState.active, hpShift, unitDied }
+      );
+
+      if (u && unitDied) {
+        const deathElement = gameState.board?.[r]?.[c]?.element || null;
+        const deathInfo = [{ r, c, owner: u.owner, tplId: u.tplId, uid: u.uid ?? null, element: deathElement }];
+        try { gameState.players[u.owner].graveyard.push(CARDS[u.tplId]); } catch {}
+        gameState.board[r][c].unit = null;
+        const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SPELL' });
+        if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
+          for (const text of discardEffects.logs) addLog(text);
+        }
+        setTimeout(() => {
+          refreshPossessionsUI(gameState);
+          updateUnits();
+          updateUI();
+        }, 1000);
       }
       burnSpellCard(tpl, tileMesh);
       spendAndDiscardSpell(pl, idx);

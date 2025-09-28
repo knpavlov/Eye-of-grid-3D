@@ -20,6 +20,7 @@ import * as Units from './scene/units.js';
 import * as Hand from './scene/hand.js';
 import * as Interactions from './scene/interactions.js';
 import { getCtx as getSceneCtx } from './scene/context.js';
+import * as FieldquakeFx from './scene/fieldquakeFx.js';
 // UI modules
 import * as UINotifications from './ui/notifications.js';
 import * as UILog from './ui/log.js';
@@ -165,6 +166,7 @@ try {
     animate: sceneAnimate,
     getCtx: getSceneCtx,
     manaFx: ManaFx,
+    fieldquakeFx: FieldquakeFx,
   };
   window.__board = {
     createBoard: Board.createBoard,
