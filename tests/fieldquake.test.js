@@ -85,7 +85,7 @@ describe('fieldquake-эффекты биолит-карт', () => {
     state.board[1][1].element = 'FOREST';
     state.board[1][1].unit = {
       owner: 0,
-      tplId: 'BIOLITH_UNDEAD_KING_NOVOGUS',
+      tplId: 'EARTH_UNDEAD_KING_NOVOGUS',
       currentHP: 6,
     };
     state.board[0][1].element = 'FIRE';
@@ -95,7 +95,7 @@ describe('fieldquake-эффекты биолит-карт', () => {
       currentHP: 2,
     };
 
-    const tpl = CARDS.BIOLITH_UNDEAD_KING_NOVOGUS;
+    const tpl = CARDS.EARTH_UNDEAD_KING_NOVOGUS;
     const interactions = collectDamageInteractions(state, {
       attackerPos: { r: 1, c: 1 },
       attackerUnit: state.board[1][1].unit,
@@ -124,7 +124,7 @@ describe('fieldquake-эффекты биолит-карт', () => {
     state.board[1][1].element = 'FOREST';
     state.board[1][1].unit = {
       owner: 0,
-      tplId: 'BIOLITH_UNDEAD_KING_NOVOGUS',
+      tplId: 'EARTH_UNDEAD_KING_NOVOGUS',
       currentHP: 6,
     };
     state.board[0][1].element = 'FIRE';
@@ -134,7 +134,7 @@ describe('fieldquake-эффекты биолит-карт', () => {
       currentHP: 2,
     };
 
-    const tpl = CARDS.BIOLITH_UNDEAD_KING_NOVOGUS;
+    const tpl = CARDS.EARTH_UNDEAD_KING_NOVOGUS;
     const interactions = collectDamageInteractions(state, {
       attackerPos: { r: 1, c: 1 },
       attackerUnit: state.board[1][1].unit,
@@ -162,7 +162,7 @@ describe('fieldquake-эффекты биолит-карт', () => {
     state.board[1][1].element = 'FOREST';
     state.board[1][1].unit = {
       owner: 0,
-      tplId: 'BIOLITH_UNDEAD_KING_NOVOGUS',
+      tplId: 'EARTH_UNDEAD_KING_NOVOGUS',
       currentHP: 6,
     };
     state.board[0][1].element = 'WATER';
@@ -188,7 +188,7 @@ describe('fieldquake-эффекты биолит-карт', () => {
     state.board[1][1].element = 'EARTH';
     state.board[1][1].unit = {
       owner: 0,
-      tplId: 'BIOLITH_UNDEAD_KING_NOVOGUS',
+      tplId: 'EARTH_UNDEAD_KING_NOVOGUS',
       currentHP: 6,
     };
     state.board[0][1].element = 'FIRE';
@@ -198,7 +198,7 @@ describe('fieldquake-эффекты биолит-карт', () => {
       currentHP: 2,
     };
 
-    const tpl = CARDS.BIOLITH_UNDEAD_KING_NOVOGUS;
+    const tpl = CARDS.EARTH_UNDEAD_KING_NOVOGUS;
     const interactions = collectDamageInteractions(state, {
       attackerPos: { r: 1, c: 1 },
       attackerUnit: state.board[1][1].unit,
@@ -219,7 +219,7 @@ describe('fieldquake-эффекты биолит-карт', () => {
     baseState.board[1][1].element = 'FOREST';
     baseState.board[1][1].unit = {
       owner: 0,
-      tplId: 'BIOLITH_UNDEAD_KING_NOVOGUS',
+      tplId: 'EARTH_UNDEAD_KING_NOVOGUS',
       currentHP: 6,
     };
     baseState.board[0][1].element = 'FIRE';

@@ -331,7 +331,7 @@ export const CARDS = {
     manaSteal: {
       onDeath: { amount: 1, from: 'FRONT_OWNER' },
     },
-    desc: 'Если Dancing Temptress уничтожена, владелец существа перед ней теряет 1 ману, а само существо перемещается на её поле.'
+    desc: 'If Dancing Temptress is destroyed, you steal 1 mana from the owner of the creature on the field in front of her. If Dancing Temptress is destroyed, the creature on the field in front of her is moved to the field she was previously on.'
   },
 
   EARTH_ARELAI_THE_PROTECTOR: {
@@ -550,9 +550,9 @@ export const CARDS = {
     fieldquakeOnSummon: { pattern: 'ADJACENT' },
     desc: 'When Behemoth Groundbreaker is summoned, fieldquake all adjacent fields.'
   },
-  BIOLITH_UNDEAD_KING_NOVOGUS: {
-    id: 'BIOLITH_UNDEAD_KING_NOVOGUS', name: 'Undead King Novogus', type: 'UNIT', cost: 6, activation: 3,
-    element: 'BIOLITH', atk: 2, hp: 6,
+  EARTH_UNDEAD_KING_NOVOGUS: {
+    id: 'EARTH_UNDEAD_KING_NOVOGUS', name: 'Undead King Novogus', type: 'UNIT', cost: 6, activation: 3,
+    element: 'EARTH', atk: 2, hp: 6,
     attackType: 'MAGIC',
     attacks: [],
     blindspots: ['S'],
@@ -741,8 +741,8 @@ export const CARDS = {
     diesOnElement: 'EARTH',
     desc: 'Fortress: cannot attack unless counterattacking. When an enemy creature is summoned adjacent to it, all other allied creatures gain 1 HP. Destroy if on an Earth field.'
   },
-  WOOD_JUNO_TREE_HAUNT: {
-    id: 'WOOD_JUNO_TREE_HAUNT', name: 'Juno Tree Haunt', type: 'UNIT', cost: 3, activation: 1,
+  FOREST_JUNO_TREE_HAUNT: {
+    id: 'FOREST_JUNO_TREE_HAUNT', name: 'Juno Tree Haunt', type: 'UNIT', cost: 3, activation: 1,
     element: 'FOREST', atk: 2, hp: 1,
     attackType: 'STANDARD', chooseDir: true,
     attacks: [
@@ -751,7 +751,7 @@ export const CARDS = {
     blindspots: ['S'],
     perfectDodge: true,
     diesOffNonElement: 'FOREST',
-    desc: 'Perfect Dodge. Destroy if on a non‑Wood field.'
+    desc: 'Perfect Dodge. Destroy if on a non-Forest field.'
   },
   FOREST_EDIN_THE_PERSECUTED: {
     id: 'FOREST_EDIN_THE_PERSECUTED', name: 'Edin the Persecuted', type: 'UNIT', cost: 3, activation: 2,
@@ -1027,7 +1027,11 @@ export const CARDS = {
   },
 
   // Spells (subset)
-  RAISE_STONE: { id:'RAISE_STONE', name:'Raise Stone', type:'SPELL', cost:2, element:'EARTH', text:'+2 HP to a friendly unit.' },
+  SPELL_HEALING_SHOWER: {
+    id: 'SPELL_HEALING_SHOWER', name: 'Healing Shower', type: 'SPELL', element: 'EARTH',
+    spellType: 'CONJURATION', cost: 2,
+    text: 'All allied creatures of a chosen element gain 3 HP. Place this card on an allied creature belonging to the desired element.'
+  },
   SPELL_FISSURES_OF_GOGHLIE: { id: 'SPELL_FISSURES_OF_GOGHLIE', name: 'Fissures of Goghlie', type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 2, text: 'Fieldquake any one field.' },
   SPELL_PARMTETIC_HOLY_FEAST: { id: 'SPELL_PARMTETIC_HOLY_FEAST', name: 'Parmetic Holy Feast', type: 'SPELL', element: 'NEUTRAL', spellType: 'RITUAL', cost: 0, ritualCost: 'discard 1 creature', text: 'Discard a creature from hand and gain 2 mana.' },
   SPELL_GOGHLIE_ALTAR: { id: 'SPELL_GOGHLIE_ALTAR', name: 'Goghlie Altar', type: 'SPELL', element: 'NEUTRAL', spellType: 'RITUAL', cost: 0, ritualCost: 'none', text: 'Both players gain mana equal to the number of enemy creatures on the board.' },
