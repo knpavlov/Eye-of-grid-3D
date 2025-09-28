@@ -1,6 +1,14 @@
 import { getServerBase } from './config.js';
 import { initSessionStore, getSessionToken, onSessionChange, handleUnauthorized } from '../auth/sessionStore.js';
 import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
+import {
+  setNetworkPlayers,
+  getSeatLabel,
+  syncPlayerNamesWithWindow,
+  onPlayerNamesChanged as onPlayerNamesChangedCore,
+  clearNetworkPlayers,
+  setLocalSeat,
+} from '../core/playerNames.js';
 
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
@@ -64,9 +72,10 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
     hideStartCountdown();
     startModal = document.createElement('div');
     startModal.className='mp-modal';
+    const seatName = getSeatLabel(seat);
     startModal.innerHTML = `<div class="mp-card">
       <div>Матч найден!</div>
-      <div class="mp-seat">You play as: <b>${seat===0?'Player 1':'Player 2'}</b></div>
+      <div class="mp-seat">You play as: <b>${seatName}</b></div>
       <div class="mp-count" id="mp-count">${secs}</div>
       <div class="mp-subtle">Game is starting soon...</div></div>`;
     document.body.appendChild(startModal);
@@ -804,7 +813,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
       hideQueueModal();
     }
   });
-  socket.on('matchFound', ({ matchId, seat, decks })=>{
+  socket.on('matchFound', ({ matchId, seat, decks, players })=>{
     hideQueueModal();
     try {
       const all = window.DECKS || [];
@@ -819,7 +828,12 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
     console.log('[MATCH] Match found, setting MY_SEAT to:', seat, 'matchId:', matchId, 'decks:', decks);
     // Логирование для отладки
     try { (window.socket || socket).emit('debugLog', { event: 'matchFound_received', seat, matchId, decks }); } catch {}
-    
+
+    try {
+      setNetworkPlayers(Array.isArray(players) ? players : [], seat);
+      syncPlayerNamesWithWindow();
+    } catch {}
+
     // Полный сброс локального состояния предыдущего матча перед стартом нового
     try { if (window.__pendingBattleFlushTimer) { clearInterval(window.__pendingBattleFlushTimer); window.__pendingBattleFlushTimer = null; } } catch {}
     try { PENDING_BATTLE_ANIMS = []; PENDING_RETALIATIONS = []; } catch {}
@@ -946,7 +960,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
     const online = socket.connected && (typeof NET_ON === 'function' ? NET_ON() : false);
     dot.classList.toggle('on', online);
     net.textContent = online ? 'online' : 'offline';
-    seat.textContent = (MY_SEAT===0)?'Player 1':(MY_SEAT===1)?'Player 2':'—';
+    seat.textContent = getSeatLabel(MY_SEAT);
 
     if (gameState && (MY_SEAT===0 || MY_SEAT===1)){
       turn.textContent = (gameState.active===MY_SEAT) ? 'your turn' : 'opponent\'s turn';
@@ -958,12 +972,18 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
   });
   socket.on('disconnect', (reason) => {
     console.log('[SOCKET] Disconnected from server:', reason);
+    try { clearNetworkPlayers(); } catch {}
+    try { setLocalSeat(0); } catch {}
+    try { syncPlayerNamesWithWindow(); } catch {}
     updateIndicator();
   });
   socket.on('connect_error', (error) => {
     console.error('[SOCKET] Connection error:', error);
   });
   socket.on('matchFound', updateIndicator);
+  onPlayerNamesChangedCore(() => {
+    try { updateIndicator(); } catch {}
+  });
   setInterval(updateIndicator, 500);
   updateIndicator();
 
@@ -1079,6 +1099,9 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
     NET_ACTIVE=false; APPLYING=false;
     // Сбрасываем seat после показа модалки
     MY_SEAT=null; try { window.MY_SEAT = null; } catch {}
+    try { clearNetworkPlayers(); } catch {}
+    try { setLocalSeat(0); } catch {}
+    try { syncPlayerNamesWithWindow(); } catch {}
     updateIndicator(); updateInputLock();
   });
 

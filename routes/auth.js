@@ -8,6 +8,8 @@ import {
   ensureUserTable,
 } from '../server/repositories/usersRepository.js';
 import { requireAuth } from '../server/middleware/authMiddleware.js';
+import { ensureStarterDecksForUser } from '../server/services/deckStarterService.js';
+import { DEFAULT_DECK_BLUEPRINTS } from '../src/core/defaultDecks.js';
 
 const router = Router();
 let storageReady = false;
@@ -73,6 +75,11 @@ router.post('/register', async (req, res) => {
     }
     const { hash, salt } = await hashPassword(password);
     const user = await createUser({ email, passwordHash: hash, passwordSalt: salt, nickname });
+    try {
+      await ensureStarterDecksForUser(user.id, DEFAULT_DECK_BLUEPRINTS);
+    } catch (err) {
+      console.warn('[auth] Не удалось подготовить стартовые колоды для пользователя', user?.id, err);
+    }
     const payload = createAuthPayload(user);
     res.status(201).json(payload);
   } catch (err) {

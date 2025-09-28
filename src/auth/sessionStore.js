@@ -12,6 +12,7 @@ let activeUser = null;
 let initialized = false;
 
 const listeners = new Set();
+let storageListenerAttached = false;
 
 function notify() {
   const snapshot = {
@@ -24,6 +25,40 @@ function notify() {
   listeners.forEach(cb => {
     try { cb(snapshot); } catch (err) { console.warn('[sessionStore] Ошибка слушателя', err); }
   });
+}
+
+function refreshProfilesFromStorage() {
+  profiles = loadProfiles();
+  if (activeProfileId && profiles.has(activeProfileId)) {
+    const entry = profiles.get(activeProfileId);
+    activeToken = entry?.token || null;
+    activeUser = entry?.user || null;
+  } else if (profiles.size) {
+    const nextId = pickInitialProfileId();
+    applyActiveProfile(nextId, { silent: true });
+  } else {
+    activeProfileId = null;
+    activeToken = null;
+    activeUser = null;
+  }
+  notify();
+}
+
+function handleStorageChange(event) {
+  if (typeof window === 'undefined') return;
+  if (!event) return;
+  const isLocal = !event.storageArea || event.storageArea === window.localStorage;
+  if (!isLocal) return;
+  if (event.key === STORAGE_KEY_PROFILES || event.key === STORAGE_KEY_DEFAULT) {
+    refreshProfilesFromStorage();
+  }
+}
+
+function attachStorageListener() {
+  if (storageListenerAttached) return;
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+  window.addEventListener('storage', handleStorageChange);
+  storageListenerAttached = true;
 }
 
 function readLocalStorage(key) {
@@ -140,6 +175,7 @@ export function initSessionStore() {
   const initialId = pickInitialProfileId();
   applyActiveProfile(initialId, { silent: true });
   initialized = true;
+  attachStorageListener();
   notify();
   return {
     profiles: getStoredProfiles(),

@@ -52,6 +52,13 @@ import { initDiscardManager, syncWithState as syncDiscardManager } from './ui/di
 import { initAuthScreen } from './ui/authScreen.js';
 import { initSessionStore, onSessionChange, getStateSnapshot } from './auth/sessionStore.js';
 import { playFieldquakeFx, playFieldquakeFxBatch } from './scene/fieldquakeFx.js';
+import {
+  setLocalProfile as setPlayerLocalProfile,
+  resetPlayerNames,
+  syncPlayerNamesWithWindow,
+  attachPlayerNames,
+  onPlayerNamesChanged,
+} from './core/playerNames.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -135,7 +142,13 @@ const netMiddleware = makeMiddleware(({ getState, next, action }) => {
 export const store = createStore(reducer, undefined, [netMiddleware]);
 try { window.__store = store; } catch {}
 
+onPlayerNamesChanged(() => {
+  try { syncPlayerNamesWithWindow(); } catch {}
+});
+
 const initialSessionState = initSessionStore();
+try { setPlayerLocalProfile(initialSessionState?.user || null); } catch {}
+try { syncPlayerNamesWithWindow(); } catch {}
 let menuAutoOpened = false;
 
 function tryOpenMainMenu(initial = false) {
@@ -149,12 +162,15 @@ function tryOpenMainMenu(initial = false) {
 
 function handleAuthStateForMenu(state) {
   if (state?.authenticated) {
+    try { setPlayerLocalProfile(state.user); } catch {}
     if (!menuAutoOpened) {
       tryOpenMainMenu(true);
     }
   } else {
+    try { resetPlayerNames(); } catch {}
     menuAutoOpened = false;
   }
+  try { syncPlayerNamesWithWindow(); } catch {}
 }
 
 function setupAuthUI() {
@@ -187,14 +203,15 @@ if (typeof window !== 'undefined') {
 // Унифицированное применение нового состояния игры
 export function applyGameState(state) {
   try {
+    const namedState = attachPlayerNames(state);
     // Обновляем глобальную переменную
-    window.gameState = state;
+    window.gameState = namedState;
     // Синхронизируем стораж, чтобы состояние не откатывалось в конце хода
-    window.__store?.dispatch({ type: A.REPLACE_STATE, payload: state });
+    window.__store?.dispatch({ type: A.REPLACE_STATE, payload: namedState });
     // Сообщаем страницам с локальной переменной gameState о новом состоянии
     // (например, index.html держит собственную копию)
-    window.setGameState?.(state);
-    try { syncDiscardManager(state); } catch {}
+    window.setGameState?.(namedState);
+    try { syncDiscardManager(namedState); } catch {}
   } catch {}
 }
 try { if (typeof window !== 'undefined') window.applyGameState = applyGameState; } catch {}
