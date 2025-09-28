@@ -41,15 +41,24 @@ import {
   computeUnitProtection as computeUnitProtectionInternal,
   computeAuraProtection as computeAuraProtectionInternal,
 } from './abilityHandlers/protection.js';
+import {
+  applySummonManaSteal as applySummonManaStealInternal,
+  hasManaStealKeyword as hasManaStealKeywordInternal,
+} from './abilityHandlers/manaSteal.js';
+import { applyManaGainOnSummon } from './abilityHandlers/manaOnSummon.js';
 import { normalizeElementName } from './utils/elements.js';
 import {
   applyFieldFatalityCheck as applyFieldFatalityCheckInternal,
   describeFieldFatality as describeFieldFatalityInternal,
   evaluateFieldFatality as evaluateFieldFatalityInternal,
 } from './abilityHandlers/fieldHazards.js';
+import {
+  applyFieldquakeToCell,
+  normalizeFieldquakeOnSummonConfig,
+  normalizeFieldquakeOnDamageConfig,
+  collectFieldquakeDeaths,
+} from './abilityHandlers/fieldquake.js';
 
-// локальная функция ограничения маны (без импорта во избежание циклов)
-const capMana = (m) => Math.min(10, m);
 const inBounds = (r, c) => r >= 0 && r < 3 && c >= 0 && c < 3;
 
 function getUnitTemplate(unit) {
@@ -323,6 +332,19 @@ export function collectDamageInteractions(state, context = {}) {
   const { attackerPos, attackerUnit, tpl, hits } = context;
   if (!tpl || !attackerUnit || !Array.isArray(hits) || !hits.length) return result;
 
+  const fieldquakeCfg = normalizeFieldquakeOnDamageConfig(tpl.fieldquakeOnDamage);
+  const attackerCellElement = (typeof attackerPos?.r === 'number' && typeof attackerPos?.c === 'number')
+    ? (state.board?.[attackerPos.r]?.[attackerPos.c]?.element || null)
+    : null;
+  const fieldquakeTargets = new Set();
+
+  const attackerRef = {
+    uid: getUnitUid(attackerUnit),
+    r: attackerPos?.r,
+    c: attackerPos?.c,
+    tplId: tpl.id,
+  };
+
   const processed = [];
   for (const h of hits) {
     if (!h) continue;
@@ -332,9 +354,27 @@ export function collectDamageInteractions(state, context = {}) {
     const target = cell?.unit;
     if (!target) continue;
     const tplTarget = getUnitTemplate(target);
+    const key = `${h.r},${h.c}`;
+    if (
+      fieldquakeCfg
+      && dealt > 0
+      && !fieldquakeTargets.has(key)
+      && (fieldquakeCfg.requireAttackerElement ? attackerCellElement === fieldquakeCfg.requireAttackerElement : true)
+      && (fieldquakeCfg.requireAttackerNotElement ? attackerCellElement !== fieldquakeCfg.requireAttackerNotElement : true)
+    ) {
+      result.events.push({
+        type: 'FIELDQUAKE',
+        target: { r: h.r, c: h.c },
+        source: attackerRef,
+        config: fieldquakeCfg,
+      });
+      if (fieldquakeCfg.preventRetaliation !== false) {
+        result.preventRetaliation.add(key);
+      }
+      fieldquakeTargets.add(key);
+    }
     const alive = (target.currentHP ?? tplTarget?.hp ?? 0) > 0;
     if (!alive) continue;
-    const key = `${h.r},${h.c}`;
     processed.push({
       r: h.r,
       c: h.c,
@@ -355,13 +395,6 @@ export function collectDamageInteractions(state, context = {}) {
   if (!processed.length) {
     return result;
   }
-
-  const attackerRef = {
-    uid: getUnitUid(attackerUnit),
-    r: attackerPos?.r,
-    c: attackerPos?.c,
-    tplId: tpl.id,
-  };
 
   const reposition = collectRepositionOnDamage(state, {
     attackerRef,
@@ -392,6 +425,8 @@ export function applyDamageInteractionResults(state, effects = {}) {
   const logs = [];
   let attackerPosUpdate = null;
   const events = Array.isArray(effects?.events) ? effects.events : [];
+  const fieldquakeDeaths = [];
+  const fieldquakeEvents = [];
 
   for (const ev of events) {
     if (ev?.type === 'SWAP_POSITIONS') {
@@ -500,10 +535,51 @@ export function applyDamageInteractionResults(state, effects = {}) {
       const hazard = applyFieldFatalityCheckInternal(state.board[to.r][to.c]?.unit, tplTarget, toElement);
       const fatalLog = describeFieldFatalityInternal(tplTarget, hazard, { name: targetName });
       if (fatalLog) logs.push(fatalLog);
+    } else if (ev?.type === 'FIELDQUAKE') {
+      const tr = Number(ev.target?.r);
+      const tc = Number(ev.target?.c);
+      if (!Number.isInteger(tr) || !Number.isInteger(tc)) continue;
+      const fq = applyFieldquakeToCell(state, tr, tc, { respectLocks: ev.config?.respectLocks !== false });
+      if (!fq?.changed) {
+        if (fq?.reason === 'LOCKED') {
+          logs.push('Fieldquake предотвращён защитой поля.');
+        }
+        continue;
+      }
+      const prev = fq.prevElement || 'UNKNOWN';
+      const next = fq.nextElement || prev;
+      logs.push(`Fieldquake: ${prev}→${next} на (${tr},${tc}).`);
+      fieldquakeEvents.push({ r: fq.r, c: fq.c, prevElement: prev, nextElement: next, source: ev?.source || null });
+      const unit = state.board?.[tr]?.[tc]?.unit;
+      const tplUnit = unit ? CARDS[unit.tplId] : null;
+      if (unit && tplUnit && fq.hpShift?.deltaHp) {
+        const delta = fq.hpShift.deltaHp;
+        const before = fq.hpShift.beforeHp;
+        const after = fq.hpShift.afterHp;
+        const name = tplUnit.name || 'Цель';
+        if (delta > 0) {
+          logs.push(`${name} усиливается на поле ${next}: HP ${before}→${after}.`);
+        } else if (delta < 0) {
+          logs.push(`${name} теряет силу на поле ${next}: HP ${before}→${after}.`);
+        }
+      }
+      if (unit && tplUnit && fq.fatality?.dies) {
+        const fatalLog = describeFieldFatalityInternal(tplUnit, fq.fatality, { name: tplUnit.name || 'Цель' });
+        if (fatalLog) logs.push(fatalLog);
+      }
+      const deaths = collectFieldquakeDeaths(state, fq);
+      if (deaths.length) {
+        fieldquakeDeaths.push(...deaths);
+      }
     }
   }
 
-  return { attackerPosUpdate, logLines: logs };
+  return {
+    attackerPosUpdate,
+    logLines: logs,
+    deaths: fieldquakeDeaths,
+    fieldquakes: fieldquakeEvents,
+  };
 }
 
 function normalizeElementConfig(value, defaults = {}) {
@@ -628,26 +704,6 @@ export const hasDoubleAttack = (tpl) => !!(tpl && tpl.doubleAttack);
 // Может ли существо атаковать (крепости не могут)
 export const canAttack = (tpl) => !(tpl && tpl.fortress);
 
-// Реализация ауры Фридонийского Странника при призыве союзников
-// Возвращает количество полученных единиц маны
-export function applyFreedonianAura(state, owner) {
-  let gained = 0;
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 3; c++) {
-      const cell = state.board?.[r]?.[c];
-      const unit = cell?.unit;
-      if (!unit) continue;
-      const tpl = CARDS[unit.tplId];
-      if (tpl?.auraGainManaOnSummon && unit.owner === owner && cell.element !== 'FIRE') {
-        const pl = state.players[owner];
-        pl.mana = capMana((pl.mana || 0) + 1);
-        gained += 1;
-      }
-    }
-  }
-  return gained;
-}
-
 export function applySummonAbilities(state, r, c) {
   const events = { possessions: [] };
   const cell = state?.board?.[r]?.[c];
@@ -655,6 +711,87 @@ export function applySummonAbilities(state, r, c) {
   if (!cell || !unit) return events;
   const tpl = getUnitTemplate(unit);
   if (!tpl) return events;
+
+  const fieldquakeSummonCfg = normalizeFieldquakeOnSummonConfig(tpl.fieldquakeOnSummon);
+  if (fieldquakeSummonCfg) {
+    const coords = new Set();
+    const addPos = (rr, cc) => {
+      if (!inBounds(rr, cc)) return;
+      coords.add(`${rr},${cc}`);
+    };
+    if (Array.isArray(fieldquakeSummonCfg.cells) && fieldquakeSummonCfg.cells.length) {
+      for (const pos of fieldquakeSummonCfg.cells) {
+        if (Number.isInteger(pos?.r) && Number.isInteger(pos?.c)) addPos(pos.r, pos.c);
+      }
+    } else {
+      const pattern = fieldquakeSummonCfg.pattern || 'ADJACENT';
+      if (pattern === 'ALL') {
+        for (let rr = 0; rr < 3; rr += 1) {
+          for (let cc = 0; cc < 3; cc += 1) {
+            if (rr === r && cc === c) continue;
+            addPos(rr, cc);
+          }
+        }
+      } else if (pattern === 'SELF') {
+        addPos(r, c);
+      } else if (pattern === 'FRONT') {
+        const facing = unit.facing || 'N';
+        const vectors = { N: [-1, 0], S: [1, 0], E: [0, 1], W: [0, -1] };
+        const vec = vectors[facing] || vectors.N;
+        addPos(r + vec[0], c + vec[1]);
+      } else {
+        const dirs = [ [-1, 0], [1, 0], [0, -1], [0, 1] ];
+        for (const [dr, dc] of dirs) addPos(r + dr, c + dc);
+      }
+    }
+    const deaths = [];
+    for (const key of coords) {
+      const [rr, cc] = key.split(',').map(Number);
+      const fq = applyFieldquakeToCell(state, rr, cc, { respectLocks: fieldquakeSummonCfg.respectLocks !== false });
+      if (!fq?.changed) continue;
+      events.fieldquakes = [...(events.fieldquakes || []), {
+        r: fq.r,
+        c: fq.c,
+        prevElement: fq.prevElement,
+        nextElement: fq.nextElement,
+        source: { tplId: tpl.id, owner: unit.owner },
+      }];
+      const prevLabel = fq.prevElement || 'UNKNOWN';
+      const nextLabel = fq.nextElement || prevLabel;
+      events.logs = [...(events.logs || []), `${tpl.name}: fieldquake ${prevLabel}→${nextLabel} на (${fq.r},${fq.c}).`];
+      if (fq.hpShift?.deltaHp && fq.unit && fq.tpl?.name) {
+        const delta = fq.hpShift.deltaHp;
+        if (delta > 0) {
+          events.logs.push(`${fq.tpl.name} усиливается на поле ${nextLabel}: HP ${fq.hpShift.beforeHp}→${fq.hpShift.afterHp}.`);
+        } else if (delta < 0) {
+          events.logs.push(`${fq.tpl.name} теряет силу на поле ${nextLabel}: HP ${fq.hpShift.beforeHp}→${fq.hpShift.afterHp}.`);
+        }
+      }
+      if (fq.fatality?.dies && fq.tpl?.name) {
+        const fatalLog = describeFieldFatalityInternal(fq.tpl, fq.fatality, { name: fq.tpl.name });
+        if (fatalLog) events.logs.push(fatalLog);
+      }
+      if (fq.unitDied) {
+        const deathEntries = collectFieldquakeDeaths(state, fq);
+        if (deathEntries.length) {
+          deaths.push(...deathEntries);
+          for (const entry of deathEntries) {
+            try {
+              const owner = entry?.owner;
+              const tplDeath = owner != null ? CARDS[entry.tplId] : null;
+              const player = owner != null ? state.players?.[owner] : null;
+              if (tplDeath && Array.isArray(player?.graveyard)) {
+                player.graveyard.push(tplDeath);
+              }
+            } catch {}
+          }
+        }
+      }
+    }
+    if (deaths.length) {
+      events.deaths = [...(events.deaths || []), ...deaths];
+    }
+  }
 
   const summonBuffs = applySummonStatBuffs(state, r, c);
   if (Array.isArray(summonBuffs?.logs) && summonBuffs.logs.length) {
@@ -710,6 +847,34 @@ export function applySummonAbilities(state, r, c) {
   const reactions = applyEnemySummonReactions(state, { r, c, unit, tpl });
   if (Array.isArray(reactions?.heals) && reactions.heals.length) {
     events.heals = [...(events.heals || []), ...reactions.heals];
+  }
+
+  const manaStealEvents = applySummonManaStealInternal(state, {
+    r,
+    c,
+    unit,
+    tpl,
+    cell,
+  });
+  if (Array.isArray(manaStealEvents) && manaStealEvents.length) {
+    events.manaSteal = manaStealEvents;
+    const logs = manaStealEvents
+      .map(ev => (ev && typeof ev.log === 'string') ? ev.log : null)
+      .filter(Boolean);
+    if (logs.length) {
+      events.logs = [...(events.logs || []), ...logs];
+    }
+  }
+
+  const manaGainEvents = applyManaGainOnSummon(state, { r, c, unit, tpl, cell });
+  if (Array.isArray(manaGainEvents) && manaGainEvents.length) {
+    events.manaGainEvents = [...(events.manaGainEvents || []), ...manaGainEvents];
+    const gainLogs = manaGainEvents
+      .map(ev => (ev && typeof ev.log === 'string') ? ev.log : null)
+      .filter(Boolean);
+    if (gainLogs.length) {
+      events.logs = [...(events.logs || []), ...gainLogs];
+    }
   }
 
   return events;
@@ -799,6 +964,8 @@ export function computeDynamicMagicAttack(state, tpl) {
   return null;
 }
 
+export const hasManaStealKeyword = hasManaStealKeywordInternal;
+
 export function getTargetElementBonus(tpl, state, hits) {
   if (!tpl || !Array.isArray(hits) || !hits.length) return null;
   const cfg = normalizeElementConfig(tpl.plusAtkVsElement);
@@ -881,10 +1048,8 @@ export function executeUnitAction(state, action, payload = {}) {
     const cell = state.board?.[action.r]?.[action.c];
     if (cell?.unit) {
       result.summonEvents = applySummonAbilities(state, action.r, action.c);
-      result.freedonianMana = applyFreedonianAura(state, action.owner);
     } else {
       result.summonEvents = result.summonEvents || { possessions: [] };
-      result.freedonianMana = 0;
     }
     return result;
   }

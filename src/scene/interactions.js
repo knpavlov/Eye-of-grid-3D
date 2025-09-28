@@ -1,11 +1,11 @@
 // Pointer and drag interactions for Three.js scene
 import { getCtx } from './context.js';
+import { buildManaGainPlan } from './manaFx.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
 import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
 import { showTooltip, hideTooltip } from '../ui/tooltip.js';
 import {
-  applyFreedonianAura,
   applySummonAbilities,
   evaluateIncarnationSummon,
   applyIncarnationSummon,
@@ -15,6 +15,12 @@ import {
 } from '../core/abilities.js';
 import { capMana } from '../core/constants.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
+import { applyDeathManaSteal } from '../core/abilityHandlers/manaSteal.js';
+import { applyDeathRepositionEffects } from '../core/abilityHandlers/deathReposition.js';
+import { createDeathEntry } from '../core/abilityHandlers/deathRecords.js';
+import { animateManaSteal } from '../ui/manaStealFx.js';
+import { playFieldquakeFxBatch } from './fieldquakeFx.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -32,12 +38,66 @@ export const interactionState = {
   pendingRitualBoardMesh: null,
   pendingRitualSpellHandIndex: null,
   pendingRitualSpellCard: null,
+  pendingRitualOrigin: null,
   pendingUnitAbility: null,
   pendingAbilityOrientation: null,
   spellDragHandled: false,
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
+  // список событий получения маны, которые можно отменить при отмене призыва
+  pendingSummonManaGain: null,
 };
+
+function normalizeManaGainEntries(entries) {
+  if (!Array.isArray(entries)) return [];
+  const res = [];
+  for (const entry of entries) {
+    const owner = (entry && typeof entry.owner === 'number') ? entry.owner : null;
+    const amountRaw = entry ? Number(entry.amount) : 0;
+    const amount = Number.isFinite(amountRaw) ? Math.max(0, Math.floor(amountRaw)) : 0;
+    if (owner == null || amount <= 0) continue;
+    res.push({ owner, amount });
+  }
+  return res;
+}
+
+function setPendingSummonManaGain(entries) {
+  const normalized = normalizeManaGainEntries(entries);
+  interactionState.pendingSummonManaGain = normalized.length ? normalized : null;
+}
+
+export function clearPendingSummonManaGain() {
+  interactionState.pendingSummonManaGain = null;
+}
+
+export function undoPendingSummonManaGain() {
+  if (typeof window === 'undefined') {
+    interactionState.pendingSummonManaGain = null;
+    return;
+  }
+  const gs = window.gameState;
+  if (!gs || !Array.isArray(gs.players)) {
+    interactionState.pendingSummonManaGain = null;
+    return;
+  }
+  const entries = Array.isArray(interactionState.pendingSummonManaGain)
+    ? interactionState.pendingSummonManaGain
+    : [];
+  if (!entries.length) return;
+  for (const entry of entries) {
+    if (!entry) continue;
+    const owner = entry.owner;
+    const amount = entry.amount;
+    if (owner == null || amount <= 0) continue;
+    const player = gs.players[owner];
+    if (!player) continue;
+    const before = Number.isFinite(player.mana) ? player.mana : 0;
+    const after = Math.max(0, before - amount);
+    player.mana = after;
+  }
+  interactionState.pendingSummonManaGain = null;
+  try { window.updateUI?.(gs); } catch {}
+}
 
 const AUTO_END_TURN_RETRY_MS = 120;
 const AUTO_END_TURN_MAX_ATTEMPTS = 60;
@@ -58,6 +118,26 @@ export function hasPendingForcedDiscards() {
   if (!state) return false;
   const queue = Array.isArray(state.pendingDiscards) ? state.pendingDiscards : [];
   return queue.some(req => req && req.remaining > 0);
+}
+
+function processManaStealEvents(events, opts = {}) {
+  if (!Array.isArray(events) || !events.length) return;
+  const skipLog = !!opts.skipLog;
+  for (const ev of events) {
+    if (!ev) continue;
+    if (!skipLog && ev.log) {
+      try { window.addLog?.(ev.log); } catch {}
+    }
+    try {
+      if (typeof animateManaSteal === 'function') {
+        animateManaSteal(ev);
+      } else {
+        window.animateManaSteal?.(ev);
+      }
+    } catch (err) {
+      console.warn('[mana] Не удалось анимировать кражу маны:', err);
+    }
+  }
 }
 
 // Планировщик авто-завершения хода, который дожидается окончания анимаций и разблокировки ввода
@@ -564,6 +644,19 @@ function performMagicAttack(from, targetMesh) {
   }
   const res = window.magicAttack(gameState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
   if (!res) { showNotification('Incorrect target', 'error'); return false; }
+
+  clearPendingSummonManaGain();
+
+  const pendingFieldquakes = Array.isArray(res.fieldquakes) ? res.fieldquakes.filter(Boolean) : [];
+  if (pendingFieldquakes.length) {
+    const broadcastFx = (typeof window.NET_ON === 'function' ? window.NET_ON() : false)
+      && typeof window.MY_SEAT === 'number'
+      && typeof gameState?.active === 'number'
+      && window.MY_SEAT === gameState.active;
+    // Проигрываем единый спецэффект fieldquake и при необходимости шлём синхронизацию
+    playFieldquakeFxBatch(pendingFieldquakes, { broadcast: broadcastFx });
+  }
+
   for (const l of res.logLines.reverse()) window.addLog(l);
   const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
   if (aMesh) {
@@ -579,22 +672,31 @@ function performMagicAttack(from, targetMesh) {
     hitVisuals.push({ mesh, dmg });
   }
 
+  const manaPlan = buildManaGainPlan({
+    playersBefore: gameState.players,
+    deaths: res.deaths || [],
+    manaGainEntries: res.manaGainEvents || [],
+    tileMeshes,
+    THREE,
+  });
+
   const deathVisuals = [];
   for (const d of res.deaths || []) {
     const mesh = unitMeshes.find(m => m.userData.row === d.r && m.userData.col === d.c) || null;
     let manaOrigin = null;
     try {
-      const tile = tileMeshes?.[d.r]?.[d.c];
-      if (tile?.position?.clone) {
-        manaOrigin = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+      manaOrigin = manaPlan?.getOrigin?.(d) || null;
+      if (!manaOrigin) {
+        const tile = tileMeshes?.[d.r]?.[d.c];
+        if (tile?.position?.clone) {
+          manaOrigin = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+        }
       }
     } catch {}
-    const manaSlot = gameState.players?.[d.owner]?.mana || 0;
     deathVisuals.push({
       death: d,
       mesh,
       manaOrigin,
-      manaSlot,
       tpl: CARDS[d.tplId] || null,
     });
   }
@@ -637,12 +739,8 @@ function performMagicAttack(from, targetMesh) {
       if (info.mesh) {
         try { window.__fx?.dissolveAndAsh?.(info.mesh, new THREE.Vector3(0, 0, 0.6), 0.9); } catch {}
       }
-      if (info.manaOrigin) {
-        setTimeout(() => {
-          try { window.animateManaGainFromWorld?.(info.manaOrigin, info.death.owner, true, info.manaSlot); } catch {}
-        }, 400);
-      }
     }
+    try { manaPlan?.schedule?.(); } catch {}
   };
 
   playHitEffects();
@@ -700,6 +798,7 @@ function performChosenAttack(from, targetMesh) {
   const hits = window.computeHits(gameState, from.r, from.c, opts);
   if (!hits.length) { showNotification('Incorrect target', 'error'); return false; }
   window.performBattleSequence(from.r, from.c, true, opts);
+  clearPendingSummonManaGain();
   return true;
 }
 
@@ -873,19 +972,56 @@ export function placeUnitWithDirection(direction) {
       window.addLog(`${cardData.name}: союзники получают +${amount} HP`);
     }
     const owner = unit.owner;
-    const deathElement = gameState.board?.[row]?.[col]?.element || null;
-    const deathInfo = [{ r: row, c: col, owner, tplId: unit.tplId, uid: unit.uid ?? null, element: deathElement }];
-    const slotBeforeGain = gameState.players?.[owner]?.mana || 0;
+    const deathEntry = createDeathEntry(gameState, unit, row, col) || {
+      r: row,
+      c: col,
+      owner,
+      tplId: unit.tplId,
+      uid: unit.uid ?? null,
+      element: gameState.board?.[row]?.[col]?.element || null,
+    };
+    const deathInfo = deathEntry ? [deathEntry] : [];
+    const playersBefore = Array.isArray(gameState.players)
+      ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))
+      : [];
     try { gameState.players[owner].graveyard.push(window.CARDS[unit.tplId]); } catch {}
     const ownerPlayer = gameState.players?.[owner];
     if (ownerPlayer) {
-      ownerPlayer.mana = capMana((ownerPlayer.mana || 0) + 1);
+      const beforeMana = Math.max(0, Number(ownerPlayer.mana || 0));
+      ownerPlayer.mana = capMana(beforeMana + 1);
     }
+    gameState.board[row][col].unit = null;
+    let manaBonus = null;
+    try {
+      manaBonus = applyManaGainOnDeaths(gameState, deathInfo, { boardState: gameState });
+    } catch (err) {
+      console.error('[interactions] Ошибка при расчёте бонусной маны:', err);
+      manaBonus = null;
+    }
+    if (Array.isArray(manaBonus?.logs) && manaBonus.logs.length) {
+      for (const text of manaBonus.logs) {
+        if (text) window.addLog(text);
+      }
+    }
+    const manaStealEvents = applyDeathManaSteal(gameState, deathInfo, { cause: 'SUMMON' });
+    const repositionResult = applyDeathRepositionEffects(gameState, deathInfo);
     const ctx = getCtx();
     const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
-    const pos = ctx.tileMeshes[row][col].position.clone().add(new THREE.Vector3(0, 1.2, 0));
-    window.animateManaGainFromWorld(pos, owner, true, slotBeforeGain);
-    gameState.board[row][col].unit = null;
+    const manaPlan = buildManaGainPlan({
+      playersBefore,
+      deaths: deathInfo,
+      manaGainEntries: Array.isArray(manaBonus?.entries) ? manaBonus.entries : [],
+      tileMeshes: ctx.tileMeshes,
+      THREE,
+    });
+    try { window.updateUI(); } catch {}
+    processManaStealEvents(manaStealEvents);
+    if (Array.isArray(repositionResult?.logs) && repositionResult.logs.length) {
+      for (const text of repositionResult.logs) {
+        if (text) window.addLog(text);
+      }
+    }
+    try { manaPlan?.schedule?.(); } catch {}
     const discardEffects = applyDeathDiscardEffects(gameState, deathInfo, { cause: 'SUMMON' });
     if (Array.isArray(discardEffects.logs) && discardEffects.logs.length) {
       for (const text of discardEffects.logs) {
@@ -904,7 +1040,26 @@ export function placeUnitWithDirection(direction) {
   const placedTpl = placedUnit ? window.CARDS?.[placedUnit.tplId] : null;
   const placedAlive = placedUnit && ((placedUnit.currentHP ?? placedTpl?.hp ?? cardData.hp) > 0);
   if (placedAlive) {
+    const playersBeforeMana = Array.isArray(gameState.players)
+      ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))
+      : [];
     const summonEvents = applySummonAbilities(gameState, row, col);
+    const manaGainEntries = Array.isArray(summonEvents?.manaGainEvents)
+      ? summonEvents.manaGainEvents
+      : [];
+    setPendingSummonManaGain(manaGainEntries);
+    let summonManaPlan = null;
+    if (manaGainEntries.length) {
+      const ctxLocal = getCtx();
+      const THREE = ctxLocal.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+      summonManaPlan = buildManaGainPlan({
+        playersBefore: playersBeforeMana,
+        deaths: Array.isArray(summonEvents?.deaths) ? summonEvents.deaths : [],
+        manaGainEntries,
+        tileMeshes: ctxLocal.tileMeshes,
+        THREE,
+      });
+    }
     const drawEvents = Array.isArray(summonEvents?.draws) && summonEvents.draws.length
       ? summonEvents.draws
       : (summonEvents?.draw?.count > 0 ? [summonEvents.draw] : []);
@@ -934,6 +1089,16 @@ export function placeUnitWithDirection(direction) {
         if (!text) continue;
         window.addLog?.(text);
       }
+    }
+    if (Array.isArray(summonEvents?.fieldquakes) && summonEvents.fieldquakes.length) {
+      const broadcastFx = (typeof window.NET_ON === 'function' ? window.NET_ON() : false)
+        && typeof window.MY_SEAT === 'number'
+        && window.MY_SEAT === gameState.active;
+      playFieldquakeFxBatch(summonEvents.fieldquakes, { broadcast: broadcastFx });
+    }
+    if (Array.isArray(summonEvents?.manaSteal) && summonEvents.manaSteal.length) {
+      try { window.updateUI(); } catch {}
+      processManaStealEvents(summonEvents.manaSteal, { skipLog: true });
     }
     if (Array.isArray(summonEvents?.statBuffs) && summonEvents.statBuffs.length) {
       for (const buff of summonEvents.statBuffs) {
@@ -992,10 +1157,7 @@ export function placeUnitWithDirection(direction) {
         }
       } catch {}
     }
-    const gained = applyFreedonianAura(gameState, gameState.active);
-    if (gained > 0) {
-      window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
-    }
+    try { summonManaPlan?.schedule?.(); } catch {}
   }
   // Синхронизируем состояние после призыва
   try { window.applyGameState(gameState); } catch {}
@@ -1035,6 +1197,7 @@ export function placeUnitWithDirection(direction) {
         // Если существо погибло мгновенно, не запускаем выбор целей и выходим из обработки анимации
         interactionState.autoEndTurnAfterAttack = false;
         try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+        clearPendingSummonManaGain();
         // Визуальная часть завершилась, а ход уже должен перейти оппоненту
         endTurnAfterSummon();
         if (unlockTriggered) {
@@ -1052,6 +1215,7 @@ export function placeUnitWithDirection(direction) {
         }
         endTurnAfterSummon();
         try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+        clearPendingSummonManaGain();
         return;
       }
       const profile = window.resolveAttackProfile
@@ -1061,6 +1225,7 @@ export function placeUnitWithDirection(direction) {
       if (wasIncarnation) {
         interactionState.autoEndTurnAfterAttack = false;
         if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
+        clearPendingSummonManaGain();
         return;
       }
       if (usesMagic) {
@@ -1091,6 +1256,7 @@ export function placeUnitWithDirection(direction) {
         } else {
           if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
           endTurnAfterSummon();
+          clearPendingSummonManaGain();
         }
       } else {
         const attacks = Array.isArray(profile?.attacks) ? profile.attacks : (tpl?.attacks || []);
@@ -1125,6 +1291,7 @@ export function placeUnitWithDirection(direction) {
             }
             interactionState.autoEndTurnAfterAttack = true;
             window.performBattleSequence(row, col, true, opts);
+            clearPendingSummonManaGain();
           }
           if (unlockTriggered) {
             const delay = 1200;
@@ -1133,9 +1300,13 @@ export function placeUnitWithDirection(direction) {
         } else {
           if (unlockTriggered) { setTimeout(() => { try { window.__ui?.summonLock?.playUnlockAnimation(); } catch {} }, 0); }
           endTurnAfterSummon();
+          clearPendingSummonManaGain();
         }
       }
       try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+      if (!interactionState.magicFrom && !interactionState.pendingAttack) {
+        clearPendingSummonManaGain();
+      }
     },
   });
   gsap.to(card.scale, { x: 1, y: 1, z: 1, duration: 0.5, ease: 'power2.inOut' });

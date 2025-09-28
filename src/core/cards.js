@@ -29,7 +29,13 @@ export const CARDS = {
     element: 'FIRE', atk: 1, hp: 2,
     attackType: 'STANDARD', pierce: true,
     attacks: [ { dir: 'N', ranges: [1] } ],
-    blindspots: ['S'], auraGainManaOnSummon: true,
+    blindspots: ['S'],
+    manaOnSummon: {
+      trigger: 'ALLY',
+      sourceFieldNotElement: 'FIRE',
+      excludeSelfSummon: true,
+      log: 'Фридонийский Странник приносит {amount} маны.',
+    },
     desc: 'While Freedonian Wanderer is on a non‑Fire field, you gain 1 mana each time you summon an allied creature.'
   },
   FIRE_PARTMOLE_FLAME_LIZARD: {
@@ -215,6 +221,16 @@ export const CARDS = {
     desc: 'When Tritonan Ice Guard is summoned to a non-Water field, draw a card.'
   },
 
+  WATER_MONK_ELDER_OF_OKUNADA: {
+    id: 'WATER_MONK_ELDER_OF_OKUNADA', name: 'Monk Elder of Okunada', type: 'UNIT', cost: 1, activation: 1,
+    element: 'WATER', atk: 0, hp: 1,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    grantDodgeAdjacentAllies: 1,
+    desc: 'All allied creatures on adjacent fields gain one Dodge attempt.'
+  },
+
   WATER_DRAGON_OF_VOICE_SEA: {
     id: 'WATER_DRAGON_OF_VOICE_SEA', name: 'Dragon of Voice Sea', type: 'UNIT', cost: 7, activation: 4,
     element: 'WATER', atk: 5, hp: 8,
@@ -288,6 +304,52 @@ export const CARDS = {
     desc: 'Magic Attack. While on a Water field, Aluhja Priestess gains Dodge attempt.'
   },
 
+  WATER_MOVING_ISLE_OF_KADENA: {
+    id: 'WATER_MOVING_ISLE_OF_KADENA', name: 'Moving Isle of Kadena', type: 'UNIT', cost: 4, activation: 2,
+    element: 'WATER', atk: 1, hp: 4,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'E', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'S', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], ignoreAlliedBlocking: true },
+    ],
+    blindspots: [], fortress: true, ignoreAlliedBlocking: true,
+    diesOnElement: 'FIRE',
+    manaSteal: {
+      onSummon: {
+        amount: { type: 'FIELD_COUNT', element: 'WATER' },
+        forbidFieldElement: 'WATER',
+      },
+    },
+    desc: 'Fortress. If Moving Isle of Kadena is summoned to a non-Water field, steal mana from your opponent equal to the number of Water fields. Destroy Moving Isle of Kadena if it is on a Fire field.'
+  },
+
+  WATER_QUEENS_SERVANT: {
+    id: 'WATER_QUEENS_SERVANT', name: "Queen's Servant", type: 'UNIT', cost: 4, activation: 2,
+    element: 'WATER', atk: 1, hp: 1,
+    attackType: 'MAGIC',
+    attacks: [ { dir: 'N', ranges: [1, 2, 3], mode: 'ANY' } ],
+    blindspots: ['S'], perfectDodge: true, ignoreAlliedBlocking: true,
+    manaSteal: {
+      onDeath: { amount: 1 },
+    },
+    desc: "Magic Attack. Perfect Dodge. If Queen's Servant is destroyed, steal 1 mana from your opponent."
+  },
+
+  WATER_DANCING_TEMPTRESS: {
+    id: 'WATER_DANCING_TEMPTRESS', name: 'Dancing Temptress', type: 'UNIT', cost: 3, activation: 2,
+    element: 'NEUTRAL', atk: 1, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1] } ],
+    blindspots: ['S'],
+    deathPullFrontToSelf: true,
+    manaSteal: {
+      onDeath: { amount: 1, from: 'FRONT_OWNER' },
+    },
+    desc: 'If Dancing Temptress is destroyed, you steal 1 mana from the owner of the creature on the field in front of her. If Dancing Temptress is destroyed, the creature on the field in front of her is moved to the field she was previously on.'
+  },
+
   EARTH_ARELAI_THE_PROTECTOR: {
     id: 'EARTH_ARELAI_THE_PROTECTOR', name: 'Arelai the Protector', type: 'UNIT', cost: 3, activation: 2,
     element: 'EARTH', atk: 2, hp: 3,
@@ -315,6 +377,37 @@ export const CARDS = {
     ignoreAlliedBlocking: true,
     protectionEqualsEmptyFields: true,
     desc: 'Novogus Golem gains Protection equal to the number of empty fields.'
+  },
+  EARTH_NOVOGUS_CATAPULT: {
+    id: 'EARTH_NOVOGUS_CATAPULT', name: 'Novogus Catapult', type: 'UNIT', cost: 3, activation: 1,
+    element: 'EARTH', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [2], ignoreBlocking: true, ignoreAlliedBlocking: true } ],
+    blindspots: ['S'], ignoreAlliedBlocking: true,
+    gainManaOnDeath: { mode: 'COUNT_FIELDS_OF_ELEMENT', element: 'EARTH' },
+    desc: 'If Novogus Catapult is destroyed, you gain mana equal to the number of Earth fields.'
+  },
+  EARTH_SKELETON_SOLDIER: {
+    id: 'EARTH_SKELETON_SOLDIER', name: 'Skeleton Soldier', type: 'UNIT', cost: 2, activation: 1,
+    element: 'EARTH', atk: 1, hp: 2,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'N', ranges: [1], group: 'FRONT_LEFT', ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], group: 'FRONT_LEFT', ignoreAlliedBlocking: true }
+    ],
+    blindspots: ['S', 'E'], ignoreAlliedBlocking: true,
+    gainManaOnDeath: 1,
+    desc: 'If Skeleton Soldier is destroyed, you gain 1 additional mana.'
+  },
+  EARTH_UNDEAD_DRAGON: {
+    id: 'EARTH_UNDEAD_DRAGON', name: 'Undead Dragon', type: 'UNIT', cost: 7, activation: 4,
+    element: 'EARTH', atk: 5, hp: 8,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY', ignoreAlliedBlocking: true } ],
+    blindspots: ['S'], ignoreAlliedBlocking: true,
+    dynamicAtk: 'EARTH_CREATURES',
+    allyDeathGainMana: { amount: 1, requireFieldElement: 'EARTH', adjacency: 'ORTHOGONAL' },
+    desc: "Undead Dragon's Attack is equal to 5 plus the number of other Earth creatures on the board. While Undead Dragon is on an Earth field, gain 1 additional mana whenever an adjacent allied creature is destroyed."
   },
 
   EARTH_SE_HOLLYN_FORTRESS: {
@@ -429,6 +522,66 @@ export const CARDS = {
     swapOnDamageAllowZero: true,
     desc: 'Dodge attempt. If Biolith Stinger damages (but does not destroy) a creature, it switches locations with that creature (which cannot counterattack).'
   },
+  BIOLITH_IMPERIAL_BIOLITH_GUARD: {
+    id: 'BIOLITH_IMPERIAL_BIOLITH_GUARD', name: 'Imperial Biolith Guard', type: 'UNIT', cost: 3, activation: 2,
+    element: 'BIOLITH', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'E', ranges: [1], group: 'SIDE_SWEEP', ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], group: 'SIDE_SWEEP', ignoreAlliedBlocking: true },
+    ],
+    blindspots: [],
+    ignoreAlliedBlocking: true,
+    manaOnSummon: {
+      trigger: 'ALLY',
+      summonFieldElement: 'BIOLITH',
+      excludeSelfSummon: true,
+      log: 'Imperial Biolith Guard генерирует {amount} ману за биолитовый призыв.',
+    },
+    desc: 'Gain 1 mana each time you summon a creature to a Biolith field.'
+  },
+  BIOLITH_WORMAK_HEIR: {
+    id: 'BIOLITH_WORMAK_HEIR', name: 'Wormak Heir to the Bioliths', type: 'UNIT', cost: 4, activation: 2,
+    element: 'BIOLITH', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: [],
+    ignoreAlliedBlocking: true,
+    targetCountAttack: {
+      match: { owner: 'ENEMY', element: 'BIOLITH' },
+      count: { type: 'NON_ELEMENT', element: 'BIOLITH' },
+      baseValue: 2,
+      amountPer: 1,
+      log: 'Wormak Heir to the Bioliths: атака против биолитов установлена на {targetValue} (небиолитовых существ: {count}).',
+    },
+    manaOnSummon: {
+      trigger: 'ENEMY',
+      log: 'Wormak Heir to the Bioliths получает {amount} ману за призыв врага.',
+    },
+    desc: "If the target is an enemy Biolith, Wormak's Attack is equal to 2 plus the number of non-Biolith creatures on the board.\nGain 1 mana each time an enemy is summoned."
+  },
+  BIOLITH_TINO_SON_OF_SCION: {
+    id: 'BIOLITH_TINO_SON_OF_SCION', name: 'Tino, Son of Scion', type: 'UNIT', cost: 4, activation: 3,
+    element: 'BIOLITH', atk: 3, hp: 4,
+    attackType: 'MAGIC',
+    attacks: [],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    magicTargetsSameElement: true,
+    dynamicAtkAlliedElementOnField: {
+      element: 'BIOLITH',
+      baseValue: 1,
+      amountPer: 1,
+      requireFieldElement: 'BIOLITH',
+      includeSelf: false,
+    },
+    manaOnSummon: {
+      trigger: 'ALLY',
+      excludeSelfSummon: true,
+      log: 'Tino, Son of Scion приносит {amount} ману.',
+    },
+    desc: "Tino's Magic Attack targets all enemies of the same element as the target.\nWhile Tino is on a Biolith field, his Attack is equal to 1 plus the number of other allied Biolith creatures.\nGain 1 mana each time you summon a creature."
+  },
 
   EARTH_NOVOGUS_GRAVEKEEPER: {
     id: 'EARTH_NOVOGUS_GRAVEKEEPER', name: 'Novogus Gravekeeper', type: 'UNIT', cost: 9, activation: 5,
@@ -461,6 +614,38 @@ export const CARDS = {
     targetAllEnemies: true,
     diesOffElement: 'BIOLITH',
     desc: 'Incarnation. Phaseus’s Magic Attack targets all enemies. Destroy Phaseus if he is on a non-Biolith field.'
+  },
+
+  BIOLITH_BEHEMOTH_GROUNDBREAKER: {
+    id: 'BIOLITH_BEHEMOTH_GROUNDBREAKER', name: 'Behemoth Groundbreaker', type: 'UNIT', cost: 4, activation: 3,
+    element: 'BIOLITH', atk: 1, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    fieldquakeOnSummon: { pattern: 'ADJACENT' },
+    desc: 'When Behemoth Groundbreaker is summoned, fieldquake all adjacent fields.'
+  },
+  EARTH_UNDEAD_KING_NOVOGUS: {
+    id: 'EARTH_UNDEAD_KING_NOVOGUS', name: 'Undead King Novogus', type: 'UNIT', cost: 6, activation: 3,
+    element: 'EARTH', atk: 2, hp: 6,
+    attackType: 'MAGIC',
+    attacks: [],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    fieldquakeOnDamage: { requireAttackerNotElement: 'EARTH', preventRetaliation: true },
+    desc: "Magic Attack. If Undead King Novogus is on a non-Earth field and damages a creature, fieldquake the target creature's field. The target creature cannot counterattack."
+  },
+  BIOLITH_OUROBOROS_DRAGON: {
+    id: 'BIOLITH_OUROBOROS_DRAGON', name: 'Ouroboros Dragon', type: 'UNIT', cost: 7, activation: 4,
+    element: 'BIOLITH', atk: 7, hp: 10,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1, 2], mode: 'ANY', ignoreAlliedBlocking: true } ],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    dynamicAtk: 'BIOLITH_CREATURES',
+    fieldquakeLock: { type: 'ALL', onlyWhileOnElement: 'BIOLITH' },
+    desc: "Ouroboros Dragon's Attack is equal to 7 plus the number of other Biolith creatures on the board. While Ouroboros Dragon is on a Biolith field, no field can be fieldquaked or exchanged."
   },
 
   // Ninja cycle
@@ -632,8 +817,8 @@ export const CARDS = {
     diesOnElement: 'EARTH',
     desc: 'Fortress: cannot attack unless counterattacking. When an enemy creature is summoned adjacent to it, all other allied creatures gain 1 HP. Destroy if on an Earth field.'
   },
-  WOOD_JUNO_TREE_HAUNT: {
-    id: 'WOOD_JUNO_TREE_HAUNT', name: 'Juno Tree Haunt', type: 'UNIT', cost: 3, activation: 1,
+  FOREST_JUNO_TREE_HAUNT: {
+    id: 'FOREST_JUNO_TREE_HAUNT', name: 'Juno Tree Haunt', type: 'UNIT', cost: 3, activation: 1,
     element: 'FOREST', atk: 2, hp: 1,
     attackType: 'STANDARD', chooseDir: true,
     attacks: [
@@ -642,7 +827,7 @@ export const CARDS = {
     blindspots: ['S'],
     perfectDodge: true,
     diesOffNonElement: 'FOREST',
-    desc: 'Perfect Dodge. Destroy if on a non‑Wood field.'
+    desc: 'Perfect Dodge. Destroy if on a non-Forest field.'
   },
   FOREST_EDIN_THE_PERSECUTED: {
     id: 'FOREST_EDIN_THE_PERSECUTED', name: 'Edin the Persecuted', type: 'UNIT', cost: 3, activation: 2,
@@ -672,6 +857,20 @@ export const CARDS = {
     blindspots: ['S'], ignoreAlliedBlocking: true, pierce: true,
     deathDiscardOnNonElement: { element: 'FOREST', count: { type: 'FIELD_COUNT', element: 'FOREST' } },
     desc: 'If Elven Rider is destroyed on a non-Wood field, your opponent must discard cards equal to the number of Wood fields.'
+  },
+  FOREST_INQUISITOR_KOOG: {
+    id: 'FOREST_INQUISITOR_KOOG', name: 'Inquisitor Koog', type: 'UNIT', cost: 3, activation: 2,
+    element: 'FOREST', atk: 2, hp: 4,
+    attackType: 'STANDARD', chooseDir: true,
+    attacks: [
+      { dir: 'N', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'E', ranges: [1], ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], ignoreAlliedBlocking: true }
+    ],
+    blindspots: ['S'], ignoreAlliedBlocking: true,
+    plusAtkVsElement: { element: 'FOREST', amount: 1 },
+    gainManaOnDeath: 'ENEMIES',
+    desc: 'Inquisitor Koog adds 1 to his attack if the target creature is a Wood creature. If Inquisitor Koog is destroyed, you gain additional mana equal to the number of enemies.'
   },
   FOREST_JUNO_FOREST_DRAGON: {
     id: 'FOREST_JUNO_FOREST_DRAGON', name: 'Juno Forest Dragon', type: 'UNIT', cost: 7, activation: 4,
@@ -904,7 +1103,11 @@ export const CARDS = {
   },
 
   // Spells (subset)
-  RAISE_STONE: { id:'RAISE_STONE', name:'Raise Stone', type:'SPELL', cost:2, element:'EARTH', text:'+2 HP to a friendly unit.' },
+  SPELL_HEALING_SHOWER: {
+    id: 'SPELL_HEALING_SHOWER', name: 'Healing Shower', type: 'SPELL', element: 'EARTH',
+    spellType: 'CONJURATION', cost: 2,
+    text: 'All allied creatures of a chosen element gain 3 HP. Place this card on an allied creature belonging to the desired element.'
+  },
   SPELL_FISSURES_OF_GOGHLIE: { id: 'SPELL_FISSURES_OF_GOGHLIE', name: 'Fissures of Goghlie', type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 2, text: 'Fieldquake any one field.' },
   SPELL_PARMTETIC_HOLY_FEAST: { id: 'SPELL_PARMTETIC_HOLY_FEAST', name: 'Parmetic Holy Feast', type: 'SPELL', element: 'NEUTRAL', spellType: 'RITUAL', cost: 0, ritualCost: 'discard 1 creature', text: 'Discard a creature from hand and gain 2 mana.' },
   SPELL_GOGHLIE_ALTAR: { id: 'SPELL_GOGHLIE_ALTAR', name: 'Goghlie Altar', type: 'SPELL', element: 'NEUTRAL', spellType: 'RITUAL', cost: 0, ritualCost: 'none', text: 'Both players gain mana equal to the number of enemy creatures on the board.' },

@@ -150,6 +150,57 @@ function countElementCreatures(state, element, opts = {}) {
   return count;
 }
 
+function countAlliedElementCreatures(state, owner, element, opts = {}) {
+  if (!state?.board || !element) return 0;
+  const exclude = (!opts.includeSelf && opts.exclude)
+    ? { r: opts.exclude.r, c: opts.exclude.c }
+    : null;
+  let total = 0;
+  for (let r = 0; r < BOARD_SIZE; r += 1) {
+    for (let c = 0; c < BOARD_SIZE; c += 1) {
+      if (exclude && r === exclude.r && c === exclude.c) continue;
+      const cell = state.board?.[r]?.[c];
+      const unit = cell?.unit;
+      if (!unit) continue;
+      if (owner != null && unit.owner !== owner) continue;
+      const tpl = CARDS[unit.tplId];
+      if (!tpl) continue;
+      const tplElement = normalizeElementName(tpl.element);
+      if (tplElement && tplElement === element) {
+        total += 1;
+      }
+    }
+  }
+  return total;
+}
+
+function normalizeAlliedElementFieldConfig(raw) {
+  if (!raw) return null;
+  if (raw === true) return null;
+  if (typeof raw !== 'object') return null;
+  const element = normalizeElementName(raw.element || raw.elementType || raw.elementName);
+  if (!element) return null;
+  const requireField = normalizeElementName(raw.requireFieldElement || raw.requireField || raw.fieldElement || raw.field);
+  const baseValue = Number.isFinite(raw.baseValue)
+    ? Math.floor(raw.baseValue)
+    : Number.isFinite(raw.base)
+      ? Math.floor(raw.base)
+      : 0;
+  const amountPer = Number.isFinite(raw.amountPer)
+    ? Number(raw.amountPer)
+    : Number.isFinite(raw.per)
+      ? Number(raw.per)
+      : 1;
+  const includeSelf = raw.includeSelf === true;
+  return {
+    element,
+    requireField,
+    baseValue,
+    amountPer,
+    includeSelf,
+  };
+}
+
 export function computeDynamicAttackBonus(state, r, c, tpl) {
   if (!tpl) return null;
   if (tpl.dynamicAtk) {
@@ -189,6 +240,29 @@ export function computeDynamicAttackBonus(state, r, c, tpl) {
       count: effective,
       matcher: allyCfg.matcher,
     };
+  }
+  const alliedElementFieldCfg = normalizeAlliedElementFieldConfig(tpl.dynamicAtkAlliedElementOnField);
+  if (alliedElementFieldCfg) {
+    const cellElement = normalizeElementName(state?.board?.[r]?.[c]?.element);
+    if (!alliedElementFieldCfg.requireField || alliedElementFieldCfg.requireField === cellElement) {
+      const owner = state?.board?.[r]?.[c]?.unit?.owner;
+      const count = countAlliedElementCreatures(state, owner, alliedElementFieldCfg.element, {
+        includeSelf: alliedElementFieldCfg.includeSelf === true,
+        exclude: { r, c },
+      });
+      const target = alliedElementFieldCfg.baseValue + alliedElementFieldCfg.amountPer * count;
+      const baseAtk = Number.isFinite(tpl.atk) ? tpl.atk : 0;
+      const amount = target - baseAtk;
+      if (amount !== 0) {
+        return {
+          amount,
+          type: 'ALLY_ELEMENT_ON_FIELD',
+          target,
+          element: alliedElementFieldCfg.element,
+          count,
+        };
+      }
+    }
   }
   return null;
 }

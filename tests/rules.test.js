@@ -10,7 +10,7 @@ import {
   refreshBoardDodgeStates,
 } from '../src/core/rules.js';
 import { computeFieldquakeLockedCells } from '../src/core/fieldLocks.js';
-import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, activationCost, hasInvisibility, getUnitProtection } from '../src/core/abilities.js';
+import { hasFirstStrike, applySummonAbilities, shouldUseMagicAttack, refreshContinuousPossessions, activationCost, hasInvisibility, getUnitProtection, attemptUnitDodge } from '../src/core/abilities.js';
 import { CARDS } from '../src/core/cards.js';
 
 function makeBoard() {
@@ -365,6 +365,51 @@ describe('особые способности', () => {
     state.board[1][1].unit = { owner:1, tplId:'NEUTRAL_WHITE_CUBIC', facing:'W', currentHP:1 };
     const res = magicAttack(state,1,0,1,1);
     expect(res.n1.board[1][1].unit).toBeNull();
+  });
+
+  it('Monk Elder of Okunada даёт соседу шанс dodge 50%', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:1 };
+    state.board[1][1].unit = { owner:0, tplId:'WATER_MONK_ELDER_OF_OKUNADA', facing:'N' };
+    state.board[1][2].unit = { owner:0, tplId:'FIRE_PARTMOLE_FLAME_LIZARD', facing:'W' };
+
+    refreshBoardDodgeStates(state);
+
+    const ally = state.board[1][2].unit;
+    expect(ally.dodgeState).toBeTruthy();
+    expect(ally.dodgeState.chance).toBeCloseTo(0.5, 5);
+
+    const fail = attemptUnitDodge(state, 1, 2, { rng: () => 0.6 });
+    expect(fail).toMatchObject({ success: false, attempted: true, consumed: false });
+    expect(ally.dodgeState?.remaining ?? 0).toBeGreaterThanOrEqual(1);
+
+    const success = attemptUnitDodge(state, 1, 2, { rng: () => 0.1 });
+    expect(success).toMatchObject({ success: true, consumed: true });
+    expect(ally.dodgeState?.remaining ?? 0).toBe(0);
+    expect(success.chance).toBeCloseTo(0.5, 5);
+  });
+
+  it('повторный соседний Okunada добавляет только новую попытку dodge', () => {
+    const state = { board: makeBoard(), players:[{mana:0},{mana:0}], turn:3 };
+    state.board[1][1].unit = { owner:0, tplId:'EARTH_NOVOGUS_CATAPULT', facing:'N', currentHP:4 };
+    state.board[1][0].unit = { owner:0, tplId:'WATER_MONK_ELDER_OF_OKUNADA', facing:'E', currentHP:1 };
+
+    refreshBoardDodgeStates(state);
+
+    const catapult = state.board[1][1].unit;
+    expect(catapult.dodgeState).toBeTruthy();
+    expect(catapult.dodgeState?.max ?? 0).toBe(1);
+    expect(catapult.dodgeState?.remaining ?? 0).toBe(1);
+
+    const dodgeResult = attemptUnitDodge(state, 1, 1, { rng: () => 0 });
+    expect(dodgeResult).toMatchObject({ success: true, consumed: true });
+    expect(catapult.dodgeState?.remaining ?? 0).toBe(0);
+
+    state.board[0][1].unit = { owner:0, tplId:'WATER_MONK_ELDER_OF_OKUNADA', facing:'S', currentHP:1 };
+    refreshBoardDodgeStates(state);
+
+    expect(catapult.dodgeState?.max ?? 0).toBe(2);
+    expect(catapult.dodgeState?.remaining ?? 0).toBe(1);
+    expect(catapult.dodgeState?.successesUsed ?? 0).toBe(1);
   });
 
   it('quickness позволяет контратаковать первым', () => {
@@ -818,6 +863,19 @@ describe('новые способности (Хильда и Диос)', () => {
     const fin = res.finish();
     const target = fin.targets.find(t => t.r === 0 && t.c === 1);
     expect(target.dmg).toBeGreaterThanOrEqual(3);
+  });
+
+  it('Wormak Heir to the Bioliths повышает атаку против биолитов', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_WORMAK_HEIR', facing: 'N', currentHP: 4 };
+    state.board[0][1].unit = { owner: 1, tplId: 'BIOLITH_BIOLITH_STINGER', facing: 'S', currentHP: 1 };
+    state.board[2][0].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'N', currentHP: 1 };
+    state.board[2][2].unit = { owner: 1, tplId: 'EARTH_VERZAR_FOOT_SOLDIER', facing: 'N', currentHP: 2 };
+
+    const res = stagedAttack(state, 1, 1, { rng: () => 0.9 }); // высокое значение исключает срабатывание dodge
+    const fin = res.finish();
+    const target = fin.targets.find(t => t.r === 0 && t.c === 1);
+    expect(target?.dmg).toBe(4);
   });
 
   it('захваченные существа возвращаются владельцу при гибели источника', () => {

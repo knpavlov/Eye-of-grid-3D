@@ -8,8 +8,11 @@ import { getCtx } from '../scene/context.js';
 import { interactionState, resetCardSelection } from '../scene/interactions.js';
 import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
+import { computeCellBuff } from '../core/fieldEffects.js';
 import { refreshPossessionsUI } from '../ui/possessions.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
+import { animateManaGainFromWorld } from '../ui/mana.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -25,19 +28,43 @@ function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
   // Большая копия заклинания на поле
   const ctx = getCtx();
   const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+  let ritualOrigin = null;
   try {
     const big = window.__cards?.createCard3D(tpl, false);
-    const p = tileMesh
-      ? tileMesh.position.clone().add(new THREE.Vector3(0, 1.0, 0))
-      : new THREE.Vector3(0, 1.0, 0);
-    big.position.copy(p);
-    (ctx.boardGroup || ctx.scene).add(big);
-    interactionState.pendingRitualBoardMesh = big;
-    interactionState.spellDragHandled = true;
-    try { cardMesh.visible = false; } catch {}
-    interactionState.pendingRitualSpellHandIndex = idx;
-    interactionState.pendingRitualSpellCard = tpl;
+    if (big) {
+      let basePos = null;
+      if (tileMesh && typeof tileMesh.position?.clone === 'function') {
+        basePos = tileMesh.position.clone();
+      } else if (tileMesh && tileMesh.position && THREE && THREE.Vector3) {
+        basePos = new THREE.Vector3(tileMesh.position.x || 0, tileMesh.position.y || 0, tileMesh.position.z || 0);
+      } else if (THREE && THREE.Vector3) {
+        basePos = new THREE.Vector3(0, 0, 0);
+      }
+      if (basePos && typeof basePos.add === 'function' && THREE && THREE.Vector3) {
+        basePos.add(new THREE.Vector3(0, 1.0, 0));
+        ritualOrigin = basePos.clone();
+        if (typeof big.position?.copy === 'function') big.position.copy(basePos);
+      } else {
+        ritualOrigin = ritualOrigin || { x: 0, y: 1.0, z: 0 };
+        if (basePos && typeof basePos === 'object') {
+          ritualOrigin = {
+            x: Number(basePos.x) || 0,
+            y: (Number(basePos.y) || 0) + 1.0,
+            z: Number(basePos.z) || 0,
+          };
+        }
+        try { big.position.set?.(ritualOrigin.x || 0, ritualOrigin.y || 0, ritualOrigin.z || 0); } catch {}
+      }
+      (ctx.boardGroup || ctx.scene).add(big);
+      interactionState.pendingRitualBoardMesh = big;
+      interactionState.spellDragHandled = true;
+      try { cardMesh.visible = false; } catch {}
+      interactionState.pendingRitualSpellHandIndex = idx;
+      interactionState.pendingRitualSpellCard = tpl;
+    }
   } catch {}
+  interactionState.pendingRitualOrigin = ritualOrigin;
+  try { if (typeof window !== 'undefined') window.pendingRitualOrigin = ritualOrigin; } catch {}
 
   // Кнопка отмены возвращает карту в руку
   window.__ui.panels.showPrompt('Select a unit for this action', () => {
@@ -50,6 +77,8 @@ function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
     interactionState.pendingRitualSpellHandIndex = null;
     interactionState.pendingRitualSpellCard = null;
     interactionState.pendingDiscardSelection = null;
+    interactionState.pendingRitualOrigin = null;
+    try { if (typeof window !== 'undefined') window.pendingRitualOrigin = null; } catch {}
     updateHand();
     updateUI();
   });
@@ -68,9 +97,26 @@ function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
       }
       const before = pl.mana;
       pl.mana = capMana(pl.mana + 2);
+      try {
+        const baseOrigin = interactionState.pendingRitualOrigin || ritualOrigin;
+        let originVec = null;
+        if (baseOrigin && typeof baseOrigin.clone === 'function') {
+          originVec = baseOrigin.clone();
+        } else if (baseOrigin && typeof baseOrigin === 'object' && THREE && THREE.Vector3) {
+          originVec = new THREE.Vector3(baseOrigin.x || 0, baseOrigin.y || 0, baseOrigin.z || 0);
+        } else if (THREE && THREE.Vector3) {
+          originVec = new THREE.Vector3(0, 1.0, 0);
+        }
+        if (originVec) {
+          animateManaGainFromWorld(originVec, gameState.active, { amount: 2, visualOnly: true });
+        }
+      } catch {}
       try { window.__ui?.mana?.animateTurnManaGain(gameState.active, before, pl.mana, 800); } catch {}
       if (spellIdx >= 0) pl.hand.splice(spellIdx, 1);
-      pl.discard.push(tpl);
+      try {
+        pl.graveyard = Array.isArray(pl.graveyard) ? pl.graveyard : [];
+        pl.graveyard.push(tpl);
+      } catch {}
       try {
         if (interactionState.pendingRitualBoardMesh) {
           window.__fx.dissolveAndAsh(interactionState.pendingRitualBoardMesh, new THREE.Vector3(0, 0.6, 0), 0.9);
@@ -84,6 +130,8 @@ function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
       interactionState.pendingRitualSpellHandIndex = null;
       interactionState.pendingRitualSpellCard = null;
       interactionState.pendingDiscardSelection = null;
+      interactionState.pendingRitualOrigin = null;
+      try { if (typeof window !== 'undefined') window.pendingRitualOrigin = null; } catch {}
       resetCardSelection();
       updateHand();
       updateUI();
@@ -104,6 +152,42 @@ function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
     },
   };
   addLog(`${tpl.name}: выберите существо в руке для ритуального сброса.`);
+}
+
+// Возвращает список целей Healing Shower с рассчитанным итоговым здоровьем
+export function collectHealingShowerTargets(state, ownerIdx, elementToken) {
+  const normalized = typeof elementToken === 'string' ? elementToken.toUpperCase() : null;
+  if (!normalized || !state || !Array.isArray(state.board)) return [];
+  const result = [];
+  for (let row = 0; row < state.board.length; row++) {
+    const rowCells = state.board[row];
+    if (!Array.isArray(rowCells)) continue;
+    for (let col = 0; col < rowCells.length; col++) {
+      const cell = rowCells[col];
+      const unit = cell?.unit;
+      if (!unit || unit.owner !== ownerIdx) continue;
+      const tplUnit = CARDS?.[unit.tplId];
+      if (!tplUnit) continue;
+      const unitElement = String(tplUnit.element || '').toUpperCase();
+      if (unitElement !== normalized) continue;
+      const currentHpRaw = Number.isFinite(unit.currentHP)
+        ? unit.currentHP
+        : Number(unit.currentHP) || (tplUnit.hp || 0);
+      const bonusHp = Number.isFinite(unit.bonusHP)
+        ? unit.bonusHP
+        : Number(unit.bonusHP) || 0;
+      const baseHpTpl = Number.isFinite(tplUnit.hp) ? tplUnit.hp : currentHpRaw;
+      const buff = computeCellBuff(cell?.element ?? null, tplUnit.element);
+      const buffHp = Number.isFinite(buff?.hp) ? buff.hp : Number(buff?.hp) || 0;
+      const maxHpCandidate = baseHpTpl + buffHp + bonusHp;
+      const maxHp = Math.max(currentHpRaw, maxHpCandidate);
+      const after = Math.min(maxHp, currentHpRaw + 3);
+      const healed = Math.max(0, after - currentHpRaw);
+      if (healed <= 0) continue;
+      result.push({ row, col, healed, before: currentHpRaw, after, tpl: tplUnit });
+    }
+  }
+  return result;
 }
 
 export const handlers = {
@@ -304,7 +388,7 @@ export const handlers = {
     },
   },
 
-  RAISE_STONE: {
+  SPELL_HEALING_SHOWER: {
     requiresUnitTarget: true,
     onUnit({ tpl, pl, idx, r, c, u }) {
       if (!u) {
@@ -315,15 +399,41 @@ export const handlers = {
         showNotification('Only friendly unit', 'error');
         return;
       }
-      const before = u.currentHP;
-      u.currentHP += 2;
-      addLog(
-        `${tpl.name}: ${CARDS[u.tplId].name} получает +2 HP (HP ${before}→${u.currentHP})`
-      );
-      try {
-        const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-        if (tMesh) window.__fx.spawnDamageText(tMesh, `+2`, '#22c55e');
-      } catch {}
+      const ctx = getCtx();
+      const { unitMeshes, THREE } = ctx;
+      const tplTarget = CARDS[u.tplId];
+      const chosenElementRaw = tplTarget?.element || null;
+      if (!chosenElementRaw) {
+        showNotification('Target must have an element', 'error');
+        return;
+      }
+      const chosenElement = String(chosenElementRaw).toUpperCase();
+      const healingPlan = collectHealingShowerTargets(gameState, gameState.active, chosenElement);
+      for (const info of healingPlan) {
+        const unitCell = gameState.board?.[info.row]?.[info.col];
+        const unitRef = unitCell?.unit;
+        if (!unitRef) continue;
+        unitRef.currentHP = info.after;
+        try {
+          const mesh = unitMeshes?.find(m => m.userData.row === info.row && m.userData.col === info.col);
+          if (mesh) {
+            window.__fx.spawnDamageText(mesh, `+${info.healed}`, '#22c55e');
+            if (THREE && THREE.Vector3) {
+              const pulse = window.__fx?.spawnHealingPulse?.(mesh.position.clone().add(new THREE.Vector3(0, 0.6, 0)));
+              if (pulse?.disposeLater) pulse.disposeLater(0.9);
+            }
+          }
+        } catch {}
+      }
+      if (!healingPlan.length) {
+        addLog(`${tpl.name}: союзники стихии ${chosenElement} уже на максимуме HP.`);
+      } else {
+        for (const info of healingPlan) {
+          addLog(
+            `${tpl.name}: ${info.tpl.name} восстанавливает ${info.healed} HP (HP ${info.before}→${info.after}).`
+          );
+        }
+      }
       spendAndDiscardSpell(pl, idx);
       resetCardSelection();
       updateHand();
@@ -361,20 +471,14 @@ export const handlers = {
       const nextEl = oppMap[prevEl] || prevEl;
       cell.element = nextEl;
       refreshPossessionsUI(gameState);
-      try {
-        const tile = getCtx().tileMeshes[r][c];
-        const mat = getTileMaterial(nextEl);
-        window.__fx.dissolveTileCrossfade(
-          tile,
-          getTileMaterial(prevEl),
-          mat,
-          0.9
-        );
-        try {
-          if (NET_ON() && MY_SEAT === gameState.active && window.socket)
-            window.socket.emit('tileCrossfade', { r, c, prev: prevEl, next: nextEl });
-        } catch {}
-      } catch {}
+      const broadcastFx = (typeof NET_ON === 'function' ? NET_ON() : false)
+        && typeof MY_SEAT === 'number'
+        && typeof gameState?.active === 'number'
+        && MY_SEAT === gameState.active;
+      playFieldquakeFx(
+        { r, c, prevElement: prevEl, nextElement: nextEl },
+        { broadcast: broadcastFx },
+      );
       const u = gameState.board[r][c].unit;
       if (u) {
         const tplUnit = CARDS[u.tplId];

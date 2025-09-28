@@ -32,6 +32,7 @@ import * as HandCount from './ui/handCount.js';
 import { updateUI } from './ui/update.js';
 import * as UIActions from './ui/actions.js';
 import * as SceneEffects from './scene/effects.js';
+import * as ManaFx from './scene/manaFx.js';
 import * as UISpellUtils from './ui/spellUtils.js';
 import * as Spells from './spells/handlers.js';
 import './ui/statusChip.js';
@@ -50,6 +51,7 @@ import { initDebugControls } from './ui/debugControls.js';
 import { initDiscardManager, syncWithState as syncDiscardManager } from './ui/discardManager.js';
 import { initAuthScreen } from './ui/authScreen.js';
 import { initSessionStore, onSessionChange, getStateSnapshot } from './auth/sessionStore.js';
+import { playFieldquakeFx, playFieldquakeFxBatch } from './scene/fieldquakeFx.js';
 
 // Expose to window to keep compatibility while refactoring incrementally
 try {
@@ -204,6 +206,7 @@ try {
     worldToScreen: sceneWorldToScreen,
     animate: sceneAnimate,
     getCtx: getSceneCtx,
+    manaFx: ManaFx,
   };
   window.__board = {
     createBoard: Board.createBoard,
@@ -246,6 +249,8 @@ try {
   window.__ui.mainMenu = MainMenu;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
+  window.playFieldquakeFx = playFieldquakeFx;
+  window.playFieldquakeFxBatch = playFieldquakeFxBatch;
   window.spendAndDiscardSpell = UISpellUtils.spendAndDiscardSpell;
   window.burnSpellCard = UISpellUtils.burnSpellCard;
   window.__spells = Spells;
