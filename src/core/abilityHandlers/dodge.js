@@ -9,6 +9,24 @@ function clampChance(value) {
   return num;
 }
 
+function normalizeChanceValue(value, defaultChance = 0.5) {
+  if (value == null) return defaultChance;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return defaultChance;
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) return defaultChance;
+    if (parsed < 0) return defaultChance;
+    if (parsed > 1) return 1;
+    return parsed;
+  }
+  const num = Number(value);
+  if (!Number.isFinite(num)) return defaultChance;
+  if (num < 0) return defaultChance;
+  if (num > 1) return 1;
+  return num;
+}
+
 function normalizeAttempts(value) {
   if (value == null) return null;
   const num = Number(value);
@@ -52,7 +70,7 @@ export function getDodgeConfig(tpl) {
     if (source.keyword) keyword = source.keyword;
   }
 
-  const normalizedChance = clampChance(chance);
+  const normalizedChance = normalizeChanceValue(chance, 0.5);
   const normalizedAttempts = normalizeAttempts(attempts);
   const limited = normalizedAttempts != null;
   const normalizedKeyword = keyword
@@ -76,22 +94,39 @@ export function ensureDodgeState(unit, tpl, configOverride = null) {
   }
 
   const limited = cfg.successes != null;
-  const max = limited ? cfg.successes : null;
+  const chance = normalizeChanceValue(cfg.chance, 0.5);
+  const max = limited ? Math.max(0, Math.floor(cfg.successes ?? 0)) : null;
   const existing = unit.dodgeState;
-  if (existing && existing.version === 1 && existing.keyword === cfg.keyword &&
-      existing.limited === limited && existing.max === max && existing.chance === cfg.chance) {
+  const sameConfig = existing && existing.version === 1 && existing.keyword === cfg.keyword &&
+    existing.limited === limited && existing.max === max && existing.chance === chance;
+  if (sameConfig) {
     return existing;
   }
+
+  let usedRaw = Math.max(0, Math.floor(existing?.successesUsed ?? 0));
+  if (existing?.limited && existing?.max != null && Number.isFinite(existing.max) &&
+      existing?.remaining != null && Number.isFinite(existing.remaining)) {
+    const inferred = Math.max(0, Math.floor(existing.max) - Math.max(0, Math.floor(existing.remaining)));
+    if (inferred > usedRaw) {
+      usedRaw = inferred;
+    }
+  }
+  const used = limited ? Math.min(usedRaw, max ?? 0) : usedRaw;
+  const lastSuccessTurn = existing?.lastSuccessTurn ?? null;
+  const remaining = limited ? Math.max(0, (max ?? 0) - used) : null;
 
   const state = {
     version: 1,
     keyword: cfg.keyword,
-    chance: cfg.chance,
+    chance,
     limited,
     max,
-    remaining: limited ? max : null,
-    successesUsed: 0,
+    remaining,
+    successesUsed: used,
   };
+  if (lastSuccessTurn != null) {
+    state.lastSuccessTurn = lastSuccessTurn;
+  }
   unit.dodgeState = state;
   return state;
 }
@@ -107,14 +142,40 @@ export function attemptDodge(state, r, c, opts = {}) {
     return { success: false, reason: 'NO_UNIT' };
   }
   const tpl = unit.tplId ? CARDS[unit.tplId] : null;
-  const cfg = getDodgeConfig(tpl);
-  if (!cfg) {
-    return { success: false, reason: 'NO_DODGE' };
-  }
+  let stateObj = unit.dodgeState;
 
-  const stateObj = ensureDodgeState(unit, tpl, cfg);
   if (!stateObj) {
-    return { success: false, reason: 'NO_STATE' };
+    const cfg = getDodgeConfig(tpl);
+    if (!cfg) {
+      return { success: false, reason: 'NO_DODGE' };
+    }
+
+    stateObj = ensureDodgeState(unit, tpl, cfg);
+    if (!stateObj) {
+      return { success: false, reason: 'NO_STATE' };
+    }
+  } else {
+    // нормализуем ранее сохранённое состояние, чтобы гарантировать шанс 50%
+    stateObj.chance = normalizeChanceValue(stateObj.chance, 0.5);
+    if (typeof stateObj.limited !== 'boolean') {
+      const hasLimit = stateObj.max != null || stateObj.remaining != null || stateObj.successes != null;
+      stateObj.limited = !!hasLimit;
+    }
+    if (stateObj.limited) {
+      if (stateObj.remaining != null && Number.isFinite(stateObj.remaining)) {
+        stateObj.remaining = Math.max(0, Math.floor(stateObj.remaining));
+      }
+      if (stateObj.max != null && Number.isFinite(stateObj.max)) {
+        stateObj.max = Math.max(0, Math.floor(stateObj.max));
+      }
+    } else {
+      stateObj.remaining = null;
+      stateObj.max = null;
+    }
+    if (!stateObj.keyword) {
+      stateObj.keyword = stateObj.limited ? 'DODGE_ATTEMPT' : 'DODGE';
+    }
+    stateObj.version = 1;
   }
 
   const hadAttempts = !stateObj.limited || (stateObj.remaining ?? 0) > 0;
