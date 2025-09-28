@@ -575,8 +575,27 @@ export async function endTurn() {
       : ((value) => Math.min(10, value));
     let manaAfter = capFn(before + 2);
     player.mana = manaAfter;
+    const playersBeforeForFx = Array.isArray(gameState.players)
+      ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))
+      : [];
     const manaEffects = applyTurnStartManaEffects(gameState, gameState.active) || { total: 0, entries: [] };
     manaAfter = player.mana;
+    let turnManaPlan = null;
+    if (Array.isArray(manaEffects.entries) && manaEffects.entries.length) {
+      const ctxScene = (typeof getCtx === 'function') ? getCtx() : {};
+      const THREE = ctxScene?.THREE || w.THREE;
+      const entriesForFx = manaEffects.entries.map((entry) => ({
+        ...entry,
+        owner: Number.isFinite(entry?.owner) ? entry.owner : gameState.active,
+        source: entry?.source || { r: entry?.r, c: entry?.c },
+      }));
+      turnManaPlan = buildManaGainPlan({
+        playersBefore: playersBeforeForFx,
+        manaGainEntries: entriesForFx,
+        tileMeshes: ctxScene?.tileMeshes,
+        THREE,
+      });
+    }
     let drawnTpl = null;
     try {
       if (typeof w.drawOneNoAdd === 'function' && !player._drewThisTurn) {
@@ -661,6 +680,8 @@ export async function endTurn() {
     } catch (e) {
       console.error('Mana animation failed:', e);
     }
+    // Запускаем спецэффект дополнительной маны от пассивных способностей на поле
+    try { turnManaPlan?.schedule?.(); } catch {}
     // После получения маны сразу запускаем добор карты без лишней паузы
     w.updateUI?.();
     const runDrawAnimation = async () => {
@@ -687,6 +708,15 @@ export async function endTurn() {
       for (const entry of manaEffects.entries) {
         const tpl = cards[entry.tplId];
         const sourceName = tpl?.name || 'Существо';
+        if (typeof entry.customLog === 'string' && entry.customLog.trim()) {
+          w.addLog?.(entry.customLog);
+          continue;
+        }
+        if (entry.reason === 'ALLY_PRESENCE') {
+          const allies = entry.allies != null ? entry.allies : '?';
+          w.addLog?.(`${sourceName}: дополнительная мана +${entry.amount} за союзных существ (всего: ${allies}).`);
+          continue;
+        }
         const field = entry.fieldElement ? `поле ${entry.fieldElement}` : 'нейтральное поле';
         w.addLog?.(`${sourceName}: дополнительная мана +${entry.amount} (${field}).`);
       }
