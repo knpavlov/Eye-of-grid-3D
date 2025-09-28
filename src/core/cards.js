@@ -582,6 +582,24 @@ export const CARDS = {
     },
     desc: "Tino's Magic Attack targets all enemies of the same element as the target.\nWhile Tino is on a Biolith field, his Attack is equal to 1 plus the number of other allied Biolith creatures.\nGain 1 mana each time you summon a creature."
   },
+  BIOLITH_GUARDIAN_WATCHTOWER: {
+    id: 'BIOLITH_GUARDIAN_WATCHTOWER', name: 'Guardian Watchtower', type: 'UNIT', cost: 6, activation: 3,
+    element: 'BIOLITH', atk: 1, hp: 10,
+    attackType: 'MAGIC',
+    attacks: [],
+    blindspots: [],
+    ignoreAlliedBlocking: true,
+    magicTargetsSameElement: true,
+    rotateTargetOnDamage: { mode: 'OPPOSITE' },
+    resolutionManaOnAllyPresence: {
+      requireTplIds: ['BIOLITH_SCION_BIOLITH_LORD'],
+      amountPer: 1,
+      includeSelf: false,
+      phase: 'TURN_START',
+      log: 'Guardian Watchtower приносит {amount} маны (союзных существ: {allies}).',
+    },
+    desc: "Guardian Watchtower's Magic Attack targets all enemies of the same element as the target.\nWhen Guardian Watchtower damages (but does not destroy) a creature, that creature is rotated 180° and cannot counterattack.\nWhile an allied Scion is on the board, gain mana equal to the number of allied creatures on the board during your Resolution Phase."
+  },
 
   EARTH_NOVOGUS_GRAVEKEEPER: {
     id: 'EARTH_NOVOGUS_GRAVEKEEPER', name: 'Novogus Gravekeeper', type: 'UNIT', cost: 9, activation: 5,

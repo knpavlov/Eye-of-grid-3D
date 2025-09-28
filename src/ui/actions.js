@@ -568,6 +568,14 @@ export async function endTurn() {
       }
     } catch {}
 
+    const playersBeforeTurnMana = Array.isArray(gameState.players)
+      ? gameState.players.map((pl) => {
+          const manaRaw = Number(pl?.mana ?? 0);
+          const safeMana = Number.isFinite(manaRaw) ? manaRaw : 0;
+          return { mana: Math.max(0, safeMana) };
+        })
+      : [];
+
     const player = gameState.players[gameState.active];
     const before = player.mana;
     const capFn = (typeof w.capMana === 'function')
@@ -575,8 +583,35 @@ export async function endTurn() {
       : ((value) => Math.min(10, value));
     let manaAfter = capFn(before + 2);
     player.mana = manaAfter;
+    const playersBeforeTurnAbilities = Array.isArray(gameState.players)
+      ? gameState.players.map((pl) => {
+          const manaRaw = Number(pl?.mana ?? 0);
+          const safeMana = Number.isFinite(manaRaw) ? manaRaw : 0;
+          return { mana: Math.max(0, safeMana) };
+        })
+      : playersBeforeTurnMana;
     const manaEffects = applyTurnStartManaEffects(gameState, gameState.active) || { total: 0, entries: [] };
     manaAfter = player.mana;
+    const turnManaEntries = Array.isArray(manaEffects.entries)
+      ? manaEffects.entries.filter((entry) => Number.isFinite(entry?.amount) && entry.amount > 0)
+      : [];
+    if (turnManaEntries.length) {
+      try {
+        const ctxScene = (typeof getCtx === 'function') ? getCtx() : {};
+        const THREE = ctxScene.THREE || w.THREE;
+        const turnManaPlan = buildManaGainPlan({
+          playersBefore: playersBeforeTurnAbilities.length ? playersBeforeTurnAbilities : playersBeforeTurnMana,
+          manaGainEntries: turnManaEntries,
+          tileMeshes: ctxScene.tileMeshes,
+          THREE,
+          baseDelayMs: 520,
+          abilityOffsetMs: 180,
+        });
+        turnManaPlan?.schedule?.();
+      } catch (err) {
+        console.error('[endTurn] Не удалось запустить спецэффект прироста маны:', err);
+      }
+    }
     let drawnTpl = null;
     try {
       if (typeof w.drawOneNoAdd === 'function' && !player._drewThisTurn) {
@@ -687,6 +722,15 @@ export async function endTurn() {
       for (const entry of manaEffects.entries) {
         const tpl = cards[entry.tplId];
         const sourceName = tpl?.name || 'Существо';
+        if (typeof entry.customLog === 'string' && entry.customLog.trim()) {
+          w.addLog?.(entry.customLog);
+          continue;
+        }
+        if (entry.reason === 'ALLY_PRESENCE') {
+          const allies = entry.allies != null ? entry.allies : '?';
+          w.addLog?.(`${sourceName}: дополнительная мана +${entry.amount} за союзных существ (всего: ${allies}).`);
+          continue;
+        }
         const field = entry.fieldElement ? `поле ${entry.fieldElement}` : 'нейтральное поле';
         w.addLog?.(`${sourceName}: дополнительная мана +${entry.amount} (${field}).`);
       }
