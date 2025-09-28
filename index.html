@@ -385,7 +385,40 @@
           if (found) oppDeck = found.cards;
         }
       } catch {}
-      gameState = startGame(myDeck, oppDeck);
+      const fallbackSeatName = (seat) => `Player ${seat + 1}`;
+      const matchPlayersSnapshot = Array.isArray(window.__matchPlayers) ? window.__matchPlayers : [];
+      let playerProfiles;
+      if (matchPlayersSnapshot.length >= 2) {
+        playerProfiles = [0, 1].map(index => {
+          const entry = matchPlayersSnapshot[index] || {};
+          const displayName = typeof entry.displayName === 'string' && entry.displayName.trim()
+            ? entry.displayName.trim()
+            : null;
+          const nickname = typeof entry.nickname === 'string' && entry.nickname.trim()
+            ? entry.nickname.trim()
+            : null;
+          const explicitName = typeof entry.name === 'string' && entry.name.trim()
+            ? entry.name.trim()
+            : null;
+          const resolvedName = displayName || nickname || explicitName || fallbackSeatName(index);
+          const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : null;
+          return { id, name: resolvedName, nickname };
+        });
+      } else {
+        const activeUser = (window.__auth && typeof window.__auth.getActiveUser === 'function')
+          ? window.__auth.getActiveUser()
+          : null;
+        const rawNickname = activeUser?.nickname && activeUser.nickname.trim() ? activeUser.nickname.trim() : null;
+        const rawEmail = activeUser?.email && activeUser.email.trim() ? activeUser.email.trim() : null;
+        const myName = rawNickname || rawEmail || fallbackSeatName(0);
+        playerProfiles = [
+          { id: activeUser?.id || null, name: myName, nickname: rawNickname },
+          { id: null, name: fallbackSeatName(1), nickname: null },
+        ];
+      }
+      try { window.__net?.setMatchPlayers?.(playerProfiles); } catch {}
+      try { window.__matchPlayers = playerProfiles.map(p => ({ ...p })); } catch {}
+      gameState = startGame(myDeck, oppDeck, { players: playerProfiles });
       try { window.applyGameState(gameState); } catch {}
       
       // Сразу строим сцену и мета-объекты, без задержки появления
@@ -422,7 +455,8 @@
         }
       } catch {}
       
-      addLog('The game has begun! Player 1 goes first.');
+      const firstPlayerName = playerProfiles[0]?.name || 'Player 1';
+      addLog(`The game has begun! ${firstPlayerName} goes first.`);
       addLog('Drag units to the field, use spells by clicking.');
     }
     

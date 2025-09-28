@@ -40,6 +40,73 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
 
   // Кнопка запуска онлайна перенесена в главное меню
 
+  const FALLBACK_SEAT_NAMES = ['Player 1', 'Player 2'];
+  let matchPlayers = FALLBACK_SEAT_NAMES.map(label => ({
+    id: null,
+    nickname: null,
+    name: null,
+    displayName: label,
+  }));
+  try { window.__matchPlayers = matchPlayers.map(p => ({ ...p })); } catch {}
+
+  function sanitizePlayerEntry(entry, index) {
+    const fallback = FALLBACK_SEAT_NAMES[index] || `Player ${index + 1}`;
+    if (!entry || typeof entry !== 'object') {
+      return { id: null, nickname: null, name: null, displayName: fallback };
+    }
+    const nickname = typeof entry.nickname === 'string' && entry.nickname.trim()
+      ? entry.nickname.trim()
+      : null;
+    const explicitName = typeof entry.name === 'string' && entry.name.trim()
+      ? entry.name.trim()
+      : null;
+    const displayNameCandidate = typeof entry.displayName === 'string' && entry.displayName.trim()
+      ? entry.displayName.trim()
+      : null;
+    const displayName = displayNameCandidate || nickname || explicitName || fallback;
+    const userId = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : null;
+    return { id: userId, nickname, name: explicitName, displayName };
+  }
+
+  function setMatchPlayers(rawPlayers = []) {
+    const source = Array.isArray(rawPlayers) ? rawPlayers : [];
+    matchPlayers = [0, 1].map(index => sanitizePlayerEntry(source[index], index));
+    try { window.__matchPlayers = matchPlayers.map(p => ({ ...p })); } catch {}
+  }
+
+  function getSeatLabel(index) {
+    const seatIndex = Number(index);
+    if (!Number.isFinite(seatIndex) || seatIndex < 0) return '';
+    let stateName = '';
+    try {
+      const candidate = gameState?.players?.[seatIndex]?.name;
+      if (typeof candidate === 'string' && candidate.trim()) {
+        stateName = candidate.trim();
+      }
+    } catch {}
+    if (stateName) return stateName;
+    const entry = matchPlayers[seatIndex];
+    if (entry) {
+      if (typeof entry.displayName === 'string' && entry.displayName.trim()) return entry.displayName.trim();
+      if (typeof entry.nickname === 'string' && entry.nickname.trim()) return entry.nickname.trim();
+      if (typeof entry.name === 'string' && entry.name.trim()) return entry.name.trim();
+    }
+    return FALLBACK_SEAT_NAMES[seatIndex] || `Player ${seatIndex + 1}`;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function resetMatchPlayers() {
+    setMatchPlayers([]);
+  }
+
   // ===== 3) Queue modal + countdown =====
   let queueModal=null, startModal=null;
   function showQueueModal(){
@@ -64,11 +131,14 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
     hideStartCountdown();
     startModal = document.createElement('div');
     startModal.className='mp-modal';
+    const youLabel = escapeHtml(getSeatLabel(seat));
+    const opponentLabel = escapeHtml(getSeatLabel(seat === 0 ? 1 : 0));
     startModal.innerHTML = `<div class="mp-card">
       <div>Матч найден!</div>
-      <div class="mp-seat">You play as: <b>${seat===0?'Player 1':'Player 2'}</b></div>
+      <div class="mp-seat">Вы играете за: <b>${youLabel}</b></div>
+      <div class="mp-subtle" style="margin-top:4px">Противник: ${opponentLabel}</div>
       <div class="mp-count" id="mp-count">${secs}</div>
-      <div class="mp-subtle">Game is starting soon...</div></div>`;
+      <div class="mp-subtle">Скоро начнём…</div></div>`;
     document.body.appendChild(startModal);
     let t=secs; const el=startModal.querySelector('#mp-count');
     const timer=setInterval(()=>{ t--; if(t<=0){ clearInterval(timer); hideStartCountdown(); onCountdownFinished(seat); } else el.textContent=t; },1000);
@@ -98,6 +168,8 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
       socket.disconnect();
       socket.auth = socket.auth && typeof socket.auth === 'object' ? socket.auth : {};
       delete socket.auth.token;
+      resetMatchPlayers();
+      try { updateIndicator(); } catch {}
       return false;
     }
     socket.auth = { ...(socket.auth || {}), token };
@@ -113,6 +185,8 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
   function disconnectSocket() {
     try { socket.emit('authenticate', { token: null }); } catch {}
     try { socket.disconnect(); } catch {}
+    resetMatchPlayers();
+    try { updateIndicator(); } catch {}
   }
   onSessionChange(state => {
     if (state?.token) {
@@ -777,6 +851,10 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
     if (typeof window !== 'undefined') {
       window.__net = window.__net || {};
       window.__net.findMatch = onFindMatchClick;
+      window.__net.resetMatchPlayers = () => { resetMatchPlayers(); updateIndicator(); };
+      window.__net.getMatchPlayers = () => matchPlayers.map(p => ({ ...p }));
+      window.__net.getSeatLabel = getSeatLabel;
+      window.__net.setMatchPlayers = (playersList) => { setMatchPlayers(playersList); updateIndicator(); };
     }
   } catch {}
   socket.on('authError', (payload = {}) => {
@@ -804,8 +882,10 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
       hideQueueModal();
     }
   });
-  socket.on('matchFound', ({ matchId, seat, decks })=>{
+  socket.on('matchFound', ({ matchId, seat, decks, players })=>{
     hideQueueModal();
+    setMatchPlayers(players);
+    try { updateIndicator(); } catch {}
     try {
       const all = window.DECKS || [];
       if (Array.isArray(decks) && decks.length === 2) {
@@ -816,7 +896,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
         window.__selectedDeckObj = myDeck;
       }
     } catch {}
-    console.log('[MATCH] Match found, setting MY_SEAT to:', seat, 'matchId:', matchId, 'decks:', decks);
+    console.log('[MATCH] Match found, setting MY_SEAT to:', seat, 'matchId:', matchId, 'decks:', decks, 'players:', players);
     // Логирование для отладки
     try { (window.socket || socket).emit('debugLog', { event: 'matchFound_received', seat, matchId, decks }); } catch {}
     
@@ -946,7 +1026,12 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
     const online = socket.connected && (typeof NET_ON === 'function' ? NET_ON() : false);
     dot.classList.toggle('on', online);
     net.textContent = online ? 'online' : 'offline';
-    seat.textContent = (MY_SEAT===0)?'Player 1':(MY_SEAT===1)?'Player 2':'—';
+    let seatLabel = '—';
+    if (typeof MY_SEAT === 'number' && (MY_SEAT === 0 || MY_SEAT === 1)) {
+      const label = getSeatLabel(MY_SEAT);
+      seatLabel = `Seat ${MY_SEAT + 1}: ${label}`;
+    }
+    seat.textContent = seatLabel;
 
     if (gameState && (MY_SEAT===0 || MY_SEAT===1)){
       turn.textContent = (gameState.active===MY_SEAT) ? 'your turn' : 'opponent\'s turn';

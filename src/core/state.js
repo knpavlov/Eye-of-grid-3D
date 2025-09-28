@@ -15,7 +15,13 @@ export const A = {
 export function reducer(state, action) {
   switch (action.type) {
     case A.INIT: {
-      const s = startGame(action.deck0, action.deck1);
+      const startOptions = (action && typeof action.options === 'object' && action.options !== null)
+        ? { ...action.options }
+        : {};
+      if (!startOptions.players && Array.isArray(action.players)) {
+        startOptions.players = action.players;
+      }
+      const s = startGame(action.deck0, action.deck1, startOptions);
       s.__ver = (state?.__ver || 0) + 1;
       return s;
     }

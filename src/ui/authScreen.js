@@ -26,6 +26,7 @@ let lastNotifiedUserId = null;
 let optionsRef = {};
 let syncingDecks = false;
 let stylesInjected = false;
+let hideTimer = null;
 
 const BODY_OVERLAY_CLASS = 'auth-overlay-open';
 
@@ -80,6 +81,8 @@ function ensureRoot() {
   root = document.createElement('div');
   root.id = 'auth-overlay';
   root.className = 'auth-layer auth-hidden';
+  root.style.display = 'none';
+  root.style.pointerEvents = 'none';
   document.body.appendChild(root);
 }
 
@@ -318,6 +321,12 @@ async function syncDecksForUser(user) {
 function show() {
   if (!root) return;
   ensureStyles();
+  if (hideTimer) {
+    clearTimeout(hideTimer);
+    hideTimer = null;
+  }
+  root.style.display = 'flex';
+  root.style.pointerEvents = 'auto';
   root.classList.remove('auth-hidden');
   try { document.body.classList.add(BODY_OVERLAY_CLASS); } catch {}
   render();
@@ -325,7 +334,19 @@ function show() {
 
 function hide() {
   if (!root) return;
+  if (hideTimer) {
+    clearTimeout(hideTimer);
+    hideTimer = null;
+  }
   root.classList.add('auth-hidden');
+  root.style.pointerEvents = 'none';
+  hideTimer = setTimeout(() => {
+    try {
+      if (root && root.classList.contains('auth-hidden')) {
+        root.style.display = 'none';
+      }
+    } catch {}
+  }, 220);
   try { document.body.classList.remove(BODY_OVERLAY_CLASS); } catch {}
 }
 
