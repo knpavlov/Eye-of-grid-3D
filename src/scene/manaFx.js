@@ -22,6 +22,7 @@ export function buildManaGainPlan({
     const abilityDelayByOwner = new Map();
     const events = [];
     const bonusByDeath = new Map();
+    const directEntries = [];
 
     const makeKey = (death) => {
       if (!death) return null;
@@ -57,16 +58,59 @@ export function buildManaGainPlan({
       }
     };
 
+    const resolveSource = (entry) => {
+      try {
+        if (!entry) return null;
+        if (entry.origin && typeof entry.origin.clone === 'function') {
+          return entry.origin.clone();
+        }
+        if (entry.origin && typeof entry.origin === 'object' && 'x' in entry.origin) {
+          if (THREE && THREE.Vector3) {
+            const vec = new THREE.Vector3(
+              Number(entry.origin.x) || 0,
+              Number(entry.origin.y) || 0,
+              Number(entry.origin.z) || 0,
+            );
+            return vec;
+          }
+          return { ...entry.origin };
+        }
+        const ref = entry.source || entry;
+        const row = Number.isFinite(ref?.r) ? ref.r : Number.isFinite(entry?.r) ? entry.r : null;
+        const col = Number.isFinite(ref?.c) ? ref.c : Number.isFinite(entry?.c) ? entry.c : null;
+        if (row == null || col == null) return null;
+        return resolveOrigin({ r: row, c: col });
+      } catch {
+        return null;
+      }
+    };
+
     for (const entry of (Array.isArray(manaGainEntries) ? manaGainEntries : [])) {
       const owner = Number.isFinite(entry?.owner) ? entry.owner : null;
       if (owner == null) continue;
       const rawAmount = Number(entry?.amount);
       if (!Number.isFinite(rawAmount) || rawAmount <= 0) continue;
+      const amount = Math.max(0, Math.floor(rawAmount));
+      if (amount <= 0) continue;
       const key = makeKey(entry.death);
-      if (!key) continue;
-      const current = bonusByDeath.get(key) || { owner, amount: 0 };
-      current.amount += Math.max(0, Math.floor(rawAmount));
-      bonusByDeath.set(key, current);
+      if (key) {
+        const current = bonusByDeath.get(key) || { owner, amount: 0 };
+        current.amount += amount;
+        bonusByDeath.set(key, current);
+        continue;
+      }
+      const src = entry?.source || null;
+      const row = Number.isFinite(entry?.r) ? entry.r : Number.isFinite(src?.r) ? src.r : null;
+      const col = Number.isFinite(entry?.c) ? entry.c : Number.isFinite(src?.c) ? src.c : null;
+      directEntries.push({
+        owner,
+        amount,
+        source: src,
+        r: row,
+        c: col,
+        origin: entry?.origin,
+        startDelayMs: Number.isFinite(entry?.startDelayMs) ? entry.startDelayMs : null,
+      });
     }
 
     const getAbilityDelay = (owner, hasBonus) => {
@@ -112,6 +156,30 @@ export function buildManaGainPlan({
     };
 
     deaths.forEach(processDeath);
+
+    for (const direct of directEntries) {
+      if (!Number.isFinite(direct.owner)) continue;
+      const state = ensureOwnerState(direct.owner);
+      if (!state) continue;
+      const origin = resolveSource(direct);
+      if (!origin) continue;
+      const currentSlot = state.nextSlot;
+      const capacityLeft = Math.max(0, 10 - currentSlot);
+      if (capacityLeft <= 0) continue;
+      const actualGain = Math.max(0, Math.min(direct.amount, capacityLeft));
+      if (actualGain <= 0) continue;
+      const startDelay = direct.startDelayMs != null
+        ? direct.startDelayMs
+        : getAbilityDelay(direct.owner, true);
+      events.push({
+        owner: direct.owner,
+        origin: typeof origin.clone === 'function' ? origin.clone() : origin,
+        amount: actualGain,
+        slotStart: currentSlot,
+        startDelayMs: startDelay,
+      });
+      state.nextSlot = Math.min(10, currentSlot + actualGain);
+    }
 
     const schedule = () => {
       if (!events.length) return;

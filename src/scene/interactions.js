@@ -6,7 +6,6 @@ import { highlightTiles, clearHighlights } from './highlight.js';
 import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
 import { showTooltip, hideTooltip } from '../ui/tooltip.js';
 import {
-  applyFreedonianAura,
   applySummonAbilities,
   evaluateIncarnationSummon,
   applyIncarnationSummon,
@@ -985,7 +984,25 @@ export function placeUnitWithDirection(direction) {
   const placedTpl = placedUnit ? window.CARDS?.[placedUnit.tplId] : null;
   const placedAlive = placedUnit && ((placedUnit.currentHP ?? placedTpl?.hp ?? cardData.hp) > 0);
   if (placedAlive) {
+    const playersBeforeMana = Array.isArray(gameState.players)
+      ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))
+      : [];
     const summonEvents = applySummonAbilities(gameState, row, col);
+    const manaGainEntries = Array.isArray(summonEvents?.manaGainEvents)
+      ? summonEvents.manaGainEvents
+      : [];
+    let summonManaPlan = null;
+    if (manaGainEntries.length) {
+      const ctxLocal = getCtx();
+      const THREE = ctxLocal.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+      summonManaPlan = buildManaGainPlan({
+        playersBefore: playersBeforeMana,
+        deaths: Array.isArray(summonEvents?.deaths) ? summonEvents.deaths : [],
+        manaGainEntries,
+        tileMeshes: ctxLocal.tileMeshes,
+        THREE,
+      });
+    }
     const drawEvents = Array.isArray(summonEvents?.draws) && summonEvents.draws.length
       ? summonEvents.draws
       : (summonEvents?.draw?.count > 0 ? [summonEvents.draw] : []);
@@ -1083,10 +1100,7 @@ export function placeUnitWithDirection(direction) {
         }
       } catch {}
     }
-    const gained = applyFreedonianAura(gameState, gameState.active);
-    if (gained > 0) {
-      window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
-    }
+    try { summonManaPlan?.schedule?.(); } catch {}
   }
   // Синхронизируем состояние после призыва
   try { window.applyGameState(gameState); } catch {}

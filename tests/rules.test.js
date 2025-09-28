@@ -820,6 +820,19 @@ describe('новые способности (Хильда и Диос)', () => {
     expect(target.dmg).toBeGreaterThanOrEqual(3);
   });
 
+  it('Wormak Heir to the Bioliths повышает атаку против биолитов', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_WORMAK_HEIR', facing: 'N', currentHP: 4 };
+    state.board[0][1].unit = { owner: 1, tplId: 'BIOLITH_BIOLITH_STINGER', facing: 'S', currentHP: 1 };
+    state.board[2][0].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'N', currentHP: 1 };
+    state.board[2][2].unit = { owner: 1, tplId: 'EARTH_VERZAR_FOOT_SOLDIER', facing: 'N', currentHP: 2 };
+
+    const res = stagedAttack(state, 1, 1);
+    const fin = res.finish();
+    const target = fin.targets.find(t => t.r === 0 && t.c === 1);
+    expect(target?.dmg).toBe(4);
+  });
+
   it('захваченные существа возвращаются владельцу при гибели источника', () => {
     const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
     state.board[1][1].element = 'WATER';

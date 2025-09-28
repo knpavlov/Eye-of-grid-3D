@@ -29,7 +29,13 @@ export const CARDS = {
     element: 'FIRE', atk: 1, hp: 2,
     attackType: 'STANDARD', pierce: true,
     attacks: [ { dir: 'N', ranges: [1] } ],
-    blindspots: ['S'], auraGainManaOnSummon: true,
+    blindspots: ['S'],
+    manaOnSummon: {
+      trigger: 'ALLY',
+      sourceFieldNotElement: 'FIRE',
+      excludeSelfSummon: true,
+      log: 'Фридонийский Странник приносит {amount} маны.',
+    },
     desc: 'While Freedonian Wanderer is on a non‑Fire field, you gain 1 mana each time you summon an allied creature.'
   },
   FIRE_PARTMOLE_FLAME_LIZARD: {
@@ -505,6 +511,66 @@ export const CARDS = {
     swapOnDamage: true,
     swapOnDamageAllowZero: true,
     desc: 'Dodge attempt. If Biolith Stinger damages (but does not destroy) a creature, it switches locations with that creature (which cannot counterattack).'
+  },
+  BIOLITH_IMPERIAL_BIOLITH_GUARD: {
+    id: 'BIOLITH_IMPERIAL_BIOLITH_GUARD', name: 'Imperial Biolith Guard', type: 'UNIT', cost: 3, activation: 2,
+    element: 'BIOLITH', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [
+      { dir: 'E', ranges: [1], group: 'SIDE_SWEEP', ignoreAlliedBlocking: true },
+      { dir: 'W', ranges: [1], group: 'SIDE_SWEEP', ignoreAlliedBlocking: true },
+    ],
+    blindspots: [],
+    ignoreAlliedBlocking: true,
+    manaOnSummon: {
+      trigger: 'ALLY',
+      summonFieldElement: 'BIOLITH',
+      excludeSelfSummon: true,
+      log: 'Imperial Biolith Guard генерирует {amount} ману за биолитовый призыв.',
+    },
+    desc: 'Gain 1 mana each time you summon a creature to a Biolith field.'
+  },
+  BIOLITH_WORMAK_HEIR: {
+    id: 'BIOLITH_WORMAK_HEIR', name: 'Wormak Heir to the Bioliths', type: 'UNIT', cost: 4, activation: 2,
+    element: 'BIOLITH', atk: 2, hp: 4,
+    attackType: 'STANDARD',
+    attacks: [ { dir: 'N', ranges: [1], ignoreAlliedBlocking: true } ],
+    blindspots: [],
+    ignoreAlliedBlocking: true,
+    targetCountAttack: {
+      match: { owner: 'ENEMY', element: 'BIOLITH' },
+      count: { type: 'NON_ELEMENT', element: 'BIOLITH' },
+      baseValue: 2,
+      amountPer: 1,
+      log: 'Wormak Heir to the Bioliths: атака против биолитов установлена на {targetValue} (небиолитовых существ: {count}).',
+    },
+    manaOnSummon: {
+      trigger: 'ENEMY',
+      log: 'Wormak Heir to the Bioliths получает {amount} ману за призыв врага.',
+    },
+    desc: "If the target is an enemy Biolith, Wormak's Attack is equal to 2 plus the number of non-Biolith creatures on the board.\nGain 1 mana each time an enemy is summoned."
+  },
+  BIOLITH_TINO_SON_OF_SCION: {
+    id: 'BIOLITH_TINO_SON_OF_SCION', name: 'Tino, Son of Scion', type: 'UNIT', cost: 4, activation: 3,
+    element: 'BIOLITH', atk: 3, hp: 4,
+    attackType: 'MAGIC',
+    attacks: [],
+    blindspots: ['S'],
+    ignoreAlliedBlocking: true,
+    magicTargetsSameElement: true,
+    dynamicAtkAlliedElementOnField: {
+      element: 'BIOLITH',
+      baseValue: 1,
+      amountPer: 1,
+      requireFieldElement: 'BIOLITH',
+      includeSelf: false,
+    },
+    manaOnSummon: {
+      trigger: 'ALLY',
+      excludeSelfSummon: true,
+      log: 'Tino, Son of Scion приносит {amount} ману.',
+    },
+    desc: "Tino's Magic Attack targets all enemies of the same element as the target.\nWhile Tino is on a Biolith field, his Attack is equal to 1 plus the number of other allied Biolith creatures.\nGain 1 mana each time you summon a creature."
   },
 
   EARTH_NOVOGUS_GRAVEKEEPER: {

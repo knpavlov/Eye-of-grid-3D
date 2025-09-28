@@ -21,6 +21,8 @@ import {
   hasPendingForcedDiscards,
 } from '../scene/interactions.js';
 import { playFieldquakeFxBatch } from '../scene/fieldquakeFx.js';
+import { buildManaGainPlan } from '../scene/manaFx.js';
+import { getCtx } from '../scene/context.js';
 
 export function rotateUnit(unitMesh, dir) {
   try {
@@ -320,6 +322,9 @@ export function confirmUnitAbilityOrientation(context, direction) {
       facing: direction,
       uidFn: typeof w.uid === 'function' ? () => w.uid() : undefined,
     };
+    const playersBefore = Array.isArray(gameState.players)
+      ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))
+      : [];
     const result = executeUnitAction(gameState, info.action, payload);
     if (!result?.ok) {
       const reason = result?.reason || 'Action failed';
@@ -366,6 +371,28 @@ export function confirmUnitAbilityOrientation(context, direction) {
       }
     }
 
+    const manaGainEntries = Array.isArray(result.summonEvents?.manaGainEvents)
+      ? result.summonEvents.manaGainEvents
+      : [];
+    let summonManaPlan = null;
+    if (manaGainEntries.length) {
+      const ctxScene = getCtx();
+      const THREE = ctxScene.THREE || w.THREE;
+      summonManaPlan = buildManaGainPlan({
+        playersBefore,
+        deaths: Array.isArray(result.summonEvents?.deaths) ? result.summonEvents.deaths : [],
+        manaGainEntries,
+        tileMeshes: ctxScene.tileMeshes,
+        THREE,
+      });
+    }
+
+    if (Array.isArray(result.summonEvents?.logs) && result.summonEvents.logs.length) {
+      for (const text of result.summonEvents.logs) {
+        if (text) w.addLog?.(text);
+      }
+    }
+
     if (Array.isArray(result.summonEvents?.fieldquakes) && result.summonEvents.fieldquakes.length) {
       const broadcastFx = (typeof w.NET_ON === 'function' ? w.NET_ON() : false)
         && typeof w.MY_SEAT === 'number'
@@ -403,9 +430,7 @@ export function confirmUnitAbilityOrientation(context, direction) {
       }
     }
 
-    if (result.freedonianMana > 0) {
-      w.addLog?.(`Фридонийский Странник приносит ${result.freedonianMana} маны.`);
-    }
+    try { summonManaPlan?.schedule?.(); } catch {}
 
     if (info.unitMesh?.userData) delete info.unitMesh.userData.availableActions;
     clearPendingAbilityOrientation();
