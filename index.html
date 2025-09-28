@@ -618,6 +618,14 @@
           // Финализация: анимация смерти и орбы перед применением состояния
           const stateBeforeFinish = gameState ? JSON.parse(JSON.stringify(gameState)) : null;
           const res = staged.finish();
+          if (Array.isArray(res.fieldquakes) && res.fieldquakes.length) {
+            try {
+              window.__scene?.fieldquakeFx?.playFieldquakeFxBatch?.(res.fieldquakes, {
+                activeSeat: gameState.active,
+                skipDeathFx: true,
+              });
+            } catch {}
+          }
           const manaPlan = window.__scene?.manaFx?.buildManaGainPlan?.({
             playersBefore: stateBeforeFinish?.players || gameState.players,
             deaths: res.deaths || [],
@@ -756,6 +764,14 @@
       const res = magicAttack(gameState, from.r, from.c, tr, tc);
       if (!res) { showNotification('Incorrect target', 'error'); return; }
       const attackerPosMagic = res.attackerPosUpdate || from;
+      if (Array.isArray(res.fieldquakes) && res.fieldquakes.length) {
+        try {
+          window.__scene?.fieldquakeFx?.playFieldquakeFxBatch?.(res.fieldquakes, {
+            activeSeat: gameState.active,
+            skipDeathFx: true,
+          });
+        } catch {}
+      }
       for (const l of res.logLines.reverse()) addLog(l);
       const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
       if (aMesh) { gsap.fromTo(aMesh.position, { y: aMesh.position.y }, { y: aMesh.position.y + 0.3, yoyo: true, repeat: 1, duration: 0.12 }); }

@@ -5,6 +5,7 @@ import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
 import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
 import { showTooltip, hideTooltip } from '../ui/tooltip.js';
+import { playFieldquakeFxBatch } from './fieldquakeFx.js';
 import {
   applyFreedonianAura,
   applySummonAbilities,
@@ -1002,6 +1003,13 @@ export function placeUnitWithDirection(direction) {
         if (!text) continue;
         window.addLog?.(text);
       }
+    }
+    if (Array.isArray(summonEvents?.fieldquakes) && summonEvents.fieldquakes.length) {
+      try {
+        playFieldquakeFxBatch(summonEvents.fieldquakes, {
+          activeSeat: gameState.active,
+        });
+      } catch {}
     }
     if (Array.isArray(summonEvents?.manaSteal) && summonEvents.manaSteal.length) {
       try { window.updateUI(); } catch {}
