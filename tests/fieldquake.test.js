@@ -43,6 +43,10 @@ describe('fieldquake-эффекты биолит-карт', () => {
     expect(state.board[1][0].element).toBe('EARTH');
     expect(state.board[1][2].element).toBe('FOREST');
     expect(events.fieldquakes).toHaveLength(4);
+    for (const fq of events.fieldquakes) {
+      expect(fq).toHaveProperty('prevElement');
+      expect(fq).toHaveProperty('nextElement');
+    }
   });
 
   it('Groundbreaker мгновенно уничтожает существ с нулевым HP после fieldquake', () => {
@@ -104,6 +108,8 @@ describe('fieldquake-эффекты биолит-карт', () => {
     const applied = applyDamageInteractionResults(state, interactions);
     expect(state.board[0][1].element).toBe('WATER');
     expect(applied.logLines.some(line => line.includes('Fieldquake'))).toBe(true);
+    expect(applied.fieldquakes).toHaveLength(1);
+    expect(applied.fieldquakes[0]).toMatchObject({ r: 0, c: 1, prevElement: 'FIRE', nextElement: 'WATER' });
   });
 
   it('Novogus удаляет цель, потерявшую все HP от смены поля', () => {

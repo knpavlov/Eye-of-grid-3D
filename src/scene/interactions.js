@@ -21,6 +21,7 @@ import { applyDeathManaSteal } from '../core/abilityHandlers/manaSteal.js';
 import { applyDeathRepositionEffects } from '../core/abilityHandlers/deathReposition.js';
 import { createDeathEntry } from '../core/abilityHandlers/deathRecords.js';
 import { animateManaSteal } from '../ui/manaStealFx.js';
+import { playFieldquakeFx } from './fieldquakeFx.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -1001,6 +1002,18 @@ export function placeUnitWithDirection(direction) {
       for (const text of summonEvents.logs) {
         if (!text) continue;
         window.addLog?.(text);
+      }
+    }
+    if (Array.isArray(summonEvents?.fieldquakes) && summonEvents.fieldquakes.length) {
+      const broadcastFx = (typeof window.NET_ON === 'function' ? window.NET_ON() : false)
+        && typeof window.MY_SEAT === 'number'
+        && window.MY_SEAT === gameState.active;
+      for (const fq of summonEvents.fieldquakes) {
+        if (!fq) continue;
+        playFieldquakeFx(
+          { r: fq.r, c: fq.c, prevElement: fq.prevElement, nextElement: fq.nextElement },
+          { broadcast: broadcastFx },
+        );
       }
     }
     if (Array.isArray(summonEvents?.manaSteal) && summonEvents.manaSteal.length) {

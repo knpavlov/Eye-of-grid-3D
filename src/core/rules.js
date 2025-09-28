@@ -564,6 +564,9 @@ export function stagedAttack(state, r, c, opts = {}) {
     const applied = applyDamageInteractionResults(nFinal, damageEffects);
     const attackerPosUpdate = applied?.attackerPosUpdate || null;
     const interactionDeaths = Array.isArray(applied?.deaths) ? applied.deaths.slice() : [];
+    const interactionFieldquakes = Array.isArray(applied?.fieldquakes)
+      ? applied.fieldquakes.slice()
+      : [];
     if (attackerPosUpdate) {
       r = attackerPosUpdate.r;
       c = attackerPosUpdate.c;
@@ -949,6 +952,9 @@ export function magicAttack(state, fr, fc, tr, tc) {
     logLines.push(...applied.logLines);
   }
   const interactionDeaths = Array.isArray(applied?.deaths) ? applied.deaths.slice() : [];
+  const interactionFieldquakes = Array.isArray(applied?.fieldquakes)
+    ? applied.fieldquakes.slice()
+    : [];
   const deaths = interactionDeaths.slice();
   const seenDeathKeys = new Set(deaths.map(d => (d?.uid != null)
     ? `UID:${d.uid}`
@@ -1035,12 +1041,14 @@ export function magicAttack(state, fr, fc, tr, tc) {
   if (Array.isArray(dodgeFinal?.updated) && dodgeFinal.updated.length) {
     dodgeUpdates.push(...dodgeFinal.updated);
   }
+
   const combinedReleases = [...releaseEvents.releases, ...continuous.releases];
   return {
     n1,
     logLines,
     targets,
     deaths,
+    fieldquakes: interactionFieldquakes,
     releases: combinedReleases,
     possessions: continuous.possessions,
     attackerPosUpdate,

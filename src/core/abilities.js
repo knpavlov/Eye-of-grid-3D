@@ -427,6 +427,7 @@ export function applyDamageInteractionResults(state, effects = {}) {
   let attackerPosUpdate = null;
   const events = Array.isArray(effects?.events) ? effects.events : [];
   const fieldquakeDeaths = [];
+  const fieldquakeEvents = [];
 
   for (const ev of events) {
     if (ev?.type === 'SWAP_POSITIONS') {
@@ -549,6 +550,7 @@ export function applyDamageInteractionResults(state, effects = {}) {
       const prev = fq.prevElement || 'UNKNOWN';
       const next = fq.nextElement || prev;
       logs.push(`Fieldquake: ${prev}→${next} на (${tr},${tc}).`);
+      fieldquakeEvents.push({ r: fq.r, c: fq.c, prevElement: prev, nextElement: next, source: ev?.source || null });
       const unit = state.board?.[tr]?.[tc]?.unit;
       const tplUnit = unit ? CARDS[unit.tplId] : null;
       if (unit && tplUnit && fq.hpShift?.deltaHp) {
@@ -573,7 +575,12 @@ export function applyDamageInteractionResults(state, effects = {}) {
     }
   }
 
-  return { attackerPosUpdate, logLines: logs, deaths: fieldquakeDeaths };
+  return {
+    attackerPosUpdate,
+    logLines: logs,
+    deaths: fieldquakeDeaths,
+    fieldquakes: fieldquakeEvents,
+  };
 }
 
 function normalizeElementConfig(value, defaults = {}) {

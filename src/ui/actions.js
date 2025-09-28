@@ -20,6 +20,7 @@ import {
   showOracleDeathBuff,
   hasPendingForcedDiscards,
 } from '../scene/interactions.js';
+import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
 
 export function rotateUnit(unitMesh, dir) {
   try {
@@ -362,6 +363,19 @@ export function confirmUnitAbilityOrientation(context, direction) {
     if (Array.isArray(result.events?.discardLogs) && result.events.discardLogs.length) {
       for (const text of result.events.discardLogs) {
         if (text) w.addLog?.(text);
+      }
+    }
+
+    if (Array.isArray(result.summonEvents?.fieldquakes) && result.summonEvents.fieldquakes.length) {
+      const broadcastFx = (typeof w.NET_ON === 'function' ? w.NET_ON() : false)
+        && typeof w.MY_SEAT === 'number'
+        && w.MY_SEAT === gameState.active;
+      for (const fq of result.summonEvents.fieldquakes) {
+        if (!fq) continue;
+        playFieldquakeFx(
+          { r: fq.r, c: fq.c, prevElement: fq.prevElement, nextElement: fq.nextElement },
+          { broadcast: broadcastFx },
+        );
       }
     }
 
