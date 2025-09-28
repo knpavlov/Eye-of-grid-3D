@@ -1,6 +1,7 @@
 // Сетевые операции с колодами — чистые функции без привязки к DOM
 import { hydrateDeck, serializeDeck, setDecks, upsertDeck, removeDeck } from '../core/decks.js';
 import { getDecksApiBase } from './config.js';
+import { getSessionToken, handleUnauthorized } from '../auth/sessionStore.js';
 
 let lastError = null;
 
@@ -14,8 +15,14 @@ function buildUrl(path = '') {
 }
 
 async function requestJson(url, options = {}) {
+  const token = getSessionToken();
   const response = await fetch(url, {
-    headers: { 'Accept': 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
+    headers: {
+      'Accept': 'application/json',
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
     ...options,
   });
   const contentType = response.headers.get('content-type') || '';
@@ -30,6 +37,9 @@ async function requestJson(url, options = {}) {
     }
     const err = new Error(message);
     err.status = response.status;
+    if (response.status === 401) {
+      try { handleUnauthorized({ dropProfile: true }); } catch {}
+    }
     throw err;
   }
   if (!isJson) return {};

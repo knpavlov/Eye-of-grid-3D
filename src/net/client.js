@@ -1,4 +1,5 @@
 import { getServerBase } from './config.js';
+import { initSessionStore, getSessionToken, onSessionChange, handleUnauthorized } from '../auth/sessionStore.js';
 import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
 
   /* MODULE: network/multiplayer
@@ -7,6 +8,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
 (() => {
   // ===== 0) Config =====
   const SERVER_URL = getServerBase();
+  initSessionStore();
   try {
     if (typeof window !== 'undefined') {
       const cfg = window.__netConfig = window.__netConfig || {};
@@ -74,14 +76,52 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
   function hideStartCountdown(){ startModal?.remove(); startModal=null; }
 
   // ===== 4) Socket + sync =====
-  const socket = io(SERVER_URL, { 
+  const socket = io(SERVER_URL, {
     transports: ['websocket', 'polling'],
     upgrade: true,
     rememberUpgrade: true,
     timeout: 20000,
-    forceNew: true
+    forceNew: true,
+    autoConnect: false,
+    auth: {},
   });
   try { window.socket = socket; } catch {}
+  function getCurrentToken() {
+    try { return getSessionToken(); } catch { return null; }
+  }
+  function connectWithCurrentToken({ refresh = false } = {}) {
+    const token = getCurrentToken();
+    if (!token) {
+      if (socket.connected) {
+        try { socket.emit('authenticate', { token: null }); } catch {}
+      }
+      socket.disconnect();
+      socket.auth = socket.auth && typeof socket.auth === 'object' ? socket.auth : {};
+      delete socket.auth.token;
+      return false;
+    }
+    socket.auth = { ...(socket.auth || {}), token };
+    if (socket.connected) {
+      if (refresh) {
+        try { socket.emit('authenticate', { token }); } catch {}
+      }
+      return true;
+    }
+    try { socket.connect(); } catch {}
+    return true;
+  }
+  function disconnectSocket() {
+    try { socket.emit('authenticate', { token: null }); } catch {}
+    try { socket.disconnect(); } catch {}
+  }
+  onSessionChange(state => {
+    if (state?.token) {
+      connectWithCurrentToken({ refresh: true });
+    } else {
+      disconnectSocket();
+    }
+  });
+  connectWithCurrentToken();
   // NET_ACTIVE, MY_SEAT, APPLYING уже объявлены выше в глобальной области
 
   // --- SENDING: «обёртки» + DIGEST-пуллер ---
@@ -715,10 +755,18 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
 
   // ===== 5) Queue / start =====
   function onFindMatchClick(deckId){
+    const hasToken = connectWithCurrentToken({ refresh: true });
+    if (!hasToken) {
+      try { window.__ui?.notifications?.show?.('Необходимо войти в аккаунт', 'error'); } catch {}
+      return;
+    }
+    if (!deckId) {
+      try { window.__ui?.notifications?.show?.('Выберите колоду перед поиском матча', 'error'); } catch {}
+      return;
+    }
     console.log('[QUEUE] Attempting to join queue, socket connected:', socket.connected, 'deck:', deckId);
     showQueueModal();
     try {
-      if (!socket.connected) socket.connect();
       (window.socket || socket).emit('joinQueue', { deckId });
       (window.socket || socket).emit('debugLog', { event: 'joinQueue_sent', connected: socket.connected, deckId });
     } catch(err) {
@@ -731,6 +779,31 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
       window.__net.findMatch = onFindMatchClick;
     }
   } catch {}
+  socket.on('authError', (payload = {}) => {
+    const reason = payload?.reason || 'UNKNOWN';
+    console.warn('[QUEUE] authError', reason, payload);
+    if (reason === 'AUTH_REQUIRED') {
+      try { window.__ui?.notifications?.show?.('Сессия истекла, войдите заново', 'error'); } catch {}
+      try { handleUnauthorized({ dropProfile: true }); } catch {}
+      hideQueueModal();
+      disconnectSocket();
+      return;
+    }
+    if (reason === 'DECK_NOT_FOUND' || reason === 'DECK_REQUIRED') {
+      try { window.__ui?.notifications?.show?.('Колода недоступна для сетевой игры', 'error'); } catch {}
+      hideQueueModal();
+      return;
+    }
+    if (reason === 'DECK_LOOKUP_FAILED') {
+      try { window.__ui?.notifications?.show?.('Не удалось проверить колоду на сервере', 'error'); } catch {}
+      hideQueueModal();
+    }
+  });
+  socket.on('authState', ({ ok }) => {
+    if (!ok) {
+      hideQueueModal();
+    }
+  });
   socket.on('matchFound', ({ matchId, seat, decks })=>{
     hideQueueModal();
     try {
