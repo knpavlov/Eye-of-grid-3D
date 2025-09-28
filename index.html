@@ -238,6 +238,7 @@
     // Прячет один экземпляр ритуального спелла в руке активного игрока, пока ждём выбора жертвы
     let pendingRitualSpellHandIndex = null;
     let pendingRitualSpellCard = null; // ссылка на сам объект карты-спелла, чтобы скрывать по идентичности
+    let pendingRitualOrigin = null;
     // Сколько последних добранных карт временно скрывать из моей руки (для красивой анимации влёта)
     let pendingDrawCount = 0;
     // Блокировка ввода теперь в ui/inputLock.js
