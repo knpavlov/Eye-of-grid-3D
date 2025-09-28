@@ -140,39 +140,51 @@ export async function getDeckAccessibleByUser(id, ownerId) {
 
 export async function upsertDeckForUser(deck, ownerId) {
   if (!isDbReady()) throw new Error('Хранилище колод недоступно');
-  if (!ownerId) throw new Error('Нельзя сохранить колоду без владельца');
+  const userId = typeof ownerId === 'string' && ownerId.trim() ? ownerId.trim() : null;
+  if (!userId) throw new Error('Нельзя сохранить колоду без владельца');
+
+  const requestedId = typeof deck.id === 'string' && deck.id.trim() ? deck.id.trim() : null;
   const name = (deck.name || '').trim();
   const description = (deck.description || '').trim();
   const cardsJson = JSON.stringify(deck.cards || []);
 
-  if (deck.id) {
-    const existing = await getDeckById(deck.id);
-    if (!existing) {
-      throw new Error('Колода не найдена');
+  if (requestedId) {
+    // Если пришёл идентификатор, проверяем существование —
+    // это позволяет принимать как обновление, так и создание с клиентским ID.
+    const existingRow = await getDeckRow(requestedId);
+    if (existingRow) {
+      if ((existingRow.owner_id || null) !== userId) {
+        throw new Error('Нет прав на изменение этой колоды');
+      }
+      const result = await query(
+        `UPDATE decks
+         SET name = $2,
+             description = $3,
+             cards = $4,
+             version = version + 1,
+             updated_at = NOW()
+         WHERE id = $1 AND owner_id = $5
+         RETURNING id, name, description, cards, owner_id, version, updated_at;`,
+        [requestedId, name, description, cardsJson, userId]
+      );
+      return mapRow(result.rows?.[0]);
     }
-    if (existing.ownerId !== ownerId) {
-      throw new Error('Нет прав на изменение этой колоды');
-    }
-    const result = await query(
-      `UPDATE decks
-       SET name = $2,
-           description = $3,
-           cards = $4,
-           version = version + 1,
-           updated_at = NOW()
-       WHERE id = $1 AND owner_id = $5
+
+    const inserted = await query(
+      `INSERT INTO decks (id, name, description, cards, owner_id, version)
+       VALUES ($1, $2, $3, $4, $5, 1)
        RETURNING id, name, description, cards, owner_id, version, updated_at;`,
-      [deck.id, name, description, cardsJson, ownerId]
+      [requestedId, name, description, cardsJson, userId]
     );
-    return mapRow(result.rows?.[0]);
+    return mapRow(inserted.rows?.[0]);
   }
 
-  const id = randomUUID();
+  const generatedId = randomUUID();
   const result = await query(
     `INSERT INTO decks (id, name, description, cards, owner_id, version)
      VALUES ($1, $2, $3, $4, $5, 1)
      RETURNING id, name, description, cards, owner_id, version, updated_at;`,
-    [id, name, description, cardsJson, ownerId]
+    [generatedId, name, description, cardsJson, userId]
   );
   return mapRow(result.rows?.[0]);
 }

@@ -5,6 +5,11 @@ import { normalizeElementName } from '../utils/elements.js';
 const BOARD_SIZE = 3;
 const capMana = (m) => Math.min(10, m);
 
+function toArray(value) {
+  if (value == null) return [];
+  return Array.isArray(value) ? value.filter(Boolean) : [value].filter(Boolean);
+}
+
 function normalizeElement(value, fallback = null) {
   const normalized = normalizeElementName(typeof value === 'string' ? value : null);
   if (normalized) return normalized;
@@ -12,6 +17,31 @@ function normalizeElement(value, fallback = null) {
     return normalizeElementName(fallback);
   }
   return null;
+}
+
+function resolveCardId(raw) {
+  if (typeof raw !== 'string') return null;
+  const token = raw.trim();
+  if (!token) return null;
+  const direct = CARDS[token];
+  if (direct?.id) return direct.id;
+  for (const card of Object.values(CARDS)) {
+    if (!card) continue;
+    if (card.id === token) return card.id;
+    if (card.name && card.name.toUpperCase() === token.toUpperCase()) {
+      return card.id;
+    }
+  }
+  return null;
+}
+
+function normalizeTplIdList(value) {
+  const result = new Set();
+  for (const raw of toArray(value)) {
+    const id = resolveCardId(raw);
+    if (id) result.add(id);
+  }
+  return result;
 }
 
 function normalizeManaGainConfig(raw, tpl) {
@@ -59,6 +89,26 @@ function isUnitAlive(unit, tpl) {
   return true;
 }
 
+function countAlliedUnitsOnBoard(state, owner, opts = {}) {
+  if (!state?.board) return 0;
+  const requireAlive = opts.requireAlive !== false;
+  const excludeUid = opts.excludeUid ?? null;
+  let total = 0;
+  for (let r = 0; r < BOARD_SIZE; r += 1) {
+    for (let c = 0; c < BOARD_SIZE; c += 1) {
+      const unit = state.board?.[r]?.[c]?.unit;
+      if (!unit) continue;
+      if (owner != null && unit.owner !== owner) continue;
+      if (excludeUid != null && unit.uid === excludeUid) continue;
+      const tpl = CARDS[unit.tplId];
+      if (!tpl) continue;
+      if (requireAlive && !isUnitAlive(unit, tpl)) continue;
+      total += 1;
+    }
+  }
+  return total;
+}
+
 function toPositiveInt(value, fallback = 0) {
   const num = Number(value);
   if (!Number.isFinite(num)) return Math.max(0, Math.floor(fallback));
@@ -104,6 +154,178 @@ function countFieldsOfElement(boardState, element) {
     }
   }
   return total;
+}
+
+function hasRequiredAlliesOnBoard(state, owner, cfg, context = {}) {
+  const required = cfg?.requireAlliedTplIds;
+  if (!required || required.size === 0) return true;
+  const excludeUid = context.selfUid ?? null;
+  const requireAlive = cfg.requireAlive !== false;
+  for (let r = 0; r < BOARD_SIZE; r += 1) {
+    for (let c = 0; c < BOARD_SIZE; c += 1) {
+      const unit = state?.board?.[r]?.[c]?.unit;
+      if (!unit) continue;
+      if (owner != null && unit.owner !== owner) continue;
+      if (excludeUid != null && unit.uid === excludeUid) continue;
+      const tpl = CARDS[unit.tplId];
+      if (!tpl) continue;
+      if (requireAlive && !isUnitAlive(unit, tpl)) continue;
+      const tplId = tpl.id || unit.tplId;
+      if (tplId && required.has(tplId)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function formatTemplateString(template, data = {}) {
+  if (!template) return null;
+  return template.replace(/\{(\w+)\}/g, (match, key) => {
+    const lower = key.toLowerCase();
+    if (lower === 'amount') return String(data.amount ?? '');
+    if (lower === 'allies' || lower === 'count') return String(data.allies ?? data.count ?? '');
+    if (lower === 'name') return data.name ?? '';
+    return match;
+  });
+}
+
+function normalizeResolutionPresenceConfig(raw, tpl) {
+  if (!raw) return null;
+  const cfg = {
+    requireAlliedTplIds: new Set(),
+    includeSelf: true,
+    amountPerAlly: 1,
+    baseAmount: 0,
+    minAmount: null,
+    maxAmount: null,
+    countMode: 'ALLY_UNITS',
+    requireAlive: true,
+    countAlive: true,
+    log: null,
+    reason: 'ALLY_PRESENCE',
+    triggerPhase: 'TURN_START',
+  };
+
+  if (raw === true) {
+    return cfg;
+  }
+  if (typeof raw !== 'object') {
+    return null;
+  }
+
+  const required = normalizeTplIdList(
+    raw.requireTplIds
+      || raw.require
+      || raw.with
+      || raw.allyTplIds
+      || raw.allyCards
+      || raw.allies,
+  );
+  cfg.requireAlliedTplIds = required;
+
+  if (raw.includeSelf === false) cfg.includeSelf = false;
+  if (raw.requireAlive === false) cfg.requireAlive = false;
+  if (raw.countAlive === false) cfg.countAlive = false;
+
+  const perRaw = raw.amountPer ?? raw.per ?? raw.perAlly ?? raw.gainPerAlly ?? raw.amountPerAlly;
+  if (Number.isFinite(perRaw)) {
+    cfg.amountPerAlly = Math.max(0, Math.floor(perRaw));
+  }
+  const baseRaw = raw.baseAmount ?? raw.base ?? raw.plus ?? raw.flat ?? 0;
+  if (Number.isFinite(baseRaw)) {
+    cfg.baseAmount = Math.max(0, Math.floor(baseRaw));
+  }
+  if (Number.isFinite(raw.maxAmount ?? raw.max)) {
+    cfg.maxAmount = Math.max(0, Math.floor(raw.maxAmount ?? raw.max));
+  }
+  if (Number.isFinite(raw.minAmount ?? raw.min)) {
+    cfg.minAmount = Math.max(0, Math.floor(raw.minAmount ?? raw.min));
+  }
+  if (typeof raw.log === 'string') {
+    cfg.log = raw.log;
+  }
+  if (typeof raw.reason === 'string') {
+    cfg.reason = raw.reason;
+  }
+  if (typeof raw.count === 'string') {
+    cfg.countMode = raw.count.toUpperCase();
+  } else if (typeof raw.mode === 'string') {
+    cfg.countMode = raw.mode.toUpperCase();
+  }
+  if (typeof raw.phase === 'string') {
+    cfg.triggerPhase = raw.phase.toUpperCase();
+  } else if (typeof raw.trigger === 'string') {
+    cfg.triggerPhase = raw.trigger.toUpperCase();
+  } else if (typeof raw.timing === 'string') {
+    cfg.triggerPhase = raw.timing.toUpperCase();
+  }
+
+  return cfg;
+}
+
+function collectResolutionPresenceConfigs(tpl) {
+  if (!tpl || !tpl.resolutionManaOnAllyPresence) return [];
+  const raw = tpl.resolutionManaOnAllyPresence;
+  const list = Array.isArray(raw) ? raw : [raw];
+  const result = [];
+  for (const item of list) {
+    const cfg = normalizeResolutionPresenceConfig(item, tpl);
+    if (!cfg) continue;
+    result.push(cfg);
+  }
+  return result;
+}
+
+function countAlliesForConfig(state, owner, cfg, context = {}) {
+  const excludeUid = cfg.includeSelf === false ? context.selfUid ?? null : null;
+  const opts = {
+    excludeUid,
+    requireAlive: cfg.countAlive !== false,
+  };
+  const mode = cfg.countMode || 'ALLY_UNITS';
+  if (mode === 'ALLY_UNITS' || mode === 'ALLIES' || mode === 'ALLY_CREATURES') {
+    return countAlliedUnitsOnBoard(state, owner, opts);
+  }
+  return countAlliedUnitsOnBoard(state, owner, opts);
+}
+
+function applyResolutionPresenceMana(state, playerIndex, unit, tpl, r, c, acc, phase = 'TURN_START') {
+  const configs = collectResolutionPresenceConfigs(tpl);
+  if (!configs.length) return;
+  const context = { selfUid: unit?.uid ?? null };
+  for (const cfg of configs) {
+    if (cfg.triggerPhase && cfg.triggerPhase !== phase) continue;
+    if (!hasRequiredAlliesOnBoard(state, playerIndex, cfg, context)) continue;
+    const allies = countAlliesForConfig(state, playerIndex, cfg, context);
+    const baseAmount = cfg.baseAmount || 0;
+    const per = cfg.amountPerAlly || 0;
+    let amount = toPositiveInt(baseAmount + per * allies);
+    if (amount <= 0) continue;
+    amount = clampWithBounds(amount, cfg.minAmount, cfg.maxAmount);
+    if (amount <= 0) continue;
+    const gained = gainMana(state, playerIndex, amount);
+    if (gained <= 0) continue;
+    const data = {
+      amount: gained,
+      allies,
+      count: allies,
+      name: tpl?.name || tpl?.id || 'Существо',
+    };
+    const logText = formatTemplateString(cfg.log, data)
+      || `${data.name}: дополнительная мана +${gained} за союзных существ (всего: ${allies}).`;
+    acc.total += gained;
+    acc.entries.push({
+      r,
+      c,
+      tplId: tpl.id,
+      amount: gained,
+      reason: cfg.reason || 'ALLY_PRESENCE',
+      allies,
+      requiredTplIds: Array.from(cfg.requireAlliedTplIds || []),
+      customLog: logText,
+    });
+  }
 }
 
 function normalizeDeathGainConfig(raw, tpl) {
@@ -263,22 +485,26 @@ export function applyTurnStartManaEffects(state, playerIndex) {
       if (!tpl) continue;
       if (!isUnitAlive(unit, tpl)) continue;
       const cfg = normalizeManaGainConfig(tpl.manaGainOnNonElement, tpl);
-      if (!cfg) continue;
-      const nativeElement = normalizeElement(cfg.element || tpl.element);
-      if (!nativeElement) continue;
-      const cellElement = normalizeElement(cell?.element || null);
-      if (cellElement === nativeElement) continue;
-      const gained = gainMana(state, playerIndex, cfg.amount || 0);
-      if (gained > 0) {
-        result.total += gained;
-        result.entries.push({
-          r,
-          c,
-          tplId: tpl.id,
-          amount: gained,
-          fieldElement: cellElement,
-        });
+      if (cfg) {
+        const nativeElement = normalizeElement(cfg.element || tpl.element);
+        if (nativeElement) {
+          const cellElement = normalizeElement(cell?.element || null);
+          if (cellElement !== nativeElement) {
+            const gained = gainMana(state, playerIndex, cfg.amount || 0);
+            if (gained > 0) {
+              result.total += gained;
+              result.entries.push({
+                r,
+                c,
+                tplId: tpl.id,
+                amount: gained,
+                fieldElement: cellElement,
+              });
+            }
+          }
+        }
       }
+      applyResolutionPresenceMana(state, playerIndex, unit, tpl, r, c, result, 'TURN_START');
     }
   }
 
