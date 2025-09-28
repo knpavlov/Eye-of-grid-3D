@@ -21,6 +21,7 @@ import { applyDeathManaSteal } from '../core/abilityHandlers/manaSteal.js';
 import { applyDeathRepositionEffects } from '../core/abilityHandlers/deathReposition.js';
 import { createDeathEntry } from '../core/abilityHandlers/deathRecords.js';
 import { animateManaSteal } from '../ui/manaStealFx.js';
+import { playFieldquakeFxBatch } from './fieldquakeFx.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -590,6 +591,17 @@ function performMagicAttack(from, targetMesh) {
   }
   const res = window.magicAttack(gameState, from.r, from.c, targetMesh.userData.row, targetMesh.userData.col);
   if (!res) { showNotification('Incorrect target', 'error'); return false; }
+
+  const pendingFieldquakes = Array.isArray(res.fieldquakes) ? res.fieldquakes.filter(Boolean) : [];
+  if (pendingFieldquakes.length) {
+    const broadcastFx = (typeof window.NET_ON === 'function' ? window.NET_ON() : false)
+      && typeof window.MY_SEAT === 'number'
+      && typeof gameState?.active === 'number'
+      && window.MY_SEAT === gameState.active;
+    // Проигрываем единый спецэффект fieldquake и при необходимости шлём синхронизацию
+    playFieldquakeFxBatch(pendingFieldquakes, { broadcast: broadcastFx });
+  }
+
   for (const l of res.logLines.reverse()) window.addLog(l);
   const aMesh = unitMeshes.find(m => m.userData.row === from.r && m.userData.col === from.c);
   if (aMesh) {
@@ -1002,6 +1014,12 @@ export function placeUnitWithDirection(direction) {
         if (!text) continue;
         window.addLog?.(text);
       }
+    }
+    if (Array.isArray(summonEvents?.fieldquakes) && summonEvents.fieldquakes.length) {
+      const broadcastFx = (typeof window.NET_ON === 'function' ? window.NET_ON() : false)
+        && typeof window.MY_SEAT === 'number'
+        && window.MY_SEAT === gameState.active;
+      playFieldquakeFxBatch(summonEvents.fieldquakes, { broadcast: broadcastFx });
     }
     if (Array.isArray(summonEvents?.manaSteal) && summonEvents.manaSteal.length) {
       try { window.updateUI(); } catch {}

@@ -10,6 +10,7 @@ import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
 import { refreshPossessionsUI } from '../ui/possessions.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
+import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -361,20 +362,14 @@ export const handlers = {
       const nextEl = oppMap[prevEl] || prevEl;
       cell.element = nextEl;
       refreshPossessionsUI(gameState);
-      try {
-        const tile = getCtx().tileMeshes[r][c];
-        const mat = getTileMaterial(nextEl);
-        window.__fx.dissolveTileCrossfade(
-          tile,
-          getTileMaterial(prevEl),
-          mat,
-          0.9
-        );
-        try {
-          if (NET_ON() && MY_SEAT === gameState.active && window.socket)
-            window.socket.emit('tileCrossfade', { r, c, prev: prevEl, next: nextEl });
-        } catch {}
-      } catch {}
+      const broadcastFx = (typeof NET_ON === 'function' ? NET_ON() : false)
+        && typeof MY_SEAT === 'number'
+        && typeof gameState?.active === 'number'
+        && MY_SEAT === gameState.active;
+      playFieldquakeFx(
+        { r, c, prevElement: prevEl, nextElement: nextEl },
+        { broadcast: broadcastFx },
+      );
       const u = gameState.board[r][c].unit;
       if (u) {
         const tplUnit = CARDS[u.tplId];
