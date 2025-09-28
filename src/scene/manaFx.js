@@ -148,4 +148,62 @@ export function buildManaGainPlan({
   }
 }
 
-export default { buildManaGainPlan };
+export function playSummonManaGainFx(events, {
+  tileMeshes = [],
+  THREE = (typeof window !== 'undefined' ? window.THREE : null),
+  baseDelayMs = 120,
+} = {}) {
+  if (!Array.isArray(events) || !events.length) return;
+  const animate = (typeof window !== 'undefined')
+    ? (window.animateManaGainFromWorld || window.__ui?.mana?.animateManaGainFromWorld)
+    : null;
+  if (typeof animate !== 'function') return;
+
+  const resolveOrigin = (ev) => {
+    try {
+      if (Number.isFinite(ev?.r) && Number.isFinite(ev?.c)) {
+        const tile = tileMeshes?.[ev.r]?.[ev.c];
+        const base = tile?.position;
+        if (base && typeof base.clone === 'function') {
+          const pos = base.clone();
+          if (THREE && THREE.Vector3) {
+            pos.add(new THREE.Vector3(0, 1.1, 0));
+          } else if ('y' in pos) {
+            pos.y += 1.1;
+          }
+          return pos;
+        }
+        if (base && THREE && THREE.Vector3) {
+          const pos = new THREE.Vector3(base.x || 0, base.y || 0, base.z || 0);
+          pos.y += 1.1;
+          return pos;
+        }
+      }
+    } catch {}
+    if (THREE && THREE.Vector3) {
+      return new THREE.Vector3(0, 1.0, 0);
+    }
+    return { x: 0, y: 1.0, z: 0 };
+  };
+
+  events.forEach((ev, idx) => {
+    if (!ev || !Number.isFinite(ev.owner)) return;
+    const amount = Number.isFinite(ev.amount) ? Math.max(0, Math.floor(ev.amount)) : 0;
+    if (amount <= 0) return;
+    const origin = resolveOrigin(ev);
+    const delay = Number.isFinite(ev.delayMs) ? Math.max(0, ev.delayMs) : Math.max(0, idx * baseDelayMs);
+    try {
+      if (delay > 0) {
+        setTimeout(() => {
+          try { animate(origin, ev.owner, { amount, visualOnly: true }); } catch {}
+        }, delay);
+      } else {
+        animate(origin, ev.owner, { amount, visualOnly: true });
+      }
+    } catch (err) {
+      console.error('[manaFx] Ошибка запуска анимации призывной маны:', err);
+    }
+  });
+}
+
+export default { buildManaGainPlan, playSummonManaGainFx };

@@ -1520,3 +1520,93 @@ describe('Новые способности существ', () => {
   });
 });
 
+describe('призывы и новые биолиты', () => {
+  it('Freedonian Wanderer генерирует ману только вне огненного поля', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[0][0].element = 'WATER';
+    state.board[0][0].unit = { owner: 0, tplId: 'FIRE_FREEDONIAN_WANDERER', facing: 'N', currentHP: 2 };
+    state.board[1][1].element = 'EARTH';
+    state.board[1][1].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'N', currentHP: 1 };
+    const events = applySummonAbilities(state, 1, 1);
+    expect(state.players[0].mana).toBe(1);
+    expect(Array.isArray(events.manaGain)).toBe(true);
+    expect(events.manaGain[0]).toMatchObject({ owner: 0, tplId: 'FIRE_FREEDONIAN_WANDERER', amount: 1 });
+
+    const state2 = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state2.board[0][0].element = 'FIRE';
+    state2.board[0][0].unit = { owner: 0, tplId: 'FIRE_FREEDONIAN_WANDERER', facing: 'N', currentHP: 2 };
+    state2.board[1][1].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'N', currentHP: 1 };
+    const events2 = applySummonAbilities(state2, 1, 1);
+    expect(state2.players[0].mana).toBe(0);
+    expect(events2.manaGain).toBeUndefined();
+  });
+
+  it('Imperial Biolith Guard дарит ману за союзный призыв на биолитовом поле, но не при собственном появлении', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[0][0].unit = { owner: 0, tplId: 'BIOLITH_IMPERIAL_BIOLITH_GUARD', facing: 'N', currentHP: 4 };
+    const guardSummon = applySummonAbilities(state, 0, 0);
+    expect(state.players[0].mana).toBe(0);
+    expect(guardSummon.manaGain).toBeUndefined();
+
+    state.board[2][2].element = 'BIOLITH';
+    state.board[2][2].unit = { owner: 0, tplId: 'BIOLITH_BIOLITH_STINGER', facing: 'N', currentHP: 1 };
+    const events = applySummonAbilities(state, 2, 2);
+    expect(state.players[0].mana).toBe(1);
+    expect(events.manaGain?.[0]).toMatchObject({ tplId: 'BIOLITH_IMPERIAL_BIOLITH_GUARD', amount: 1 });
+  });
+
+  it('Wormak Heir получает ману при призыве противника', () => {
+    const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+    state.board[0][0].unit = { owner: 0, tplId: 'BIOLITH_WORMAK_HEIR', facing: 'N', currentHP: 4 };
+    state.board[2][2].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'S', currentHP: 1 };
+    const events = applySummonAbilities(state, 2, 2);
+    expect(state.players[0].mana).toBe(1);
+    expect(events.manaGain?.[0]).toMatchObject({ owner: 0, amount: 1, tplId: 'BIOLITH_WORMAK_HEIR' });
+  });
+
+  it('Tino корректно пересчитывает атаку на биолитовом поле', () => {
+    const buildState = (fieldElement) => {
+      const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+      state.board[1][1].element = fieldElement;
+      state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_TINO_SON_OF_SCION', facing: 'N', currentHP: 4 };
+      state.board[0][0].unit = { owner: 0, tplId: 'BIOLITH_IMPERIAL_BIOLITH_GUARD', facing: 'N', currentHP: 4 };
+      state.board[0][1].unit = { owner: 1, tplId: 'FIRE_FLAME_MAGUS', facing: 'S', currentHP: 5 };
+      return state;
+    };
+
+    const stateOnBiolith = buildState('BIOLITH');
+    const res = magicAttack(stateOnBiolith, 1, 1, 0, 1);
+    const hit = res?.targets?.find(t => t.r === 0 && t.c === 1);
+    expect(hit?.dmg).toBe(2);
+
+    const stateOffField = buildState('FIRE');
+    const res2 = magicAttack(stateOffField, 1, 1, 0, 1);
+    const hit2 = res2?.targets?.find(t => t.r === 0 && t.c === 1);
+    expect(hit2?.dmg).toBe(3);
+  });
+
+  it('Wormak Heir меняет атаку в зависимости от числа небиолитовых существ', () => {
+    const buildState = (targetTplId) => {
+      const state = { board: makeBoard(), players: [{ mana: 0 }, { mana: 0 }], turn: 1 };
+      state.board[1][1].element = 'BIOLITH';
+      state.board[1][1].unit = { owner: 0, tplId: 'BIOLITH_WORMAK_HEIR', facing: 'N', currentHP: 4 };
+      state.board[0][1].unit = { owner: 1, tplId: targetTplId, facing: 'S', currentHP: 5 };
+      state.board[2][0].unit = { owner: 0, tplId: 'FIRE_FLAME_MAGUS', facing: 'N', currentHP: 2 };
+      state.board[0][2].unit = { owner: 1, tplId: 'EARTH_VERZAR_FOOT_SOLDIER', facing: 'S', currentHP: 2 };
+      return state;
+    };
+
+    const stateVsBiolith = buildState('BIOLITH_MORNING_STAR_WARRIOR');
+    const battle = stagedAttack(stateVsBiolith, 1, 1);
+    const result = battle.finish();
+    const hit = result.targets.find(t => t.r === 0 && t.c === 1);
+    expect(hit.dmg).toBe(4);
+
+    const stateVsNonBiolith = buildState('FIRE_PARTMOLE_FLAME_LIZARD');
+    const battle2 = stagedAttack(stateVsNonBiolith, 1, 1);
+    const result2 = battle2.finish();
+    const hit2 = result2.targets.find(t => t.r === 0 && t.c === 1);
+    expect(hit2.dmg).toBe(2);
+  });
+});
+

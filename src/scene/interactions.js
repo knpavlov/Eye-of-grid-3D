@@ -1,12 +1,11 @@
 // Pointer and drag interactions for Three.js scene
 import { getCtx } from './context.js';
-import { buildManaGainPlan } from './manaFx.js';
+import { buildManaGainPlan, playSummonManaGainFx } from './manaFx.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
 import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
 import { showTooltip, hideTooltip } from '../ui/tooltip.js';
 import {
-  applyFreedonianAura,
   applySummonAbilities,
   evaluateIncarnationSummon,
   applyIncarnationSummon,
@@ -1083,9 +1082,44 @@ export function placeUnitWithDirection(direction) {
         }
       } catch {}
     }
-    const gained = applyFreedonianAura(gameState, gameState.active);
-    if (gained > 0) {
-      window.addLog(`Фридонийский Странник приносит ${gained} маны.`);
+    if (Array.isArray(summonEvents?.manaGain) && summonEvents.manaGain.length) {
+      const manaEvents = summonEvents.manaGain.filter(ev => ev && Number.isFinite(ev.amount) && ev.amount > 0);
+      if (manaEvents.length) {
+        try {
+          const ctxMana = getCtx();
+          const THREE = ctxMana.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+          playSummonManaGainFx(manaEvents, { tileMeshes: ctxMana.tileMeshes, THREE });
+        } catch (err) {
+          console.warn('[interactions] Не удалось запустить анимацию призывной маны:', err);
+        }
+        try {
+          const animateBar = window.__ui?.mana?.animateTurnManaGain;
+          if (typeof animateBar === 'function') {
+            const aggregated = new Map();
+            for (const ev of manaEvents) {
+              const owner = Number.isFinite(ev.owner) ? ev.owner : null;
+              if (owner == null) continue;
+              const before = Number.isFinite(ev.before) ? ev.before : null;
+              const after = Number.isFinite(ev.after) ? ev.after : null;
+              if (before == null || after == null || after === before) continue;
+              if (!aggregated.has(owner)) {
+                aggregated.set(owner, { before, after });
+              } else {
+                const entry = aggregated.get(owner);
+                entry.before = Math.min(entry.before, before);
+                entry.after = Math.max(entry.after, after);
+              }
+            }
+            for (const [owner, entry] of aggregated.entries()) {
+              if (entry.after !== entry.before) {
+                animateBar(owner, entry.before, entry.after, 600);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[interactions] Ошибка анимации панели маны при призыве:', err);
+        }
+      }
     }
   }
   // Синхронизируем состояние после призыва

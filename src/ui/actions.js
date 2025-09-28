@@ -21,6 +21,7 @@ import {
   hasPendingForcedDiscards,
 } from '../scene/interactions.js';
 import { playFieldquakeFxBatch } from '../scene/fieldquakeFx.js';
+import { playSummonManaGainFx } from '../scene/manaFx.js';
 
 export function rotateUnit(unitMesh, dir) {
   try {
@@ -403,8 +404,45 @@ export function confirmUnitAbilityOrientation(context, direction) {
       }
     }
 
-    if (result.freedonianMana > 0) {
-      w.addLog?.(`Фридонийский Странник приносит ${result.freedonianMana} маны.`);
+    if (Array.isArray(result.summonEvents?.manaGain) && result.summonEvents.manaGain.length) {
+      const manaEvents = result.summonEvents.manaGain.filter(ev => ev && Number.isFinite(ev.amount) && ev.amount > 0);
+      if (manaEvents.length) {
+        try {
+          const sceneCtx = (w.__scene && w.__scene.ctx) ? w.__scene.ctx : w.__scene || {};
+          const tileMeshes = sceneCtx.tileMeshes || [];
+          const THREE = sceneCtx.THREE || w.THREE;
+          playSummonManaGainFx(manaEvents, { tileMeshes, THREE });
+        } catch (err) {
+          console.warn('[ui/actions] Не удалось проиграть анимацию призывной маны:', err);
+        }
+        try {
+          const animateBar = w.__ui?.mana?.animateTurnManaGain;
+          if (typeof animateBar === 'function') {
+            const aggregated = new Map();
+            for (const ev of manaEvents) {
+              const owner = Number.isFinite(ev.owner) ? ev.owner : null;
+              if (owner == null) continue;
+              const before = Number.isFinite(ev.before) ? ev.before : null;
+              const after = Number.isFinite(ev.after) ? ev.after : null;
+              if (before == null || after == null || after === before) continue;
+              if (!aggregated.has(owner)) {
+                aggregated.set(owner, { before, after });
+              } else {
+                const entry = aggregated.get(owner);
+                entry.before = Math.min(entry.before, before);
+                entry.after = Math.max(entry.after, after);
+              }
+            }
+            for (const [owner, entry] of aggregated.entries()) {
+              if (entry.after !== entry.before) {
+                animateBar(owner, entry.before, entry.after, 600);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[ui/actions] Ошибка анимации панели маны при призыве:', err);
+        }
+      }
     }
 
     if (info.unitMesh?.userData) delete info.unitMesh.userData.availableActions;

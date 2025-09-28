@@ -8,6 +8,7 @@ import {
   getTargetElementBonus,
   getTargetCostBonus,
   getTargetHpBonus,
+  getTargetCountAttack,
   getAuraAttackBonus,
   collectMagicTargetCells,
   computeDynamicMagicAttack,
@@ -315,6 +316,13 @@ export function stagedAttack(state, r, c, opts = {}) {
       logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount} (существа стихии ${dynamicBonus.element})`);
     } else {
       logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount}`);
+    }
+  }
+  const targetCountAdjust = getTargetCountAttack(base, tplA, hitsRaw, { owner: attacker?.owner, r, c });
+  if (targetCountAdjust && Number.isFinite(targetCountAdjust.attackValue)) {
+    atk = targetCountAdjust.attackValue;
+    if (targetCountAdjust.log) {
+      logLines.push(targetCountAdjust.log);
     }
   }
   const targetBonus = getTargetElementBonus(tplA, base, hitsRaw);
@@ -796,10 +804,29 @@ export function magicAttack(state, fr, fc, tr, tc) {
 
   const atkStats = effectiveStats(originCell, attacker, { state: n1, r: fromR, c: fromC });
   let atk = atkStats.atk || 0;
+  const dynamicBonus = computeDynamicAttackBonus(n1, fromR, fromC, tplA);
+  if (dynamicBonus?.amount) {
+    atk += dynamicBonus.amount;
+    if (dynamicBonus.type === 'ELEMENT_CREATURES' && dynamicBonus.element) {
+      logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount} (существа стихии ${dynamicBonus.element})`);
+    } else if (dynamicBonus.type === 'ALLY_ELEMENT_FIELD' && dynamicBonus.element) {
+      logLines.push(`${tplA.name}: атака установлена на ${atk} (союзные ${dynamicBonus.element} на поле).`);
+    } else {
+      logLines.push(`${tplA.name}: атака увеличена на ${dynamicBonus.amount}`);
+    }
+  }
   const dynMagic = computeDynamicMagicAttack(n1, tplA);
   if (dynMagic) {
     atk = dynMagic.amount;
     logLines.push(`${tplA.name}: сила магии = ${dynMagic.amount} (число огненных полей).`);
+  }
+
+  const targetCountAdjust = getTargetCountAttack(n1, tplA, [ { r: targetR, c: targetC } ], { owner: attacker?.owner, r: fromR, c: fromC });
+  if (targetCountAdjust && Number.isFinite(targetCountAdjust.attackValue)) {
+    atk = targetCountAdjust.attackValue;
+    if (targetCountAdjust.log) {
+      logLines.push(targetCountAdjust.log);
+    }
   }
 
   const plusCfg2 = tplA.plusAtkIfTargetOnElement || (tplA.plus1IfTargetOnElement ? { element: tplA.plus1IfTargetOnElement, amount: 1 } : null);

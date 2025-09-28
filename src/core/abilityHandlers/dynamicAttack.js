@@ -150,6 +150,27 @@ function countElementCreatures(state, element, opts = {}) {
   return count;
 }
 
+function countAlliedElementCreatures(state, owner, element, opts = {}) {
+  if (!state?.board || owner == null || !element) return 0;
+  let total = 0;
+  for (let r = 0; r < state.board.length; r += 1) {
+    const row = state.board[r];
+    if (!Array.isArray(row)) continue;
+    for (let c = 0; c < row.length; c += 1) {
+      if (!opts.includeSelf && opts.exclude && r === opts.exclude.r && c === opts.exclude.c) continue;
+      const unit = row[c]?.unit;
+      if (!unit || unit.owner !== owner) continue;
+      const tpl = CARDS[unit.tplId];
+      if (!tpl) continue;
+      const tplElement = parseElementFromToken(tpl.element);
+      if (tplElement && tplElement === element) {
+        total += 1;
+      }
+    }
+  }
+  return total;
+}
+
 export function computeDynamicAttackBonus(state, r, c, tpl) {
   if (!tpl) return null;
   if (tpl.dynamicAtk) {
@@ -189,6 +210,36 @@ export function computeDynamicAttackBonus(state, r, c, tpl) {
       count: effective,
       matcher: allyCfg.matcher,
     };
+  }
+  if (tpl.dynamicAtkAlliedElementOnField) {
+    const cfg = tpl.dynamicAtkAlliedElementOnField;
+    const element = parseElementFromToken(cfg.element || tpl.element);
+    if (element) {
+      const requireField = parseElementFromToken(cfg.requireFieldElement || cfg.fieldElement);
+      const cellElement = parseElementFromToken(state?.board?.[r]?.[c]?.element);
+      if (!requireField || cellElement === requireField) {
+        const owner = state?.board?.[r]?.[c]?.unit?.owner;
+        const includeSelf = cfg.includeSelf === true;
+        const baseValueRaw = Number.isFinite(cfg.baseValue) ? Math.floor(cfg.baseValue) : (Number.isFinite(tpl?.atk) ? tpl.atk : 0);
+        const amountPer = Number.isFinite(cfg.amountPer) ? Math.floor(cfg.amountPer) : 1;
+        const count = countAlliedElementCreatures(state, owner, element, { includeSelf, exclude: { r, c } });
+        const total = baseValueRaw + amountPer * count;
+        const baseAtk = Number.isFinite(tpl?.atk) ? tpl.atk : 0;
+        const delta = total - baseAtk;
+        if (delta !== 0) {
+          return {
+            amount: delta,
+            type: 'ALLY_ELEMENT_FIELD',
+            element,
+            count,
+            total,
+            baseValue: baseValueRaw,
+            includeSelf,
+            requireField,
+          };
+        }
+      }
+    }
   }
   return null;
 }
