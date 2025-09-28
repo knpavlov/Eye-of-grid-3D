@@ -40,6 +40,80 @@ describe('эффекты начала хода', () => {
     expect(result.total).toBe(0);
     expect(state.players[0].mana).toBe(2);
   });
+
+  it('Guardian Watchtower не генерирует ману без союзного Scion', () => {
+    const state = {
+      board: makeBoard(),
+      players: [{ mana: 0 }, { mana: 0 }],
+    };
+    state.board[0][0].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_GUARDIAN_WATCHTOWER',
+      currentHP: 10,
+    };
+    const result = applyTurnStartManaEffects(state, 0);
+    expect(result.total).toBe(0);
+    expect(state.players[0].mana).toBe(0);
+  });
+
+  it('Guardian Watchtower начисляет ману за всех союзников при присутствии Scion', () => {
+    const state = {
+      board: makeBoard(),
+      players: [{ mana: 1 }, { mana: 0 }],
+    };
+    state.board[0][0].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_GUARDIAN_WATCHTOWER',
+      currentHP: 10,
+    };
+    state.board[1][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_SCION_BIOLITH_LORD',
+      currentHP: 6,
+    };
+    state.board[0][1].unit = {
+      owner: 0,
+      tplId: 'FIRE_PARTMOLE_FLAME_LIZARD',
+      currentHP: 2,
+    };
+    const result = applyTurnStartManaEffects(state, 0);
+    expect(result.total).toBe(3);
+    expect(state.players[0].mana).toBe(4);
+    const entry = result.entries.find(e => e.tplId === 'BIOLITH_GUARDIAN_WATCHTOWER');
+    expect(entry).toBeTruthy();
+    expect(entry.amount).toBe(3);
+    expect(entry.allies).toBe(3);
+  });
+
+  it('Guardian Watchtower даёт ману в начале каждого своего хода', () => {
+    const state = {
+      board: makeBoard(),
+      players: [{ mana: 0 }, { mana: 0 }],
+    };
+    state.board[0][0].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_GUARDIAN_WATCHTOWER',
+      currentHP: 10,
+    };
+    state.board[1][1].unit = {
+      owner: 0,
+      tplId: 'BIOLITH_SCION_BIOLITH_LORD',
+      currentHP: 6,
+    };
+    state.board[0][1].unit = {
+      owner: 0,
+      tplId: 'FIRE_PARTMOLE_FLAME_LIZARD',
+      currentHP: 2,
+    };
+
+    const first = applyTurnStartManaEffects(state, 0);
+    expect(first.total).toBe(3);
+    expect(state.players[0].mana).toBe(3);
+
+    const second = applyTurnStartManaEffects(state, 0);
+    expect(second.total).toBe(3);
+    expect(state.players[0].mana).toBe(6);
+  });
 });
 
 describe('реакции на призыв врага', () => {
