@@ -39,6 +39,7 @@ export const interactionState = {
   pendingRitualBoardMesh: null,
   pendingRitualSpellHandIndex: null,
   pendingRitualSpellCard: null,
+  pendingRitualOrigin: null,
   pendingUnitAbility: null,
   pendingAbilityOrientation: null,
   spellDragHandled: false,

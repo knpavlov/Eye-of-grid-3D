@@ -594,24 +594,37 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
         try { PENDING_HIDE_HAND_CARDS = []; } catch {}
         try { resetCardSelection(); } catch {}
         // Убираем карту-спелл с поля если она там есть
-        try { 
-          if (pendingRitualBoardMesh) { 
+        try {
+          if (pendingRitualBoardMesh) {
             window.__fx?.dissolveAndAsh(pendingRitualBoardMesh, new THREE.Vector3(0,0.6,0), 0.9);
-            setTimeout(()=>{ 
-              try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {} 
-              pendingRitualBoardMesh = null; 
-            }, 950); 
-          } 
+            setTimeout(()=>{
+              try { pendingRitualBoardMesh.parent.remove(pendingRitualBoardMesh); } catch {}
+              pendingRitualBoardMesh = null;
+            }, 950);
+          }
         } catch {}
-        // Показать вспышку +2 маны у панели by (только визуально; фактическое значение придёт со снапшотом)
-        const barEl = document.getElementById(`mana-display-${by}`);
-        if (barEl) {
-          const rect = barEl.getBoundingClientRect();
-          const center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
-          // Две искры в панель — символически
-          animateManaGainFromWorld(new THREE.Vector3(0,0,0), by, true);
-          setTimeout(()=> animateManaGainFromWorld(new THREE.Vector3(0,0,0), by, true), 120);
-        }
+        // Визуальный приток маны — тот же эффект, что и при смерти существ
+        try {
+          let originVec = null;
+          if (typeof pendingRitualOrigin !== 'undefined' && pendingRitualOrigin) {
+            if (typeof pendingRitualOrigin.clone === 'function') {
+              originVec = pendingRitualOrigin.clone();
+            } else if (THREE && THREE.Vector3) {
+              originVec = new THREE.Vector3(
+                Number(pendingRitualOrigin.x) || 0,
+                Number(pendingRitualOrigin.y) || 0,
+                Number(pendingRitualOrigin.z) || 0,
+              );
+            }
+          }
+          if (!originVec && THREE && THREE.Vector3) {
+            originVec = new THREE.Vector3(0, 1.0, 0);
+          }
+          if (originVec) {
+            animateManaGainFromWorld(originVec, by, { amount: 2, visualOnly: true });
+          }
+        } catch {}
+        try { pendingRitualOrigin = null; } catch {}
         // Принудительно обновляем UI для полного сброса состояний
         try { updateHand(); } catch {}
         try { updateUI(); } catch {}
