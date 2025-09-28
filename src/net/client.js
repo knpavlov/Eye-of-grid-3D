@@ -603,15 +603,27 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
             }, 950); 
           } 
         } catch {}
-        // Показать вспышку +2 маны у панели by (только визуально; фактическое значение придёт со снапшотом)
-        const barEl = document.getElementById(`mana-display-${by}`);
-        if (barEl) {
-          const rect = barEl.getBoundingClientRect();
-          const center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
-          // Две искры в панель — символически
-          animateManaGainFromWorld(new THREE.Vector3(0,0,0), by, true);
-          setTimeout(()=> animateManaGainFromWorld(new THREE.Vector3(0,0,0), by, true), 120);
+        // Показать поступление 2 маны эффектом, аналогичным гибели существ
+        const THREE = (typeof window !== 'undefined') ? window.THREE : null;
+        let manaFxOrigin = null;
+        try {
+          if (pendingRitualBoardMesh?.position) {
+            manaFxOrigin = typeof pendingRitualBoardMesh.position.clone === 'function'
+              ? pendingRitualBoardMesh.position.clone()
+              : (THREE && THREE.Vector3
+                ? new THREE.Vector3(pendingRitualBoardMesh.position.x || 0, pendingRitualBoardMesh.position.y || 0, pendingRitualBoardMesh.position.z || 0)
+                : { x: pendingRitualBoardMesh.position.x || 0, y: pendingRitualBoardMesh.position.y || 0, z: pendingRitualBoardMesh.position.z || 0 });
+            if (manaFxOrigin && manaFxOrigin.y != null) {
+              manaFxOrigin.y += 0.8;
+            }
+          }
+        } catch {}
+        if (!manaFxOrigin) {
+          manaFxOrigin = THREE && THREE.Vector3 ? new THREE.Vector3(0, 1.2, 0) : { x: 0, y: 1.2, z: 0 };
         }
+        try {
+          animateManaGainFromWorld(manaFxOrigin, by, { amount: 2, visualOnly: true });
+        } catch {}
         // Принудительно обновляем UI для полного сброса состояний
         try { updateHand(); } catch {}
         try { updateUI(); } catch {}

@@ -426,8 +426,13 @@ io.on("connection", (socket) => {
       const i2 = Math.min(spellIdx, creatureIdx);
       const removed1 = hand.splice(i1, 1)[0];
       const removed2 = hand.splice(i2, 1)[0];
-      try { pl.discard = Array.isArray(pl.discard) ? pl.discard : []; pl.discard.push(removed1.id === 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1 : removed2); } catch {}
-      try { pl.graveyard = Array.isArray(pl.graveyard) ? pl.graveyard : []; pl.graveyard.push(removed1.id !== 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1 : removed2); } catch {}
+      const spellCard = removed1?.id === 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1 : removed2;
+      const creatureCard = removed1?.id === 'SPELL_PARMTETIC_HOLY_FEAST' ? removed2 : removed1;
+      try {
+        pl.graveyard = Array.isArray(pl.graveyard) ? pl.graveyard : [];
+        if (spellCard) pl.graveyard.push(spellCard);
+        if (creatureCard) pl.graveyard.push(creatureCard);
+      } catch {}
       // +2 маны
       const cap = (m) => Math.min(10, m);
       const beforeMana = (pl.mana || 0);

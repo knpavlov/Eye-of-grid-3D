@@ -12,6 +12,17 @@ import { refreshPossessionsUI } from '../ui/possessions.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
 import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
 
+const ELEMENT_LABELS_RU = {
+  FIRE: 'Огонь',
+  WATER: 'Вода',
+  EARTH: 'Земля',
+  FOREST: 'Лес',
+  BIOLITH: 'Биолит',
+  NEUTRAL: 'Нейтраль',
+};
+
+const formatElementLabel = element => ELEMENT_LABELS_RU[element] || element || '';
+
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
   const handIndices = pl.hand
@@ -71,7 +82,24 @@ function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
       pl.mana = capMana(pl.mana + 2);
       try { window.__ui?.mana?.animateTurnManaGain(gameState.active, before, pl.mana, 800); } catch {}
       if (spellIdx >= 0) pl.hand.splice(spellIdx, 1);
-      pl.discard.push(tpl);
+      if (!Array.isArray(pl.graveyard)) {
+        pl.graveyard = [];
+      }
+      pl.graveyard.push(tpl);
+      let manaFxOrigin = null;
+      try {
+        const mesh = interactionState.pendingRitualBoardMesh;
+        if (mesh?.position) {
+          manaFxOrigin = typeof mesh.position.clone === 'function'
+            ? mesh.position.clone()
+            : (THREE && THREE.Vector3
+              ? new THREE.Vector3(mesh.position.x || 0, mesh.position.y || 0, mesh.position.z || 0)
+              : { x: mesh.position.x || 0, y: mesh.position.y || 0, z: mesh.position.z || 0 });
+          if (manaFxOrigin && manaFxOrigin.y != null) {
+            manaFxOrigin.y += 0.8;
+          }
+        }
+      } catch {}
       try {
         if (interactionState.pendingRitualBoardMesh) {
           window.__fx.dissolveAndAsh(interactionState.pendingRitualBoardMesh, new THREE.Vector3(0, 0.6, 0), 0.9);
@@ -79,6 +107,11 @@ function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
             try { interactionState.pendingRitualBoardMesh.parent.remove(interactionState.pendingRitualBoardMesh); } catch {}
             interactionState.pendingRitualBoardMesh = null;
           }, 950);
+        }
+      } catch {}
+      try {
+        if (manaFxOrigin) {
+          animateManaGainFromWorld(manaFxOrigin, gameState.active, { amount: 2, visualOnly: true });
         }
       } catch {}
       window.__ui.panels.hidePrompt();
@@ -305,26 +338,60 @@ export const handlers = {
     },
   },
 
-  RAISE_STONE: {
+  SPELL_HEALING_SHOWER: {
     requiresUnitTarget: true,
-    onUnit({ tpl, pl, idx, r, c, u }) {
+    onUnit({ tpl, pl, idx, u }) {
       if (!u) {
-        showNotification('Need to drag this card to a unit', 'error');
+        showNotification('Нужно выбрать союзное существо нужного элемента', 'error');
         return;
       }
       if (u.owner !== gameState.active) {
-        showNotification('Only friendly unit', 'error');
+        showNotification('Можно выбрать только союзное существо', 'error');
         return;
       }
-      const before = u.currentHP;
-      u.currentHP += 2;
+      const targetTpl = CARDS[u.tplId];
+      const element = targetTpl?.element;
+      if (!element) {
+        showNotification('У выбранного существа не найден элемент', 'error');
+        return;
+      }
+
+      const healed = [];
+      for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 3; col++) {
+          const cellUnit = gameState.board?.[row]?.[col]?.unit;
+          if (!cellUnit || cellUnit.owner !== gameState.active) continue;
+          const cellTpl = CARDS[cellUnit.tplId];
+          if (!cellTpl || cellTpl.element !== element) continue;
+          const before = Number.isFinite(cellUnit.currentHP) ? cellUnit.currentHP : 0;
+          cellUnit.currentHP = before + 3;
+          healed.push({ row, col, before, after: cellUnit.currentHP, tplId: cellUnit.tplId });
+        }
+      }
+
+      if (!healed.length) {
+        showNotification('Союзные существа нужного элемента не найдены', 'error');
+        return;
+      }
+
+      const label = formatElementLabel(element);
+      const details = healed
+        .map(info => {
+          const name = CARDS[info.tplId]?.name || info.tplId;
+          return `${name} (${info.before}→${info.after})`;
+        })
+        .join('; ');
       addLog(
-        `${tpl.name}: ${CARDS[u.tplId].name} получает +2 HP (HP ${before}→${u.currentHP})`
+        `${tpl.name}: союзные существа элемента ${label || element} получают +3 HP${details ? ` — ${details}` : ''}.`
       );
+
       try {
-        const tMesh = unitMeshes.find(m => m.userData.row === r && m.userData.col === c);
-        if (tMesh) window.__fx.spawnDamageText(tMesh, `+2`, '#22c55e');
+        for (const info of healed) {
+          const tMesh = unitMeshes.find(m => m.userData.row === info.row && m.userData.col === info.col);
+          if (tMesh) window.__fx.spawnDamageText(tMesh, `+3`, '#22c55e');
+        }
       } catch {}
+
       spendAndDiscardSpell(pl, idx);
       resetCardSelection();
       updateHand();
