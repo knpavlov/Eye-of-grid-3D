@@ -3,6 +3,7 @@ import { getCtx } from './context.js';
 import { buildManaGainPlan } from './manaFx.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
+import { highlightSummonCells, clearSummonHighlights } from './placementHighlight.js';
 import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
 import { showTooltip, hideTooltip } from '../ui/tooltip.js';
 import {
@@ -14,6 +15,7 @@ import {
   isIncarnationCard,
 } from '../core/abilities.js';
 import { capMana } from '../core/constants.js';
+import { getSummonableCells, canSummonAt } from '../core/summonRules.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
 import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
 import { applyDeathManaSteal } from '../core/abilityHandlers/manaSteal.js';
@@ -46,6 +48,7 @@ export const interactionState = {
   autoEndTurnAfterAttack: false,
   // список событий получения маны, которые можно отменить при отмене призыва
   pendingSummonManaGain: null,
+  allowedSummonCells: null,
 };
 
 function normalizeManaGainEntries(entries) {
@@ -234,8 +237,26 @@ function onMouseMove(event) {
       interactionState.hoveredTile.material.emissiveIntensity = 0.1;
     }
 
-    if (intersects.length > 0) {
-      interactionState.hoveredTile = intersects[0].object;
+    let hovered = intersects.length > 0 ? intersects[0].object : null;
+    if (hovered && hovered.userData) {
+      while (hovered && (hovered.userData.row == null || hovered.userData.col == null) && hovered.parent) {
+        hovered = hovered.parent;
+      }
+    }
+
+    const cardData = interactionState.draggedCard?.userData?.cardData;
+    if (hovered && cardData && cardData.type === 'UNIT' && !isIncarnationCard(cardData)) {
+      const r = hovered.userData?.row;
+      const c = hovered.userData?.col;
+      const key = (r != null && c != null) ? `${r}:${c}` : null;
+      const allowed = interactionState.allowedSummonCells;
+      if (!allowed || !key || !allowed.has(key)) {
+        hovered = null;
+      }
+    }
+
+    if (hovered) {
+      interactionState.hoveredTile = hovered;
       interactionState.hoveredTile.material.emissiveIntensity = 0.3;
 
       const targetPos = interactionState.hoveredTile.position.clone();
@@ -501,6 +522,12 @@ function onMouseUp(event) {
             endCardDrag();
             return;
           }
+          if (!canSummonAt(gameState, playerIndex, row, col)) {
+            showNotification('You can summon only on fields adjacent to creatures.', 'error');
+            returnCardToHand(interactionState.draggedCard);
+            endCardDrag();
+            return;
+          }
           interactionState.pendingPlacement = {
             card: interactionState.draggedCard,
             row,
@@ -529,6 +556,8 @@ function onMouseUp(event) {
 
 function startCardDrag(card) {
   interactionState.draggedCard = card;
+  clearSummonHighlights();
+  interactionState.allowedSummonCells = null;
   if (interactionState.hoveredHandCard) {
     gsap.to(interactionState.hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.1 });
     setHandCardHoverVisual(interactionState.hoveredHandCard, false);
@@ -565,6 +594,18 @@ function startCardDrag(card) {
         }
         highlightTiles(cells);
       }
+    } else if (data && data.type === 'UNIT' && !isIncarnationCard(data)) {
+      const gs = window.gameState;
+      if (gs) {
+        const cells = getSummonableCells(gs, gs.active);
+        if (cells.length) {
+          interactionState.allowedSummonCells = new Set(cells.map(cell => `${cell.r}:${cell.c}`));
+          highlightSummonCells(cells);
+        } else {
+          interactionState.allowedSummonCells = new Set();
+          clearSummonHighlights();
+        }
+      }
     }
   } catch {}
 }
@@ -575,7 +616,9 @@ function endCardDrag() {
     interactionState.hoveredTile = null;
   }
   interactionState.draggedCard = null;
+  interactionState.allowedSummonCells = null;
   clearHighlights();
+  clearSummonHighlights();
 }
 
 function returnCardToHand(card) {
