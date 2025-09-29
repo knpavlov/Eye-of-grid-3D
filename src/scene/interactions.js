@@ -3,6 +3,7 @@ import { getCtx } from './context.js';
 import { buildManaGainPlan } from './manaFx.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
+import { highlightSummonTiles } from './summonHighlight.js';
 import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
 import { showTooltip, hideTooltip } from '../ui/tooltip.js';
 import {
@@ -13,6 +14,11 @@ import {
   describeFieldFatality,
   isIncarnationCard,
 } from '../core/abilities.js';
+import {
+  computeSummonableCells,
+  isSummonCellAllowed,
+  markPlayerSummoned,
+} from '../core/placementRules.js';
 import { capMana } from '../core/constants.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
 import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
@@ -101,6 +107,8 @@ export function undoPendingSummonManaGain() {
 
 const AUTO_END_TURN_RETRY_MS = 120;
 const AUTO_END_TURN_MAX_ATTEMPTS = 60;
+
+const SUMMON_ADJACENCY_ERROR = 'Призыв возможен только на соседние клетки существ.';
 
 // Счётчик ожидания авто-завершения хода — помогает не запускать его без явного запроса
 function adjustPendingAutoEnd(delta) {
@@ -473,6 +481,25 @@ function onMouseUp(event) {
             endCardDrag();
             return;
           }
+          if (existingUnit.owner !== playerIndex) {
+            showNotification('Incarnation requires a friendly unit on the field.', 'error');
+            returnCardToHand(interactionState.draggedCard);
+            endCardDrag();
+            return;
+          }
+          const allowed = isSummonCellAllowed(
+            gameState,
+            playerIndex,
+            row,
+            col,
+            { allowOccupiedFriendly: true },
+          );
+          if (!allowed) {
+            showNotification(SUMMON_ADJACENCY_ERROR, 'error');
+            returnCardToHand(interactionState.draggedCard);
+            endCardDrag();
+            return;
+          }
           const check = evaluateIncarnationSummon(gameState, { r: row, c: col, tpl: cardData, owner: playerIndex });
           if (!check?.ok) {
             showNotification('Incarnation is not possible on this field.', 'error');
@@ -501,6 +528,19 @@ function onMouseUp(event) {
             endCardDrag();
             return;
           }
+          const allowed = isSummonCellAllowed(
+            gameState,
+            playerIndex,
+            row,
+            col,
+            { allowOccupiedFriendly: false },
+          );
+          if (!allowed) {
+            showNotification(SUMMON_ADJACENCY_ERROR, 'error');
+            returnCardToHand(interactionState.draggedCard);
+            endCardDrag();
+            return;
+          }
           interactionState.pendingPlacement = {
             card: interactionState.draggedCard,
             row,
@@ -518,6 +558,7 @@ function onMouseUp(event) {
         } catch {}
         try { window.__ui.panels.showOrientationPanel(); } catch {}
         try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+        try { clearHighlights(); } catch {}
       } else {
         returnCardToHand(interactionState.draggedCard);
       }
@@ -529,6 +570,7 @@ function onMouseUp(event) {
 
 function startCardDrag(card) {
   interactionState.draggedCard = card;
+  clearHighlights();
   if (interactionState.hoveredHandCard) {
     gsap.to(interactionState.hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.1 });
     setHandCardHoverVisual(interactionState.hoveredHandCard, false);
@@ -564,6 +606,14 @@ function startCardDrag(card) {
           }
         }
         highlightTiles(cells);
+      }
+    } else if (data && data.type === 'UNIT') {
+      const gs = window.gameState;
+      const active = typeof gs?.active === 'number' ? gs.active : null;
+      if (gs && active != null) {
+        const includeOccupiedFriendly = isIncarnationCard(data);
+        const cells = computeSummonableCells(gs, active, { includeOccupiedFriendly });
+        highlightSummonTiles(cells);
       }
     }
   } catch {}
@@ -855,6 +905,21 @@ export function placeUnitWithDirection(direction) {
   if (!interactionState.pendingPlacement) return;
   const { card, row, col, handIndex, incarnation } = interactionState.pendingPlacement;
   const cardData = card.userData.cardData;
+  const allowOccupiedFriendly = !!(incarnation?.active);
+  const allowed = isSummonCellAllowed(
+    gameState,
+    gameState.active,
+    row,
+    col,
+    { allowOccupiedFriendly },
+  );
+  if (!allowed) {
+    showNotification(SUMMON_ADJACENCY_ERROR, 'error');
+    returnCardToHand(card);
+    try { window.__ui.panels.hideOrientationPanel(); } catch {}
+    interactionState.pendingPlacement = null;
+    return;
+  }
   if (card) {
     card.userData = card.userData || {};
     card.userData.isInHand = false;
@@ -908,6 +973,7 @@ export function placeUnitWithDirection(direction) {
     facing: direction,
   };
   gameState.board[row][col].unit = unit;
+  markPlayerSummoned(gameState, gameState.active);
   player.mana -= summonCost;
   player.discard.push(cardData);
   player.hand.splice(handIndex, 1);

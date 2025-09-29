@@ -1,18 +1,15 @@
-// Подсветка клеток на поле для выбора цели.
-// Верхняя поверхность клетки покрывается пульсирующим "водным" свечением,
-// которое проявляется и затухает каждые пару секунд.
+// Подсветка клеток для размещения существ.
+// Эффект подчёркивает границы клетки мягким свечением,
+// чтобы было видно элемент поля и при этом заметить доступность.
 import { getCtx } from './context.js';
-import { clearSummonHighlights } from './summonHighlight.js';
 
-// Внутреннее состояние активной подсветки
 const state = {
   tiles: [],
   uniforms: [],
   rafId: 0,
 };
 
-// Обновляет шейдер материала, добавляя водную пульсацию
-function injectPulseShader(mat) {
+function injectSummonShader(mat) {
   if (!mat || typeof mat.onBeforeCompile !== 'function') return mat;
   const clone = typeof mat.clone === 'function' ? mat.clone() : mat;
   if (!clone || typeof clone.onBeforeCompile !== 'function') return clone;
@@ -22,18 +19,22 @@ function injectPulseShader(mat) {
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec2 vUv;')
       .replace('#include <uv_vertex>', '#include <uv_vertex>\n vUv = uv;');
-    const head = `\n varying vec2 vUv;\n uniform float uTime;\n`;
+    const head = '\n varying vec2 vUv;\n uniform float uTime;\n';
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>' + head)
       .replace(
         '#include <dithering_fragment>',
         `#include <dithering_fragment>\n{
-          float pulse = sin(uTime*2.5)*0.5 + 0.5; // цикл ~2.5 секунды
-          vec2 uv = vUv * 2.0 - 1.0;
-          float wave = sin((uv.x + uTime*0.2)*10.0) * sin((uv.y + uTime*0.3)*10.0);
-          vec3 water = vec3(0.3,0.6,1.0) * (0.6 + 0.4*wave) * pulse;
-          gl_FragColor.rgb += water;
-          gl_FragColor.a = max(gl_FragColor.a, pulse*0.8);
+          vec2 centered = vUv - 0.5;
+          float squareRadius = max(abs(centered.x), abs(centered.y));
+          float border = smoothstep(0.15, 0.48, squareRadius * 2.0);
+          float pulse = sin(uTime * 1.6) * 0.05 + 0.08;
+          float halo = clamp(border + pulse, 0.0, 1.0);
+          vec3 edgeColor = vec3(0.45, 0.8, 0.75);
+          vec3 tint = mix(gl_FragColor.rgb, edgeColor, halo * 0.6);
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, tint, 0.6);
+          float fade = smoothstep(0.18, 0.52, squareRadius);
+          gl_FragColor.a = max(gl_FragColor.a, fade * 0.35 + pulse * 0.1);
         }`
       );
     state.uniforms.push(shader.uniforms.uTime);
@@ -41,18 +42,16 @@ function injectPulseShader(mat) {
   return clone;
 }
 
-// Создаёт набор материалов с подсветкой для всей плитки
-function createPulseMaterial(origMat) {
+function createSummonMaterial(origMat) {
   if (!origMat) return origMat;
   if (Array.isArray(origMat)) {
-    // Индекс 2 соответствует верхней поверхности тайла из board.js
     return origMat.map((mat, idx) => {
       if (!mat) return mat;
-      if (idx === 2) return injectPulseShader(mat);
+      if (idx === 2) return injectSummonShader(mat);
       return typeof mat.clone === 'function' ? mat.clone() : mat;
     });
   }
-  return injectPulseShader(origMat);
+  return injectSummonShader(origMat);
 }
 
 function disposeMaterial(material) {
@@ -65,7 +64,6 @@ function disposeMaterial(material) {
   }
 }
 
-// Запускает анимацию uniform uTime
 function startAnim() {
   const start = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   function tick() {
@@ -78,21 +76,20 @@ function startAnim() {
   tick();
 }
 
-// Подсветка переданных координат {r,c}
-export function highlightTiles(cells = []) {
+export function highlightSummonTiles(cells = []) {
   const ctx = getCtx();
   const { tileMeshes } = ctx;
   if (!tileMeshes) return;
 
-  clearHighlights();
+  clearSummonHighlights();
 
   for (const { r, c } of cells) {
     const tile = tileMeshes?.[r]?.[c];
     if (!tile) continue;
     tile.traverse(obj => {
       if (obj.isMesh) {
-        obj.userData._origMat = obj.material;
-        obj.material = createPulseMaterial(obj.material);
+        obj.userData._summonOrigMat = obj.material;
+        obj.material = createSummonMaterial(obj.material);
       }
     });
     state.tiles.push(tile);
@@ -100,8 +97,7 @@ export function highlightTiles(cells = []) {
   if (state.tiles.length) startAnim();
 }
 
-// Сброс подсветки
-export function clearHighlights() {
+export function clearSummonHighlights() {
   if (state.rafId) {
     if (typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(state.rafId);
     else clearTimeout(state.rafId);
@@ -110,18 +106,20 @@ export function clearHighlights() {
   state.uniforms = [];
   state.tiles.forEach(tile => {
     tile.traverse(obj => {
-      if (obj.isMesh && obj.userData._origMat) {
+      if (obj.isMesh && obj.userData._summonOrigMat) {
         disposeMaterial(obj.material);
-        obj.material = obj.userData._origMat;
-        delete obj.userData._origMat;
+        obj.material = obj.userData._summonOrigMat;
+        delete obj.userData._summonOrigMat;
       }
     });
   });
   state.tiles = [];
-  try { clearSummonHighlights(); } catch {}
 }
 
-// Экспорт в глобальную область для отладки
-try { if (typeof window !== 'undefined') { window.__tileHighlight = { highlightTiles, clearHighlights }; } } catch {}
+try {
+  if (typeof window !== 'undefined') {
+    window.__summonHighlight = { highlightSummonTiles, clearSummonHighlights };
+  }
+} catch {}
 
-export default { highlightTiles, clearHighlights };
+export default { highlightSummonTiles, clearSummonHighlights };

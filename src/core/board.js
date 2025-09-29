@@ -101,6 +101,7 @@ export function startGame(deck0 = DEFAULT_DECK, deck1 = DEFAULT_DECK, options = 
         graveyard: [],
         mana: 2,
         maxMana: 10,
+        hasSummonedUnit: false,
       },
       {
         name: meta1.name,
@@ -112,6 +113,7 @@ export function startGame(deck0 = DEFAULT_DECK, deck1 = DEFAULT_DECK, options = 
         graveyard: [],
         mana: 0,
         maxMana: 10,
+        hasSummonedUnit: false,
       },
     ],
     active: 0,
