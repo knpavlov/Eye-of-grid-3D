@@ -3,6 +3,7 @@ import { getCtx } from './context.js';
 import { buildManaGainPlan } from './manaFx.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
+import { highlightPlacementTiles, clearPlacementHighlights } from './placementHighlight.js';
 import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
 import { showTooltip, hideTooltip } from '../ui/tooltip.js';
 import {
@@ -13,6 +14,7 @@ import {
   describeFieldFatality,
   isIncarnationCard,
 } from '../core/abilities.js';
+import { getAllowedSummonCells, canSummonOnCell } from '../core/placementRules.js';
 import { capMana } from '../core/constants.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
 import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
@@ -501,6 +503,13 @@ function onMouseUp(event) {
             endCardDrag();
             return;
           }
+          const allowed = canSummonOnCell(gameState, playerIndex, row, col);
+          if (!allowed) {
+            showNotification('Эта клетка сейчас недоступна для призыва.', 'error');
+            returnCardToHand(interactionState.draggedCard);
+            endCardDrag();
+            return;
+          }
           interactionState.pendingPlacement = {
             card: interactionState.draggedCard,
             row,
@@ -529,6 +538,7 @@ function onMouseUp(event) {
 
 function startCardDrag(card) {
   interactionState.draggedCard = card;
+  clearPlacementHighlights();
   if (interactionState.hoveredHandCard) {
     gsap.to(interactionState.hoveredHandCard.scale, { x: 0.54, y: 1, z: 0.54, duration: 0.1 });
     setHandCardHoverVisual(interactionState.hoveredHandCard, false);
@@ -565,6 +575,13 @@ function startCardDrag(card) {
         }
         highlightTiles(cells);
       }
+    } else if (data && data.type === 'UNIT') {
+      const gs = typeof window !== 'undefined' ? window.gameState : null;
+      const active = gs && typeof gs.active === 'number' ? gs.active : null;
+      if (gs && typeof active === 'number') {
+        const allowed = getAllowedSummonCells(gs, active);
+        highlightPlacementTiles(allowed);
+      }
     }
   } catch {}
 }
@@ -576,6 +593,7 @@ function endCardDrag() {
   }
   interactionState.draggedCard = null;
   clearHighlights();
+  clearPlacementHighlights();
 }
 
 function returnCardToHand(card) {
@@ -629,6 +647,7 @@ export function resetCardSelection() {
     interactionState.selectedCard = null;
   }
   clearHighlights();
+  clearPlacementHighlights();
   try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
 }
 
@@ -873,6 +892,16 @@ export function placeUnitWithDirection(direction) {
     try { window.__ui.panels.hideOrientationPanel(); } catch {}
     interactionState.pendingPlacement = null;
     return;
+  }
+  if (!incarnation?.active) {
+    const allowed = canSummonOnCell(gameState, gameState.active, row, col);
+    if (!allowed) {
+      showNotification('Эта клетка больше недоступна для призыва.', 'error');
+      returnCardToHand(card);
+      try { window.__ui.panels.hideOrientationPanel(); } catch {}
+      interactionState.pendingPlacement = null;
+      return;
+    }
   }
   let summonEndedTurn = false;
   const endTurnAfterSummon = () => {

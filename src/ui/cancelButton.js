@@ -1,6 +1,7 @@
 // Кнопка отмены действий при установке карты или выборе цели
 import { interactionState, returnCardToHand, undoPendingSummonManaGain } from '../scene/interactions.js';
 import { clearHighlights } from '../scene/highlight.js';
+import { clearPlacementHighlights } from '../scene/placementHighlight.js';
 import { capMana } from '../core/constants.js';
 import { refreshPossessionsUI } from './possessions.js';
 
@@ -84,6 +85,7 @@ export function setupCancelButton() {
       }
     } catch {}
     clearHighlights();
+    clearPlacementHighlights();
     refreshCancelButton();
   });
   refreshCancelButton();
