@@ -286,10 +286,26 @@ export function open(deck = null, onDone) {
   summary.className = 'mt-2 text-center';
   left.appendChild(summary);
 
-  const doneBtn = document.createElement('button');
-  doneBtn.className = 'overlay-panel mt-2 px-3 py-1.5 bg-slate-600 hover:bg-slate-700';
-  doneBtn.textContent = 'Done';
-  left.appendChild(doneBtn);
+  // Блок с управляющими кнопками (сохранить / отменить)
+  const actionsRow = document.createElement('div');
+  actionsRow.className = 'mt-2 flex gap-2';
+  left.appendChild(actionsRow);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700';
+  saveBtn.textContent = 'Save';
+  actionsRow.appendChild(saveBtn);
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'overlay-panel px-3 py-1.5 hover:bg-slate-700';
+  // Кнопка отмены — закрываем редактор без сохранения изменений
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', () => {
+    if (saving) return;
+    cleanup();
+    onDone && onDone();
+  });
+  actionsRow.appendChild(cancelBtn);
 
   // === Каталог карт ===
   const catalog = document.createElement('div');
@@ -662,12 +678,13 @@ export function open(deck = null, onDone) {
   searchInput.addEventListener('input', renderCatalog);
 
   let saving = false;
-  doneBtn.addEventListener('click', async () => {
+  saveBtn.addEventListener('click', async () => {
     if (saving) return;
     saving = true;
-    const prevText = doneBtn.textContent;
-    doneBtn.disabled = true;
-    doneBtn.textContent = 'Saving…';
+    const prevText = saveBtn.textContent;
+    saveBtn.disabled = true;
+    cancelBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
 
     working.name = nameInput.value.trim() || 'Untitled';
 
@@ -691,8 +708,9 @@ export function open(deck = null, onDone) {
       onDone && onDone();
       saving = false;
       try {
-        doneBtn.disabled = false;
-        doneBtn.textContent = prevText;
+        saveBtn.disabled = false;
+        cancelBtn.disabled = false;
+        saveBtn.textContent = prevText;
       } catch {}
     }
   });
