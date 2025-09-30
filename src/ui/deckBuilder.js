@@ -286,10 +286,27 @@ export function open(deck = null, onDone) {
   summary.className = 'mt-2 text-center';
   left.appendChild(summary);
 
-  const doneBtn = document.createElement('button');
-  doneBtn.className = 'overlay-panel mt-2 px-3 py-1.5 bg-slate-600 hover:bg-slate-700';
-  doneBtn.textContent = 'Done';
-  left.appendChild(doneBtn);
+  let saving = false;
+
+  const actions = document.createElement('div');
+  actions.className = 'mt-2 flex gap-2';
+  left.appendChild(actions);
+
+  // Кнопка отмены возвращает предыдущее состояние без сохранения
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-700 hover:bg-slate-600';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', () => {
+    if (saving) return;
+    cleanup();
+    onDone && onDone();
+  });
+  actions.appendChild(cancelBtn);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700';
+  saveBtn.textContent = 'Save';
+  actions.appendChild(saveBtn);
 
   // === Каталог карт ===
   const catalog = document.createElement('div');
@@ -661,13 +678,12 @@ export function open(deck = null, onDone) {
 
   searchInput.addEventListener('input', renderCatalog);
 
-  let saving = false;
-  doneBtn.addEventListener('click', async () => {
+  saveBtn.addEventListener('click', async () => {
     if (saving) return;
     saving = true;
-    const prevText = doneBtn.textContent;
-    doneBtn.disabled = true;
-    doneBtn.textContent = 'Saving…';
+    const prevText = saveBtn.textContent;
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
 
     working.name = nameInput.value.trim() || 'Untitled';
 
@@ -691,8 +707,8 @@ export function open(deck = null, onDone) {
       onDone && onDone();
       saving = false;
       try {
-        doneBtn.disabled = false;
-        doneBtn.textContent = prevText;
+        saveBtn.disabled = false;
+        saveBtn.textContent = prevText;
       } catch {}
     }
   });
