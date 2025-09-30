@@ -3,6 +3,7 @@ import { getCtx } from './context.js';
 import { buildManaGainPlan } from './manaFx.js';
 import { setHandCardHoverVisual } from './hand.js';
 import { highlightTiles, clearHighlights } from './highlight.js';
+import { highlightPlacement, clearPlacementHighlights } from './placementHighlight.js';
 import { trackUnitHover, resetUnitHover } from './unitTooltip.js';
 import { showTooltip, hideTooltip } from '../ui/tooltip.js';
 import {
@@ -14,6 +15,7 @@ import {
   isIncarnationCard,
 } from '../core/abilities.js';
 import { capMana } from '../core/constants.js';
+import { getAvailableEmptyCells, canSummonOnEmptyCell } from '../core/placementRules.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
 import { applyManaGainOnDeaths } from '../core/abilityHandlers/manaGain.js';
 import { applyDeathManaSteal } from '../core/abilityHandlers/manaSteal.js';
@@ -466,6 +468,16 @@ function onMouseUp(event) {
         const col = interactionState.hoveredTile.userData.col;
         const existingUnit = gameState.board[row][col].unit;
         const playerIndex = gameState.active;
+        if (!existingUnit) {
+          const placementCheck = canSummonOnEmptyCell(gameState, playerIndex, row, col);
+          if (!placementCheck.allowed) {
+            const message = placementCheck.reason || 'Choose a different field for this summon.';
+            showNotification(message, 'error');
+            returnCardToHand(interactionState.draggedCard);
+            endCardDrag();
+            return;
+          }
+        }
         if (existingUnit) {
           if (!isIncarnationCard(cardData)) {
             showNotification('Cell is occupied: pick an empty field.', 'error');
@@ -553,6 +565,7 @@ function startCardDrag(card) {
   // Если карта – заклинание с выбором цели, подсвечиваем все клетки с юнитами
   try {
     const data = card.userData?.cardData;
+    clearPlacementHighlights();
     if (data && data.type === 'SPELL') {
       const needUnit = window.__spells?.requiresUnitTarget?.(data.id);
       if (needUnit) {
@@ -565,6 +578,12 @@ function startCardDrag(card) {
         }
         highlightTiles(cells);
       }
+    } else if (data && data.type === 'UNIT') {
+      const gs = window.gameState;
+      if (gs && typeof gs.active === 'number') {
+        const cells = getAvailableEmptyCells(gs, gs.active);
+        highlightPlacement(cells);
+      }
     }
   } catch {}
 }
@@ -576,6 +595,7 @@ function endCardDrag() {
   }
   interactionState.draggedCard = null;
   clearHighlights();
+  clearPlacementHighlights();
 }
 
 function returnCardToHand(card) {
@@ -629,6 +649,7 @@ export function resetCardSelection() {
     interactionState.selectedCard = null;
   }
   clearHighlights();
+  clearPlacementHighlights();
   try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
 }
 
@@ -855,6 +876,17 @@ export function placeUnitWithDirection(direction) {
   if (!interactionState.pendingPlacement) return;
   const { card, row, col, handIndex, incarnation } = interactionState.pendingPlacement;
   const cardData = card.userData.cardData;
+  if (!incarnation) {
+    const placementCheck = canSummonOnEmptyCell(gameState, gameState.active, row, col);
+    if (!placementCheck.allowed) {
+      const message = placementCheck.reason || 'Choose a different field for this summon.';
+      showNotification(message, 'error');
+      returnCardToHand(card);
+      try { window.__ui.panels.hideOrientationPanel(); } catch {}
+      interactionState.pendingPlacement = null;
+      return;
+    }
+  }
   if (card) {
     card.userData = card.userData || {};
     card.userData.isInHand = false;
