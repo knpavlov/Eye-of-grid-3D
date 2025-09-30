@@ -20,10 +20,15 @@ export function open(opts = {}) {
 
   const overlay = document.createElement('div');
   overlay.id = 'deck-select-overlay';
-  overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60';
+  overlay.className = 'fixed inset-0 z-50 flex items-center justify-center overflow-y-auto relative';
+
+  // Фон оверлея скрывает игровые панели и добавляет лёгкое размытие
+  const backdrop = document.createElement('div');
+  backdrop.className = 'deck-select-backdrop';
+  overlay.appendChild(backdrop);
 
   const panel = document.createElement('div');
-  panel.className = 'bg-slate-800 p-4 rounded-lg w-[26rem] max-h-[90vh] flex flex-col shadow-2xl';
+  panel.className = 'relative z-10 bg-slate-800 p-4 rounded-lg w-[26rem] max-h-[90vh] flex flex-col shadow-2xl';
   overlay.appendChild(panel);
 
   const title = document.createElement('div');
@@ -32,7 +37,7 @@ export function open(opts = {}) {
   panel.appendChild(title);
 
   const list = document.createElement('div');
-  list.className = 'flex-1 overflow-y-auto space-y-3 px-2 max-h-64 deck-scroll';
+  list.className = 'flex-1 overflow-y-auto space-y-3 px-2 max-h-96 deck-scroll';
   panel.appendChild(list);
 
   const btnWrap = document.createElement('div');
@@ -153,7 +158,7 @@ export function open(opts = {}) {
 
   const cancelBtn = document.createElement('button');
   cancelBtn.className = 'overlay-panel px-3 py-1.5 bg-slate-600 hover:bg-slate-700 glossy-btn transition-colors';
-  cancelBtn.textContent = 'Cancel';
+  cancelBtn.textContent = 'Back';
   cancelBtn.addEventListener('click', () => closeAnd(onCancel));
   rightBtns.appendChild(cancelBtn);
 
