@@ -78,6 +78,15 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
 
 /* Панели */
 .overlay-panel { background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 16px; }
+
+/* Фон меню выбора колоды — отделяем визуал от логики */
+#deck-select-overlay .deck-select-backdrop {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 120% at 50% 0%, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.98));
+  backdrop-filter: blur(12px);
+  pointer-events: none;
+}
 /* Глянцевая кнопка с переливом при наведении */
 .glossy-btn { position: relative; overflow: hidden; }
 .glossy-btn::after {
