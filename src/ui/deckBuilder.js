@@ -43,6 +43,82 @@ const STRIP_OVERRIDES = {
 const PREVIEW_W = 256;
 const PREVIEW_H = 356;
 
+// Простое всплывающее окно с сообщением о превышении лимита
+function createLimitPopup(host) {
+  if (!host) {
+    return { show() {}, hide() {}, dispose() {} };
+  }
+
+  // Убеждаемся, что контейнер является относительным, чтобы позиционировать оверлей
+  if (!host.style.position || host.style.position === '') {
+    host.style.position = 'relative';
+  }
+
+  // Создаём оверлей поверх каталога, который не сдвигает контент
+  const wrapper = document.createElement('div');
+  wrapper.className = 'pointer-events-none absolute inset-0 flex justify-center pt-6 transition-opacity duration-200';
+  wrapper.style.display = 'none';
+  wrapper.style.opacity = '0';
+
+  const panel = document.createElement('div');
+  panel.className = 'overlay-panel bg-red-700 text-white px-5 py-3 rounded-xl shadow-lg max-w-xl text-center';
+  panel.style.pointerEvents = 'auto';
+
+  const title = document.createElement('div');
+  title.className = 'text-base font-semibold mb-1';
+  title.textContent = 'Limit reached';
+  panel.appendChild(title);
+
+  const body = document.createElement('div');
+  body.className = 'text-sm leading-relaxed';
+  panel.appendChild(body);
+
+  host.appendChild(wrapper);
+  wrapper.appendChild(panel);
+
+  let hideTimer = null;
+  const AUTO_HIDE_DELAY = 3200;
+
+  function clearTimer() {
+    if (hideTimer) {
+      clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+  }
+
+  function hide() {
+    clearTimer();
+    wrapper.style.opacity = '0';
+    // Небольшая задержка, чтобы плавно скрыть элемент и освободить место
+    setTimeout(() => {
+      if (wrapper.style.opacity === '0') {
+        wrapper.style.display = 'none';
+      }
+    }, 200);
+  }
+
+  function show(message) {
+    body.textContent = String(message ?? '');
+    clearTimer();
+    wrapper.style.display = 'flex';
+    // Используем requestAnimationFrame для корректного применения анимации непрозрачности
+    const raf = (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function')
+      ? window.requestAnimationFrame.bind(window)
+      : (fn => setTimeout(fn, 16));
+    raf(() => { wrapper.style.opacity = '1'; });
+    hideTimer = setTimeout(() => hide(), AUTO_HIDE_DELAY);
+  }
+
+  return {
+    show,
+    hide,
+    dispose() {
+      clearTimer();
+      try { host.removeChild(wrapper); } catch {}
+    },
+  };
+}
+
 // Настройки адаптивной сетки каталога
 const CATALOG_LAYOUT = {
   maxColumns: 5,
@@ -53,6 +129,19 @@ const CATALOG_LAYOUT = {
   // Стандартный промежуток между колонками (fallback на случай недоступности computed style)
   defaultGap: 16,
 };
+
+// Сортировка карт по карточному номеру с аккуратными запасными условиями
+function compareCardsByNumber(cardA, cardB) {
+  const numA = (typeof cardA?.cardNumber === 'number') ? cardA.cardNumber : Number.POSITIVE_INFINITY;
+  const numB = (typeof cardB?.cardNumber === 'number') ? cardB.cardNumber : Number.POSITIVE_INFINITY;
+  if (numA !== numB) return numA - numB;
+  const costA = cardA?.cost ?? 0;
+  const costB = cardB?.cost ?? 0;
+  if (costA !== costB) return costA - costB;
+  const nameA = cardA?.name || '';
+  const nameB = cardB?.name || '';
+  return nameA.localeCompare(nameB, 'ru');
+}
 
 function setupCatalogResponsiveLayout(catalogEl) {
   if (typeof window === 'undefined' || !catalogEl) {
@@ -161,6 +250,8 @@ export function open(deck = null, onDone) {
   const panel = document.createElement('div');
   panel.className = 'bg-slate-800 mt-2 p-4 rounded-lg w-[92vw] h-[96vh] flex flex-col relative';
   overlay.appendChild(panel);
+
+  let limitPopup = { show() {}, hide() {}, dispose() {} };
 
   const layout = document.createElement('div');
   layout.className = 'flex flex-1 overflow-hidden';
@@ -301,10 +392,16 @@ export function open(deck = null, onDone) {
   controlsRow.appendChild(saveBtn);
 
   // === Каталог карт ===
+  const catalogContainer = document.createElement('div');
+  catalogContainer.className = 'relative flex-1 flex';
+  right.appendChild(catalogContainer);
+
   const catalog = document.createElement('div');
   // Сетка с автоматической адаптацией количества колонок и масштабирования
   catalog.className = 'flex-1 overflow-y-auto grid gap-4 deck-scroll catalog-grid';
-  right.appendChild(catalog);
+  catalogContainer.appendChild(catalog);
+
+  limitPopup = createLimitPopup(catalogContainer);
 
   let catalogLayout = { update() {}, dispose() {} };
   catalogLayout = setupCatalogResponsiveLayout(catalog);
@@ -537,7 +634,7 @@ export function open(deck = null, onDone) {
     });
 
     Object.values(grouped)
-      .sort((a,b) => (a.card.cost || 0) - (b.card.cost || 0))
+      .sort((a, b) => compareCardsByNumber(a.card, b.card))
       .forEach(({ card, count }) => {
         const row = document.createElement('div');
         row.className = 'relative rounded overflow-hidden cursor-pointer bg-slate-800/60';
@@ -625,10 +722,56 @@ export function open(deck = null, onDone) {
     summary.textContent = `${working.cards.length}/20`;
   }
 
-  function addCard(card) {
+  function describeLimitViolation(card) {
     const copies = working.cards.filter(c => c.id === card.id).length;
+    const limit = card.cardLimit;
+    if (limit && typeof limit.amount === 'number' && limit.amount > 0) {
+      if (limit.type === 'PER_CARD') {
+        if (copies >= limit.amount) {
+          if (limit.amount === 1) {
+            return {
+              code: 'PER_CARD_ONE',
+              message: 'Only 1 copy of this card can be added to a deck.',
+            };
+          }
+          return {
+            code: 'PER_CARD_CUSTOM',
+            message: `Only ${limit.amount} copies of this card can be added to a deck.`,
+          };
+        }
+      } else if (limit.type === 'PER_RACE') {
+        const race = card.race;
+        if (race) {
+          const sameRace = working.cards.filter(c => c.race === race).length;
+          if (sameRace >= limit.amount) {
+            if (limit.amount === 1) {
+              return {
+                code: 'PER_RACE_ONE',
+                message: 'Only 1 card of this race can be added to a deck.',
+              };
+            }
+            return {
+              code: 'PER_RACE_CUSTOM',
+              message: `Only ${limit.amount} cards of this race can be added to a deck.`,
+            };
+          }
+        }
+      }
+    }
     if (copies >= 3) {
-      showNotification('Copy limit reached', 'error');
+      return {
+        code: 'DEFAULT_LIMIT',
+        message: 'You can only add up to 3 copies of the same card.',
+      };
+    }
+    return null;
+  }
+
+  function addCard(card) {
+    limitPopup.hide();
+    const violation = describeLimitViolation(card);
+    if (violation) {
+      limitPopup.show(violation.message);
       return;
     }
     working.cards.push(card);
@@ -638,6 +781,7 @@ export function open(deck = null, onDone) {
 
   // Отрисовка каталога с учётом фильтров
   function renderCatalog() {
+    limitPopup.hide();
     catalog.innerHTML = '';
     const query = searchInput.value.toLowerCase();
     const cards = Object.values(CARDS).filter(c => {
@@ -650,12 +794,15 @@ export function open(deck = null, onDone) {
       if (!filterState.activation.has(actVal)) return false;
       const text = (c.desc || c.text || '').toLowerCase();
       return c.name.toLowerCase().includes(query) || text.includes(query);
-    });
+    }).sort(compareCardsByNumber);
     cards.forEach(card => {
       const item = document.createElement('div');
       item.className = 'catalog-card cursor-pointer';
       item.draggable = true;
-      item.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', card.id));
+      item.addEventListener('dragstart', e => {
+        limitPopup.hide();
+        e.dataTransfer.setData('text/plain', card.id);
+      });
       item.addEventListener('click', () => addCard(card));
       const canvas = document.createElement('canvas');
       canvas.width = PREVIEW_W; canvas.height = PREVIEW_H;
@@ -720,6 +867,7 @@ export function open(deck = null, onDone) {
     hiddenEls.forEach(({el, display}) => { el.style.display = display; });
     restoreCardsRedrawBridge();
     try { catalogLayout.dispose(); } catch {}
+    try { limitPopup.dispose(); } catch {}
   }
 
   nameInput.value = working.name;
