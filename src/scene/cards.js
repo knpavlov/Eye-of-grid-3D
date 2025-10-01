@@ -36,6 +36,24 @@ const CARD_FACE_LAYOUT = {
 const CARD_IMAGES = {};
 const CARD_PENDING = {};
 
+// Формирование краткой подписи с ограничением карт (без смешения с логикой рендера)
+function formatLimitLabel(limit) {
+  if (!limit || typeof limit.amount !== 'number' || limit.amount <= 0) {
+    return '';
+  }
+  const amount = limit.amount;
+  if (limit.type === 'PER_CARD') {
+    if (amount >= 3) return '';
+    if (amount === 1) return 'Max 1 card';
+    return `Max ${amount} cards`;
+  }
+  if (limit.type === 'PER_RACE') {
+    if (amount === 1) return 'Max 1 card of this race';
+    return `Max ${amount} cards of this race`;
+  }
+  return '';
+}
+
 // Масштаб для схем атак (15% увеличение относительно базового макета)
 const ATTACK_DIAGRAM_SCALE = 1.15;
 
@@ -123,8 +141,6 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   // Геометрия ключевых зон интерфейса в координатах исходного дизайна
   const layout = CARD_FACE_LAYOUT;
 
-  const elementLabels = { FIRE: 'Fire', WATER: 'Water', EARTH: 'Earth', FOREST: 'Forest', BIOLITH: 'Biolith', NEUTRAL: 'Neutral' };
-
   // Заголовок карты
   ctx.save();
   ctx.textAlign = 'center';
@@ -146,18 +162,18 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   ctx.fillText(displayName, width / 2, py(layout.nameY));
   ctx.restore();
 
-  const typeParts = [];
-  const elementLabel = elementLabels[cardData.element] || elementLabels.NEUTRAL;
-  if (elementLabel) typeParts.push(elementLabel);
-  if (cardData.type === 'UNIT') typeParts.push('Creature');
-  else if (cardData.type === 'SPELL') typeParts.push('Spell');
-  const typeLine = typeParts.join(' · ');
-  if (typeLine) {
+  const metaParts = [];
+  if (cardData.race) metaParts.push(cardData.race);
+  if (cardData.affiliation) metaParts.push(cardData.affiliation);
+  const limitLabel = formatLimitLabel(cardData.cardLimit);
+  if (limitLabel) metaParts.push(limitLabel);
+  const metaLine = metaParts.join(' · ');
+  if (metaLine) {
     ctx.save();
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(226,232,240,0.84)';
     ctx.font = `600 ${Math.max(ps(20), 10)}px "Noto Sans", "Helvetica", sans-serif`;
-    ctx.fillText(typeLine, width / 2, py(layout.typeY));
+    ctx.fillText(metaLine, width / 2, py(layout.typeY));
     ctx.restore();
   }
 
