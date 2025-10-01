@@ -54,6 +54,19 @@ const CATALOG_LAYOUT = {
   defaultGap: 16,
 };
 
+// Сортировка карт по карточному номеру с аккуратными запасными условиями
+function compareCardsByNumber(cardA, cardB) {
+  const numA = (typeof cardA?.cardNumber === 'number') ? cardA.cardNumber : Number.POSITIVE_INFINITY;
+  const numB = (typeof cardB?.cardNumber === 'number') ? cardB.cardNumber : Number.POSITIVE_INFINITY;
+  if (numA !== numB) return numA - numB;
+  const costA = cardA?.cost ?? 0;
+  const costB = cardB?.cost ?? 0;
+  if (costA !== costB) return costA - costB;
+  const nameA = cardA?.name || '';
+  const nameB = cardB?.name || '';
+  return nameA.localeCompare(nameB, 'ru');
+}
+
 function setupCatalogResponsiveLayout(catalogEl) {
   if (typeof window === 'undefined' || !catalogEl) {
     return { update() {}, dispose() {} };
@@ -537,7 +550,7 @@ export function open(deck = null, onDone) {
     });
 
     Object.values(grouped)
-      .sort((a,b) => (a.card.cost || 0) - (b.card.cost || 0))
+      .sort((a, b) => compareCardsByNumber(a.card, b.card))
       .forEach(({ card, count }) => {
         const row = document.createElement('div');
         row.className = 'relative rounded overflow-hidden cursor-pointer bg-slate-800/60';
@@ -625,10 +638,44 @@ export function open(deck = null, onDone) {
     summary.textContent = `${working.cards.length}/20`;
   }
 
-  function addCard(card) {
-    const copies = working.cards.filter(c => c.id === card.id).length;
+  // Проверяем, не нарушают ли добавляемые карты ограничения колоды
+  function evaluateLimitViolation(deckCards, card) {
+    const copies = deckCards.filter(c => c.id === card.id).length;
+    const limit = card.cardLimit;
+    if (limit && typeof limit.amount === 'number') {
+      const normalizedAmount = Math.max(0, Math.floor(limit.amount));
+      if (normalizedAmount > 0) {
+        if (limit.type === 'PER_CARD') {
+          if (copies >= normalizedAmount) {
+            if (normalizedAmount === 1) {
+              return { code: 'PER_CARD_SINGLE', message: 'You cannot add more than 1 copy of this card.' };
+            }
+            return { code: 'PER_CARD', message: `You cannot add more than ${normalizedAmount} copies of this card.` };
+          }
+        } else if (limit.type === 'PER_RACE') {
+          const race = card.race;
+          if (race) {
+            const sameRace = deckCards.filter(c => c.race === race).length;
+            if (sameRace >= normalizedAmount) {
+              if (normalizedAmount === 1) {
+                return { code: 'PER_RACE_SINGLE', message: 'You cannot add more than 1 card of this race.' };
+              }
+              return { code: 'PER_RACE', message: `You cannot add more than ${normalizedAmount} cards of this race.` };
+            }
+          }
+        }
+      }
+    }
     if (copies >= 3) {
-      showNotification('Copy limit reached', 'error');
+      return { code: 'DEFAULT_LIMIT', message: 'You cannot add more than 3 copies of this card.' };
+    }
+    return null;
+  }
+
+  function addCard(card) {
+    const violation = evaluateLimitViolation(working.cards, card);
+    if (violation) {
+      showNotification(violation.message, 'error');
       return;
     }
     working.cards.push(card);
@@ -650,7 +697,7 @@ export function open(deck = null, onDone) {
       if (!filterState.activation.has(actVal)) return false;
       const text = (c.desc || c.text || '').toLowerCase();
       return c.name.toLowerCase().includes(query) || text.includes(query);
-    });
+    }).sort(compareCardsByNumber);
     cards.forEach(card => {
       const item = document.createElement('div');
       item.className = 'catalog-card cursor-pointer';
