@@ -54,6 +54,19 @@ const CATALOG_LAYOUT = {
   defaultGap: 16,
 };
 
+// Сортировка карт по карточному номеру с аккуратными запасными условиями
+function compareCardsByNumber(cardA, cardB) {
+  const numA = (typeof cardA?.cardNumber === 'number') ? cardA.cardNumber : Number.POSITIVE_INFINITY;
+  const numB = (typeof cardB?.cardNumber === 'number') ? cardB.cardNumber : Number.POSITIVE_INFINITY;
+  if (numA !== numB) return numA - numB;
+  const costA = cardA?.cost ?? 0;
+  const costB = cardB?.cost ?? 0;
+  if (costA !== costB) return costA - costB;
+  const nameA = cardA?.name || '';
+  const nameB = cardB?.name || '';
+  return nameA.localeCompare(nameB, 'ru');
+}
+
 function setupCatalogResponsiveLayout(catalogEl) {
   if (typeof window === 'undefined' || !catalogEl) {
     return { update() {}, dispose() {} };
@@ -537,7 +550,7 @@ export function open(deck = null, onDone) {
     });
 
     Object.values(grouped)
-      .sort((a,b) => (a.card.cost || 0) - (b.card.cost || 0))
+      .sort((a, b) => compareCardsByNumber(a.card, b.card))
       .forEach(({ card, count }) => {
         const row = document.createElement('div');
         row.className = 'relative rounded overflow-hidden cursor-pointer bg-slate-800/60';
@@ -625,10 +638,34 @@ export function open(deck = null, onDone) {
     summary.textContent = `${working.cards.length}/20`;
   }
 
-  function addCard(card) {
+  function describeLimitViolation(card) {
     const copies = working.cards.filter(c => c.id === card.id).length;
+    const limit = card.cardLimit;
+    if (limit && typeof limit.amount === 'number' && limit.amount > 0) {
+      if (limit.type === 'PER_CARD') {
+        if (copies >= limit.amount) {
+          return `Нельзя добавить больше ${limit.amount} коп. карты «${card.name}».`;
+        }
+      } else if (limit.type === 'PER_RACE') {
+        const race = card.race;
+        if (race) {
+          const sameRace = working.cards.filter(c => c.race === race).length;
+          if (sameRace >= limit.amount) {
+            return `Лимит для расы ${race}: не более ${limit.amount} карт в колоде.`;
+          }
+        }
+      }
+    }
     if (copies >= 3) {
-      showNotification('Copy limit reached', 'error');
+      return 'Нельзя добавить более 3 копий одной карты.';
+    }
+    return null;
+  }
+
+  function addCard(card) {
+    const violation = describeLimitViolation(card);
+    if (violation) {
+      showNotification(violation, 'error');
       return;
     }
     working.cards.push(card);
@@ -650,7 +687,7 @@ export function open(deck = null, onDone) {
       if (!filterState.activation.has(actVal)) return false;
       const text = (c.desc || c.text || '').toLowerCase();
       return c.name.toLowerCase().includes(query) || text.includes(query);
-    });
+    }).sort(compareCardsByNumber);
     cards.forEach(card => {
       const item = document.createElement('div');
       item.className = 'catalog-card cursor-pointer';

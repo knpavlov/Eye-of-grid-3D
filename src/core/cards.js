@@ -1,6 +1,33 @@
 // База данных всех карт
+import { CARD_FEATURES } from './cardMetadata.js';
 
-export const CARDS = {
+// Вспомогательная функция — накладывает метаданные (номер, раса, фракция, ограничения)
+// на описания карт. Так мы избегаем дублирования данных и упрощаем будущую миграцию.
+function withFeatures(id, card) {
+  const base = { ...card };
+  const features = CARD_FEATURES[id];
+  if (features) {
+    const { cardNumber, race, affiliation, fieldLock, cardLimit } = features;
+    base.cardNumber = typeof cardNumber === 'number' ? cardNumber : null;
+    base.race = typeof race === 'string' ? race : null;
+    base.affiliation = typeof affiliation === 'string' ? affiliation : null;
+    const lockActive = Boolean(fieldLock);
+    base.fieldLock = lockActive;
+    if (lockActive) {
+      base.locked = base.locked ?? true;
+    }
+    base.cardLimit = cardLimit ? { ...cardLimit } : null;
+  } else {
+    base.cardNumber = base.cardNumber ?? null;
+    base.race = base.race ?? null;
+    base.affiliation = base.affiliation ?? null;
+    base.fieldLock = Boolean(base.fieldLock);
+    base.cardLimit = base.cardLimit ?? null;
+  }
+  return base;
+}
+
+const RAW_CARDS = {
   // Fire Set (subset extracted; extend as needed)
   FIRE_FLAME_MAGUS: {
     id: 'FIRE_FLAME_MAGUS', name: 'Flame Magus', type: 'UNIT', cost: 1, activation: 1,
@@ -1133,3 +1160,7 @@ export const CARDS = {
   SPELL_CLARE_WILS_BANNER: { id: 'SPELL_CLARE_WILS_BANNER', name: 'Clare Wil’s Banner', type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 1, text: 'Friendly creatures get +1 ATK until end of turn.' },
   SPELL_SUMMONER_MESMERS_ERRAND: { id: 'SPELL_SUMMONER_MESMERS_ERRAND', name: "Summoner Mesmer's Errand", type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 1, text: 'Draw two cards.' },
 };
+
+export const CARDS = Object.fromEntries(
+  Object.entries(RAW_CARDS).map(([id, card]) => [id, withFeatures(id, card)])
+);
