@@ -1,8 +1,28 @@
-// База данных всех карт
+// Формируем человекочитаемую подпись ограничения карт для отображения на карточке
+function makeCardLimitLabel(limit) {
+  if (!limit || typeof limit.amount !== 'number') return '';
+  const amount = Math.max(0, Math.floor(limit.amount));
+  if (amount <= 0) return '';
+  if (limit.type === 'PER_CARD') {
+    if (amount === 1) return 'Max 1 card';
+    return `Max ${amount} cards`;
+  }
+  if (limit.type === 'PER_RACE') {
+    if (amount === 1) return 'Max 1 card of this race';
+    return `Max ${amount} cards of this race`;
+  }
+  return '';
+}
 
-export const CARDS = {
+// База данных всех карт
+const RAW_CARDS = {
   // Fire Set (subset extracted; extend as needed)
   FIRE_FLAME_MAGUS: {
+    cardNumber: 1,
+    race: 'Human',
+    affiliation: 'Church of Parmus',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FIRE_FLAME_MAGUS', name: 'Flame Magus', type: 'UNIT', cost: 1, activation: 1,
     element: 'FIRE', atk: 1, hp: 1,
     attackType: 'MAGIC', // магическая атака
@@ -11,6 +31,11 @@ export const CARDS = {
     desc: 'Magic Attack: target any creature; no retaliation.'
   },
   FIRE_HELLFIRE_SPITTER: {
+    cardNumber: 2,
+    race: 'Bug',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FIRE_HELLFIRE_SPITTER', name: 'Hellfire Spitter', type: 'UNIT', cost: 1, activation: 1,
     element: 'FIRE', atk: 1, hp: 1,
     attackType: 'STANDARD', firstStrike: true,
@@ -25,6 +50,11 @@ export const CARDS = {
     desc: 'Quickness: always strikes first.'
   },
   FIRE_FREEDONIAN_WANDERER: {
+    cardNumber: 3,
+    race: 'Elemental',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FIRE_FREEDONIAN_WANDERER', name: 'Freedonian Wanderer', type: 'UNIT', cost: 2, activation: 1,
     element: 'FIRE', atk: 1, hp: 2,
     attackType: 'STANDARD', pierce: true,
@@ -39,6 +69,11 @@ export const CARDS = {
     desc: 'While Freedonian Wanderer is on a non‑Fire field, you gain 1 mana each time you summon an allied creature.'
   },
   FIRE_PARTMOLE_FLAME_LIZARD: {
+    cardNumber: 4,
+    race: 'Lizard',
+    affiliation: 'Dhees Empire',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FIRE_PARTMOLE_FLAME_LIZARD', name: 'Partmole Flame Lizard', type: 'UNIT', cost: 2, activation: 2,
     element: 'FIRE', atk: 2, hp: 2,
     attackType: 'STANDARD', firstStrike: true, activationReduction: 1,
@@ -47,6 +82,11 @@ export const CARDS = {
     desc: 'Quickness. The activation cost to attack is 1 less than listed.'
   },
   FIRE_GREAT_MINOS: {
+    cardNumber: 6,
+    race: 'Titan',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FIRE_GREAT_MINOS', name: 'Great Minos of Sciondar', type: 'UNIT', cost: 3, activation: 2,
     element: 'FIRE', atk: 2, hp: 1,
     attackType: 'STANDARD', pierce: true,
@@ -57,6 +97,11 @@ export const CARDS = {
     desc: 'Perfect Dodge. The activation cost to attack is 1 less. Destroy Great Minos if he is on a non‑Fire field.'
   },
   FIRE_FLAME_ASCETIC: {
+    cardNumber: 7,
+    race: 'Human',
+    affiliation: 'Cult of Mourning',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FIRE_FLAME_ASCETIC', name: 'Flame Ascetic', type: 'UNIT', cost: 3, activation: 3,
     element: 'FIRE', atk: 2, hp: 3,
     attackType: 'STANDARD', activationReduction: 2,
@@ -65,6 +110,11 @@ export const CARDS = {
     desc: 'Adds 2 to its Attack half the time. The activation cost to attack is 2 less than listed.'
   },
   FIRE_TRICEPTAUR_BEHEMOTH: {
+    cardNumber: 11,
+    race: 'Beast',
+    affiliation: 'Dhees Empire',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FIRE_TRICEPTAUR_BEHEMOTH', name: 'Triceptaur Behemoth', type: 'UNIT', cost: 5, activation: 5,
     element: 'FIRE', atk: 5, hp: 4,
     attackType: 'STANDARD',
@@ -78,6 +128,11 @@ export const CARDS = {
     desc: 'When Triceptaur Behemoth attacks 2 creatures, subtract 2 from its Attack; when attacking 3 creatures, subtract 4.'
   },
   FIRE_PURSUER_OF_SAINT_DHEES: {
+    cardNumber: 12,
+    race: 'Demon',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FIRE_PURSUER_OF_SAINT_DHEES', name: 'Pursuer of Saint Dhees', type: 'UNIT', cost: 6, activation: 6,
     element: 'FIRE', atk: 5, hp: 4,
     attackType: 'STANDARD', activationReduction: 5,
@@ -87,6 +142,11 @@ export const CARDS = {
   },
 
   FIRE_PARTMOLE_FLAME_GUARD: {
+    cardNumber: 8,
+    race: 'Demon',
+    affiliation: 'Dhees Empire',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FIRE_PARTMOLE_FLAME_GUARD', name: 'Partmole Flame Guard', type: 'UNIT', cost: 3, activation: 2,
     element: 'FIRE', atk: 1, hp: 3,
     attackType: 'STANDARD',
@@ -99,6 +159,11 @@ export const CARDS = {
   },
 
   FIRE_LESSER_GRANVENOA: {
+    cardNumber: 9,
+    race: 'Base',
+    affiliation: 'Cai-Shae',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FIRE_LESSER_GRANVENOA', name: 'Lesser Granvenoa', type: 'UNIT', cost: 4, activation: 2,
     element: 'FIRE', atk: 2, hp: 4,
     attackType: 'STANDARD',
@@ -113,6 +178,11 @@ export const CARDS = {
   },
 
   FIRE_PARTMOLE_FIRE_ORACLE: {
+    cardNumber: 10,
+    race: 'Demon',
+    affiliation: 'Church of Parmus',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FIRE_PARTMOLE_FIRE_ORACLE', name: 'Partmole Fire Oracle', type: 'UNIT', cost: 4, activation: 2,
     element: 'FIRE', atk: 2, hp: 3,
     attackType: 'MAGIC',
@@ -122,6 +192,11 @@ export const CARDS = {
   },
 
   FIRE_INFERNAL_SCIONDAR_DRAGON: {
+    cardNumber: 13,
+    race: 'Dragon',
+    affiliation: 'Dhees Empire',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FIRE_INFERNAL_SCIONDAR_DRAGON', name: 'Infernal Sciondar Dragon', type: 'UNIT', cost: 7, activation: 4,
     element: 'FIRE', atk: 5, hp: 8,
     attackType: 'STANDARD',
@@ -131,6 +206,11 @@ export const CARDS = {
   },
 
   FIRE_DIDI_THE_ENLIGHTENED: {
+    cardNumber: 14,
+    race: 'Hero',
+    affiliation: 'Cai-Shae',
+    fieldLock: false,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'FIRE_DIDI_THE_ENLIGHTENED', name: 'Didi the Enlightened', type: 'UNIT', cost: 3, activation: 2,
     element: 'FIRE', atk: 2, hp: 4,
     attackType: 'STANDARD', firstStrike: true, doubleAttack: true,
@@ -140,6 +220,11 @@ export const CARDS = {
   },
 
   FIRE_WARDEN_HILDA: {
+    cardNumber: 15,
+    race: 'Betrayer',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'FIRE_WARDEN_HILDA', name: 'Warden Hilda', type: 'UNIT', cost: 3, activation: 2,
     element: 'FIRE', atk: 2, hp: 4,
     attackType: 'STANDARD',
@@ -151,6 +236,12 @@ export const CARDS = {
   },
 
   FIRE_CRUCIBLE_KING_DIOS_IV: {
+    cardNumber: 16,
+    race: 'Noble',
+    affiliation: 'Dhees Empire',
+    fieldLock: true,
+    locked: true,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'FIRE_CRUCIBLE_KING_DIOS_IV', name: 'Crucible King Dios IV', type: 'UNIT', cost: 6, activation: 4,
     element: 'FIRE', atk: 3, hp: 6,
     attackType: 'STANDARD', doubleAttack: true,
@@ -165,6 +256,11 @@ export const CARDS = {
   },
 
   FIRE_RED_CUBIC: {
+    cardNumber: 18,
+    race: 'Egg',
+    affiliation: 'Unknown',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FIRE_RED_CUBIC', name: 'Red Cubic', type: 'UNIT', cost: 1, activation: 1,
     element: 'FIRE', atk: 1, hp: 1,
     attackType: 'STANDARD',
@@ -177,6 +273,12 @@ export const CARDS = {
   },
 
   FIRE_SCIONDAR_FIRE_GOD: {
+    cardNumber: 17,
+    race: 'God',
+    affiliation: 'Unknown',
+    fieldLock: true,
+    locked: true,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'FIRE_SCIONDAR_FIRE_GOD', name: 'Sciondar Fire God', type: 'UNIT', cost: 9, activation: 5,
     element: 'FIRE', atk: 3, hp: 9,
     attackType: 'MAGIC',
@@ -188,6 +290,12 @@ export const CARDS = {
   },
 
   WATER_GODDESS_TRITONA: {
+    cardNumber: 35,
+    race: 'God',
+    affiliation: 'Unknown',
+    fieldLock: true,
+    locked: true,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'WATER_GODDESS_TRITONA', name: 'Goddess Tritona', type: 'UNIT', cost: 9, activation: 5,
     element: 'WATER', atk: 3, hp: 9,
     attackType: 'MAGIC',
@@ -199,6 +307,11 @@ export const CARDS = {
   },
 
   WATER_CLOUD_RUNNER: {
+    cardNumber: 25,
+    race: 'Weapon',
+    affiliation: 'Siam Pirates',
+    fieldLock: false,
+    cardLimit: null,
     id: 'WATER_CLOUD_RUNNER', name: 'Cloud Runner', type: 'UNIT', cost: 3, activation: 2,
     element: 'WATER', atk: 1, hp: 2,
     attackType: 'STANDARD', chooseDir: true,
@@ -212,6 +325,11 @@ export const CARDS = {
   },
 
   WATER_TRITONAN_ICE_GUARD: {
+    cardNumber: 20,
+    race: 'Elemental',
+    affiliation: 'Tritonan Queendom',
+    fieldLock: false,
+    cardLimit: null,
     id: 'WATER_TRITONAN_ICE_GUARD', name: 'Tritonan Ice Guard', type: 'UNIT', cost: 1, activation: 1,
     element: 'WATER', atk: 1, hp: 1,
     attackType: 'STANDARD',
@@ -222,6 +340,11 @@ export const CARDS = {
   },
 
   WATER_MONK_ELDER_OF_OKUNADA: {
+    cardNumber: 19,
+    race: 'Merfolk',
+    affiliation: 'Okunada Monastery',
+    fieldLock: false,
+    cardLimit: null,
     id: 'WATER_MONK_ELDER_OF_OKUNADA', name: 'Monk Elder of Okunada', type: 'UNIT', cost: 1, activation: 1,
     element: 'WATER', atk: 0, hp: 1,
     attackType: 'STANDARD',
@@ -232,6 +355,11 @@ export const CARDS = {
   },
 
   WATER_DRAGON_OF_VOICE_SEA: {
+    cardNumber: 31,
+    race: 'Dragon',
+    affiliation: 'Tritonan Queendom',
+    fieldLock: false,
+    cardLimit: null,
     id: 'WATER_DRAGON_OF_VOICE_SEA', name: 'Dragon of Voice Sea', type: 'UNIT', cost: 7, activation: 4,
     element: 'WATER', atk: 5, hp: 8,
     attackType: 'STANDARD',
@@ -243,6 +371,11 @@ export const CARDS = {
   },
 
   WATER_DON_OF_VENOA: {
+    cardNumber: 30,
+    race: 'Titan',
+    affiliation: 'Corsez Family',
+    fieldLock: false,
+    cardLimit: null,
     id: 'WATER_DON_OF_VENOA', name: 'Don of Venoa', type: 'UNIT', cost: 5, activation: 3,
     element: 'WATER', atk: 2, hp: 3,
     attackType: 'STANDARD',
@@ -275,6 +408,11 @@ export const CARDS = {
   },
 
   WATER_MERCENARY_SAVIOR_LATOO: {
+    cardNumber: 32,
+    race: 'Hero',
+    affiliation: 'Tritonan Queendom',
+    fieldLock: false,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'WATER_MERCENARY_SAVIOR_LATOO', name: 'Mercenary Savior Latoo', type: 'UNIT', cost: 3, activation: 2,
     element: 'WATER', atk: 2, hp: 3,
     attackType: 'STANDARD',
@@ -286,6 +424,11 @@ export const CARDS = {
   },
 
   WATER_TRITONAN_HARPOONSMAN: {
+    cardNumber: 21,
+    race: 'Merfolk',
+    affiliation: 'Tritonan Queendom',
+    fieldLock: false,
+    cardLimit: null,
     id: 'WATER_TRITONAN_HARPOONSMAN', name: 'Tritonan Harpoonsman', type: 'UNIT', cost: 2, activation: 1,
     element: 'WATER', atk: 1, hp: 2,
     attackType: 'STANDARD',
@@ -295,6 +438,11 @@ export const CARDS = {
   },
 
   WATER_ALUHJA_PRIESTESS: {
+    cardNumber: 22,
+    race: 'Human',
+    affiliation: 'Church of Parmus',
+    fieldLock: false,
+    cardLimit: null,
     id: 'WATER_ALUHJA_PRIESTESS', name: 'Aluhja Priestess', type: 'UNIT', cost: 2, activation: 1,
     element: 'WATER', atk: 1, hp: 1,
     attackType: 'MAGIC',
@@ -305,6 +453,11 @@ export const CARDS = {
   },
 
   WATER_MOVING_ISLE_OF_KADENA: {
+    cardNumber: 29,
+    race: 'Beast',
+    affiliation: 'Tritonan Queendom',
+    fieldLock: false,
+    cardLimit: null,
     id: 'WATER_MOVING_ISLE_OF_KADENA', name: 'Moving Isle of Kadena', type: 'UNIT', cost: 4, activation: 2,
     element: 'WATER', atk: 1, hp: 4,
     attackType: 'STANDARD', chooseDir: true,
@@ -326,6 +479,11 @@ export const CARDS = {
   },
 
   WATER_QUEENS_SERVANT: {
+    cardNumber: 28,
+    race: 'Elemental',
+    affiliation: 'Tritonan Queendom',
+    fieldLock: false,
+    cardLimit: null,
     id: 'WATER_QUEENS_SERVANT', name: "Queen's Servant", type: 'UNIT', cost: 4, activation: 2,
     element: 'WATER', atk: 1, hp: 1,
     attackType: 'MAGIC',
@@ -338,6 +496,11 @@ export const CARDS = {
   },
 
   WATER_DANCING_TEMPTRESS: {
+    cardNumber: 26,
+    race: 'Undead',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
     id: 'WATER_DANCING_TEMPTRESS', name: 'Dancing Temptress', type: 'UNIT', cost: 3, activation: 2,
     element: 'NEUTRAL', atk: 1, hp: 2,
     attackType: 'STANDARD',
@@ -351,6 +514,11 @@ export const CARDS = {
   },
 
   EARTH_ARELAI_THE_PROTECTOR: {
+    cardNumber: 50,
+    race: 'Hero',
+    affiliation: 'Saint Val Devotee',
+    fieldLock: false,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'EARTH_ARELAI_THE_PROTECTOR', name: 'Arelai the Protector', type: 'UNIT', cost: 3, activation: 2,
     element: 'EARTH', atk: 2, hp: 3,
     attackType: 'STANDARD',
@@ -369,6 +537,11 @@ export const CARDS = {
   },
 
   EARTH_NOVOGUS_GOLEM: {
+    cardNumber: 46,
+    race: 'Beast',
+    affiliation: 'Novogus Dynasty',
+    fieldLock: false,
+    cardLimit: null,
     id: 'EARTH_NOVOGUS_GOLEM', name: 'Novogus Golem', type: 'UNIT', cost: 4, activation: 2,
     element: 'EARTH', atk: 2, hp: 3,
     attackType: 'STANDARD',
@@ -379,6 +552,11 @@ export const CARDS = {
     desc: 'Novogus Golem gains Protection equal to the number of empty fields.'
   },
   EARTH_NOVOGUS_CATAPULT: {
+    cardNumber: 43,
+    race: 'Weapon',
+    affiliation: 'Novogus Dynasty',
+    fieldLock: false,
+    cardLimit: null,
     id: 'EARTH_NOVOGUS_CATAPULT', name: 'Novogus Catapult', type: 'UNIT', cost: 3, activation: 1,
     element: 'EARTH', atk: 2, hp: 4,
     attackType: 'STANDARD',
@@ -388,6 +566,11 @@ export const CARDS = {
     desc: 'If Novogus Catapult is destroyed, you gain mana equal to the number of Earth fields.'
   },
   EARTH_SKELETON_SOLDIER: {
+    cardNumber: 40,
+    race: 'Undead',
+    affiliation: 'Novogus Dynasty',
+    fieldLock: false,
+    cardLimit: null,
     id: 'EARTH_SKELETON_SOLDIER', name: 'Skeleton Soldier', type: 'UNIT', cost: 2, activation: 1,
     element: 'EARTH', atk: 1, hp: 2,
     attackType: 'STANDARD',
@@ -400,6 +583,11 @@ export const CARDS = {
     desc: 'If Skeleton Soldier is destroyed, you gain 1 additional mana.'
   },
   EARTH_UNDEAD_DRAGON: {
+    cardNumber: 49,
+    race: 'Dragon',
+    affiliation: 'Novogus Dynasty',
+    fieldLock: false,
+    cardLimit: null,
     id: 'EARTH_UNDEAD_DRAGON', name: 'Undead Dragon', type: 'UNIT', cost: 7, activation: 4,
     element: 'EARTH', atk: 5, hp: 8,
     attackType: 'STANDARD',
@@ -411,6 +599,11 @@ export const CARDS = {
   },
 
   EARTH_SE_HOLLYN_FORTRESS: {
+    cardNumber: 45,
+    race: 'Base',
+    affiliation: 'Val na Vos',
+    fieldLock: false,
+    cardLimit: null,
     id: 'EARTH_SE_HOLLYN_FORTRESS', name: 'Se Hollyn Fortress', type: 'UNIT', cost: 4, activation: 2,
     element: 'EARTH', atk: 1, hp: 4,
     attackType: 'STANDARD', chooseDir: true,
@@ -431,6 +624,11 @@ export const CARDS = {
   },
 
   EARTH_GIANT_AXE_DWARF: {
+    cardNumber: 41,
+    race: 'Dwarf',
+    affiliation: 'Hammer Valley',
+    fieldLock: false,
+    cardLimit: null,
     id: 'EARTH_GIANT_AXE_DWARF', name: 'Giant Axe Dwarf', type: 'UNIT', cost: 2, activation: 1,
     element: 'EARTH', atk: 1, hp: 3,
     attackType: 'STANDARD',
@@ -442,6 +640,11 @@ export const CARDS = {
   },
 
   EARTH_STONE_WING_DWARF: {
+    cardNumber: 39,
+    race: 'Dwarf',
+    affiliation: 'Hammer Valley',
+    fieldLock: false,
+    cardLimit: null,
     id: 'EARTH_STONE_WING_DWARF', name: 'Stone Wing Dwarf', type: 'UNIT', cost: 1, activation: 1,
     element: 'EARTH', atk: 1, hp: 1,
     attackType: 'STANDARD', chooseDir: true,
@@ -458,6 +661,11 @@ export const CARDS = {
   },
 
   EARTH_BLACK_HOOD_DWARF_VULITRA: {
+    cardNumber: 51,
+    race: 'Betrayer',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'EARTH_BLACK_HOOD_DWARF_VULITRA', name: 'Black Hood Dwarf Vulitra', type: 'UNIT', cost: 3, activation: 2,
     element: 'EARTH', atk: 2, hp: 4,
     attackType: 'STANDARD', friendlyFire: true,
@@ -470,6 +678,11 @@ export const CARDS = {
   },
 
   EARTH_VERZAR_FOOT_SOLDIER: {
+    cardNumber: 38,
+    race: 'Human',
+    affiliation: 'Val na Vos',
+    fieldLock: false,
+    cardLimit: null,
     id: 'EARTH_VERZAR_FOOT_SOLDIER', name: 'Verzar Foot Soldier', type: 'UNIT', cost: 1, activation: 1,
     element: 'EARTH', atk: 1, hp: 2,
     attackType: 'STANDARD',
@@ -481,6 +694,11 @@ export const CARDS = {
   },
 
   EARTH_VERZAR_CANINE: {
+    cardNumber: 37,
+    race: 'Beast',
+    affiliation: 'Val na Vos',
+    fieldLock: false,
+    cardLimit: null,
     id: 'EARTH_VERZAR_CANINE', name: 'Verzar Canine', type: 'UNIT', cost: 1, activation: 1,
     element: 'EARTH', atk: 1, hp: 1,
     attackType: 'STANDARD',
@@ -494,6 +712,12 @@ export const CARDS = {
   },
 
   BIOLITH_MORNING_STAR_WARRIOR: {
+    cardNumber: 77,
+    race: 'Mech',
+    affiliation: 'Biolith Castle',
+    fieldLock: true,
+    locked: true,
+    cardLimit: null,
     id: 'BIOLITH_MORNING_STAR_WARRIOR', name: 'Morning Star Warrior', type: 'UNIT', cost: 4, activation: 2,
     element: 'BIOLITH', atk: 2, hp: 3,
     attackType: 'STANDARD',
@@ -507,6 +731,12 @@ export const CARDS = {
     desc: 'Morning Star Warrior adds 2 to its Attack if the target creature has 5 or more HPs.\nMorning Star Warrior gains Protection equal to the number of allied Biolith creatures.'
   },
   BIOLITH_BIOLITH_STINGER: {
+    cardNumber: 74,
+    race: 'Bug',
+    affiliation: 'Biolith Castle',
+    fieldLock: true,
+    locked: true,
+    cardLimit: null,
     id: 'BIOLITH_BIOLITH_STINGER', name: 'Biolith Stinger', type: 'UNIT', cost: 3, activation: 2,
     element: 'BIOLITH', atk: 0, hp: 1,
     attackType: 'STANDARD', chooseDir: true,
@@ -523,6 +753,12 @@ export const CARDS = {
     desc: 'Dodge attempt. If Biolith Stinger damages (but does not destroy) a creature, it switches locations with that creature (which cannot counterattack).'
   },
   BIOLITH_IMPERIAL_BIOLITH_GUARD: {
+    cardNumber: 75,
+    race: 'Mech',
+    affiliation: 'Biolith Castle',
+    fieldLock: true,
+    locked: true,
+    cardLimit: null,
     id: 'BIOLITH_IMPERIAL_BIOLITH_GUARD', name: 'Imperial Biolith Guard', type: 'UNIT', cost: 3, activation: 2,
     element: 'BIOLITH', atk: 2, hp: 4,
     attackType: 'STANDARD',
@@ -541,6 +777,11 @@ export const CARDS = {
     desc: 'Gain 1 mana each time you summon a creature to a Biolith field.'
   },
   BIOLITH_WORMAK_HEIR: {
+    cardNumber: 86,
+    race: 'Betrayer',
+    affiliation: 'Phantom',
+    fieldLock: false,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'BIOLITH_WORMAK_HEIR', name: 'Wormak Heir to the Bioliths', type: 'UNIT', cost: 4, activation: 2,
     element: 'BIOLITH', atk: 2, hp: 4,
     attackType: 'STANDARD',
@@ -561,6 +802,12 @@ export const CARDS = {
     desc: "If the target is an enemy Biolith, Wormak's Attack is equal to 2 plus the number of non-Biolith creatures on the board.\nGain 1 mana each time an enemy is summoned."
   },
   BIOLITH_TINO_SON_OF_SCION: {
+    cardNumber: 85,
+    race: 'Hero',
+    affiliation: 'Biolith Castle',
+    fieldLock: true,
+    locked: true,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'BIOLITH_TINO_SON_OF_SCION', name: 'Tino, Son of Scion', type: 'UNIT', cost: 4, activation: 3,
     element: 'BIOLITH', atk: 3, hp: 4,
     attackType: 'MAGIC',
@@ -583,6 +830,12 @@ export const CARDS = {
     desc: "Tino's Magic Attack targets all enemies of the same element as the target.\nWhile Tino is on a Biolith field, his Attack is equal to 1 plus the number of other allied Biolith creatures.\nGain 1 mana each time you summon a creature."
   },
   BIOLITH_GUARDIAN_WATCHTOWER: {
+    cardNumber: 88,
+    race: 'Ancient',
+    affiliation: 'Biolith Castle',
+    fieldLock: true,
+    locked: true,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'BIOLITH_GUARDIAN_WATCHTOWER', name: 'Guardian Watchtower', type: 'UNIT', cost: 6, activation: 3,
     element: 'BIOLITH', atk: 1, hp: 10,
     attackType: 'MAGIC',
@@ -602,6 +855,12 @@ export const CARDS = {
   },
 
   EARTH_NOVOGUS_GRAVEKEEPER: {
+    cardNumber: 53,
+    race: 'God',
+    affiliation: 'Unknown',
+    fieldLock: true,
+    locked: true,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'EARTH_NOVOGUS_GRAVEKEEPER', name: 'Novogus Gravekeeper', type: 'UNIT', cost: 9, activation: 5,
     element: 'EARTH', atk: 3, hp: 9,
     attackType: 'MAGIC',
@@ -613,6 +872,12 @@ export const CARDS = {
   },
 
   FOREST_EXALTED_ELVEN_DEITY: {
+    cardNumber: 71,
+    race: 'God',
+    affiliation: 'Unknown',
+    fieldLock: true,
+    locked: true,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'FOREST_EXALTED_ELVEN_DEITY', name: 'Exalted Elven Deity', type: 'UNIT', cost: 9, activation: 5,
     element: 'FOREST', atk: 3, hp: 9,
     attackType: 'MAGIC',
@@ -624,6 +889,12 @@ export const CARDS = {
   },
 
   BIOLITH_PHASEUS: {
+    cardNumber: 89,
+    race: 'God',
+    affiliation: 'Unknown',
+    fieldLock: true,
+    locked: true,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'BIOLITH_PHASEUS', name: 'Phaseus, Biolith God', type: 'UNIT', cost: 9, activation: 5,
     element: 'BIOLITH', atk: 3, hp: 9,
     attackType: 'MAGIC',
@@ -635,6 +906,12 @@ export const CARDS = {
   },
 
   BIOLITH_BEHEMOTH_GROUNDBREAKER: {
+    cardNumber: 79,
+    race: 'Weapon',
+    affiliation: 'Biolith Castle',
+    fieldLock: true,
+    locked: true,
+    cardLimit: null,
     id: 'BIOLITH_BEHEMOTH_GROUNDBREAKER', name: 'Behemoth Groundbreaker', type: 'UNIT', cost: 4, activation: 3,
     element: 'BIOLITH', atk: 1, hp: 4,
     attackType: 'STANDARD',
@@ -645,6 +922,12 @@ export const CARDS = {
     desc: 'When Behemoth Groundbreaker is summoned, fieldquake all adjacent fields.'
   },
   EARTH_UNDEAD_KING_NOVOGUS: {
+    cardNumber: 52,
+    race: 'Noble',
+    affiliation: 'Novogus Dynasty',
+    fieldLock: true,
+    locked: true,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'EARTH_UNDEAD_KING_NOVOGUS', name: 'Undead King Novogus', type: 'UNIT', cost: 6, activation: 3,
     element: 'EARTH', atk: 2, hp: 6,
     attackType: 'MAGIC',
@@ -655,6 +938,12 @@ export const CARDS = {
     desc: "Magic Attack. If Undead King Novogus is on a non-Earth field and damages a creature, fieldquake the target creature's field. The target creature cannot counterattack."
   },
   BIOLITH_OUROBOROS_DRAGON: {
+    cardNumber: 84,
+    race: 'Dragon',
+    affiliation: 'Biolith Castle',
+    fieldLock: true,
+    locked: true,
+    cardLimit: { type: 'PER_CARD', amount: 1 },
     id: 'BIOLITH_OUROBOROS_DRAGON', name: 'Ouroboros Dragon', type: 'UNIT', cost: 7, activation: 4,
     element: 'BIOLITH', atk: 7, hp: 10,
     attackType: 'STANDARD',
@@ -668,6 +957,11 @@ export const CARDS = {
 
   // Ninja cycle
   FIRE_FIREFLY_NINJA: {
+    cardNumber: 5,
+    race: 'Human',
+    affiliation: 'Yaksha',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FIRE_FIREFLY_NINJA', name: 'Firefly Ninja', type: 'UNIT', cost: 3, activation: 2,
     element: 'FIRE', atk: 1, hp: 2,
     attackType: 'STANDARD',
@@ -678,6 +972,11 @@ export const CARDS = {
     desc: 'While on a Fire field it gains Perfect Dodge. Gains Invisibility while at least one allied Spider Ninja is on the board.'
   },
   EARTH_SPIDER_NINJA: {
+    cardNumber: 42,
+    race: 'Human',
+    affiliation: 'Yaksha',
+    fieldLock: false,
+    cardLimit: null,
     id: 'EARTH_SPIDER_NINJA', name: 'Spider Ninja', type: 'UNIT', cost: 3, activation: 2,
     element: 'EARTH', atk: 2, hp: 1,
     attackType: 'MAGIC',
@@ -688,6 +987,11 @@ export const CARDS = {
     desc: 'Magic attack. Gains Invisibility while at least one allied Wolf Ninja is on the board. If it damages a creature on an Earth field, it switches places with that creature (which cannot counterattack).'
   },
   EARTH_YELLOW_CUBIC: {
+    cardNumber: 54,
+    race: 'Egg',
+    affiliation: 'Unknown',
+    fieldLock: false,
+    cardLimit: null,
     id: 'EARTH_YELLOW_CUBIC', name: 'Yellow Cubic', type: 'UNIT', cost: 1, activation: 1,
     element: 'EARTH', atk: 1, hp: 1,
     attackType: 'STANDARD',
@@ -699,6 +1003,11 @@ export const CARDS = {
     desc: 'Sacrifice Yellow Cubic to summon a non‑cubic Earth creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
   },
   EARTH_DARK_YOKOZUNA_SEKIMARU: {
+    cardNumber: 44,
+    race: 'Titan',
+    affiliation: 'Val na Vos',
+    fieldLock: false,
+    cardLimit: null,
     id: 'EARTH_DARK_YOKOZUNA_SEKIMARU', name: 'Dark Yokozuna Sekimaru', type: 'UNIT', cost: 3, activation: 2,
     element: 'EARTH', atk: 2, hp: 3,
     attackType: 'STANDARD',
@@ -708,6 +1017,11 @@ export const CARDS = {
     desc: 'If Dark Yokozuna Sekimaru attacks (but does not destroy) a creature, that creature is pushed back one field in the direction of the attack (provided the field is empty) and cannot counterattack.'
   },
   EARTH_VERZAR_ELEPHANT_BRIGADE: {
+    cardNumber: 48,
+    race: 'Elemental',
+    affiliation: 'Val na Vos',
+    fieldLock: false,
+    cardLimit: null,
     id: 'EARTH_VERZAR_ELEPHANT_BRIGADE', name: 'Verzar Elephant Brigade', type: 'UNIT', cost: 5, activation: 3,
     element: 'EARTH', atk: 2, hp: 5,
     attackType: 'STANDARD',
@@ -725,6 +1039,11 @@ export const CARDS = {
     desc: 'Verzar Elephant Brigade must use its secondary attack while it is on an Earth field. While Verzar Elephant Brigade is on an Earth field, allied creatures on adjacent fields add 2 to their Attack and 1 to their Activation Cost.'
   },
   EARTH_DUNGEON_OF_TEN_TYRANTS: {
+    cardNumber: 47,
+    race: 'Base',
+    affiliation: 'Val na Vos',
+    fieldLock: false,
+    cardLimit: null,
     id: 'EARTH_DUNGEON_OF_TEN_TYRANTS', name: 'Dungeon of Ten Tyrants', type: 'UNIT', cost: 4, activation: 2,
     element: 'EARTH', atk: 1, hp: 4,
     attackType: 'STANDARD', chooseDir: true,
@@ -741,6 +1060,11 @@ export const CARDS = {
     desc: 'Fortress: cannot attack unless counterattacking. While on a non‑Earth field, its summoner gains 1 mana during their resolution phase. Destroy if on a Forest field.'
   },
   WATER_WOLF_NINJA: {
+    cardNumber: 24,
+    race: 'Human',
+    affiliation: 'Yaksha',
+    fieldLock: false,
+    cardLimit: null,
     id: 'WATER_WOLF_NINJA', name: 'Wolf Ninja', type: 'UNIT', cost: 3, activation: 2,
     element: 'WATER', atk: 1, hp: 3,
     attackType: 'STANDARD',
@@ -751,6 +1075,11 @@ export const CARDS = {
     desc: 'Gains Invisibility while at least one allied Swallow Ninja is on the board. If Wolf Ninja damages a creature on a Water field, it switches places with that creature (which cannot counterattack).'
   },
   WATER_BLUE_CUBIC: {
+    cardNumber: 36,
+    race: 'Egg',
+    affiliation: 'Unknown',
+    fieldLock: false,
+    cardLimit: null,
     id: 'WATER_BLUE_CUBIC', name: 'Blue Cubic', type: 'UNIT', cost: 1, activation: 1,
     element: 'WATER', atk: 1, hp: 1,
     attackType: 'STANDARD',
@@ -762,6 +1091,11 @@ export const CARDS = {
     desc: 'Sacrifice Blue Cubic to summon a non‑cubic Water creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
   },
   WATER_SIAM_TRAITOR_OF_SEAS: {
+    cardNumber: 33,
+    race: 'Betrayer',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'WATER_SIAM_TRAITOR_OF_SEAS', name: 'Siam, Traitor of Seas', type: 'UNIT', cost: 3, activation: 2,
     element: 'WATER', atk: 2, hp: 4,
     attackType: 'STANDARD',
@@ -775,6 +1109,11 @@ export const CARDS = {
     desc: 'Siam attacks the same target twice. The counterattack of target creature occurs after second attack. Siam adds 1 Attack if the target creature is a Water creature. All enemies on Water fields subtract 1 from their Attack.'
   },
   WATER_VENOAN_ASSASSIN: {
+    cardNumber: 27,
+    race: 'Human',
+    affiliation: 'Corsez Family',
+    fieldLock: false,
+    cardLimit: null,
     id: 'WATER_VENOAN_ASSASSIN', name: 'Venoan Assassin', type: 'UNIT', cost: 3, activation: 2,
     element: 'WATER', atk: 2, hp: 3,
     attackType: 'STANDARD',
@@ -784,6 +1123,11 @@ export const CARDS = {
     desc: 'Always attacks the back of its target.'
   },
   WATER_TENTACLES_OF_POSSESSION: {
+    cardNumber: 23,
+    race: 'Beast',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
     id: 'WATER_TENTACLES_OF_POSSESSION', name: 'Tentacles of Possession', type: 'UNIT', cost: 2, activation: 1,
     element: 'WATER', atk: 0, hp: 2,
     attackType: 'STANDARD',
@@ -796,6 +1140,12 @@ export const CARDS = {
     desc: 'Tentacles of Possession gain Possession of the enemy directly in front of it.'
   },
   WATER_IMPOSTER_QUEEN_ANFISA: {
+    cardNumber: 34,
+    race: 'Noble',
+    affiliation: 'Tritonan Queendom',
+    fieldLock: true,
+    locked: true,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'WATER_IMPOSTER_QUEEN_ANFISA', name: 'Imposter Queen Anfisa', type: 'UNIT', cost: 6, activation: 2,
     element: 'WATER', atk: 2, hp: 5,
     attackType: 'MAGIC',
@@ -808,6 +1158,11 @@ export const CARDS = {
     desc: 'Magic Attack. While on a Water field, Imposter Queen Anfisa gains Possession of all enemies on adjacent fields.'
   },
   FOREST_SWALLOW_NINJA: {
+    cardNumber: 62,
+    race: 'Human',
+    affiliation: 'Yaksha',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FOREST_SWALLOW_NINJA', name: 'Swallow Ninja', type: 'UNIT', cost: 3, activation: 2,
     element: 'FOREST', atk: 1, hp: 3,
     attackType: 'STANDARD',
@@ -820,6 +1175,11 @@ export const CARDS = {
     desc: 'Gains Invisibility while at least one allied Firefly Ninja is on the board. When Swallow Ninja damages (but does not destroy) a creature, rotate that creature so its back faces Swallow Ninja. The target creature cannot counterattack.'
   },
   FOREST_JUNO_PRISONER_TRAP: {
+    cardNumber: 65,
+    race: 'Plant',
+    affiliation: 'Black Forest',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FOREST_JUNO_PRISONER_TRAP', name: 'Juno Prisoner Trap', type: 'UNIT', cost: 4, activation: 2,
     element: 'FOREST', atk: 0, hp: 4,
     attackType: 'STANDARD', chooseDir: true,
@@ -836,6 +1196,11 @@ export const CARDS = {
     desc: 'Fortress: cannot attack unless counterattacking. When an enemy creature is summoned adjacent to it, all other allied creatures gain 1 HP. Destroy if on an Earth field.'
   },
   FOREST_JUNO_TREE_HAUNT: {
+    cardNumber: 63,
+    race: 'Titan',
+    affiliation: 'Northern Forces',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FOREST_JUNO_TREE_HAUNT', name: 'Juno Tree Haunt', type: 'UNIT', cost: 3, activation: 1,
     element: 'FOREST', atk: 2, hp: 1,
     attackType: 'STANDARD', chooseDir: true,
@@ -848,6 +1213,11 @@ export const CARDS = {
     desc: 'Perfect Dodge. Destroy if on a non-Forest field.'
   },
   FOREST_EDIN_THE_PERSECUTED: {
+    cardNumber: 68,
+    race: 'Hero',
+    affiliation: 'Northern Forces',
+    fieldLock: false,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'FOREST_EDIN_THE_PERSECUTED', name: 'Edin the Persecuted', type: 'UNIT', cost: 3, activation: 2,
     element: 'FOREST', atk: 2, hp: 3,
     attackType: 'MAGIC',
@@ -858,6 +1228,11 @@ export const CARDS = {
     desc: '+1 Attack while attacking a creature on a Forest field. Allied creatures on Forest fields have Invisibility.'
   },
   FOREST_ELVEN_DEATH_DANCER: {
+    cardNumber: 66,
+    race: 'Elf',
+    affiliation: 'Black Forest',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FOREST_ELVEN_DEATH_DANCER', name: 'Elven Death Dancer', type: 'UNIT', cost: 5, activation: 4,
     element: 'FOREST', atk: 1, hp: 3,
     attackType: 'MAGIC',
@@ -868,6 +1243,11 @@ export const CARDS = {
     desc: 'Magic Attack. If Elven Death Dancer damages (but does not destroy) a creature, she switches locations with that creature (which cannot counterattack). Enemies on adjacent fields add 3 to their Activation Cost.'
   },
   FOREST_ELVEN_RIDER: {
+    cardNumber: 64,
+    race: 'Elf',
+    affiliation: 'Til Vorg Monarchy',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FOREST_ELVEN_RIDER', name: 'Elven Rider', type: 'UNIT', cost: 4, activation: 2,
     element: 'FOREST', atk: 2, hp: 4,
     attackType: 'STANDARD', friendlyFire: true,
@@ -877,6 +1257,11 @@ export const CARDS = {
     desc: 'If Elven Rider is destroyed on a non-Wood field, your opponent must discard cards equal to the number of Wood fields.'
   },
   FOREST_INQUISITOR_KOOG: {
+    cardNumber: 86,
+    race: 'Betrayer',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'FOREST_INQUISITOR_KOOG', name: 'Inquisitor Koog', type: 'UNIT', cost: 3, activation: 2,
     element: 'FOREST', atk: 2, hp: 4,
     attackType: 'STANDARD', chooseDir: true,
@@ -891,6 +1276,11 @@ export const CARDS = {
     desc: 'Inquisitor Koog adds 1 to his attack if the target creature is a Wood creature. If Inquisitor Koog is destroyed, you gain additional mana equal to the number of enemies.'
   },
   FOREST_JUNO_FOREST_DRAGON: {
+    cardNumber: 67,
+    race: 'Dragon',
+    affiliation: 'Til Vorg Monarchy',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FOREST_JUNO_FOREST_DRAGON', name: 'Juno Forest Dragon', type: 'UNIT', cost: 7, activation: 4,
     element: 'FOREST', atk: 5, hp: 8,
     attackType: 'STANDARD',
@@ -903,6 +1293,11 @@ export const CARDS = {
     desc: 'Juno Forest Dragon\'s Attack is equal to 5 plus the number of other Wood creatures on the board. While Juno Forest Dragon is on a Wood field, enemies on adjacent fields add 2 to their Activation Cost.'
   },
   FOREST_SLEEPTRAP: {
+    cardNumber: 58,
+    race: 'Plant',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FOREST_SLEEPTRAP', name: 'Sleeptrap', type: 'UNIT', cost: 2, activation: 1,
     element: 'FOREST', atk: 0, hp: 2,
     attackType: 'STANDARD',
@@ -914,6 +1309,11 @@ export const CARDS = {
     desc: 'Enemies on adjacent fields add 1 to their Activation Cost.'
   },
   FOREST_GREEN_LYCANTHROPE: {
+    cardNumber: 56,
+    race: 'Anthromorph',
+    affiliation: 'Til Vorg Monarchy',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FOREST_GREEN_LYCANTHROPE', name: 'Green Lycanthrope', type: 'UNIT', cost: 1, activation: 1,
     element: 'FOREST', atk: 0, hp: 1,
     attackType: 'STANDARD',
@@ -925,6 +1325,11 @@ export const CARDS = {
   },
 
   FOREST_BEWITCHING_ELF_ARCHERESS: {
+    cardNumber: 57,
+    race: 'Elf',
+    affiliation: 'Northern Forces',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FOREST_BEWITCHING_ELF_ARCHERESS', name: 'Bewitching Elf Archeress', type: 'UNIT', cost: 1, activation: 1,
     element: 'FOREST', atk: 1, hp: 2,
     attackType: 'STANDARD',
@@ -936,6 +1341,11 @@ export const CARDS = {
   },
 
   FOREST_ELVEN_BERSERKER_MAIDEN: {
+    cardNumber: 59,
+    race: 'Elf',
+    affiliation: 'Black Forest',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FOREST_ELVEN_BERSERKER_MAIDEN', name: 'Elven Berserker Maiden', type: 'UNIT', cost: 2, activation: 1,
     element: 'FOREST', atk: 1, hp: 3,
     attackType: 'STANDARD',
@@ -947,6 +1357,11 @@ export const CARDS = {
   },
 
   FOREST_GREEN_CUBIC: {
+    cardNumber: 72,
+    race: 'Egg',
+    affiliation: 'Unknown',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FOREST_GREEN_CUBIC', name: 'Green Cubic', type: 'UNIT', cost: 1, activation: 1,
     element: 'FOREST', atk: 1, hp: 1,
     attackType: 'STANDARD',
@@ -958,6 +1373,12 @@ export const CARDS = {
     desc: 'Sacrifice Green Cubic to summon a non‑cubic Wood creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
   },
   FOREST_GREEN_ERLKING_ZOMBA: {
+    cardNumber: 70,
+    race: 'Noble',
+    affiliation: 'Green Bandits',
+    fieldLock: true,
+    locked: true,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'FOREST_GREEN_ERLKING_ZOMBA', name: 'Green Erlking Zomba', type: 'UNIT', cost: 6, activation: 3,
     element: 'FOREST', atk: 6, hp: 3,
     attackType: 'STANDARD', friendlyFire: true,
@@ -973,6 +1394,11 @@ export const CARDS = {
     desc: 'Zomba must use its secondary attack while it is on a Wood field. While Zomba is on a Wood field, each time an allied creature is destroyed, your opponent must discard a card.'
   },
   FOREST_LEAPFROG_BANDIT: {
+    cardNumber: 55,
+    race: 'Anthromorph',
+    affiliation: 'Green Bandits',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FOREST_LEAPFROG_BANDIT', name: 'Leapfrog Bandit', type: 'UNIT', cost: 1, activation: 1,
     element: 'FOREST', atk: 1, hp: 1,
     attackType: 'STANDARD',
@@ -982,6 +1408,11 @@ export const CARDS = {
     desc: 'If Leapfrog Bandit is destroyed on a non-Wood field, your opponent must discard 1 card.'
   },
   SAMURAI_NAGIRASHU: {
+    cardNumber: 60,
+    race: 'Human',
+    affiliation: 'Nagirashu',
+    fieldLock: false,
+    cardLimit: null,
     id: 'SAMURAI_NAGIRASHU', name: 'Samurai Nagirashu', type: 'UNIT', cost: 2, activation: 2,
     element: 'FOREST', atk: 2, hp: 2,
     attackType: 'STANDARD',
@@ -991,6 +1422,11 @@ export const CARDS = {
     desc: 'If Samurai Nagirashu is destroyed on a Wood field, your opponent must discard 1 card.'
   },
   NEUTRAL_WHITE_CUBIC: {
+    cardNumber: 90,
+    race: 'Egg',
+    affiliation: 'Unknown',
+    fieldLock: false,
+    cardLimit: { type: 'PER_CARD', amount: 1 },
     id: 'NEUTRAL_WHITE_CUBIC', name: 'White Cubic', type: 'UNIT', cost: 1, activation: 1,
     element: 'NEUTRAL', atk: 1, hp: 1,
     attackType: 'STANDARD',
@@ -1005,6 +1441,12 @@ export const CARDS = {
   },
 
   BIOLITH_NINJA: {
+    cardNumber: 78,
+    race: 'Mech',
+    affiliation: 'Biolith Castle',
+    fieldLock: true,
+    locked: true,
+    cardLimit: null,
     id: 'BIOLITH_NINJA', name: 'Biolith Ninja', type: 'UNIT', cost: 4, activation: 2,
     element: 'BIOLITH', atk: 4, hp: 2,
     attackType: 'STANDARD',
@@ -1016,6 +1458,12 @@ export const CARDS = {
   },
 
   BIOLITH_BOMBER: {
+    cardNumber: 73,
+    race: 'Blitz',
+    affiliation: 'Biolith Castle',
+    fieldLock: true,
+    locked: true,
+    cardLimit: null,
     id: 'BIOLITH_BOMBER', name: 'Biolith Bomber', type: 'UNIT', cost: 3, activation: 2,
     element: 'BIOLITH', atk: 1, hp: 3,
     attackType: 'STANDARD', chooseDir: true,
@@ -1030,6 +1478,12 @@ export const CARDS = {
     desc: 'Adds 2 to its Attack if the target creature has a Summoning Cost of 2 or lower.'
   },
   BIOLITH_SCION_BIOLITH_LORD: {
+    cardNumber: 87,
+    race: 'Noble',
+    affiliation: 'Biolith Castle',
+    fieldLock: true,
+    locked: true,
+    cardLimit: { type: 'PER_RACE', amount: 1 },
     id: 'BIOLITH_SCION_BIOLITH_LORD', name: 'Scion, Biolith Lord', type: 'UNIT', cost: 6, activation: 3,
     element: 'BIOLITH', atk: 2, hp: 5,
     attackType: 'MAGIC',
@@ -1042,6 +1496,12 @@ export const CARDS = {
     desc: 'Scion\'s Magic Attack targets all enemies of the same element as the target. All other allied Biolith creatures subtract 2 from their Activation Cost.'
   },
   BIOLITH_DRAGOON_DRAGON_CAVALRY: {
+    cardNumber: 80,
+    race: 'Mech',
+    affiliation: 'Biolith Castle',
+    fieldLock: true,
+    locked: true,
+    cardLimit: null,
     id: 'BIOLITH_DRAGOON_DRAGON_CAVALRY', name: 'Dragoon Dragon Cavalry', type: 'UNIT', cost: 5, activation: 3,
     element: 'BIOLITH', atk: 3, hp: 5,
     attackType: 'STANDARD',
@@ -1052,6 +1512,12 @@ export const CARDS = {
   },
 
   BIOLITH_BATTLE_CHARIOT: {
+    cardNumber: 76,
+    race: 'Weapon',
+    affiliation: 'Biolith Castle',
+    fieldLock: true,
+    locked: true,
+    cardLimit: null,
     id: 'BIOLITH_BATTLE_CHARIOT', name: 'Biolith Battle Chariot', type: 'UNIT', cost: 4, activation: 4,
     element: 'BIOLITH', atk: 3, hp: 5,
     attackType: 'STANDARD',
@@ -1065,6 +1531,12 @@ export const CARDS = {
   },
 
   BIOLITH_AEGIS_CITADEL: {
+    cardNumber: 82,
+    race: 'Base',
+    affiliation: 'Biolith Castle',
+    fieldLock: true,
+    locked: true,
+    cardLimit: null,
     id: 'BIOLITH_AEGIS_CITADEL', name: 'Aegis Citadel', type: 'UNIT', cost: 5, activation: 3,
     element: 'BIOLITH', atk: 1, hp: 5,
     attackType: 'STANDARD', chooseDir: true,
@@ -1081,6 +1553,12 @@ export const CARDS = {
   },
 
   BIOLITH_TAURUS_MONOLITH: {
+    cardNumber: 81,
+    race: 'Titan',
+    affiliation: 'Biolith Castle',
+    fieldLock: true,
+    locked: true,
+    cardLimit: null,
     id: 'BIOLITH_TAURUS_MONOLITH', name: 'Taurus Monolith', type: 'UNIT', cost: 5, activation: 3,
     element: 'BIOLITH', atk: 3, hp: 6,
     attackType: 'STANDARD',
@@ -1094,6 +1572,12 @@ export const CARDS = {
   },
 
   BIOLITH_ARC_SATELLITE_CANNON: {
+    cardNumber: 83,
+    race: 'Blitz',
+    affiliation: 'Biolith Castle',
+    fieldLock: true,
+    locked: true,
+    cardLimit: null,
     id: 'BIOLITH_ARC_SATELLITE_CANNON', name: 'Arc Satellite Cannon', type: 'UNIT', cost: 5, activation: 4,
     element: 'BIOLITH', atk: 4, hp: 5,
     attackType: 'MAGIC', chooseDir: true,
@@ -1108,6 +1592,11 @@ export const CARDS = {
   },
 
   FOREST_TWIN_GOBLINS: {
+    cardNumber: 61,
+    race: 'Goblin',
+    affiliation: 'Green Bandits',
+    fieldLock: false,
+    cardLimit: null,
     id: 'FOREST_TWIN_GOBLINS', name: 'Twin Goblins', type: 'UNIT', cost: 2, activation: 1,
     element: 'FOREST', atk: 1, hp: 3,
     attackType: 'STANDARD',
@@ -1122,14 +1611,114 @@ export const CARDS = {
 
   // Spells (subset)
   SPELL_HEALING_SHOWER: {
-    id: 'SPELL_HEALING_SHOWER', name: 'Healing Shower', type: 'SPELL', element: 'EARTH',
-    spellType: 'CONJURATION', cost: 2,
+    cardNumber: 97,
+    race: 'Conjuration',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
+    id: 'SPELL_HEALING_SHOWER',
+    name: 'Healing Shower',
+    type: 'SPELL',
+    element: 'EARTH',
+    spellType: 'CONJURATION',
+    cost: 2,
     text: 'All allied creatures of a chosen element gain 3 HP. Place this card on an allied creature belonging to the desired element.'
   },
-  SPELL_FISSURES_OF_GOGHLIE: { id: 'SPELL_FISSURES_OF_GOGHLIE', name: 'Fissures of Goghlie', type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 2, text: 'Fieldquake any one field.' },
-  SPELL_PARMTETIC_HOLY_FEAST: { id: 'SPELL_PARMTETIC_HOLY_FEAST', name: 'Parmetic Holy Feast', type: 'SPELL', element: 'NEUTRAL', spellType: 'RITUAL', cost: 0, ritualCost: 'discard 1 creature', text: 'Discard a creature from hand and gain 2 mana.' },
-  SPELL_GOGHLIE_ALTAR: { id: 'SPELL_GOGHLIE_ALTAR', name: 'Goghlie Altar', type: 'SPELL', element: 'NEUTRAL', spellType: 'RITUAL', cost: 0, ritualCost: 'none', text: 'Both players gain mana equal to the number of enemy creatures on the board.' },
-  SPELL_BEGUILING_FOG: { id: 'SPELL_BEGUILING_FOG', name: 'Beguiling Fog', type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 0, text: 'Rotate any one creature in any direction.' },
-  SPELL_CLARE_WILS_BANNER: { id: 'SPELL_CLARE_WILS_BANNER', name: 'Clare Wil’s Banner', type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 1, text: 'Friendly creatures get +1 ATK until end of turn.' },
-  SPELL_SUMMONER_MESMERS_ERRAND: { id: 'SPELL_SUMMONER_MESMERS_ERRAND', name: "Summoner Mesmer's Errand", type: 'SPELL', element: 'NEUTRAL', spellType: 'CONJURATION', cost: 1, text: 'Draw two cards.' },
+  SPELL_FISSURES_OF_GOGHLIE: {
+    cardNumber: 98,
+    race: 'Conjuration',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
+    id: 'SPELL_FISSURES_OF_GOGHLIE',
+    name: 'Fissures of Goghlie',
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'CONJURATION',
+    cost: 2,
+    text: 'Fieldquake any one field.'
+  },
+  SPELL_PARMTETIC_HOLY_FEAST: {
+    cardNumber: 91,
+    race: 'Ritual',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: { type: 'PER_CARD', amount: 1 },
+    id: 'SPELL_PARMTETIC_HOLY_FEAST',
+    name: 'Parmetic Holy Feast',
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'RITUAL',
+    cost: 0,
+    ritualCost: 'discard 1 creature',
+    text: 'Discard a creature from hand and gain 2 mana.'
+  },
+  SPELL_GOGHLIE_ALTAR: {
+    cardNumber: 92,
+    race: 'Ritual',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: { type: 'PER_CARD', amount: 1 },
+    id: 'SPELL_GOGHLIE_ALTAR',
+    name: 'Goghlie Altar',
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'RITUAL',
+    cost: 0,
+    ritualCost: 'none',
+    text: 'Both players gain mana equal to the number of enemy creatures on the board.'
+  },
+  SPELL_BEGUILING_FOG: {
+    cardNumber: 94,
+    race: 'Conjuration',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
+    id: 'SPELL_BEGUILING_FOG',
+    name: 'Beguiling Fog',
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'CONJURATION',
+    cost: 0,
+    text: 'Rotate any one creature in any direction.'
+  },
+  SPELL_CLARE_WILS_BANNER: {
+    cardNumber: 96,
+    race: 'Conjuration',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
+    id: 'SPELL_CLARE_WILS_BANNER',
+    name: 'Clare Wil’s Banner',
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'CONJURATION',
+    cost: 1,
+    text: 'Friendly creatures get +1 ATK until end of turn.'
+  },
+  SPELL_SUMMONER_MESMERS_ERRAND: {
+    cardNumber: 100,
+    race: 'Conjuration',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
+    id: 'SPELL_SUMMONER_MESMERS_ERRAND',
+    name: "Summoner Mesmer's Errand",
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'CONJURATION',
+    cost: 1,
+    text: 'Draw two cards.'
+  },
 };
+
+export const CARDS = Object.fromEntries(
+  Object.entries(RAW_CARDS).map(([id, card]) => [
+    id,
+    {
+      ...card,
+      // Добавляем готовую подпись ограничения, чтобы не дублировать вычисления в UI
+      limitLabel: makeCardLimitLabel(card.cardLimit),
+    },
+  ])
+);
