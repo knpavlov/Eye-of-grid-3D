@@ -1694,6 +1694,62 @@ const RAW_CARDS = {
     cost: 1,
     text: 'Draw two cards.'
   },
+  SPELL_GREAT_TOLICORE_QUAKE: {
+    cardNumber: 99,
+    race: 'Conjuration',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
+    id: 'SPELL_GREAT_TOLICORE_QUAKE',
+    name: 'Great Tolicore Quake',
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'CONJURATION',
+    cost: 4,
+    text: 'Fieldquake all fields of a chosen element.\nPlace this card on a field of the chosen element.'
+  },
+  SPELL_TINOAN_TELEKINESIS: {
+    cardNumber: 101,
+    race: 'Conjuration',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
+    id: 'SPELL_TINOAN_TELEKINESIS',
+    name: 'Tinoan Telekinesis',
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'CONJURATION',
+    cost: 2,
+    text: 'Move 1 allied creature to an empty field without changing its orientation.\nPlace this card over the target creature, then select an empty field.'
+  },
+  SPELL_TINOAN_TELEPORTATION: {
+    cardNumber: 102,
+    race: 'Conjuration',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
+    id: 'SPELL_TINOAN_TELEPORTATION',
+    name: 'Tinoan Teleportation',
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'CONJURATION',
+    cost: 3,
+    text: 'Switch the locations of two allied creatures without changing their orientations.\nPlace this card over the 1st target, then the 2nd target.'
+  },
+  SPELL_SEER_VIZAKS_CALAMITY: {
+    cardNumber: 109,
+    race: 'Sorcery',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
+    id: 'SPELL_SEER_VIZAKS_CALAMITY',
+    name: "Seer Vizak's Calamity",
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'SORCERY',
+    cost: 5,
+    text: 'Fieldquake all fields. Playing this card ends your turn.\nOffer this card to the Eye.'
+  },
 };
 
 export const CARDS = Object.fromEntries(
