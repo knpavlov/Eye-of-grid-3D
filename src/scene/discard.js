@@ -26,12 +26,12 @@ export function discardMesh(mesh, awayVec, duration = 0.9) {
  * @param {number} handIdx - индекс карты в руке.
  * @returns {object|null} - шаблон сброшенной карты или null, если сброс не удался.
  */
-export function discardHandCard(player, handIdx, { skipLogic = false } = {}) {
+export function discardHandCard(player, handIdx, { skipLogic = false, zone = 'graveyard' } = {}) {
   if (!player || typeof handIdx !== 'number' || handIdx < 0) return null;
 
   let cardTpl = null;
   if (!skipLogic) {
-    cardTpl = discardCardFromHand(player, handIdx) || null;
+    cardTpl = discardCardFromHand(player, handIdx, { zone }) || null;
   } else {
     cardTpl = player.hand?.[handIdx] || null;
   }

@@ -45,6 +45,8 @@ export const interactionState = {
   pendingAbilityOrientation: null,
   pendingSpellTeleportation: null,
   pendingSpellTelekinesis: null,
+  pendingSpellFieldSwap: null,
+  pendingSpellLapse: null,
   spellDragHandled: false,
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
@@ -401,7 +403,11 @@ function onMouseDown(event) {
   }
 
   let tileForSpell = null;
-  if (interactionState.pendingSpellTeleportation || interactionState.pendingSpellTelekinesis) {
+  if (
+    interactionState.pendingSpellTeleportation
+    || interactionState.pendingSpellTelekinesis
+    || interactionState.pendingSpellFieldSwap
+  ) {
     const flatTiles = Array.isArray(tileMeshes) ? tileMeshes.flat() : [];
     if (flatTiles.length) {
       const tileHits = raycaster.intersectObjects(flatTiles, true);
@@ -673,6 +679,8 @@ export function resetCardSelection() {
   }
   interactionState.pendingSpellTeleportation = null;
   interactionState.pendingSpellTelekinesis = null;
+  interactionState.pendingSpellFieldSwap = null;
+  interactionState.pendingSpellLapse = null;
   clearHighlights();
   clearPlacementHighlights();
   try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
