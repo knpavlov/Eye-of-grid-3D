@@ -43,6 +43,8 @@ export const interactionState = {
   pendingRitualOrigin: null,
   pendingUnitAbility: null,
   pendingAbilityOrientation: null,
+  pendingSpellTeleportation: null,
+  pendingSpellTelekinesis: null,
   spellDragHandled: false,
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
@@ -354,7 +356,7 @@ function onMouseDown(event) {
   resetUnitHover();
   hideTooltip(META_TOOLTIP_SOURCE);
   const ctx = getCtx();
-  const { renderer, mouse, raycaster, unitMeshes, handCardMeshes } = ctx;
+  const { renderer, mouse, raycaster, unitMeshes, handCardMeshes, tileMeshes } = ctx;
   const rect = renderer.domElement.getBoundingClientRect();
   mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -366,11 +368,12 @@ function onMouseDown(event) {
     const hitObj = handIntersects[0].object;
     const card = hitObj.userData?.isInHand ? hitObj : hitObj.parent;
     const cardData = card.userData.cardData;
-    if (cardData.locked && !gameState.summoningUnlocked) {
+    const selector = interactionState.pendingDiscardSelection;
+    const ignoreLock = !!selector;
+    if (cardData.locked && !gameState.summoningUnlocked && !ignoreLock) {
       showNotification('Summoning Lock: This card cannot be played until there are at least 4 units on the board at the same time', 'error');
       return;
     }
-    const selector = interactionState.pendingDiscardSelection;
     if (selector && cardData) {
       const handIdx = card.userData.handIndex;
       const matchesType = !selector.requiredType || cardData.type === selector.requiredType;
@@ -390,12 +393,29 @@ function onMouseDown(event) {
   }
 
   const unitIntersects = raycaster.intersectObjects(unitMeshes, true);
+  let unitMesh = null;
   if (unitIntersects.length > 0) {
-    let unit = unitIntersects[0].object;
-    while (unit && (!unit.userData || unit.userData.type !== 'unit')) unit = unit.parent;
-    if (!unit) return;
+    let candidate = unitIntersects[0].object;
+    while (candidate && (!candidate.userData || candidate.userData.type !== 'unit')) candidate = candidate.parent;
+    if (candidate && candidate.userData?.type === 'unit') unitMesh = candidate;
+  }
+
+  let tileForSpell = null;
+  if (interactionState.pendingSpellTeleportation || interactionState.pendingSpellTelekinesis) {
+    const flatTiles = Array.isArray(tileMeshes) ? tileMeshes.flat() : [];
+    if (flatTiles.length) {
+      const tileHits = raycaster.intersectObjects(flatTiles, true);
+      if (tileHits.length > 0) tileForSpell = tileHits[0].object;
+    }
+  }
+
+  if (window.__spells?.handlePendingBoardClick?.({ unitMesh, tileMesh: tileForSpell })) {
+    return;
+  }
+
+  if (unitMesh) {
     if (interactionState.magicFrom) {
-      const ok = performMagicAttack(interactionState.magicFrom, unit);
+      const ok = performMagicAttack(interactionState.magicFrom, unitMesh);
       if (ok) {
         interactionState.magicFrom = null;
         clearHighlights();
@@ -404,7 +424,7 @@ function onMouseDown(event) {
       return;
     }
     if (interactionState.pendingAttack) {
-      const ok = performChosenAttack(interactionState.pendingAttack, unit);
+      const ok = performChosenAttack(interactionState.pendingAttack, unitMesh);
       if (ok) {
         interactionState.pendingAttack = null;
         clearHighlights();
@@ -413,10 +433,10 @@ function onMouseDown(event) {
       return;
     }
     if (interactionState.selectedCard && interactionState.selectedCard.userData.cardData.type === 'SPELL') {
-      castSpellOnUnit(interactionState.selectedCard, unit);
-    } else if (unit.userData.unitData.owner === gameState.active) {
-      interactionState.selectedUnit = unit;
-      try { window.__ui.panels.showUnitActionPanel(unit); } catch {}
+      castSpellOnUnit(interactionState.selectedCard, unitMesh);
+    } else if (unitMesh.userData.unitData.owner === gameState.active) {
+      interactionState.selectedUnit = unitMesh;
+      try { window.__ui.panels.showUnitActionPanel(unitMesh); } catch {}
     }
     return;
   }
@@ -648,6 +668,11 @@ export function resetCardSelection() {
     } catch {}
     interactionState.selectedCard = null;
   }
+  if (interactionState.pendingSpellTeleportation || interactionState.pendingSpellTelekinesis) {
+    try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+  }
+  interactionState.pendingSpellTeleportation = null;
+  interactionState.pendingSpellTelekinesis = null;
   clearHighlights();
   clearPlacementHighlights();
   try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
