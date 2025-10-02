@@ -1,5 +1,10 @@
 // Кнопка отмены действий при установке карты или выборе цели
-import { interactionState, returnCardToHand, undoPendingSummonManaGain } from '../scene/interactions.js';
+import {
+  interactionState,
+  returnCardToHand,
+  undoPendingSummonManaGain,
+  clearPendingSpellTargeting,
+} from '../scene/interactions.js';
 import { clearHighlights } from '../scene/highlight.js';
 import { capMana } from '../core/constants.js';
 import { refreshPossessionsUI } from './possessions.js';
@@ -59,7 +64,12 @@ function cancelTargetSelection() {
 export function refreshCancelButton() {
   const btn = document.getElementById('cancel-play-btn');
   if (!btn) return;
-  const vis = interactionState.pendingPlacement || interactionState.pendingAttack || interactionState.magicFrom || interactionState.pendingSpellOrientation || interactionState.selectedCard;
+  const vis = interactionState.pendingPlacement
+    || interactionState.pendingAttack
+    || interactionState.magicFrom
+    || interactionState.pendingSpellOrientation
+    || interactionState.pendingSpellTargeting
+    || interactionState.selectedCard;
   btn.classList.toggle('hidden', !vis);
 }
 
@@ -78,6 +88,9 @@ export function setupCancelButton() {
         interactionState.pendingSpellOrientation = null;
         window.__ui?.panels?.hideOrientationPanel?.();
         interactionState.selectedCard && returnCardToHand(interactionState.selectedCard);
+      } else if (interactionState.pendingSpellTargeting) {
+        try { interactionState.pendingSpellTargeting.onCancel?.(); } catch {}
+        clearPendingSpellTargeting();
       } else if (interactionState.selectedCard) {
         returnCardToHand(interactionState.selectedCard);
         interactionState.selectedCard = null;
