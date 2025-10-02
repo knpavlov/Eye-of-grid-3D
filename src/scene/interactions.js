@@ -36,6 +36,7 @@ export const interactionState = {
   pendingAttack: null,
   hoveredMeta: null,
   pendingSpellOrientation: null,
+  pendingSpellTargeting: null,
   pendingDiscardSelection: null,
   pendingRitualBoardMesh: null,
   pendingRitualSpellHandIndex: null,
@@ -354,7 +355,7 @@ function onMouseDown(event) {
   resetUnitHover();
   hideTooltip(META_TOOLTIP_SOURCE);
   const ctx = getCtx();
-  const { renderer, mouse, raycaster, unitMeshes, handCardMeshes } = ctx;
+  const { renderer, mouse, raycaster, unitMeshes, handCardMeshes, tileMeshes } = ctx;
   const rect = renderer.domElement.getBoundingClientRect();
   mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -394,6 +395,29 @@ function onMouseDown(event) {
     let unit = unitIntersects[0].object;
     while (unit && (!unit.userData || unit.userData.type !== 'unit')) unit = unit.parent;
     if (!unit) return;
+    const pendingSpell = interactionState.pendingSpellTargeting;
+    if (pendingSpell && (pendingSpell.mode === 'UNIT' || pendingSpell.mode === 'UNIT_OR_TILE')) {
+      const row = unit.userData?.row;
+      const col = unit.userData?.col;
+      if (row == null || col == null) return;
+      const cell = gameState.board?.[row]?.[col];
+      const unitData = cell?.unit || null;
+      const allow = typeof pendingSpell.filterUnit === 'function'
+        ? pendingSpell.filterUnit({ r: row, c: col, unit: unitData, cell, mesh: unit })
+        : true;
+      if (!allow) {
+        if (pendingSpell.invalidUnitMessage) {
+          showNotification(pendingSpell.invalidUnitMessage, 'error');
+        }
+        return;
+      }
+      try {
+        pendingSpell.onSelect?.({ type: 'UNIT', r: row, c: col, unit: unitData, cell, mesh: unit });
+      } catch (err) {
+        console.error('[interactions] Ошибка обработки цели заклинания (unit):', err);
+      }
+      return;
+    }
     if (interactionState.magicFrom) {
       const ok = performMagicAttack(interactionState.magicFrom, unit);
       if (ok) {
@@ -419,6 +443,34 @@ function onMouseDown(event) {
       try { window.__ui.panels.showUnitActionPanel(unit); } catch {}
     }
     return;
+  }
+
+  const pendingSpell = interactionState.pendingSpellTargeting;
+  if (pendingSpell && (pendingSpell.mode === 'TILE' || pendingSpell.mode === 'UNIT_OR_TILE')) {
+    const flatTiles = Array.isArray(tileMeshes) ? tileMeshes.flat() : [];
+    const tileIntersects = raycaster.intersectObjects(flatTiles, true);
+    if (tileIntersects.length > 0) {
+      const tile = tileIntersects[0].object;
+      const row = tile.userData?.row;
+      const col = tile.userData?.col;
+      if (row != null && col != null) {
+        const cell = gameState.board?.[row]?.[col] || null;
+        const allow = typeof pendingSpell.filterTile === 'function'
+          ? pendingSpell.filterTile({ r: row, c: col, cell, tile })
+          : true;
+        if (!allow) {
+          if (pendingSpell.invalidTileMessage) {
+            showNotification(pendingSpell.invalidTileMessage, 'error');
+          }
+          return;
+        }
+        try {
+          pendingSpell.onSelect?.({ type: 'TILE', r: row, c: col, cell, tile });
+        } catch (err) {
+          console.error('[interactions] Ошибка обработки цели заклинания (tile):', err);
+        }
+      }
+    }
   }
 
   if (interactionState.selectedCard) {
@@ -1380,6 +1432,18 @@ export function getPendingPlacement() { return interactionState.pendingPlacement
 export function clearPendingPlacement() { interactionState.pendingPlacement = null; }
 export function getPendingSpellOrientation() { return interactionState.pendingSpellOrientation; }
 export function clearPendingSpellOrientation() { interactionState.pendingSpellOrientation = null; }
+
+export function setPendingSpellTargeting(config) {
+  interactionState.pendingSpellTargeting = config || null;
+  try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+}
+
+export function getPendingSpellTargeting() { return interactionState.pendingSpellTargeting; }
+
+export function clearPendingSpellTargeting() {
+  interactionState.pendingSpellTargeting = null;
+  try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+}
 export function setPendingUnitAbility(value) { interactionState.pendingUnitAbility = value || null; }
 export function getPendingUnitAbility() { return interactionState.pendingUnitAbility; }
 export function clearPendingUnitAbility() { interactionState.pendingUnitAbility = null; }

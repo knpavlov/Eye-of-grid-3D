@@ -5,14 +5,132 @@
 
 import { spendAndDiscardSpell, burnSpellCard } from '../ui/spellUtils.js';
 import { getCtx } from '../scene/context.js';
-import { interactionState, resetCardSelection } from '../scene/interactions.js';
+import {
+  interactionState,
+  resetCardSelection,
+  returnCardToHand,
+  setPendingSpellTargeting,
+  clearPendingSpellTargeting,
+  requestAutoEndTurn,
+} from '../scene/interactions.js';
 import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
-import { computeCellBuff } from '../core/fieldEffects.js';
+import { computeCellBuff, applyFieldTransitionToUnit } from '../core/fieldEffects.js';
 import { refreshPossessionsUI } from '../ui/possessions.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
-import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
+import { playFieldquakeFx, playFieldquakeFxBatch } from '../scene/fieldquakeFx.js';
 import { animateManaGainFromWorld } from '../ui/mana.js';
+import { applyFieldquakeToCell, collectFieldquakeDeaths } from '../core/abilityHandlers/fieldquake.js';
+import { applyDamageInteractionResults } from '../core/abilities.js';
+import { createDeathEntry } from '../core/abilityHandlers/deathRecords.js';
+import { highlightTiles, clearHighlights } from '../scene/highlight.js';
+
+// Утилита для исключения дублирующихся позиций
+function uniquePositions(cells = []) {
+  const seen = new Set();
+  const result = [];
+  for (const cell of cells) {
+    if (!cell) continue;
+    const r = Number(cell.r);
+    const c = Number(cell.c);
+    if (!Number.isInteger(r) || !Number.isInteger(c)) continue;
+    const key = `${r},${c}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ r, c });
+  }
+  return result;
+}
+
+// Массовое применение fieldquake без привязки к визуальной части
+function performFieldquakeBatch(state, cells, opts = {}) {
+  const unique = uniquePositions(cells);
+  if (!state?.board || !unique.length) {
+    return { results: [], deaths: [], skipped: [] };
+  }
+  const respectLocks = opts.respectLocks !== false;
+  const lockedRaw = respectLocks ? computeFieldquakeLockedCells(state) : [];
+  const lockedSet = respectLocks
+    ? new Set(lockedRaw.map(pos => `${pos.r},${pos.c}`))
+    : null;
+  const results = [];
+  const skipped = [];
+  for (const pos of unique) {
+    const res = applyFieldquakeToCell(state, pos.r, pos.c, { respectLocks, lockedSet });
+    if (res?.changed) {
+      results.push(res);
+    } else {
+      skipped.push({ ...pos, reason: res?.reason || 'UNKNOWN' });
+    }
+  }
+  const deaths = collectFieldquakeDeaths(state, results);
+  return { results, deaths, skipped };
+}
+
+// Сбор погибших существ после применения любых перемещений/fieldquake
+function collectAdditionalDeaths(state, baseDeaths = []) {
+  if (!state?.board) return baseDeaths.slice();
+  const combined = Array.isArray(baseDeaths) ? baseDeaths.slice() : [];
+  const seen = new Set(combined.map(d => (d?.uid != null) ? `UID:${d.uid}` : `POS:${d?.r},${d?.c}`));
+  for (let r = 0; r < 3; r += 1) {
+    for (let c = 0; c < 3; c += 1) {
+      const cell = state.board?.[r]?.[c];
+      const unit = cell?.unit;
+      if (!unit) continue;
+      const tpl = CARDS?.[unit.tplId];
+      const hp = unit.currentHP ?? tpl?.hp ?? 0;
+      if (hp > 0) continue;
+      const entry = createDeathEntry(state, unit, r, c) || {
+        r,
+        c,
+        owner: unit.owner,
+        tplId: unit.tplId,
+        uid: unit.uid ?? null,
+        element: cell?.element || null,
+      };
+      const key = entry.uid != null ? `UID:${entry.uid}` : `POS:${entry.r},${entry.c}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      combined.push(entry);
+      cell.unit = null;
+    }
+  }
+  return combined;
+}
+
+// Обработка погибших после заклинаний: перенос в сброс и эффект добора/сброса
+function finalizeSpellDeaths(state, deaths = [], opts = {}) {
+  if (!state || !Array.isArray(deaths) || !deaths.length) return { logs: [] };
+  const logs = [];
+  for (const death of deaths) {
+    if (!death) continue;
+    const tpl = CARDS?.[death.tplId];
+    if (!tpl) continue;
+    try {
+      if (state.players?.[death.owner]?.graveyard) {
+        state.players[death.owner].graveyard.push(tpl);
+      }
+    } catch {}
+  }
+  const discard = applyDeathDiscardEffects(state, deaths, { cause: opts.cause || 'SPELL' });
+  if (Array.isArray(discard?.logs)) {
+    logs.push(...discard.logs);
+  }
+  return { logs };
+}
+
+// Унифицированный вызов логики перестановок с возвратом смертей
+function performRepositionEvents(state, events = []) {
+  const raw = applyDamageInteractionResults(state, { events });
+  const baseDeaths = Array.isArray(raw?.deaths) ? raw.deaths : [];
+  const deaths = collectAdditionalDeaths(state, baseDeaths);
+  return {
+    logLines: Array.isArray(raw?.logLines) ? raw.logLines : [],
+    deaths,
+    fieldquakes: Array.isArray(raw?.fieldquakes) ? raw.fieldquakes : [],
+    attackerPosUpdate: raw?.attackerPosUpdate || null,
+  };
+}
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -522,6 +640,376 @@ export const handlers = {
       updateHand();
       updateUnits();
       updateUI();
+    },
+  },
+
+  SPELL_SEER_VIZAKS_CALAMITY: {
+    onCast({ tpl, pl, idx, cardMesh, tileMesh }) {
+      const ctx = getCtx();
+      const { unitMeshes, tileMeshes } = ctx;
+      const targetCells = [];
+      for (let r = 0; r < 3; r += 1) {
+        for (let c = 0; c < 3; c += 1) {
+          targetCells.push({ r, c });
+        }
+      }
+      const result = performFieldquakeBatch(gameState, targetCells);
+      if (!result.results.length) {
+        showNotification('Нет полей для изменения стихии.', 'error');
+        return;
+      }
+      const broadcastFx = (typeof NET_ON === 'function' ? NET_ON() : false)
+        && typeof MY_SEAT === 'number'
+        && typeof gameState?.active === 'number'
+        && MY_SEAT === gameState.active;
+      const fxPayload = result.results.map(res => ({
+        r: res.r,
+        c: res.c,
+        prevElement: res.prevElement,
+        nextElement: res.nextElement,
+      }));
+      playFieldquakeFxBatch(fxPayload, { broadcast: broadcastFx });
+      for (const res of result.results) {
+        addLog(`${tpl.name}: поле (${res.r + 1},${res.c + 1}) ${res.prevElement}→${res.nextElement}.`);
+        if (res.hpShift?.deltaHp) {
+          const delta = res.hpShift.deltaHp;
+          const before = res.hpShift.beforeHp;
+          const after = res.hpShift.afterHp;
+          const mesh = unitMeshes.find(m => m.userData.row === res.r && m.userData.col === res.c);
+          if (mesh) {
+            try {
+              window.__fx.spawnDamageText(
+                mesh,
+                `${delta > 0 ? '+' : ''}${delta}`,
+                delta > 0 ? '#22c55e' : '#ef4444',
+              );
+            } catch {}
+          }
+          const unit = gameState.board?.[res.r]?.[res.c]?.unit;
+          const tplUnit = unit ? CARDS?.[unit.tplId] : null;
+          const name = tplUnit?.name || 'Существо';
+          addLog(`${name}: HP ${before}→${after}.`);
+        }
+      }
+      const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+      const deathVisuals = [];
+      for (const death of result.deaths) {
+        const mesh = unitMeshes.find(m => m.userData.row === death.r && m.userData.col === death.c);
+        if (mesh && THREE) {
+          deathVisuals.push(mesh);
+          try { window.__fx.dissolveAndAsh(mesh, new THREE.Vector3(0, 0, 0.6), 0.9); } catch {}
+        }
+      }
+      const deathResult = finalizeSpellDeaths(gameState, result.deaths, { cause: 'SPELL' });
+      if (Array.isArray(deathResult.logs)) {
+        for (const text of deathResult.logs) addLog(text);
+      }
+      refreshPossessionsUI(gameState);
+      const fxTile = tileMesh || tileMeshes?.[1]?.[1] || null;
+      burnSpellCard(tpl, fxTile, cardMesh);
+      spendAndDiscardSpell(pl, idx);
+      resetCardSelection();
+      updateHand();
+      const finalize = () => {
+        updateUnits();
+        updateUI();
+      };
+      if (deathVisuals.length) {
+        setTimeout(finalize, 1000);
+      } else {
+        finalize();
+      }
+      requestAutoEndTurn();
+    },
+  },
+
+  SPELL_GREAT_TOLICORE_QUAKE: {
+    onBoard({ tpl, pl, idx, tileMesh }) {
+      if (!tileMesh) {
+        showNotification('Перетащите карту на клетку нужной стихии.', 'error');
+        return;
+      }
+      const r = tileMesh.userData?.row;
+      const c = tileMesh.userData?.col;
+      if (r == null || c == null) return;
+      const element = gameState.board?.[r]?.[c]?.element || null;
+      if (!element || element === 'BIOLITH') {
+        showNotification('Эта клетка не подходит для заклинания.', 'error');
+        return;
+      }
+      const targets = [];
+      for (let rr = 0; rr < 3; rr += 1) {
+        for (let cc = 0; cc < 3; cc += 1) {
+          if (gameState.board?.[rr]?.[cc]?.element === element) {
+            targets.push({ rr, cc });
+          }
+        }
+      }
+      if (!targets.length) {
+        showNotification('Нет клеток выбранной стихии.', 'error');
+        return;
+      }
+      const normalized = targets.map(pos => ({ r: pos.rr, c: pos.cc }));
+      const result = performFieldquakeBatch(gameState, normalized);
+      if (!result.results.length) {
+        showNotification('Fieldquake заблокирован на всех выбранных клетках.', 'error');
+        return;
+      }
+      const broadcastFx = (typeof NET_ON === 'function' ? NET_ON() : false)
+        && typeof MY_SEAT === 'number'
+        && typeof gameState?.active === 'number'
+        && MY_SEAT === gameState.active;
+      const fxPayload = result.results.map(res => ({
+        r: res.r,
+        c: res.c,
+        prevElement: res.prevElement,
+        nextElement: res.nextElement,
+      }));
+      playFieldquakeFxBatch(fxPayload, { broadcast: broadcastFx });
+      for (const res of result.results) {
+        addLog(`${tpl.name}: поле (${res.r + 1},${res.c + 1}) ${res.prevElement}→${res.nextElement}.`);
+        if (res.hpShift?.deltaHp) {
+          const delta = res.hpShift.deltaHp;
+          const mesh = ctx.unitMeshes.find(m => m.userData.row === res.r && m.userData.col === res.c);
+          if (mesh) {
+            try {
+              window.__fx.spawnDamageText(
+                mesh,
+                `${delta > 0 ? '+' : ''}${delta}`,
+                delta > 0 ? '#22c55e' : '#ef4444',
+              );
+            } catch {}
+          }
+        }
+      }
+      const ctx = getCtx();
+      const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+      const deathVisuals = [];
+      for (const death of result.deaths) {
+        const mesh = ctx.unitMeshes.find(m => m.userData.row === death.r && m.userData.col === death.c);
+        if (mesh && THREE) {
+          deathVisuals.push(mesh);
+          try { window.__fx.dissolveAndAsh(mesh, new THREE.Vector3(0, 0, 0.6), 0.9); } catch {}
+        }
+      }
+      const deathResult = finalizeSpellDeaths(gameState, result.deaths, { cause: 'SPELL' });
+      if (Array.isArray(deathResult.logs)) {
+        for (const text of deathResult.logs) addLog(text);
+      }
+      refreshPossessionsUI(gameState);
+      burnSpellCard(tpl, tileMesh);
+      spendAndDiscardSpell(pl, idx);
+      resetCardSelection();
+      updateHand();
+      const finalize = () => {
+        updateUnits();
+        updateUI();
+      };
+      if (deathVisuals.length) {
+        setTimeout(finalize, 1000);
+      } else {
+        finalize();
+      }
+    },
+  },
+
+  SPELL_TINOAN_TELEPORTATION: {
+    requiresUnitTarget: true,
+    onUnit({ tpl, pl, idx, cardMesh, unitMesh, r, c, u }) {
+      if (!u || u.owner !== gameState.active) {
+        showNotification('Цель: союзное существо.', 'error');
+        return;
+      }
+      const allies = [];
+      for (let rr = 0; rr < 3; rr += 1) {
+        for (let cc = 0; cc < 3; cc += 1) {
+          const other = gameState.board?.[rr]?.[cc]?.unit;
+          if (other && other.owner === u.owner && (rr !== r || cc !== c)) {
+            allies.push({ r: rr, c: cc });
+          }
+        }
+      }
+      if (!allies.length) {
+        showNotification('Нет другого союзного существа для обмена.', 'error');
+        return;
+      }
+      interactionState.spellDragHandled = true;
+      if (cardMesh) cardMesh.visible = false;
+      const ctx = getCtx();
+      const tileMeshes = ctx.tileMeshes || [];
+      const originTile = tileMeshes?.[r]?.[c] || null;
+      highlightTiles(allies);
+      const cancel = () => {
+        clearHighlights();
+        clearPendingSpellTargeting();
+        try { window.__ui.panels.hidePrompt(); } catch {}
+        if (cardMesh) {
+          cardMesh.visible = true;
+          returnCardToHand(cardMesh);
+        }
+        try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+      };
+      setPendingSpellTargeting({
+        mode: 'UNIT',
+        filterUnit: info => info.unit && info.unit.owner === u.owner && !(info.r === r && info.c === c),
+        invalidUnitMessage: 'Выберите другое союзное существо.',
+        onCancel: cancel,
+        onSelect: ({ r: tr, c: tc }) => {
+          clearHighlights();
+          clearPendingSpellTargeting();
+          try { window.__ui.panels.hidePrompt(); } catch {}
+          const firstCell = gameState.board?.[r]?.[c];
+          const secondCell = gameState.board?.[tr]?.[tc];
+          if (!firstCell?.unit || !secondCell?.unit) {
+            cancel();
+            showNotification('Цель больше недоступна.', 'error');
+            return;
+          }
+          const events = [{
+            type: 'SWAP_POSITIONS',
+            attacker: { r, c, uid: firstCell.unit.uid ?? null, tplId: firstCell.unit.tplId },
+            target: { r: tr, c: tc, uid: secondCell.unit.uid ?? null, tplId: secondCell.unit.tplId },
+          }];
+          const reposition = performRepositionEvents(gameState, events);
+          for (const line of reposition.logLines) {
+            addLog(`${tpl.name}: ${line}`);
+          }
+          const ctxLocal = getCtx();
+          const THREE = ctxLocal.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+          const deathVisuals = [];
+          for (const death of reposition.deaths) {
+            const mesh = ctxLocal.unitMeshes.find(m => m.userData.row === death.r && m.userData.col === death.c);
+            if (mesh && THREE) {
+              deathVisuals.push(mesh);
+              try { window.__fx.dissolveAndAsh(mesh, new THREE.Vector3(0, 0, 0.6), 0.9); } catch {}
+            }
+          }
+          const deathResult = finalizeSpellDeaths(gameState, reposition.deaths, { cause: 'SPELL' });
+          if (Array.isArray(deathResult.logs)) {
+            for (const text of deathResult.logs) addLog(text);
+          }
+          refreshPossessionsUI(gameState);
+          burnSpellCard(tpl, originTile, cardMesh);
+          spendAndDiscardSpell(pl, idx);
+          resetCardSelection();
+          updateHand();
+          const finalize = () => {
+            updateUnits();
+            updateUI();
+          };
+          if (deathVisuals.length) {
+            setTimeout(finalize, 1000);
+          } else {
+            finalize();
+          }
+          try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+        },
+      });
+      window.__ui.panels.showPrompt('Выберите второе союзное существо', cancel);
+      try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+    },
+  },
+
+  SPELL_TINOAN_TELEKINESIS: {
+    requiresUnitTarget: true,
+    onUnit({ tpl, pl, idx, cardMesh, unitMesh, r, c, u }) {
+      if (!u || u.owner !== gameState.active) {
+        showNotification('Цель: союзное существо.', 'error');
+        return;
+      }
+      const emptyCells = [];
+      for (let rr = 0; rr < 3; rr += 1) {
+        for (let cc = 0; cc < 3; cc += 1) {
+          if (!gameState.board?.[rr]?.[cc]?.unit) emptyCells.push({ r: rr, c: cc });
+        }
+      }
+      if (!emptyCells.length) {
+        showNotification('Нет свободных клеток для перемещения.', 'error');
+        return;
+      }
+      interactionState.spellDragHandled = true;
+      if (cardMesh) cardMesh.visible = false;
+      highlightTiles(emptyCells);
+      const ctx = getCtx();
+      const tileMeshes = ctx.tileMeshes || [];
+      const originTile = tileMeshes?.[r]?.[c] || null;
+      const cancel = () => {
+        clearHighlights();
+        clearPendingSpellTargeting();
+        try { window.__ui.panels.hidePrompt(); } catch {}
+        if (cardMesh) {
+          cardMesh.visible = true;
+          returnCardToHand(cardMesh);
+        }
+        try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+      };
+      setPendingSpellTargeting({
+        mode: 'TILE',
+        filterTile: info => !gameState.board?.[info.r]?.[info.c]?.unit,
+        invalidTileMessage: 'Выберите пустую клетку.',
+        onCancel: cancel,
+        onSelect: ({ r: tr, c: tc }) => {
+          clearHighlights();
+          clearPendingSpellTargeting();
+          try { window.__ui.panels.hidePrompt(); } catch {}
+          if (gameState.board?.[tr]?.[tc]?.unit) {
+            showNotification('Эта клетка занята.', 'error');
+            cancel();
+            return;
+          }
+          const cell = gameState.board?.[r]?.[c];
+          if (!cell?.unit) {
+            cancel();
+            showNotification('Цель больше недоступна.', 'error');
+            return;
+          }
+          const movedTpl = CARDS?.[cell.unit.tplId];
+          const events = [{
+            type: 'PUSH_TARGET',
+            target: { r, c, uid: cell.unit.uid ?? null, tplId: cell.unit.tplId },
+            to: { r: tr, c: tc },
+          }];
+          const reposition = performRepositionEvents(gameState, events);
+          const filteredLogs = reposition.logLines.filter(line => !/^Атакующий/.test(line));
+          if (filteredLogs.length) {
+            for (const line of filteredLogs) addLog(`${tpl.name}: ${line}`);
+          } else {
+            const name = movedTpl?.name || 'Существо';
+            addLog(`${tpl.name}: ${name} перемещается на (${tr + 1},${tc + 1}).`);
+          }
+          const ctxLocal = getCtx();
+          const THREE = ctxLocal.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
+          const deathVisuals = [];
+          for (const death of reposition.deaths) {
+            const mesh = ctxLocal.unitMeshes.find(m => m.userData.row === death.r && m.userData.col === death.c);
+            if (mesh && THREE) {
+              deathVisuals.push(mesh);
+              try { window.__fx.dissolveAndAsh(mesh, new THREE.Vector3(0, 0, 0.6), 0.9); } catch {}
+            }
+          }
+          const deathResult = finalizeSpellDeaths(gameState, reposition.deaths, { cause: 'SPELL' });
+          if (Array.isArray(deathResult.logs)) {
+            for (const text of deathResult.logs) addLog(text);
+          }
+          refreshPossessionsUI(gameState);
+          burnSpellCard(tpl, originTile, cardMesh);
+          spendAndDiscardSpell(pl, idx);
+          resetCardSelection();
+          updateHand();
+          const finalize = () => {
+            updateUnits();
+            updateUI();
+          };
+          if (deathVisuals.length) {
+            setTimeout(finalize, 1000);
+          } else {
+            finalize();
+          }
+          try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
+        },
+      });
+      window.__ui.panels.showPrompt('Выберите пустую клетку для перемещения', cancel);
+      try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
     },
   },
 };
