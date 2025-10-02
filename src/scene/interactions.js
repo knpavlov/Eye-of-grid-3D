@@ -45,6 +45,8 @@ export const interactionState = {
   pendingAbilityOrientation: null,
   pendingSpellTeleportation: null,
   pendingSpellTelekinesis: null,
+  pendingSpellFieldSwap: null,
+  pendingSpellMesmerLapse: null,
   spellDragHandled: false,
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
@@ -401,7 +403,11 @@ function onMouseDown(event) {
   }
 
   let tileForSpell = null;
-  if (interactionState.pendingSpellTeleportation || interactionState.pendingSpellTelekinesis) {
+  if (
+    interactionState.pendingSpellTeleportation
+    || interactionState.pendingSpellTelekinesis
+    || interactionState.pendingSpellFieldSwap
+  ) {
     const flatTiles = Array.isArray(tileMeshes) ? tileMeshes.flat() : [];
     if (flatTiles.length) {
       const tileHits = raycaster.intersectObjects(flatTiles, true);
@@ -668,11 +674,18 @@ export function resetCardSelection() {
     } catch {}
     interactionState.selectedCard = null;
   }
-  if (interactionState.pendingSpellTeleportation || interactionState.pendingSpellTelekinesis) {
+  if (
+    interactionState.pendingSpellTeleportation
+    || interactionState.pendingSpellTelekinesis
+    || interactionState.pendingSpellFieldSwap
+    || interactionState.pendingSpellMesmerLapse
+  ) {
     try { window.__ui?.panels?.hidePrompt?.(); } catch {}
   }
   interactionState.pendingSpellTeleportation = null;
   interactionState.pendingSpellTelekinesis = null;
+  interactionState.pendingSpellFieldSwap = null;
+  interactionState.pendingSpellMesmerLapse = null;
   clearHighlights();
   clearPlacementHighlights();
   try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
