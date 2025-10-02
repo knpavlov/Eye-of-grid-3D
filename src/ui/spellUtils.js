@@ -15,6 +15,24 @@ export function spendAndDiscardSpell(player, handIndex) {
   }
 }
 
+// «Принесение карты Оку» — карта покидает игру после розыгрыша
+export function offerSpellToEye(player, handIndex) {
+  try {
+    if (!player || typeof handIndex !== 'number') return null;
+    const card = player.hand?.[handIndex];
+    if (!card) return null;
+    player.mana -= card.cost || 0;
+    player.hand.splice(handIndex, 1);
+    try {
+      player.offeredToEye = Array.isArray(player.offeredToEye) ? player.offeredToEye : [];
+      player.offeredToEye.push(card);
+    } catch {}
+    return card;
+  } catch {
+    return null;
+  }
+}
+
 export function burnSpellCard(tpl, tileMesh, cardMesh) {
   try {
     if (typeof window === 'undefined' || !tpl) return;
@@ -35,6 +53,6 @@ export function burnSpellCard(tpl, tileMesh, cardMesh) {
   } catch {}
 }
 
-const api = { spendAndDiscardSpell, burnSpellCard };
+const api = { spendAndDiscardSpell, offerSpellToEye, burnSpellCard };
 try { if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.spellUtils = api; } } catch {}
 export default api;

@@ -43,6 +43,8 @@ export const interactionState = {
   pendingRitualOrigin: null,
   pendingUnitAbility: null,
   pendingAbilityOrientation: null,
+  pendingSpellTeleportation: null,
+  pendingSpellTelekinesis: null,
   spellDragHandled: false,
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
@@ -648,6 +650,11 @@ export function resetCardSelection() {
     } catch {}
     interactionState.selectedCard = null;
   }
+  if (interactionState.pendingSpellTeleportation || interactionState.pendingSpellTelekinesis) {
+    try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+  }
+  interactionState.pendingSpellTeleportation = null;
+  interactionState.pendingSpellTelekinesis = null;
   clearHighlights();
   clearPlacementHighlights();
   try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
