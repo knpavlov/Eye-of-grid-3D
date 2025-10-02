@@ -3,16 +3,323 @@
 // Handlers may rely on globals (addLog, updateHand, etc.) while the
 // surrounding code handles index/lookups and basic validations.
 
-import { spendAndDiscardSpell, burnSpellCard } from '../ui/spellUtils.js';
+import { spendAndDiscardSpell, offerSpellToEye, burnSpellCard } from '../ui/spellUtils.js';
 import { getCtx } from '../scene/context.js';
-import { interactionState, resetCardSelection } from '../scene/interactions.js';
+import { interactionState, resetCardSelection, returnCardToHand } from '../scene/interactions.js';
 import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
-import { computeCellBuff } from '../core/fieldEffects.js';
+import { computeCellBuff, applyFieldTransitionToUnit } from '../core/fieldEffects.js';
 import { refreshPossessionsUI } from '../ui/possessions.js';
 import { applyDeathDiscardEffects } from '../core/abilityHandlers/discard.js';
-import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
+import { playFieldquakeFx, playFieldquakeFxBatch } from '../scene/fieldquakeFx.js';
 import { animateManaGainFromWorld } from '../ui/mana.js';
+import { applyFieldquakeToCell, collectFieldquakeDeaths } from '../core/abilityHandlers/fieldquake.js';
+import { applyFieldFatalityCheck, describeFieldFatality } from '../core/abilityHandlers/fieldHazards.js';
+
+// Универсальные хелперы для повторного использования механик заклинаний
+function getUnitMeshAt(r, c) {
+  const ctx = getCtx();
+  const { unitMeshes } = ctx;
+  if (!Array.isArray(unitMeshes)) return null;
+  return unitMeshes.find(m => m.userData.row === r && m.userData.col === c) || null;
+}
+
+function getTileMeshAt(r, c) {
+  const ctx = getCtx();
+  const { tileMeshes } = ctx;
+  if (!Array.isArray(tileMeshes) || !Array.isArray(tileMeshes[r])) return null;
+  return tileMeshes[r][c] || null;
+}
+
+function spawnHpShiftText(r, c, delta) {
+  if (!delta) return;
+  const mesh = getUnitMeshAt(r, c);
+  if (!mesh) return;
+  const color = delta > 0 ? '#22c55e' : '#ef4444';
+  try { window.__fx.spawnDamageText(mesh, `${delta > 0 ? '+' : ''}${delta}`, color); } catch {}
+}
+
+function finalizeTeleportationTarget(targetR, targetC, { cardMesh = null, tileMesh = null } = {}) {
+  const pending = interactionState.pendingSpellTeleportation;
+  if (!pending) return false;
+  const state = window.gameState;
+  if (!state) return false;
+  const active = state.active;
+  const player = state.players?.[active];
+  if (!player) return false;
+
+  const handIndex = pending.handIndex;
+  const tpl = player.hand?.[handIndex];
+  if (!tpl || tpl.id !== pending.spellId) {
+    showNotification('Заклинание больше недоступно', 'error');
+    interactionState.pendingSpellTeleportation = null;
+    try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+    resetCardSelection();
+    return true;
+  }
+
+  if (!Number.isInteger(targetR) || !Number.isInteger(targetC)) {
+    showNotification('Некорректная цель', 'error');
+    return true;
+  }
+
+  const firstCell = state.board?.[pending.first.r]?.[pending.first.c];
+  const secondCell = state.board?.[targetR]?.[targetC];
+  const firstUnit = firstCell?.unit || null;
+  const secondUnit = secondCell?.unit || null;
+  if (!firstUnit || !secondUnit) {
+    showNotification('Цели недоступны', 'error');
+    interactionState.pendingSpellTeleportation = null;
+    try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+    resetCardSelection();
+    return true;
+  }
+  if (firstUnit.owner !== active || secondUnit.owner !== active) {
+    showNotification('Можно перемещать только союзников', 'error');
+    return true;
+  }
+  if (pending.first.uid != null && firstUnit.uid !== pending.first.uid) {
+    showNotification('Исходная цель изменилась', 'error');
+    interactionState.pendingSpellTeleportation = null;
+    try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+    resetCardSelection();
+    return true;
+  }
+  if (pending.first.r === targetR && pending.first.c === targetC) {
+    showNotification('Нужно выбрать другое существо', 'error');
+    return true;
+  }
+
+  state.board[pending.first.r][pending.first.c].unit = secondUnit;
+  state.board[targetR][targetC].unit = firstUnit;
+
+  try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+  interactionState.pendingSpellTeleportation = null;
+
+  const nameA = CARDS[firstUnit.tplId]?.name || 'Существо';
+  const nameB = CARDS[secondUnit.tplId]?.name || 'Существо';
+  addLog(`${tpl.name}: ${nameA} и ${nameB} меняются местами.`);
+
+  const fxTile = tileMesh || getTileMeshAt(targetR, targetC) || getTileMeshAt(pending.first.r, pending.first.c) || null;
+  burnSpellCard(tpl, fxTile, cardMesh);
+  spendAndDiscardSpell(player, handIndex);
+  resetCardSelection();
+  updateHand();
+  refreshPossessionsUI(state);
+  updateUnits();
+  updateUI();
+  return true;
+}
+
+function finalizeTelekinesisTarget(targetR, targetC, { cardMesh = null, tileMesh = null } = {}) {
+  const pending = interactionState.pendingSpellTelekinesis;
+  if (!pending) return false;
+  const state = window.gameState;
+  if (!state) return false;
+  const active = state.active;
+  const player = state.players?.[active];
+  if (!player) return false;
+
+  const handIndex = pending.handIndex;
+  const tpl = player.hand?.[handIndex];
+  if (!tpl || tpl.id !== pending.spellId) {
+    showNotification('Заклинание больше недоступно', 'error');
+    interactionState.pendingSpellTelekinesis = null;
+    try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+    resetCardSelection();
+    return true;
+  }
+
+  if (!Number.isInteger(targetR) || !Number.isInteger(targetC)) {
+    showNotification('Некорректная цель', 'error');
+    return true;
+  }
+
+  const fromCell = state.board?.[pending.source.r]?.[pending.source.c];
+  const toCell = state.board?.[targetR]?.[targetC];
+  const unitRef = fromCell?.unit || null;
+  if (!unitRef) {
+    showNotification('Исходное существо отсутствует', 'error');
+    interactionState.pendingSpellTelekinesis = null;
+    try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+    resetCardSelection();
+    return true;
+  }
+  if (unitRef.owner !== active) {
+    showNotification('Можно перемещать только союзников', 'error');
+    return true;
+  }
+  if (pending.source.uid != null && unitRef.uid !== pending.source.uid) {
+    showNotification('Исходное существо уже перемещено', 'error');
+    interactionState.pendingSpellTelekinesis = null;
+    try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+    resetCardSelection();
+    return true;
+  }
+  if (toCell?.unit) {
+    showNotification('Выбранное поле занято', 'error');
+    return true;
+  }
+  if (pending.source.r === targetR && pending.source.c === targetC) {
+    showNotification('Выберите другую клетку', 'error');
+    return true;
+  }
+
+  const fromElement = state.board?.[pending.source.r]?.[pending.source.c]?.element || null;
+  const toElement = state.board?.[targetR]?.[targetC]?.element || null;
+
+  fromCell.unit = null;
+  toCell.unit = unitRef;
+
+  try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+  interactionState.pendingSpellTelekinesis = null;
+
+  const tplUnit = CARDS[unitRef.tplId];
+  const unitName = tplUnit?.name || 'Существо';
+  addLog(`${tpl.name}: ${unitName} перемещается на (${targetR + 1},${targetC + 1}).`);
+
+  const shift = tplUnit ? applyFieldTransitionToUnit(unitRef, tplUnit, fromElement, toElement) : null;
+  if (shift?.deltaHp) {
+    spawnHpShiftText(targetR, targetC, shift.deltaHp);
+    const elementLabel = shift.nextElement || 'нейтральном поле';
+    const hpLog = shift.deltaHp > 0
+      ? `${unitName} усиливается на ${elementLabel}: HP ${shift.beforeHp}→${shift.afterHp}.`
+      : `${unitName} теряет силу на ${elementLabel}: HP ${shift.beforeHp}→${shift.afterHp}.`;
+    addLog(`${tpl.name}: ${hpLog}`);
+  }
+
+  let died = false;
+  if (tplUnit) {
+    const hazard = applyFieldFatalityCheck(unitRef, tplUnit, toElement);
+    if (hazard?.dies) {
+      const fatalLog = describeFieldFatality(tplUnit, hazard, { name: unitName });
+      if (fatalLog) addLog(fatalLog);
+    }
+    died = (unitRef.currentHP ?? tplUnit.hp ?? 0) <= 0;
+    if (died) {
+      const deathElement = toElement || state.board?.[targetR]?.[targetC]?.element || null;
+      processSpellDeaths([
+        { r: targetR, c: targetC, owner: unitRef.owner, tplId: unitRef.tplId, uid: unitRef.uid ?? null, element: deathElement },
+      ]);
+    }
+  }
+
+  burnSpellCard(tpl, tileMesh || getTileMeshAt(targetR, targetC), cardMesh);
+  spendAndDiscardSpell(player, handIndex);
+  resetCardSelection();
+  updateHand();
+  if (!died) {
+    refreshPossessionsUI(state);
+    updateUnits();
+    updateUI();
+  } else {
+    updateUI();
+  }
+  return true;
+}
+
+function performFieldquakeAcrossBoard(state, positions, opts = {}) {
+  const result = { events: [], logs: [], deaths: [] };
+  if (!state?.board || !Array.isArray(positions) || !positions.length) return result;
+  const respectLocks = opts.respectLocks !== false;
+  const lockedBase = respectLocks ? computeFieldquakeLockedCells(state) : [];
+  const lockedSet = respectLocks ? new Set(lockedBase.map(p => `${p.r},${p.c}`)) : null;
+
+  for (const pos of positions) {
+    if (!pos) continue;
+    const r = Number(pos.r);
+    const c = Number(pos.c);
+    if (!Number.isInteger(r) || !Number.isInteger(c)) continue;
+    const fq = applyFieldquakeToCell(state, r, c, { respectLocks, lockedSet });
+    if (!fq?.changed) {
+      if (fq?.reason === 'LOCKED') {
+        const prefix = opts.sourceName ? `${opts.sourceName}:` : 'Fieldquake:';
+        result.logs.push(`${prefix} поле (${r + 1},${c + 1}) защищено и не меняется.`);
+      }
+      continue;
+    }
+    result.events.push({ r: fq.r, c: fq.c, prevElement: fq.prevElement, nextElement: fq.nextElement });
+    const prefix = opts.sourceName ? `${opts.sourceName}:` : 'Fieldquake:';
+    result.logs.push(`${prefix} поле (${fq.r + 1},${fq.c + 1}) ${fq.prevElement}→${fq.nextElement}.`);
+
+    if (fq.tpl && fq.hpShift?.deltaHp) {
+      const delta = fq.hpShift.deltaHp;
+      const before = fq.hpShift.beforeHp;
+      const after = fq.hpShift.afterHp;
+      const unitName = fq.tpl.name || 'Существо';
+      const elementLabel = fq.nextElement || 'нейтральном поле';
+      const text = delta > 0
+        ? `${unitName} усиливается на ${elementLabel}: HP ${before}→${after}.`
+        : `${unitName} теряет силу на ${elementLabel}: HP ${before}→${after}.`;
+      result.logs.push(text);
+      spawnHpShiftText(fq.r, fq.c, delta);
+    }
+
+    if (fq.tpl && fq.fatality?.dies) {
+      const fatalLog = describeFieldFatality(fq.tpl, fq.fatality, { name: fq.tpl.name });
+      if (fatalLog) result.logs.push(fatalLog);
+    }
+
+    const deathEntries = collectFieldquakeDeaths(state, fq, { keepUnits: true }) || [];
+    if (deathEntries.length) {
+      for (const d of deathEntries) {
+        if (d && d.element == null) {
+          d.element = fq.nextElement || state.board?.[fq.r]?.[fq.c]?.element || null;
+        }
+      }
+      result.deaths.push(...deathEntries);
+    }
+  }
+
+  return result;
+}
+
+function processSpellDeaths(deaths, { cause = 'SPELL', delayMs = 1000 } = {}) {
+  if (!Array.isArray(deaths) || !deaths.length) return;
+  const ctx = getCtx();
+  const { unitMeshes, tileMeshes, THREE } = ctx;
+  const valid = [];
+
+  for (const death of deaths) {
+    if (!death) continue;
+    const r = Number(death.r);
+    const c = Number(death.c);
+    if (!Number.isInteger(r) || !Number.isInteger(c)) continue;
+    const cell = gameState.board?.[r]?.[c];
+    const unitRef = cell?.unit;
+    const tplId = death.tplId || unitRef?.tplId;
+    if (!unitRef || !tplId) continue;
+    try { gameState.players?.[death.owner]?.graveyard?.push(CARDS[tplId]); } catch {}
+    const mesh = Array.isArray(unitMeshes)
+      ? unitMeshes.find(m => m.userData.row === r && m.userData.col === c)
+      : null;
+    if (mesh && THREE && THREE.Vector3) {
+      try { window.__fx.dissolveAndAsh(mesh, new THREE.Vector3(0, 0, 0.6), 0.9); } catch {}
+    }
+    const tile = Array.isArray(tileMeshes) && Array.isArray(tileMeshes[r]) ? tileMeshes[r][c] : null;
+    if (tile && THREE && THREE.Vector3) {
+      try {
+        const pos = tile.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+        animateManaGainFromWorld(pos, death.owner, { amount: 1, visualOnly: true });
+      } catch {}
+    }
+    cell.unit = null;
+    valid.push({ ...death, tplId });
+  }
+
+  if (!valid.length) return;
+  const discardEffects = applyDeathDiscardEffects(gameState, valid, { cause });
+  if (Array.isArray(discardEffects.logs)) {
+    for (const text of discardEffects.logs) addLog(text);
+  }
+
+  setTimeout(() => {
+    refreshPossessionsUI(gameState);
+    updateUnits();
+    updateUI();
+  }, delayMs);
+}
+
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -524,6 +831,207 @@ export const handlers = {
       updateUI();
     },
   },
+
+  SPELL_TINOAN_TELEPORTATION: {
+    requiresUnitTarget: true,
+    onUnit({ tpl, pl, idx, cardMesh, unitMesh, u }) {
+      const r = unitMesh?.userData?.row ?? null;
+      const c = unitMesh?.userData?.col ?? null;
+      if (r == null || c == null || !u) {
+        showNotification('Нужно навести карту на союзное существо', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+      if (u.owner !== gameState.active) {
+        showNotification('Можно выбрать только союзное существо', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+
+      const pending = interactionState.pendingSpellTeleportation;
+      const sameSpell = pending && pending.spellId === tpl.id && pending.handIndex === idx;
+
+      if (!sameSpell) {
+        interactionState.pendingSpellTeleportation = {
+          spellId: tpl.id,
+          handIndex: idx,
+          first: { r, c, uid: u.uid ?? null, tplId: u.tplId },
+        };
+        interactionState.spellDragHandled = true;
+        if (cardMesh) returnCardToHand(cardMesh);
+        try {
+          window.__ui.panels.showPrompt(
+            'Выберите второе союзное существо для обмена позициями',
+            () => {
+              interactionState.pendingSpellTeleportation = null;
+              resetCardSelection();
+              updateUI();
+            },
+          );
+        } catch {}
+        addLog(`${tpl.name}: выберите второе союзное существо для обмена местами.`);
+        return;
+      }
+      interactionState.spellDragHandled = true;
+      finalizeTeleportationTarget(r, c, { cardMesh, tileMesh: getTileMeshAt(r, c) });
+    },
+  },
+
+  SPELL_TINOAN_TELEKINESIS: {
+    onBoard({ tpl, pl, idx, cardMesh, unitMesh, tileMesh }) {
+      const pending = interactionState.pendingSpellTelekinesis;
+
+      if (!pending) {
+        const r = unitMesh?.userData?.row ?? null;
+        const c = unitMesh?.userData?.col ?? null;
+        const unitRef = (r != null && c != null) ? gameState.board?.[r]?.[c]?.unit : null;
+        if (r == null || c == null || !unitRef) {
+          showNotification('Сначала выберите союзное существо', 'error');
+          if (cardMesh) returnCardToHand(cardMesh);
+          return;
+        }
+        if (unitRef.owner !== gameState.active) {
+          showNotification('Можно выбрать только союзное существо', 'error');
+          if (cardMesh) returnCardToHand(cardMesh);
+          return;
+        }
+        interactionState.pendingSpellTelekinesis = {
+          spellId: tpl.id,
+          handIndex: idx,
+          source: { r, c, uid: unitRef.uid ?? null, tplId: unitRef.tplId },
+        };
+        if (cardMesh) returnCardToHand(cardMesh);
+        try {
+          window.__ui.panels.showPrompt(
+            'Выберите пустое поле для перемещения союзного существа',
+            () => {
+              interactionState.pendingSpellTelekinesis = null;
+              resetCardSelection();
+              updateUI();
+            },
+          );
+        } catch {}
+        addLog(`${tpl.name}: выберите пустое поле для перемещения выбранного союзника.`);
+        return;
+      }
+
+      if (!tileMesh) {
+        showNotification('Нужно указать пустое поле', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+      if (pending.spellId !== tpl.id || pending.handIndex !== idx) {
+        showNotification('Сначала завершите текущее перемещение', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+
+      const targetR = tileMesh.userData?.row ?? null;
+      const targetC = tileMesh.userData?.col ?? null;
+      interactionState.spellDragHandled = true;
+      finalizeTelekinesisTarget(targetR, targetC, { cardMesh, tileMesh });
+    },
+  },
+
+  SPELL_GREAT_TOLICORE_QUAKE: {
+    onBoard({ tpl, pl, idx, tileMesh, cardMesh }) {
+      if (!tileMesh) {
+        showNotification('Нужно выбрать поле с нужной стихией', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+      const r = tileMesh.userData?.row ?? null;
+      const c = tileMesh.userData?.col ?? null;
+      if (r == null || c == null) {
+        showNotification('Некорректная цель', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+      const cell = gameState.board?.[r]?.[c];
+      if (!cell) return;
+      const element = cell.element;
+      if (!element || element === 'BIOLITH') {
+        showNotification('Выберите поле огня, воды, земли или леса', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+
+      const targets = [];
+      for (let rr = 0; rr < 3; rr += 1) {
+        for (let cc = 0; cc < 3; cc += 1) {
+          if (gameState.board?.[rr]?.[cc]?.element === element) targets.push({ r: rr, c: cc });
+        }
+      }
+
+      const fqResult = performFieldquakeAcrossBoard(gameState, targets, { sourceName: tpl.name });
+      const broadcastFx = (typeof NET_ON === 'function' ? NET_ON() : false)
+        && typeof MY_SEAT === 'number'
+        && typeof gameState?.active === 'number'
+        && MY_SEAT === gameState.active;
+      if (fqResult.events.length) {
+        playFieldquakeFxBatch(fqResult.events, { broadcast: broadcastFx });
+      }
+      if (!fqResult.events.length) {
+        addLog(`${tpl.name}: защищённые или биолитовые поля препятствуют эффекту.`);
+      }
+      for (const text of fqResult.logs) addLog(text);
+
+      refreshPossessionsUI(gameState);
+      updateUnits();
+      updateUI();
+      if (fqResult.deaths.length) {
+        processSpellDeaths(fqResult.deaths);
+      }
+
+      burnSpellCard(tpl, tileMesh, cardMesh);
+      spendAndDiscardSpell(pl, idx);
+      resetCardSelection();
+      updateHand();
+      updateUI();
+    },
+  },
+
+  SPELL_SEER_VIZAKS_CALAMITY: {
+    onCast({ tpl, pl, idx, cardMesh }) {
+      const positions = [];
+      for (let r = 0; r < 3; r += 1) {
+        for (let c = 0; c < 3; c += 1) {
+          positions.push({ r, c });
+        }
+      }
+
+      const fqResult = performFieldquakeAcrossBoard(gameState, positions, { sourceName: tpl.name });
+      const broadcastFx = (typeof NET_ON === 'function' ? NET_ON() : false)
+        && typeof MY_SEAT === 'number'
+        && typeof gameState?.active === 'number'
+        && MY_SEAT === gameState.active;
+      if (fqResult.events.length) {
+        playFieldquakeFxBatch(fqResult.events, { broadcast: broadcastFx });
+      }
+      if (!fqResult.events.length) {
+        addLog(`${tpl.name}: подходящих полей для fieldquake не найдено.`);
+      }
+      for (const text of fqResult.logs) addLog(text);
+
+      refreshPossessionsUI(gameState);
+      updateUnits();
+      updateUI();
+      if (fqResult.deaths.length) {
+        processSpellDeaths(fqResult.deaths);
+      }
+
+      burnSpellCard(tpl, null, cardMesh);
+      offerSpellToEye(pl, idx);
+      resetCardSelection();
+      updateHand();
+      updateUI();
+      addLog(`${tpl.name}: карта принесена Оку, ход завершается.`);
+
+      setTimeout(() => {
+        try { window.__ui?.actions?.endTurn?.(); } catch {}
+      }, 350);
+    },
+  },
 };
 
 export function requiresUnitTarget(id) {
@@ -553,7 +1061,34 @@ export function castSpellByDrag(ctx) {
   return false;
 }
 
-const api = { handlers, castSpellOnUnit, castSpellByDrag, requiresUnitTarget };
+export function handlePendingSpellTarget({ unitMesh = null, tileMesh = null } = {}) {
+  if (interactionState.pendingSpellTeleportation) {
+    if (!unitMesh) {
+      if (tileMesh) showNotification('Нужно выбрать союзное существо', 'error');
+      return tileMesh ? true : false;
+    }
+    const r = unitMesh.userData?.row ?? null;
+    const c = unitMesh.userData?.col ?? null;
+    if (r == null || c == null) return true;
+    finalizeTeleportationTarget(r, c, { tileMesh: getTileMeshAt(r, c) });
+    return true;
+  }
+
+  if (interactionState.pendingSpellTelekinesis) {
+    if (!tileMesh) {
+      if (unitMesh) showNotification('Нужно указать пустое поле', 'error');
+      return unitMesh ? true : false;
+    }
+    const r = tileMesh.userData?.row ?? null;
+    const c = tileMesh.userData?.col ?? null;
+    finalizeTelekinesisTarget(r, c, { tileMesh });
+    return true;
+  }
+
+  return false;
+}
+
+const api = { handlers, castSpellOnUnit, castSpellByDrag, requiresUnitTarget, handlePendingSpellTarget };
 try {
   if (typeof window !== 'undefined') {
     window.__spells = api;
