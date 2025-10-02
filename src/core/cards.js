@@ -1666,6 +1666,21 @@ const RAW_CARDS = {
     ritualCost: 'none',
     text: 'Both players gain mana equal to the number of enemy creatures on the board.'
   },
+  SPELL_SUMMONER_MESMERS_LAPSE: {
+    cardNumber: 93,
+    race: 'Ritual',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
+    id: 'SPELL_SUMMONER_MESMERS_LAPSE',
+    name: "Summoner Mesmer's Lapse",
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'RITUAL',
+    cost: 0,
+    ritualCost: 'discard 1 creature',
+    text: 'Discard a creature from hand; your opponent loses mana equal to its summoning cost. Offer this card to the Eye.'
+  },
   SPELL_BEGUILING_FOG: {
     cardNumber: 94,
     race: 'Conjuration',
@@ -1679,6 +1694,20 @@ const RAW_CARDS = {
     spellType: 'CONJURATION',
     cost: 0,
     text: 'Rotate any one creature in any direction.'
+  },
+  SPELL_YUGAS_MESMERIZING_FOG: {
+    cardNumber: 95,
+    race: 'Conjuration',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
+    id: 'SPELL_YUGAS_MESMERIZING_FOG',
+    name: "Yuga's Mesmerizing Fog",
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'CONJURATION',
+    cost: 1,
+    text: 'Choose one allied creature; rotate adjacent enemies so their backs face it.'
   },
   SPELL_CLARE_WILS_BANNER: {
     cardNumber: 96,
@@ -1707,6 +1736,20 @@ const RAW_CARDS = {
     spellType: 'CONJURATION',
     cost: 1,
     text: 'Draw two cards.'
+  },
+  SPELL_CALL_OF_TIMELESS_JUNO: {
+    cardNumber: 110,
+    race: 'Sorcery',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
+    id: 'SPELL_CALL_OF_TIMELESS_JUNO',
+    name: 'Call of Timeless Juno',
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'SORCERY',
+    cost: 5,
+    text: 'Exchange two fields. Creatures stay in place. Playing this card ends your turn.'
   },
   SPELL_TINOAN_TELEKINESIS: {
     cardNumber: 101,
