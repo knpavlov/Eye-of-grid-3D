@@ -46,18 +46,23 @@ function normalizeSacrificeEntry(entry, tpl) {
     elements,
     allowAnyElement,
     requireNonCubic: entry.requireNonCubic !== false,
+    allowLockedTargets: entry.allowLockedTargets === true,
   };
 }
 
-function collectCandidates(hand, config) {
+function collectCandidates(hand, config, opts = {}) {
   if (!Array.isArray(hand)) return [];
   const result = [];
   const allowAnyElement = config.allowAnyElement || !config.elements || config.elements.size === 0;
+  const summoningUnlocked = Object.prototype.hasOwnProperty.call(opts, 'summoningUnlocked')
+    ? !!opts.summoningUnlocked
+    : true;
   for (let i = 0; i < hand.length; i += 1) {
     const card = hand[i];
     if (!card || card.type !== 'UNIT') continue;
     const tpl = CARDS[card.id] || card;
     if (!tpl) continue;
+    if (!summoningUnlocked && tpl.locked && !config.allowLockedTargets) continue;
     if (config.requireNonCubic && isCubicTemplate(tpl)) continue;
     if (!allowAnyElement) {
       const el = String(tpl.element || '').toUpperCase();
@@ -81,7 +86,7 @@ export function collectSacrificeActions(state, context = {}) {
     if (!config) continue;
     const owner = unit.owner;
     const player = state.players?.[owner];
-    const candidates = collectCandidates(player?.hand, config);
+    const candidates = collectCandidates(player?.hand, config, { summoningUnlocked: state?.summoningUnlocked });
     actions.push({
       type: 'SACRIFICE_TRANSFORM',
       label: config.label,
