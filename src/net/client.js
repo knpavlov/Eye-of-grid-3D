@@ -1,6 +1,7 @@
 import { getServerBase } from './config.js';
 import { initSessionStore, getSessionToken, onSessionChange, handleUnauthorized } from '../auth/sessionStore.js';
 import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
+import { clampAllPlayersMana } from '../core/mana.js';
 
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
@@ -294,6 +295,8 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
     if (force) {
       // немедленная отправка, игнорируя pending
       try {
+        // Перед отправкой подстрахуемся: мана всех игроков в допустимых пределах
+        clampAllPlayersMana(gameState);
         // Версионируем состояние: защитимся от устаревших снапшотов, приходящих чуть позже
         gameState.__ver = (Number(gameState.__ver) || 0) + 1;
         try { window.__LAST_SENT_VER = gameState.__ver; } catch {}
@@ -308,6 +311,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
     requestAnimationFrame(()=>{
       pending = false;
       try {
+        clampAllPlayersMana(gameState);
         gameState.__ver = (Number(gameState.__ver) || 0) + 1;
         try { window.__LAST_SENT_VER = gameState.__ver; } catch {}
         socket.emit('pushState', { state: gameState, reason });
@@ -332,6 +336,8 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
   // --- RECEIVING: применяем снапшот и перерисовываем ---
   socket.on('state', async (state)=>{
     if (!state) return;
+    // На всякий случай нормализуем входящий снапшот перед дальнейшей обработкой
+    clampAllPlayersMana(state);
     const prev = APPLYING ? null : (gameState ? JSON.parse(JSON.stringify(gameState)) : null);
     // Предварительно определяем добор карты, чтобы скрыть её до окончания анимации
     let __drawDelta = 0;
@@ -824,6 +830,40 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
         const tile = tileMeshes?.[r]?.[c]; if (!tile) return;
         window.__fx?.dissolveTileCrossfade(tile, getTileMaterial(prev), getTileMaterial(next), 0.9);
       } catch {}
+    }
+  });
+
+  socket.on('manaDrainFx', (payload = {}) => {
+    try {
+      const bySeat = (typeof payload?.bySeat === 'number') ? payload.bySeat : null;
+      if (typeof MY_SEAT === 'number' && bySeat != null && MY_SEAT === bySeat) {
+        return;
+      }
+    } catch {}
+
+    try {
+      const fxModule = window.__ui?.manaStealFx || {};
+      if (typeof fxModule.playManaDrainFx === 'function') {
+        fxModule.playManaDrainFx(payload, { broadcast: false });
+        return;
+      }
+      const animate = fxModule.animateManaSteal
+        || window.animateManaSteal
+        || window.__ui?.mana?.animateManaSteal;
+      if (typeof animate === 'function') {
+        animate(payload);
+      }
+      const notify = fxModule.showManaDrainMessage
+        || window.__ui?.mana?.showManaDrainMessage;
+      const amount = Math.max(0, Math.floor(Number(payload?.amount) || 0));
+      const ownerIdx = Number.isInteger(payload?.toastOwnerIndex)
+        ? payload.toastOwnerIndex
+        : (Number.isInteger(payload?.from) ? payload.from : null);
+      if (typeof notify === 'function' && amount > 0 && ownerIdx != null) {
+        notify(ownerIdx, amount, payload?.toastOptions || {});
+      }
+    } catch (err) {
+      console.warn('[net] Ошибка показа удалённого эффекта потери маны:', err);
     }
   });
 
