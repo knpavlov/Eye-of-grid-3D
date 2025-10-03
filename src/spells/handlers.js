@@ -5,6 +5,7 @@
 
 import { spendAndDiscardSpell, offerSpellToEye, burnSpellCard } from '../ui/spellUtils.js';
 import { getCtx } from '../scene/context.js';
+import { normalizeElementName } from '../core/utils/elements.js';
 import {
   interactionState,
   resetCardSelection,
@@ -45,6 +46,472 @@ function spawnHpShiftText(r, c, delta) {
   if (!mesh) return;
   const color = delta > 0 ? '#22c55e' : '#ef4444';
   try { window.__fx.spawnDamageText(mesh, `${delta > 0 ? '+' : ''}${delta}`, color); } catch {}
+}
+
+// Магический всплеск для визуализации урона, совпадающий с магическими атаками
+function playMagicImpactFx(mesh) {
+  if (!mesh) return;
+  try {
+    const ctx = getCtx();
+    const three = ctx?.THREE || (typeof window !== 'undefined' ? window.THREE : null);
+    if (typeof three?.Vector3 === 'function') {
+      let origin = null;
+      if (typeof mesh.position?.clone === 'function') {
+        origin = mesh.position.clone().add(new three.Vector3(0, 0.4, 0));
+      } else {
+        origin = new three.Vector3(
+          Number(mesh.position?.x) || 0,
+          (Number(mesh.position?.y) || 0) + 0.4,
+          Number(mesh.position?.z) || 0,
+        );
+      }
+      if (origin) {
+        try { window.__fx?.magicBurst?.(origin); } catch {}
+      }
+    }
+  } catch {}
+  try { window.__fx?.shakeMesh?.(mesh, 6, 0.16); } catch {}
+}
+
+// Русские подписи для стихий — используются в сообщениях
+const ELEMENT_TEXT = {
+  FIRE: { field: 'огненное', elementName: 'Огонь' },
+  WATER: { field: 'водное', elementName: 'Вода' },
+  EARTH: { field: 'земляное', elementName: 'Земля' },
+  FOREST: { field: 'лесное', elementName: 'Лес' },
+  BIOLITH: { field: 'биолитовое', elementName: 'Биолит' },
+};
+
+// Утилита для доступа к актуальному состоянию игры
+function getState() {
+  if (typeof gameState !== 'undefined' && gameState) return gameState;
+  if (typeof window !== 'undefined' && window.gameState) return window.gameState;
+  return null;
+}
+
+function normalizeElement(value) {
+  const normalized = normalizeElementName(value);
+  return normalized || null;
+}
+
+function getElementMeta(element) {
+  const key = normalizeElement(element);
+  if (!key || !ELEMENT_TEXT[key]) {
+    return { key: null, field: 'подходящее', elementName: 'Неизвестная стихия' };
+  }
+  return { key, ...ELEMENT_TEXT[key] };
+}
+
+function countFieldsByElement(state, elementKey) {
+  if (!state?.board) return 0;
+  const target = normalizeElement(elementKey);
+  if (!target) return 0;
+  let total = 0;
+  for (let r = 0; r < state.board.length; r += 1) {
+    const row = state.board[r];
+    if (!Array.isArray(row)) continue;
+    for (let c = 0; c < row.length; c += 1) {
+      const cell = row[c];
+      const cellElement = normalizeElement(cell?.element);
+      if (cellElement === target) total += 1;
+    }
+  }
+  return total;
+}
+
+function computeDominionArea(center) {
+  if (!center) return [];
+  const { r, c } = center;
+  if (!Number.isInteger(r) || !Number.isInteger(c)) return [];
+  const area = [{ r, c }];
+  const deltas = [
+    { dr: -1, dc: 0 },
+    { dr: 1, dc: 0 },
+    { dr: 0, dc: -1 },
+    { dr: 0, dc: 1 },
+  ];
+  for (const d of deltas) {
+    const nr = r + d.dr;
+    const nc = c + d.dc;
+    if (nr >= 0 && nr < 3 && nc >= 0 && nc < 3) area.push({ r: nr, c: nc });
+  }
+  return area;
+}
+
+function collectDominionTargets(state, area, ownerIdx) {
+  if (!state?.board || !Array.isArray(area)) return [];
+  const uniq = new Set();
+  const targets = [];
+  for (const pos of area) {
+    if (!pos) continue;
+    const { r, c } = pos;
+    if (!Number.isInteger(r) || !Number.isInteger(c)) continue;
+    const cell = state.board?.[r]?.[c];
+    const unit = cell?.unit;
+    if (!unit) continue;
+    if (ownerIdx != null && unit.owner === ownerIdx) continue;
+    const key = `${r},${c}`;
+    if (uniq.has(key)) continue;
+    uniq.add(key);
+    targets.push({ r, c, unit });
+  }
+  return targets;
+}
+
+function collectUnitHandCards(player) {
+  const res = [];
+  if (!player || !Array.isArray(player.hand)) return res;
+  for (let i = 0; i < player.hand.length; i += 1) {
+    const card = player.hand[i];
+    if (!card || card.type !== 'UNIT') continue;
+    res.push({ index: i, tpl: card, element: normalizeElement(card.element) });
+  }
+  return res;
+}
+
+function resolveSpellHandIndex(player, tpl, fallbackIdx) {
+  if (!player || !tpl) return -1;
+  if (Number.isInteger(fallbackIdx) && player.hand?.[fallbackIdx]?.id === tpl.id) {
+    return fallbackIdx;
+  }
+  if (!Array.isArray(player.hand)) return -1;
+  return player.hand.findIndex(card => card && card.id === tpl.id);
+}
+
+function dominionDiscardFilter(cardTpl) {
+  const pending = interactionState.pendingSpellElementalDominion;
+  if (!pending || pending.discards?.length >= pending.requiredCount) return false;
+  if (!cardTpl || cardTpl.type !== 'UNIT') return false;
+  const element = normalizeElement(cardTpl.element);
+  if ((pending.discards?.length || 0) >= pending.requiredCount - 1 && !pending.hasRequired) {
+    return element === pending.requiredElement;
+  }
+  return true;
+}
+
+function updateDominionPrompt(pending) {
+  if (!pending) return;
+  const remaining = Math.max(0, (pending.requiredCount || 0) - (pending.discards?.length || 0));
+  const meta = getElementMeta(pending.requiredElement);
+  let text = `Сбросьте существо (осталось ${remaining}).`;
+  if (!pending.hasRequired && remaining > 0) {
+    text += ` Нужно существо стихии ${meta.elementName}.`;
+  }
+  try { window.__ui?.panels?.showPrompt?.(text, null, false); } catch {}
+}
+
+function startElementalDominionSpell(params, elementKey) {
+  const { tpl, pl, idx, tileMesh, unitMesh, cardMesh } = params;
+  const state = getState();
+  if (!state) {
+    showNotification('Игра не готова к обработке заклинания', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  const meta = getElementMeta(elementKey);
+  const r = tileMesh?.userData?.row ?? unitMesh?.userData?.row ?? null;
+  const c = tileMesh?.userData?.col ?? unitMesh?.userData?.col ?? null;
+  if (r == null || c == null) {
+    showNotification('Нужно выбрать поле на арене', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  if (tpl.cost > pl.mana) {
+    showNotification('Недостаточно маны', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  const cell = state.board?.[r]?.[c];
+  const cellElement = normalizeElement(cell?.element);
+  if (cellElement !== meta.key) {
+    showNotification(`Нужно выбрать ${meta.field} поле`, 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  const unitCards = collectUnitHandCards(pl);
+  if (unitCards.length < 2) {
+    showNotification('В руке недостаточно существ для сброса', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  const hasRequired = unitCards.some(entry => entry.element === meta.key);
+  if (!hasRequired) {
+    showNotification(`В руке нет существа стихии ${meta.elementName}.`, 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  const playerIndex = Array.isArray(state.players) ? state.players.indexOf(pl) : state.active;
+  const area = computeDominionArea({ r, c });
+  if (area.length) highlightTiles(area);
+
+  interactionState.pendingSpellElementalDominion = {
+    spellId: tpl.id,
+    tpl,
+    player: pl,
+    playerIndex,
+    handIndex: idx,
+    target: { r, c },
+    requiredElement: meta.key,
+    requiredCount: 2,
+    discards: [],
+    hasRequired: false,
+    tileMesh: tileMesh || getTileMeshAt(r, c) || null,
+    cardMesh: cardMesh || null,
+    area,
+  };
+
+  interactionState.pendingDiscardSelection = {
+    requiredType: 'UNIT',
+    keepAfterPick: true,
+    forced: true,
+    filter: cardTpl => dominionDiscardFilter(cardTpl),
+    invalidMessage: `Нужно выбрать подходящее существо для жертвы стихии ${meta.elementName}.`,
+    onPicked: handIdx => handleDominionDiscard(handIdx),
+  };
+
+  if (cardMesh) returnCardToHand(cardMesh);
+  interactionState.spellDragHandled = true;
+
+  updateDominionPrompt(interactionState.pendingSpellElementalDominion);
+  addLog(`${tpl.name}: подготовьте жертву стихии ${meta.elementName}.`);
+  try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+}
+
+function handleDominionDiscard(handIdx) {
+  const pending = interactionState.pendingSpellElementalDominion;
+  if (!pending) return;
+  const player = pending.player;
+  if (!player) return;
+
+  const chosenTpl = discardHandCard(player, handIdx);
+  if (!chosenTpl) return;
+
+  const normalized = normalizeElement(chosenTpl.element);
+  if (normalized === pending.requiredElement) pending.hasRequired = true;
+  const graveyard = Array.isArray(player.graveyard) ? player.graveyard : (player.graveyard = []);
+  const gyIndex = graveyard.length ? graveyard.lastIndexOf(chosenTpl) : -1;
+  pending.discards.push({
+    tpl: chosenTpl,
+    element: normalized,
+    restoreIndex: handIdx,
+    graveyardIndex: gyIndex,
+  });
+
+  const creatureName = chosenTpl.name || 'Существо';
+  addLog(`${pending.tpl.name}: ${creatureName} отправлено в сброс.`);
+
+  if (pending.discards.length >= pending.requiredCount) {
+    interactionState.pendingDiscardSelection = null;
+    finalizeDominionSpell();
+    return;
+  }
+
+  updateDominionPrompt(pending);
+}
+
+function finalizeDominionSpell() {
+  const pending = interactionState.pendingSpellElementalDominion;
+  if (!pending) return;
+
+  interactionState.pendingDiscardSelection = null;
+  clearHighlights();
+  try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+
+  const state = getState();
+  if (!state) {
+    cancelElementalDominionSelection();
+    return;
+  }
+
+  const meta = getElementMeta(pending.requiredElement);
+  const area = Array.isArray(pending.area) && pending.area.length
+    ? pending.area
+    : computeDominionArea(pending.target);
+  const ownerIdx = pending.playerIndex != null ? pending.playerIndex : state.active;
+  const fieldCount = countFieldsByElement(state, pending.requiredElement);
+  const damage = fieldCount;
+  const targets = collectDominionTargets(state, area, ownerIdx);
+  const ctx = getCtx();
+  const { unitMeshes } = ctx;
+  const deaths = [];
+
+  let summary = '';
+  if (fieldCount <= 0) {
+    summary = `${pending.tpl.name}: подходящих полей стихии ${meta.elementName} нет.`;
+  } else if (!targets.length) {
+    summary = `${pending.tpl.name}: врагов рядом нет, урон ${damage} не нанесён (полей стихии ${meta.elementName}: ${fieldCount}).`;
+  } else {
+    summary = `${pending.tpl.name}: магический урон ${damage} наносится по ${targets.length} целям (число полей стихии ${meta.elementName}: ${fieldCount}).`;
+  }
+  if (summary) addLog(summary);
+
+  if (damage > 0 && targets.length) {
+    for (const target of targets) {
+      const cell = state.board?.[target.r]?.[target.c];
+      const unitRef = cell?.unit;
+      if (!unitRef) continue;
+      const tplUnit = CARDS?.[unitRef.tplId];
+      if (!tplUnit) continue;
+      const before = Number.isFinite(unitRef.currentHP)
+        ? unitRef.currentHP
+        : Number(tplUnit.hp) || 0;
+      const after = Math.max(0, before - damage);
+      if (after === before) continue;
+      unitRef.currentHP = after;
+
+      const mesh = unitMeshes?.find(m => m.userData.row === target.r && m.userData.col === target.c);
+      if (mesh) {
+        playMagicImpactFx(mesh);
+      }
+      spawnHpShiftText(target.r, target.c, -damage);
+
+      const unitName = tplUnit.name || 'Существо';
+      addLog(`${unitName} получает ${damage} маг. урона (HP ${before}→${after}).`);
+
+      if (after <= 0) {
+        deaths.push({
+          r: target.r,
+          c: target.c,
+          owner: unitRef.owner,
+          tplId: unitRef.tplId,
+          uid: unitRef.uid ?? null,
+          element: state.board?.[target.r]?.[target.c]?.element || null,
+        });
+      }
+    }
+  }
+
+  const tileMesh = pending.tileMesh || getTileMeshAt(pending.target?.r, pending.target?.c) || null;
+  burnSpellCard(pending.tpl, tileMesh, pending.cardMesh || null);
+
+  const spellIdx = resolveSpellHandIndex(pending.player, pending.tpl, pending.handIndex);
+  if (spellIdx >= 0) {
+    spendAndDiscardSpell(pending.player, spellIdx);
+  } else {
+    showNotification('Карта заклинания уже недоступна', 'error');
+  }
+
+  updateHand();
+
+  refreshPossessionsUI(state);
+  updateUnits();
+  updateUI();
+  if (deaths.length) {
+    processSpellDeaths(deaths);
+  }
+
+  try { window.schedulePush?.('spell-elemental-dominion', { force: true }); } catch {}
+
+  interactionState.pendingSpellElementalDominion = null;
+  try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+}
+
+function restoreDominionDiscards(pending) {
+  if (!pending || !pending.player || !Array.isArray(pending.discards) || !pending.discards.length) {
+    return false;
+  }
+  const player = pending.player;
+  if (!Array.isArray(player.hand)) player.hand = [];
+  const graveyard = Array.isArray(player.graveyard) ? player.graveyard : null;
+  let restored = false;
+
+  for (let i = pending.discards.length - 1; i >= 0; i -= 1) {
+    const entry = pending.discards[i];
+    if (!entry || !entry.tpl) continue;
+    if (graveyard) {
+      let idx = -1;
+      if (
+        typeof entry.graveyardIndex === 'number'
+        && entry.graveyardIndex >= 0
+        && entry.graveyardIndex < graveyard.length
+        && graveyard[entry.graveyardIndex] === entry.tpl
+      ) {
+        idx = entry.graveyardIndex;
+      } else {
+        idx = graveyard.lastIndexOf(entry.tpl);
+      }
+      if (idx >= 0) {
+        graveyard.splice(idx, 1);
+      }
+    }
+    const insertIdx = Number.isInteger(entry.restoreIndex)
+      ? Math.max(0, Math.min(entry.restoreIndex, player.hand.length))
+      : player.hand.length;
+    player.hand.splice(insertIdx, 0, entry.tpl);
+    restored = true;
+  }
+
+  if (restored) {
+    pending.discards = [];
+    pending.hasRequired = false;
+    try { updateHand(); } catch {}
+    try { updateUI(); } catch {}
+  }
+  return restored;
+}
+
+function cancelElementalDominionSelection() {
+  const pending = interactionState.pendingSpellElementalDominion;
+  const restored = restoreDominionDiscards(pending);
+  interactionState.pendingDiscardSelection = null;
+  interactionState.pendingSpellElementalDominion = null;
+  clearHighlights();
+  try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+  try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+  if (restored && pending?.tpl?.name) {
+    try { addLog(`${pending.tpl.name}: ритуал отменён, карты возвращены в руку.`); } catch {}
+  }
+}
+
+function createDominionSpellHandler(elementKey) {
+  return {
+    onBoard(ctx) {
+      startElementalDominionSpell(ctx, elementKey);
+    },
+  };
+}
+
+const RIOTOUS_ORDER = [
+  { r: 1, c: 1 },
+  { r: 0, c: 1 },
+  { r: 0, c: 2 },
+  { r: 1, c: 2 },
+  { r: 2, c: 2 },
+  { r: 2, c: 1 },
+  { r: 2, c: 0 },
+  { r: 1, c: 0 },
+  { r: 0, c: 0 },
+];
+
+async function runRiotousBattles(order = RIOTOUS_ORDER) {
+  const battleFn = (typeof window !== 'undefined') ? window.performBattleSequence : null;
+  if (typeof battleFn !== 'function') {
+    showNotification('Боевой алгоритм недоступен', 'error');
+    return false;
+  }
+
+  for (const pos of order) {
+    const state = getState();
+    if (!state?.board) continue;
+    const cell = state.board?.[pos.r]?.[pos.c];
+    const unitRef = cell?.unit;
+    if (!unitRef) continue;
+    if (typeof unitRef.lastAttackTurn === 'number' && unitRef.lastAttackTurn === state.turn) {
+      unitRef.lastAttackTurn = state.turn - 1;
+    }
+    try {
+      await battleFn(pos.r, pos.c, true, { forced: true, auto: true });
+    } catch (err) {
+      console.warn('[spell] Ошибка принудительного боя Riotous Impunity:', err);
+    }
+  }
+  return true;
 }
 
 function performFieldquakeAcrossBoard(state, positions, opts = {}) {
@@ -912,6 +1379,11 @@ export function handlePendingBoardClick({ unitMesh = null, tileMesh = null } = {
 }
 
 export const handlers = {
+  SPELL_SCIONDAR_INFERNO: createDominionSpellHandler('FIRE'),
+  SPELL_ICE_FLOOD_OF_OKUNADA: createDominionSpellHandler('WATER'),
+  SPELL_FIST_OF_VERZAR: createDominionSpellHandler('EARTH'),
+  SPELL_WRATHFUL_WINDS_OF_JUNO: createDominionSpellHandler('FOREST'),
+  SPELL_BLINDING_SKIES: createDominionSpellHandler('BIOLITH'),
   SPELL_BEGUILING_FOG: {
     requiresUnitTarget: true,
     onUnit({ cardMesh, unitMesh, tpl }) {
@@ -1571,6 +2043,47 @@ export const handlers = {
     },
   },
 
+  SPELL_SCIONS_RIOTOUS_IMPUNITY: {
+    async onCast({ tpl, pl, idx, cardMesh }) {
+      const state = getState();
+      if (!state) {
+        showNotification('Игра не готова к обработке заклинания', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+
+      if (tpl.cost > pl.mana) {
+        showNotification('Недостаточно маны', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+
+      const spellIdx = resolveSpellHandIndex(pl, tpl, idx);
+      if (spellIdx < 0) {
+        showNotification('Карта заклинания уже недоступна', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+
+      const effectTile = getTileMeshAt(1, 1) || null;
+      burnSpellCard(tpl, effectTile, cardMesh || null);
+      spendAndDiscardSpell(pl, spellIdx);
+      resetCardSelection();
+      updateHand();
+
+      addLog(`${tpl.name}: существа начинают поединки по кругу.`);
+      await runRiotousBattles();
+
+      const latest = getState();
+      if (latest) refreshPossessionsUI(latest);
+      updateUnits();
+      updateUI();
+      try { window.schedulePush?.('spell-riotous-impunity', { force: true }); } catch {}
+      requestAutoEndTurn();
+      addLog(`${tpl.name}: ход завершается.`);
+    },
+  },
+
   SPELL_SEER_VIZAKS_CALAMITY: {
     onCast({ tpl, pl, idx, cardMesh }) {
       const positions = [];
@@ -1726,6 +2239,7 @@ const api = {
   handlePendingBoardClick,
   cancelFieldExchangeSelection,
   cancelMesmerLapseSelection,
+  cancelElementalDominionSelection,
 };
 try {
   if (typeof window !== 'undefined') {
