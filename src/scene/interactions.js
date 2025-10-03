@@ -45,6 +45,8 @@ export const interactionState = {
   pendingAbilityOrientation: null,
   pendingSpellTeleportation: null,
   pendingSpellTelekinesis: null,
+  pendingSpellFieldExchange: null,
+  pendingSpellLapse: null,
   spellDragHandled: false,
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
@@ -140,6 +142,17 @@ function processManaStealEvents(events, opts = {}) {
       }
     } catch (err) {
       console.warn('[mana] Не удалось анимировать кражу маны:', err);
+    }
+    if (ev && ev.drainOnly && ev.amount > 0 && ev.notifyDrain !== false) {
+      try {
+        const notifyDrain = window.__ui?.manaStealFx?.showManaDrainMessage
+          || window.__ui?.mana?.showManaDrainMessage;
+        if (typeof notifyDrain === 'function') {
+          notifyDrain(ev.from, ev.amount, { source: ev.reason || ev.source?.name || 'MANA_DRAIN' });
+        }
+      } catch (err) {
+        console.warn('[mana] Не удалось показать уведомление о потере маны:', err);
+      }
     }
   }
 }
@@ -401,7 +414,11 @@ function onMouseDown(event) {
   }
 
   let tileForSpell = null;
-  if (interactionState.pendingSpellTeleportation || interactionState.pendingSpellTelekinesis) {
+  if (
+    interactionState.pendingSpellTeleportation
+    || interactionState.pendingSpellTelekinesis
+    || interactionState.pendingSpellFieldExchange
+  ) {
     const flatTiles = Array.isArray(tileMeshes) ? tileMeshes.flat() : [];
     if (flatTiles.length) {
       const tileHits = raycaster.intersectObjects(flatTiles, true);
@@ -668,11 +685,25 @@ export function resetCardSelection() {
     } catch {}
     interactionState.selectedCard = null;
   }
-  if (interactionState.pendingSpellTeleportation || interactionState.pendingSpellTelekinesis) {
+  if (
+    interactionState.pendingSpellTeleportation
+    || interactionState.pendingSpellTelekinesis
+    || interactionState.pendingSpellFieldExchange
+    || interactionState.pendingSpellLapse
+  ) {
     try { window.__ui?.panels?.hidePrompt?.(); } catch {}
   }
   interactionState.pendingSpellTeleportation = null;
   interactionState.pendingSpellTelekinesis = null;
+  if (interactionState.pendingSpellFieldExchange) {
+    try { window.__spells?.cancelFieldExchangeSelection?.(); } catch {}
+    interactionState.pendingSpellFieldExchange = null;
+  }
+  if (interactionState.pendingSpellLapse) {
+    try { window.__spells?.cancelMesmerLapseSelection?.(); } catch {}
+    interactionState.pendingSpellLapse = null;
+    interactionState.pendingDiscardSelection = null;
+  }
   clearHighlights();
   clearPlacementHighlights();
   try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
