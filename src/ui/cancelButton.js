@@ -59,12 +59,15 @@ function cancelTargetSelection() {
 export function refreshCancelButton() {
   const btn = document.getElementById('cancel-play-btn');
   if (!btn) return;
+  const ritualActive = interactionState.pendingElementalRitual
+    && interactionState.pendingElementalRitual.allowCancel !== false;
   const vis = interactionState.pendingPlacement
     || interactionState.pendingAttack
     || interactionState.magicFrom
     || interactionState.pendingSpellOrientation
     || interactionState.pendingSpellFieldExchange
     || interactionState.pendingSpellLapse
+    || ritualActive
     || interactionState.pendingDiscardSelection
     || interactionState.selectedCard;
   btn.classList.toggle('hidden', !vis);
@@ -87,6 +90,8 @@ export function setupCancelButton() {
         interactionState.selectedCard && returnCardToHand(interactionState.selectedCard);
       } else if (interactionState.pendingSpellFieldExchange) {
         window.__spells?.cancelFieldExchangeSelection?.();
+      } else if (interactionState.pendingElementalRitual) {
+        window.__spells?.cancelElementalRitualSelection?.();
       } else if (interactionState.pendingSpellLapse) {
         window.__spells?.cancelMesmerLapseSelection?.();
         interactionState.pendingSpellLapse = null;

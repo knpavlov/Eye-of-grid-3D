@@ -47,6 +47,7 @@ export const interactionState = {
   pendingSpellTelekinesis: null,
   pendingSpellFieldExchange: null,
   pendingSpellLapse: null,
+  pendingElementalRitual: null,
   spellDragHandled: false,
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,

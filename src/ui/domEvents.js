@@ -82,20 +82,24 @@ export function attachUIEvents() {
       const pso = w.__interactions?.getPendingSpellOrientation?.();
       const gameState = w.gameState;
       if (pso) {
-        const { spellCardMesh, unitMesh } = pso;
-        const idx = spellCardMesh.userData.handIndex;
-        const pl = gameState.players[gameState.active];
-        const tpl = pl.hand[idx];
-        const r = unitMesh.userData.row; const c = unitMesh.userData.col; const u = gameState.board[r][c].unit;
-        if (tpl && tpl.id === 'SPELL_BEGUILING_FOG' && u) {
-          u.facing = direction;
-          w.addLog?.(`${tpl.name}: ${w.CARDS[u.tplId].name} повёрнут в ${direction}.`);
-          pl.discard.push(tpl); pl.hand.splice(idx, 1);
-          w.__interactions.resetCardSelection(); w.updateHand(); w.updateUnits(); w.updateUI();
+        if (typeof pso.onPick === 'function') {
+          Promise.resolve(pso.onPick(direction)).catch(err => console.error('[orientation] Ошибка обработки выбора направления:', err));
+        } else {
+          const { spellCardMesh, unitMesh } = pso;
+          const idx = spellCardMesh.userData.handIndex;
+          const pl = gameState.players[gameState.active];
+          const tpl = pl.hand[idx];
+          const r = unitMesh.userData.row; const c = unitMesh.userData.col; const u = gameState.board[r][c].unit;
+          if (tpl && tpl.id === 'SPELL_BEGUILING_FOG' && u) {
+            u.facing = direction;
+            w.addLog?.(`${tpl.name}: ${w.CARDS[u.tplId].name} повёрнут в ${direction}.`);
+            pl.discard.push(tpl); pl.hand.splice(idx, 1);
+            w.__interactions.resetCardSelection(); w.updateHand(); w.updateUnits(); w.updateUI();
+          }
+          w.__interactions.clearPendingSpellOrientation();
+          w.__ui.panels.hideOrientationPanel();
+          try { w.__ui.cancelButton.refreshCancelButton(); } catch {}
         }
-        w.__interactions.clearPendingSpellOrientation();
-        w.__ui.panels.hideOrientationPanel();
-        try { w.__ui.cancelButton.refreshCancelButton(); } catch {}
         return;
       }
       w.__interactions.placeUnitWithDirection(direction);
