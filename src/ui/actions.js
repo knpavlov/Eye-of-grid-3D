@@ -243,6 +243,7 @@ export function performUnitAbility(unitMesh, actionId) {
         requiredType: 'UNIT',
         filter: (_, idx) => candidates.some(c => c.handIdx === idx),
         invalidMessage: 'This card cannot be used for the sacrifice',
+        ignoreSummoningLock: action.ignoreSummoningLock !== false,
         onPicked: (handIdx) => {
           const ctx = getPendingUnitAbility();
           if (!ctx) return;

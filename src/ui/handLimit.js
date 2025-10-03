@@ -17,6 +17,7 @@ export async function enforceHandLimit(player, limit = 7) {
     await new Promise(resolve => {
       interactionState.pendingDiscardSelection = {
         forced: true,
+        ignoreSummoningLock: true,
         onPicked: handIdx => {
           discardHandCard(player, handIdx);
           // синхронизация с сервером, чтобы он знал о сбросе карты
