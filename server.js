@@ -10,6 +10,7 @@ import { ensureUserTable } from "./server/repositories/usersRepository.js";
 import { resolveUserFromToken, toClientProfile } from "./server/services/sessionService.js";
 import { DEFAULT_DECK_BLUEPRINTS } from "./src/core/defaultDecks.js";
 import { capMana } from "./src/core/constants.js";
+import { clampAllPlayersMana } from "./src/core/mana.js";
 import { applyTurnStartManaEffects } from "./src/core/abilityHandlers/startPhase.js";
 import { discardCardFromHand as discardCardFromHandLogic } from "./src/core/discardUtils.js";
 
@@ -98,6 +99,31 @@ if (dbReadyOnStart) {
 // очередь и активные матчи
 const queue = [];
 const matches = new Map(); // matchId -> { room, sockets:[s0,s1], lastState, lastVer, timerSeconds, timerId }
+
+function cloneStateSnapshot(raw) {
+  if (!raw) return raw ?? null;
+  try {
+    if (typeof structuredClone === 'function') {
+      return structuredClone(raw);
+    }
+  } catch {}
+  try {
+    return JSON.parse(JSON.stringify(raw));
+  } catch {
+    return raw;
+  }
+}
+
+function sanitizeStateSnapshot(raw) {
+  const snapshot = cloneStateSnapshot(raw);
+  if (!snapshot) return snapshot;
+  try {
+    clampAllPlayersMana(snapshot);
+  } catch (err) {
+    console.warn('[server] Не удалось ограничить ману в состоянии матча:', err?.message || err);
+  }
+  return snapshot;
+}
 
 function pairIfPossible() {
   pushLog({ ev: 'pairIfPossible:start', queueSize: queue.length });
@@ -308,7 +334,8 @@ io.on("connection", (socket) => {
     const m = matches.get(matchId);
     // Если это первый снапшот — принимаем и рассылаем
     if (!m.lastState) {
-      m.lastState = state ?? null;
+      const initialState = sanitizeStateSnapshot(state ?? null);
+      m.lastState = initialState ?? null;
       try { m.lastVer = Number(state && state.__ver) || 0; } catch { m.lastVer = 0; }
       // сброс таймера на первый ход
       m.timerSeconds = 100;
@@ -331,10 +358,12 @@ io.on("connection", (socket) => {
       m.lastVer = incomingVer;
     } catch {}
     // Accept client state but keep server-authoritative turn/active
-    const incoming = state ?? m.lastState;
+    const incomingSnapshot = sanitizeStateSnapshot(state ?? m.lastState);
     const keptActive = m.lastState?.active;
     const keptTurn = m.lastState?.turn;
-    m.lastState = { ...incoming, active: keptActive, turn: keptTurn };
+    const merged = { ...(incomingSnapshot || {}), active: keptActive, turn: keptTurn };
+    clampAllPlayersMana(merged);
+    m.lastState = merged;
     // Emit authoritative state only; turn changes happen via 'endTurn'
     // Emit authoritative state only; turn changes happen via endTurn
     io.to(m.room).emit("state", m.lastState);
@@ -393,6 +422,8 @@ io.on("connection", (socket) => {
         if (card) { pl.hand = Array.isArray(pl.hand) ? pl.hand : []; pl.hand.push(card); }
       }
     } catch {}
+
+    clampAllPlayersMana(st);
 
     // Bump version and persist
     try { st.__ver = (Number(st.__ver) || 0) + 1; } catch {}
@@ -517,6 +548,22 @@ io.on("connection", (socket) => {
     pushLog({ ev: 'tileCrossfade', sid: socket.id, matchId, r: payload?.r, c: payload?.c, prev: payload?.prev, next: payload?.next });
   });
 
+  socket.on("manaDrainFx", (payload = {}) => {
+    const matchId = socket.data.matchId;
+    if (!matchId || !matches.has(matchId)) return;
+    const m = matches.get(matchId);
+    try { payload.bySeat = socket.data.seat; } catch {}
+    io.to(m.room).emit("manaDrainFx", payload);
+    pushLog({
+      ev: 'manaDrainFx',
+      sid: socket.id,
+      matchId,
+      amount: payload?.amount,
+      from: payload?.from,
+      drainOnly: payload?.drainOnly,
+    });
+  });
+
   // ритуальные спеллы (Holy Feast): подтверждение и визуальная синхронизация
   socket.on("ritualResolve", (payload) => {
     const matchId = socket.data.matchId;
@@ -567,6 +614,7 @@ io.on("connection", (socket) => {
       const cap = (m) => Math.min(10, m);
       const beforeMana = (pl.mana || 0);
       pl.mana = cap(beforeMana + 2);
+      clampAllPlayersMana(st);
       // Обновим версию состояния и разошлём
       try { st.__ver = (Number(st.__ver) || 0) + 1; m.lastVer = st.__ver; } catch { m.lastVer = m.lastVer || 0; }
       // ЯВНО сообщим клиентам, что ритуал завершён — чтобы они закрыли локальные UI-состояния
