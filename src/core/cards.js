@@ -251,7 +251,7 @@ const RAW_CARDS = {
     attacks: [ { dir: 'N', ranges: [1] } ],
     blindspots: ['E', 'S', 'W'],
     unitActions: [
-      { key: 'SACRIFICE_TRANSFORM', element: 'FIRE', label: 'Sacrifice', requireNonCubic: true },
+      { key: 'SACRIFICE_TRANSFORM', element: 'FIRE', label: 'Sacrifice', requireNonCubic: true, allowLockedTargets: true },
     ],
     desc: 'Sacrifice Red Cubic to summon a non‑cubic Fire creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
   },
@@ -982,7 +982,7 @@ const RAW_CARDS = {
     attacks: [ { dir: 'N', ranges: [1] } ],
     blindspots: ['E', 'S', 'W'],
     unitActions: [
-      { key: 'SACRIFICE_TRANSFORM', element: 'EARTH', label: 'Sacrifice', requireNonCubic: true },
+      { key: 'SACRIFICE_TRANSFORM', element: 'EARTH', label: 'Sacrifice', requireNonCubic: true, allowLockedTargets: true },
     ],
     desc: 'Sacrifice Yellow Cubic to summon a non‑cubic Earth creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
   },
@@ -1070,7 +1070,7 @@ const RAW_CARDS = {
     attacks: [ { dir: 'N', ranges: [1] } ],
     blindspots: ['E', 'S', 'W'],
     unitActions: [
-      { key: 'SACRIFICE_TRANSFORM', element: 'WATER', label: 'Sacrifice', requireNonCubic: true },
+      { key: 'SACRIFICE_TRANSFORM', element: 'WATER', label: 'Sacrifice', requireNonCubic: true, allowLockedTargets: true },
     ],
     desc: 'Sacrifice Blue Cubic to summon a non‑cubic Water creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
   },
@@ -1352,7 +1352,7 @@ const RAW_CARDS = {
     attacks: [ { dir: 'N', ranges: [1] } ],
     blindspots: ['E', 'S', 'W'],
     unitActions: [
-      { key: 'SACRIFICE_TRANSFORM', element: 'FOREST', label: 'Sacrifice', requireNonCubic: true },
+      { key: 'SACRIFICE_TRANSFORM', element: 'FOREST', label: 'Sacrifice', requireNonCubic: true, allowLockedTargets: true },
     ],
     desc: 'Sacrifice Green Cubic to summon a non‑cubic Wood creature in its place (facing any direction) without paying the summoning cost. The summoned creature cannot attack on this turn.'
   },
@@ -1419,7 +1419,7 @@ const RAW_CARDS = {
     keywords: ['DODGE_ATTEMPT'],
     dodge: { chance: 0.5, attempts: 1 },
     unitActions: [
-      { key: 'SACRIFICE_TRANSFORM', label: 'Sacrifice', allowAnyElement: true, requireNonCubic: false },
+      { key: 'SACRIFICE_TRANSFORM', label: 'Sacrifice', allowAnyElement: true, requireNonCubic: false, allowLockedTargets: true },
     ],
     desc: 'White Cubic does not belong to any element. Sacrifice White Cubic to summon any creature in its place (facing any direction) without paying the Summoning Cost. The summoned creature cannot attack this turn. Dodge attempt.'
   },
@@ -1666,6 +1666,21 @@ const RAW_CARDS = {
     ritualCost: 'none',
     text: 'Both players gain mana equal to the number of enemy creatures on the board.'
   },
+  SPELL_SUMMONER_MESMERS_LAPSE: {
+    cardNumber: 93,
+    race: 'Ritual',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: { type: 'PER_CARD', amount: 1 },
+    id: 'SPELL_SUMMONER_MESMERS_LAPSE',
+    name: "Summoner Mesmer's Lapse",
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'RITUAL',
+    cost: 0,
+    ritualCost: 'discard 1 creature',
+    text: 'Discard a creature from hand. Opponent loses mana equal to its summoning cost.'
+  },
   SPELL_BEGUILING_FOG: {
     cardNumber: 94,
     race: 'Conjuration',
@@ -1679,6 +1694,20 @@ const RAW_CARDS = {
     spellType: 'CONJURATION',
     cost: 0,
     text: 'Rotate any one creature in any direction.'
+  },
+  SPELL_YUGAS_MESMERIZING_FOG: {
+    cardNumber: 95,
+    race: 'Conjuration',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
+    id: 'SPELL_YUGAS_MESMERIZING_FOG',
+    name: "Yuga's Mesmerizing Fog",
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'CONJURATION',
+    cost: 1,
+    text: 'Choose an allied creature. All adjacent enemies rotate so their backs face that creature.'
   },
   SPELL_CLARE_WILS_BANNER: {
     cardNumber: 96,
@@ -1749,6 +1778,20 @@ const RAW_CARDS = {
     spellType: 'SORCERY',
     cost: 5,
     text: 'Fieldquake all fields. Playing this card ends your turn. Offer this card to the Eye.'
+  },
+  SPELL_CALL_OF_TIMELESS_JUNO: {
+    cardNumber: 110,
+    race: 'Sorcery',
+    affiliation: 'None',
+    fieldLock: false,
+    cardLimit: null,
+    id: 'SPELL_CALL_OF_TIMELESS_JUNO',
+    name: 'Call of Timeless Juno',
+    type: 'SPELL',
+    element: 'NEUTRAL',
+    spellType: 'SORCERY',
+    cost: 5,
+    text: 'Select two fields to exchange their elements. Creatures stay in place. Playing this card ends your turn.'
   },
 };
 

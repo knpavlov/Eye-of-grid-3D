@@ -10,6 +10,7 @@ import { ensureUserTable } from "./server/repositories/usersRepository.js";
 import { resolveUserFromToken, toClientProfile } from "./server/services/sessionService.js";
 import { DEFAULT_DECK_BLUEPRINTS } from "./src/core/defaultDecks.js";
 import { capMana } from "./src/core/constants.js";
+import { clampAllPlayersMana } from "./src/core/mana.js";
 import { applyTurnStartManaEffects } from "./src/core/abilityHandlers/startPhase.js";
 import { discardCardFromHand as discardCardFromHandLogic } from "./src/core/discardUtils.js";
 
@@ -308,7 +309,14 @@ io.on("connection", (socket) => {
     const m = matches.get(matchId);
     // Если это первый снапшот — принимаем и рассылаем
     if (!m.lastState) {
-      m.lastState = state ?? null;
+      let initialState = state ?? null;
+      try {
+        if (initialState && typeof initialState === 'object') {
+          initialState = JSON.parse(JSON.stringify(initialState));
+          clampAllPlayersMana(initialState);
+        }
+      } catch {}
+      m.lastState = initialState;
       try { m.lastVer = Number(state && state.__ver) || 0; } catch { m.lastVer = 0; }
       // сброс таймера на первый ход
       m.timerSeconds = 100;
@@ -334,7 +342,19 @@ io.on("connection", (socket) => {
     const incoming = state ?? m.lastState;
     const keptActive = m.lastState?.active;
     const keptTurn = m.lastState?.turn;
-    m.lastState = { ...incoming, active: keptActive, turn: keptTurn };
+    let normalized = incoming;
+    try {
+      if (incoming && typeof incoming === 'object') {
+        normalized = JSON.parse(JSON.stringify(incoming));
+        clampAllPlayersMana(normalized);
+      }
+    } catch {
+      normalized = incoming;
+    }
+    const nextState = normalized && typeof normalized === 'object'
+      ? { ...normalized, active: keptActive, turn: keptTurn }
+      : { active: keptActive, turn: keptTurn };
+    m.lastState = nextState;
     // Emit authoritative state only; turn changes happen via 'endTurn'
     // Emit authoritative state only; turn changes happen via endTurn
     io.to(m.room).emit("state", m.lastState);
@@ -397,6 +417,7 @@ io.on("connection", (socket) => {
     // Bump version and persist
     try { st.__ver = (Number(st.__ver) || 0) + 1; } catch {}
     m.lastVer = Number(st.__ver) || (m.lastVer || 0);
+    try { clampAllPlayersMana(st); } catch {}
     m.lastState = st;
 
     // Reset timer and notify
@@ -452,6 +473,7 @@ io.on("connection", (socket) => {
       if (pos >= 0) queue.splice(pos, 1);
     }
     try { st.__ver = (Number(st.__ver) || 0) + 1; m.lastVer = st.__ver; } catch { m.lastVer = m.lastVer || 0; }
+    try { clampAllPlayersMana(st); } catch {}
     m.lastState = st;
     try {
       io.to(m.room).emit('state', st);
@@ -515,6 +537,22 @@ io.on("connection", (socket) => {
     const m = matches.get(matchId);
     io.to(m.room).emit("tileCrossfade", payload);
     pushLog({ ev: 'tileCrossfade', sid: socket.id, matchId, r: payload?.r, c: payload?.c, prev: payload?.prev, next: payload?.next });
+  });
+
+  socket.on("manaDrainFx", (payload = {}) => {
+    const matchId = socket.data.matchId;
+    if (!matchId || !matches.has(matchId)) return;
+    const m = matches.get(matchId);
+    try { payload.bySeat = socket.data.seat; } catch {}
+    io.to(m.room).emit("manaDrainFx", payload);
+    pushLog({
+      ev: 'manaDrainFx',
+      sid: socket.id,
+      matchId,
+      amount: payload?.amount,
+      from: payload?.from,
+      drainOnly: payload?.drainOnly,
+    });
   });
 
   // ритуальные спеллы (Holy Feast): подтверждение и визуальная синхронизация
