@@ -1,11 +1,47 @@
 import { getServerBase } from './config.js';
 import { initSessionStore, getSessionToken, onSessionChange, handleUnauthorized } from '../auth/sessionStore.js';
 import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
+import { manaStealKeyFromEvent, hasManaStealKey, markManaStealKey } from '../ui/manaStealRegistry.js';
 
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
      countdowns, and input locking. */
 (() => {
+  function processIncomingManaStealEvents(prevState, nextState) {
+    try {
+      if (!nextState || typeof window === 'undefined') return;
+      const events = Array.isArray(nextState.manaStealEvents) ? nextState.manaStealEvents : [];
+      if (!events.length) return;
+      for (const ev of events) {
+        if (!ev) continue;
+        const key = manaStealKeyFromEvent(ev);
+        if (key && hasManaStealKey(key)) continue;
+        if (key) markManaStealKey(key);
+        if (ev.log) {
+          try { window.addLog?.(ev.log); } catch {}
+        }
+        try {
+          const anim = window.animateManaSteal || window.__ui?.mana?.animateManaSteal;
+          if (typeof anim === 'function') anim(ev);
+        } catch (err) {
+          console.warn('[network] Не удалось воспроизвести анимацию потери маны:', err);
+        }
+        if (ev.drainOnly && ev.amount > 0 && ev.notifyDrain !== false) {
+          try {
+            const notify = window.__ui?.manaStealFx?.showManaDrainMessage
+              || window.__ui?.mana?.showManaDrainMessage;
+            if (typeof notify === 'function') {
+              notify(ev.from, ev.amount, { source: ev.reason || ev.source?.name || 'MANA_DRAIN' });
+            }
+          } catch (err) {
+            console.warn('[network] Не удалось показать уведомление о потере маны:', err);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[network] Ошибка обработки входящих событий потери маны:', err);
+    }
+  }
   // ===== 0) Config =====
   const SERVER_URL = getServerBase();
   initSessionStore();
@@ -485,6 +521,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
         }
       } catch {}
       try { updateUI(); }catch{}
+      processIncomingManaStealEvents(prev, state);
       // Если начался новый ход — синхронизируем порядок анимаций как в офлайне:
       // 1) Заставка хода с корректным заголовком, 2) Анимация маны, 3) Добор
       // Упрощенная и надежная система обработки нового хода

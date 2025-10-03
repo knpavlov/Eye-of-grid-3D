@@ -1,15 +1,8 @@
 // Логика способности "mana steal" (кража маны)
 import { CARDS } from '../cards.js';
+import { capMana } from '../constants.js';
 
 const ROLE_FRONT_OWNER = 'FRONT_OWNER';
-
-const capMana = (value) => {
-  const num = Math.floor(Number(value) || 0);
-  if (!Number.isFinite(num)) return 0;
-  if (num < 0) return 0;
-  if (num > 10) return 10;
-  return num;
-};
 
 function ensureQueue(state) {
   if (!state) return null;
@@ -341,9 +334,69 @@ export function listManaStealEvents(state) {
   return state.manaStealEvents.slice();
 }
 
+// Регистрация произвольного события потери маны без передачи ресурса
+export function enqueueDrainOnlyManaEvent(state, params = {}) {
+  if (!state) return null;
+
+  const amountRaw = Number.isFinite(params.amount)
+    ? params.amount
+    : Number(params.amount) || 0;
+  const amount = Math.max(0, Math.floor(amountRaw));
+  if (amount <= 0) return null;
+
+  const fromIndex = Number.isInteger(params.from)
+    ? params.from
+    : (Number.isInteger(params.owner) ? params.owner : null);
+  if (fromIndex == null) return null;
+
+  const beforeCandidate = Number.isFinite(params.before)
+    ? params.before
+    : (Number.isFinite(params.beforeFrom) ? params.beforeFrom : null);
+  const afterCandidate = Number.isFinite(params.after)
+    ? params.after
+    : (Number.isFinite(params.afterFrom) ? params.afterFrom : null);
+
+  const before = beforeCandidate != null ? capMana(beforeCandidate) : null;
+  const after = afterCandidate != null ? capMana(afterCandidate) : null;
+
+  const baseEvent = {
+    trigger: params.trigger || params.reason || 'SPELL',
+    amount,
+    from: fromIndex,
+    to: null,
+    before: {
+      fromMana: before != null ? before : null,
+      toMana: null,
+    },
+    after: {
+      fromMana: after != null ? after : null,
+      toMana: null,
+    },
+    drainOnly: true,
+    drain: true,
+    notifyDrain: params.notify !== false,
+    reason: params.reason || 'DRAIN',
+    source: params.source || (params.sourceName ? { name: params.sourceName } : null),
+  };
+
+  if (params.meta && typeof params.meta === 'object') {
+    baseEvent.meta = { ...params.meta };
+  }
+
+  if (params.message) {
+    baseEvent.message = params.message;
+  }
+
+  baseEvent.log = params.logMessage ? String(params.logMessage) : null;
+
+  const event = registerEvent(state, baseEvent);
+  return event;
+}
+
 export default {
   applySummonManaSteal,
   applyDeathManaSteal,
   hasManaStealKeyword,
   listManaStealEvents,
+  enqueueDrainOnlyManaEvent,
 };

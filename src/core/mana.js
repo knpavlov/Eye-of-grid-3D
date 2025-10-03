@@ -24,4 +24,22 @@ export function grantManaToAllPlayers(state, amount = 0) {
   return result;
 }
 
-export default { grantManaToAllPlayers };
+// Принудительное ограничение маны всех игроков (например, при получении состояния с сервера)
+export function clampAllPlayersMana(state) {
+  if (!state || !Array.isArray(state.players)) {
+    return state;
+  }
+  state.players.forEach((player) => {
+    if (!player) return;
+    const capped = capMana(player.mana);
+    if (player.mana !== capped) {
+      player.mana = capped;
+    }
+    if (typeof player._beforeMana === 'number') {
+      player._beforeMana = capMana(player._beforeMana);
+    }
+  });
+  return state;
+}
+
+export default { grantManaToAllPlayers, clampAllPlayersMana };
