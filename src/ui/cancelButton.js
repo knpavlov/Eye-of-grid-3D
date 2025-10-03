@@ -65,6 +65,7 @@ export function refreshCancelButton() {
     || interactionState.pendingSpellOrientation
     || interactionState.pendingSpellFieldExchange
     || interactionState.pendingSpellLapse
+    || interactionState.pendingSpellElementalDominion
     || interactionState.pendingDiscardSelection
     || interactionState.selectedCard;
   btn.classList.toggle('hidden', !vis);
@@ -91,6 +92,8 @@ export function setupCancelButton() {
         window.__spells?.cancelMesmerLapseSelection?.();
         interactionState.pendingSpellLapse = null;
         interactionState.pendingDiscardSelection = null;
+      } else if (interactionState.pendingSpellElementalDominion) {
+        window.__spells?.cancelElementalDominionSelection?.();
       } else if (interactionState.selectedCard) {
         returnCardToHand(interactionState.selectedCard);
         interactionState.selectedCard = null;
