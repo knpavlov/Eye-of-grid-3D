@@ -24,6 +24,15 @@ import { highlightTiles, clearHighlights } from '../scene/highlight.js';
 import { createDeathEntry } from '../core/abilityHandlers/deathRecords.js';
 import { capMana } from '../core/constants.js';
 
+// Русские подписи для стихий, чтобы сообщения были понятны
+const ELEMENT_NAMES_RU = {
+  FIRE: { label: 'огонь', genitive: 'огня', adjective: 'огненных', field: 'огненное', creature: 'огненное существо' },
+  WATER: { label: 'вода', genitive: 'воды', adjective: 'водных', field: 'водное', creature: 'водное существо' },
+  EARTH: { label: 'земля', genitive: 'земли', adjective: 'земных', field: 'земное', creature: 'земное существо' },
+  FOREST: { label: 'лес', genitive: 'леса', adjective: 'лесных', field: 'лесное', creature: 'лесное существо' },
+  BIOLITH: { label: 'биолит', genitive: 'биолита', adjective: 'биолитовых', field: 'биолитовое', creature: 'биолитовое существо' },
+};
+
 // Универсальные хелперы для повторного использования механик заклинаний
 function getUnitMeshAt(r, c) {
   const ctx = getCtx();
@@ -196,6 +205,455 @@ function highlightFieldExchangeTargets(exclude) {
   if (cells.length) highlightTiles(cells);
   else clearHighlights();
   return cells.length;
+}
+
+function describeElementPart(element, key) {
+  const upper = typeof element === 'string' ? element.toUpperCase() : element;
+  const info = ELEMENT_NAMES_RU[upper] || {};
+  if (key === 'adjectivePlural') return info.adjective || String(upper || '').toLowerCase();
+  if (key === 'genitive') return info.genitive || String(upper || '').toLowerCase();
+  if (key === 'field') return info.field || String(upper || '').toLowerCase();
+  if (key === 'creature') return info.creature || `существо стихии ${String(upper || '').toLowerCase()}`;
+  return info.label || String(upper || '').toLowerCase();
+}
+
+function countFieldsByElement(state, element) {
+  if (!state?.board) return 0;
+  const target = typeof element === 'string' ? element.toUpperCase() : element;
+  let total = 0;
+  for (let r = 0; r < 3; r += 1) {
+    for (let c = 0; c < 3; c += 1) {
+      const cellElement = state.board?.[r]?.[c]?.element || null;
+      if (typeof cellElement === 'string' && cellElement.toUpperCase() === target) total += 1;
+    }
+  }
+  return total;
+}
+
+function collectStormArea(center) {
+  if (!center) return [];
+  const { r, c } = center;
+  if (!Number.isInteger(r) || !Number.isInteger(c)) return [];
+  const area = [center];
+  const offsets = [
+    { dr: -1, dc: -1 }, { dr: -1, dc: 0 }, { dr: -1, dc: 1 },
+    { dr: 0, dc: -1 }, { dr: 0, dc: 1 },
+    { dr: 1, dc: -1 }, { dr: 1, dc: 0 }, { dr: 1, dc: 1 },
+  ];
+  for (const off of offsets) {
+    const nr = r + off.dr;
+    const nc = c + off.dc;
+    if (nr < 0 || nr > 2 || nc < 0 || nc > 2) continue;
+    area.push({ r: nr, c: nc });
+  }
+  return area;
+}
+
+function findPlayerIndex(state, player) {
+  if (!state || !Array.isArray(state.players)) return null;
+  const idx = state.players.findIndex(p => p === player);
+  return idx >= 0 ? idx : null;
+}
+
+const ELEMENTAL_STORM_CONFIGS = {
+  SPELL_SCIONDAR_INFERNO: { element: 'FIRE' },
+  SPELL_ICE_FLOOD_OF_OKUNADA: { element: 'WATER' },
+  SPELL_FIST_OF_VERZAR: { element: 'EARTH' },
+  SPELL_WRATHFUL_WINDS_OF_JUNO: { element: 'FOREST' },
+  SPELL_BLINDING_SKIES: { element: 'BIOLITH' },
+};
+
+function cancelElementalStormSelection() {
+  interactionState.pendingSpellElementalStorm = null;
+  if (interactionState.pendingDiscardSelection) {
+    interactionState.pendingDiscardSelection = null;
+  }
+  clearHighlights();
+  try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+  try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+}
+
+function cardMatchesElement(card, element) {
+  if (!card || !element) return false;
+  const el = card.element || (card.id ? CARDS?.[card.id]?.element : null) || null;
+  if (!el) return false;
+  return String(el).toUpperCase() === String(element).toUpperCase();
+}
+
+function ensureStormSelectionState() {
+  const pending = interactionState.pendingSpellElementalStorm;
+  if (!pending) {
+    cancelElementalStormSelection();
+    return null;
+  }
+  return pending;
+}
+
+function canPickStormCard(card, handIdx) {
+  const pending = interactionState.pendingSpellElementalStorm;
+  if (!pending || !card) return false;
+  if (card.type !== 'UNIT') return false;
+  if (pending.selections?.some(sel => sel.card === card)) return false;
+  // Проверяем, останется ли возможность выполнить требование стихии
+  const elementRequired = pending.element;
+  if (!elementRequired) return true;
+  if (cardMatchesElement(card, elementRequired)) return true;
+  // если карта не подходящей стихии, убеждаемся что в руке ещё есть нужная
+  const playerHand = Array.isArray(pending.player?.hand) ? pending.player.hand : [];
+  for (let i = 0; i < playerHand.length; i += 1) {
+    if (i === handIdx) continue;
+    const other = playerHand[i];
+    if (!other || pending.selections?.some(sel => sel.card === other)) continue;
+    if (cardMatchesElement(other, elementRequired)) return true;
+  }
+  return false;
+}
+
+function startElementalStormSelection({ tpl, pl, idx, tileMesh, cardMesh }, config) {
+  const state = typeof gameState !== 'undefined' ? gameState : (typeof window !== 'undefined' ? window.gameState : null);
+  if (!state) {
+    showNotification('Игра не готова к розыгрышу заклинания', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  if (interactionState.pendingSpellElementalStorm) {
+    showNotification('Сначала завершите выбор существ для другого заклинания', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  const element = config?.element;
+  const r = tileMesh?.userData?.row ?? null;
+  const c = tileMesh?.userData?.col ?? null;
+  if (r == null || c == null) {
+    showNotification('Нужно выбрать конкретное поле', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+  const cell = state.board?.[r]?.[c];
+  if (!cell || !cell.element) {
+    showNotification('Поле недоступно для заклинания', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+  if (String(cell.element).toUpperCase() !== String(element).toUpperCase()) {
+    const fieldLabel = describeElementPart(element, 'field');
+    showNotification(`Нужно выбрать ${fieldLabel} поле`, 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  if ((tpl.cost || 0) > (pl?.mana || 0)) {
+    showNotification('Недостаточно маны', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  const hand = Array.isArray(pl?.hand) ? pl.hand : [];
+  const unitCards = hand.filter(card => card && card.type === 'UNIT');
+  if (unitCards.length < 2) {
+    showNotification('В руке недостаточно существ для жертвы', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  const hasElemental = unitCards.some(card => cardMatchesElement(card, element));
+  if (!hasElemental) {
+    const elementName = describeElementPart(element, 'genitive');
+    showNotification(`В руке нет существа стихии ${elementName}`, 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  const area = collectStormArea({ r, c });
+  if (area.length) highlightTiles(area);
+
+  interactionState.pendingSpellElementalStorm = {
+    spellId: tpl.id,
+    tpl,
+    handIndex: idx,
+    player: pl,
+    playerIndex: findPlayerIndex(state, pl),
+    tilePos: { r, c },
+    tileMesh: tileMesh || null,
+    cardMesh: cardMesh || null,
+    element,
+    requiredCount: 2,
+    selections: [],
+  };
+  interactionState.spellDragHandled = true;
+  if (cardMesh) returnCardToHand(cardMesh);
+
+  interactionState.pendingDiscardSelection = {
+    requiredType: 'UNIT',
+    forced: true,
+    keepAfterPick: true,
+    filter: (card, handIdx) => canPickStormCard(card, handIdx),
+    invalidMessage: 'Нужно выбрать подходящее существо',
+    onPicked: handIdx => finalizeStormSelectionStep(handIdx),
+  };
+
+  const elementName = describeElementPart(element, 'genitive');
+  try {
+    window.__ui.panels.showPrompt(
+      `Выберите 2 существа для сброса (минимум одно стихии ${elementName})`,
+      () => {
+        cancelElementalStormSelection();
+        updateUI();
+      },
+    );
+  } catch {}
+  addLog(`${tpl.name}: выберите 2 существа в руке (минимум одно стихии ${elementName}).`);
+  try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+}
+
+function finalizeStormSelectionStep(handIdx) {
+  const pending = ensureStormSelectionState();
+  if (!pending) return;
+
+  const player = pending.player;
+  if (!player || !Array.isArray(player.hand)) {
+    cancelElementalStormSelection();
+    return;
+  }
+  if (!Number.isInteger(handIdx) || handIdx < 0 || handIdx >= player.hand.length) {
+    showNotification('Некорректный выбор карты', 'error');
+    return;
+  }
+
+  const card = player.hand[handIdx];
+  if (!card || card.type !== 'UNIT') {
+    showNotification('Нужно выбрать карту существа', 'error');
+    return;
+  }
+
+  if (pending.selections.some(sel => sel.card === card)) {
+    showNotification('Эта карта уже выбрана', 'error');
+    return;
+  }
+
+  pending.selections.push({
+    card,
+    initialIndex: handIdx,
+    element: (card.element || CARDS?.[card.id]?.element || '').toUpperCase(),
+    name: card.name || CARDS?.[card.id]?.name || 'Существо',
+  });
+
+  if (pending.selections.length < pending.requiredCount) return;
+
+  const requiredElement = (pending.element || '').toUpperCase();
+  const hasElement = pending.selections.some(sel => sel.element === requiredElement);
+  if (!hasElement) {
+    const elementName = describeElementPart(requiredElement, 'genitive');
+    showNotification(`Среди выбранных карт нет существа стихии ${elementName}`, 'error');
+    pending.selections = [];
+    return;
+  }
+
+  interactionState.pendingDiscardSelection = null;
+  try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+  try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+
+  resolveElementalStorm();
+}
+
+function resolveElementalStorm() {
+  const pending = ensureStormSelectionState();
+  if (!pending) return;
+
+  const state = typeof gameState !== 'undefined' ? gameState : (typeof window !== 'undefined' ? window.gameState : null);
+  if (!state) {
+    cancelElementalStormSelection();
+    return;
+  }
+
+  const player = pending.player;
+  const spellTpl = pending.tpl;
+  if (!player || !spellTpl) {
+    cancelElementalStormSelection();
+    return;
+  }
+
+  const actualIndices = [];
+  for (const sel of pending.selections) {
+    const idx = player.hand.indexOf(sel.card);
+    if (idx < 0) {
+      showNotification('Одна из выбранных карт больше не в руке', 'error');
+      cancelElementalStormSelection();
+      return;
+    }
+    actualIndices.push(idx);
+  }
+
+  actualIndices.sort((a, b) => b - a);
+  const sacrificed = [];
+  for (const idx of actualIndices) {
+    const tpl = discardHandCard(player, idx);
+    if (tpl) sacrificed.push(tpl);
+  }
+
+  const sacrificeNames = sacrificed.map(card => card.name || 'Существо');
+  if (sacrificeNames.length) {
+    addLog(`${spellTpl.name}: сброшены ${sacrificeNames.join(' и ')}.`);
+  }
+
+  pending.selections = [];
+  interactionState.pendingSpellElementalStorm = null;
+  clearHighlights();
+
+  applyElementalStormEffect(state, pending);
+}
+
+function applyElementalStormEffect(state, pending) {
+  const spellTpl = pending.tpl;
+  const player = pending.player;
+  const tilePos = pending.tilePos || {};
+  const element = pending.element;
+  const r = tilePos.r;
+  const c = tilePos.c;
+  const tileMesh = pending.tileMesh || getTileMeshAt(r, c) || null;
+  const cardMesh = pending.cardMesh || null;
+
+  const fieldCount = countFieldsByElement(state, element);
+  const elementLabel = describeElementPart(element, 'adjectivePlural');
+  addLog(`${spellTpl.name}: найдено ${fieldCount} ${elementLabel} полей.`);
+
+  const area = collectStormArea(tilePos);
+  const casterIndex = pending.playerIndex ?? findPlayerIndex(state, player);
+  const affected = [];
+  const deaths = [];
+
+  for (const pos of area) {
+    const cell = state.board?.[pos.r]?.[pos.c];
+    const unitRef = cell?.unit || null;
+    if (!unitRef) continue;
+    if (casterIndex != null && unitRef.owner === casterIndex) continue;
+    const tplUnit = CARDS?.[unitRef.tplId];
+    if (!tplUnit) continue;
+    const before = unitRef.currentHP ?? tplUnit.hp ?? 0;
+    if (before <= 0) continue;
+    const dmg = Math.max(0, fieldCount);
+    if (dmg <= 0) {
+      affected.push({ pos, name: tplUnit.name || 'Существо', before, after: before, dmg: 0 });
+      continue;
+    }
+    const after = Math.max(0, before - dmg);
+    unitRef.currentHP = after;
+    affected.push({ pos, name: tplUnit.name || 'Существо', before, after, dmg });
+    spawnHpShiftText(pos.r, pos.c, -dmg);
+    if (after <= 0) {
+      const deathEntry = createDeathEntry(state, unitRef, pos.r, pos.c) || {
+        r: pos.r,
+        c: pos.c,
+        owner: unitRef.owner,
+        tplId: unitRef.tplId,
+        uid: unitRef.uid ?? null,
+        element: cell?.element || null,
+      };
+      deaths.push(deathEntry);
+    }
+  }
+
+  if (!affected.length) {
+    addLog(`${spellTpl.name}: в выбранной зоне нет вражеских существ.`);
+  } else {
+    for (const target of affected) {
+      addLog(`${spellTpl.name}: ${target.name} получает ${target.dmg} урона (HP ${target.before}→${target.after}).`);
+    }
+  }
+
+  const handIndex = Array.isArray(player.hand)
+    ? player.hand.findIndex(card => card && card.id === spellTpl.id)
+    : -1;
+  if (handIndex < 0) {
+    showNotification('Карта заклинания уже недоступна', 'error');
+  } else {
+    burnSpellCard(spellTpl, tileMesh, cardMesh);
+    spendAndDiscardSpell(player, handIndex);
+    resetCardSelection();
+  }
+
+  updateHand();
+
+  if (deaths.length) {
+    processSpellDeaths(deaths);
+  }
+
+  refreshPossessionsUI(state);
+  updateUnits();
+  updateUI();
+}
+
+const RIOTOUS_ORDER = [
+  { r: 1, c: 1 },
+  { r: 0, c: 1 },
+  { r: 0, c: 2 },
+  { r: 1, c: 2 },
+  { r: 2, c: 2 },
+  { r: 2, c: 1 },
+  { r: 2, c: 0 },
+  { r: 1, c: 0 },
+  { r: 0, c: 0 },
+];
+
+function computeAutoBattleOptions(state, r, c) {
+  if (!state || typeof window === 'undefined' || typeof window.computeHits !== 'function') return {};
+  const cell = state.board?.[r]?.[c];
+  const attacker = cell?.unit || null;
+  if (!attacker) return null;
+  const owner = attacker.owner;
+  const defaultHits = window.computeHits(state, r, c, {});
+  if (Array.isArray(defaultHits) && defaultHits.some(hit => {
+    const unit = state.board?.[hit.r]?.[hit.c]?.unit;
+    return unit && unit.owner !== owner;
+  })) {
+    return {};
+  }
+  const dirs = ['N', 'E', 'S', 'W'];
+  for (const dir of dirs) {
+    const hits = window.computeHits(state, r, c, { chosenDir: dir });
+    if (!Array.isArray(hits) || !hits.length) continue;
+    const hasEnemy = hits.some(hit => {
+      const unit = state.board?.[hit.r]?.[hit.c]?.unit;
+      return unit && unit.owner !== owner;
+    });
+    if (hasEnemy) return { chosenDir: dir };
+  }
+  return null;
+}
+
+async function runRiotousSequence(order, tplName) {
+  if (typeof window === 'undefined' || typeof window.performBattleSequence !== 'function') {
+    console.warn('[spell] performBattleSequence недоступна, пропускаем эффект Riotous Impunity');
+    return;
+  }
+  for (const pos of order) {
+    const state = typeof gameState !== 'undefined' ? gameState : (typeof window !== 'undefined' ? window.gameState : null);
+    if (!state) break;
+    const cell = state.board?.[pos.r]?.[pos.c];
+    const unit = cell?.unit || null;
+    if (!unit) continue;
+    const tplUnit = CARDS?.[unit.tplId];
+    const before = unit.currentHP ?? tplUnit?.hp ?? 0;
+    if (before <= 0) continue;
+    const opts = computeAutoBattleOptions(state, pos.r, pos.c);
+    if (opts === null) continue;
+    const unitName = tplUnit?.name || 'Существо';
+    addLog(`${tplName}: ${unitName} вступает в бой.`);
+    try {
+      await window.performBattleSequence(pos.r, pos.c, true, opts || {});
+    } catch (err) {
+      console.error('[spell] Ошибка автоматического боя', err);
+    }
+  }
+}
+
+function handleElementalStormCast(ctx) {
+  if (!ctx?.tpl) return;
+  const config = ELEMENTAL_STORM_CONFIGS[ctx.tpl.id];
+  if (!config) return;
+  startElementalStormSelection(ctx, config);
 }
 
 function finalizeFieldExchange(targetR, targetC, opts = {}) {
@@ -1136,6 +1594,12 @@ export const handlers = {
     },
   },
 
+  SPELL_SCIONDAR_INFERNO: { onBoard: handleElementalStormCast },
+  SPELL_ICE_FLOOD_OF_OKUNADA: { onBoard: handleElementalStormCast },
+  SPELL_FIST_OF_VERZAR: { onBoard: handleElementalStormCast },
+  SPELL_WRATHFUL_WINDS_OF_JUNO: { onBoard: handleElementalStormCast },
+  SPELL_BLINDING_SKIES: { onBoard: handleElementalStormCast },
+
   SPELL_GOGHLIE_ALTAR: {
     onCast({ tpl, pl, idx, cardMesh, tileMesh }) {
       const countUnits = ownerIdx => {
@@ -1689,6 +2153,41 @@ export const handlers = {
       finalizeFieldExchange(r, c, { tpl, pl, idx, tileMesh: resolvedTile, cardMesh });
     },
   },
+
+  SPELL_SCIONS_RIOTOUS_IMPUNITY: {
+    onCast({ tpl, pl, idx, cardMesh }) {
+      if (!tpl || !pl) return;
+      if ((tpl.cost || 0) > (pl.mana || 0)) {
+        showNotification('Недостаточно маны', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+
+      const handIndex = Array.isArray(pl.hand)
+        ? pl.hand.findIndex(card => card && card.id === tpl.id)
+        : -1;
+      if (handIndex < 0) {
+        showNotification('Карта заклинания уже недоступна', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+
+      const centerTile = getTileMeshAt(1, 1) || null;
+      burnSpellCard(tpl, centerTile, cardMesh || null);
+      spendAndDiscardSpell(pl, handIndex);
+      resetCardSelection();
+      updateHand();
+      updateUI();
+
+      addLog(`${tpl.name}: последовательность боёв запускается с центрального поля.`);
+
+      (async () => {
+        await runRiotousSequence(RIOTOUS_ORDER, tpl.name);
+        addLog(`${tpl.name}: все бои завершены. Ход заканчивается.`);
+        requestAutoEndTurn();
+      })();
+    },
+  },
 };
 
 export function requiresUnitTarget(id) {
@@ -1726,6 +2225,7 @@ const api = {
   handlePendingBoardClick,
   cancelFieldExchangeSelection,
   cancelMesmerLapseSelection,
+  cancelElementalStormSelection,
 };
 try {
   if (typeof window !== 'undefined') {
