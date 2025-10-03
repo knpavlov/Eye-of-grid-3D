@@ -1,10 +1,9 @@
 // Модуль обработки эффектов прироста маны (чистая игровая логика)
 import { CARDS } from '../cards.js';
 import { normalizeElementName } from '../utils/elements.js';
+import { capMana } from '../constants.js';
 
 const BOARD_SIZE = 3;
-const capMana = (m) => Math.min(10, m);
-
 function toArray(value) {
   if (value == null) return [];
   return Array.isArray(value) ? value.filter(Boolean) : [value].filter(Boolean);
