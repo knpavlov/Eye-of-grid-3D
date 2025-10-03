@@ -29,7 +29,16 @@ export const facingDeg = { N: 0, E: -90, S: 180, W: 90 };
 // Helpers
 export const uid = () => Math.random().toString(36).slice(2, 9);
 export const inBounds = (r, c) => r >= 0 && r < 3 && c >= 0 && c < 3;
-export const capMana = (m) => Math.min(10, m);
+export const capMana = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return 0;
+  }
+  if (numeric >= 10) {
+    return 10;
+  }
+  return numeric;
+};
 
 import { activationCost, rotateCost as rawRotateCost } from './abilities.js';
 

@@ -45,6 +45,8 @@ export const interactionState = {
   pendingAbilityOrientation: null,
   pendingSpellTeleportation: null,
   pendingSpellTelekinesis: null,
+  pendingSpellFieldExchange: null,
+  pendingSpellLapse: null,
   spellDragHandled: false,
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
@@ -95,7 +97,7 @@ export function undoPendingSummonManaGain() {
     if (owner == null || amount <= 0) continue;
     const player = gs.players[owner];
     if (!player) continue;
-    const before = Number.isFinite(player.mana) ? player.mana : 0;
+    const before = capMana(player.mana);
     const after = Math.max(0, before - amount);
     player.mana = after;
   }
@@ -401,7 +403,11 @@ function onMouseDown(event) {
   }
 
   let tileForSpell = null;
-  if (interactionState.pendingSpellTeleportation || interactionState.pendingSpellTelekinesis) {
+  if (
+    interactionState.pendingSpellTeleportation
+    || interactionState.pendingSpellTelekinesis
+    || interactionState.pendingSpellFieldExchange
+  ) {
     const flatTiles = Array.isArray(tileMeshes) ? tileMeshes.flat() : [];
     if (flatTiles.length) {
       const tileHits = raycaster.intersectObjects(flatTiles, true);
@@ -668,11 +674,25 @@ export function resetCardSelection() {
     } catch {}
     interactionState.selectedCard = null;
   }
-  if (interactionState.pendingSpellTeleportation || interactionState.pendingSpellTelekinesis) {
+  if (
+    interactionState.pendingSpellTeleportation
+    || interactionState.pendingSpellTelekinesis
+    || interactionState.pendingSpellFieldExchange
+    || interactionState.pendingSpellLapse
+  ) {
     try { window.__ui?.panels?.hidePrompt?.(); } catch {}
   }
   interactionState.pendingSpellTeleportation = null;
   interactionState.pendingSpellTelekinesis = null;
+  if (interactionState.pendingSpellFieldExchange) {
+    try { window.__spells?.cancelFieldExchangeSelection?.(); } catch {}
+    interactionState.pendingSpellFieldExchange = null;
+  }
+  if (interactionState.pendingSpellLapse) {
+    try { window.__spells?.cancelMesmerLapseSelection?.(); } catch {}
+    interactionState.pendingSpellLapse = null;
+    interactionState.pendingDiscardSelection = null;
+  }
   clearHighlights();
   clearPlacementHighlights();
   try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}

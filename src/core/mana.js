@@ -24,4 +24,31 @@ export function grantManaToAllPlayers(state, amount = 0) {
   return result;
 }
 
-export default { grantManaToAllPlayers };
+// Нормализация значений маны, чтобы исключить переполнение и мусорные значения
+export function normalizePlayersMana(state, playerIndexes = null) {
+  if (!state || !Array.isArray(state.players)) return;
+
+  const applyClamp = (player) => {
+    if (!player) return;
+    player.mana = capMana(player.mana);
+  };
+
+  if (playerIndexes == null) {
+    state.players.forEach(applyClamp);
+    return;
+  }
+
+  if (Array.isArray(playerIndexes)) {
+    playerIndexes.forEach((idx) => {
+      if (!Number.isInteger(idx)) return;
+      applyClamp(state.players[idx]);
+    });
+    return;
+  }
+
+  if (Number.isInteger(playerIndexes)) {
+    applyClamp(state.players[playerIndexes]);
+  }
+}
+
+export default { grantManaToAllPlayers, normalizePlayersMana };
