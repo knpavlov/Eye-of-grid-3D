@@ -5,7 +5,12 @@
 
 import { spendAndDiscardSpell, offerSpellToEye, burnSpellCard } from '../ui/spellUtils.js';
 import { getCtx } from '../scene/context.js';
-import { interactionState, resetCardSelection, returnCardToHand } from '../scene/interactions.js';
+import {
+  interactionState,
+  resetCardSelection,
+  returnCardToHand,
+  requestAutoEndTurn,
+} from '../scene/interactions.js';
 import { discardHandCard } from '../scene/discard.js';
 import { computeFieldquakeLockedCells } from '../core/fieldLocks.js';
 import { computeCellBuff, applyFieldTransitionToUnit } from '../core/fieldEffects.js';
@@ -16,6 +21,9 @@ import { animateManaGainFromWorld } from '../ui/mana.js';
 import { applyFieldquakeToCell, collectFieldquakeDeaths } from '../core/abilityHandlers/fieldquake.js';
 import { applyFieldFatalityCheck, describeFieldFatality } from '../core/abilityHandlers/fieldHazards.js';
 import { highlightTiles, clearHighlights } from '../scene/highlight.js';
+import { createDeathEntry } from '../core/abilityHandlers/deathRecords.js';
+import { capMana } from '../core/constants.js';
+import { normalizePlayersMana } from '../core/mana.js';
 
 // Универсальные хелперы для повторного использования механик заклинаний
 function getUnitMeshAt(r, c) {
@@ -142,6 +150,306 @@ function processSpellDeaths(deaths, { cause = 'SPELL', delayMs = 1000 } = {}) {
   }, delayMs);
 }
 
+
+function buildLockedFieldSet(state) {
+  const locked = computeFieldquakeLockedCells(state) || [];
+  const result = new Set();
+  for (const pos of locked) {
+    if (!pos) continue;
+    const r = Number(pos.r);
+    const c = Number(pos.c);
+    if (!Number.isInteger(r) || !Number.isInteger(c)) continue;
+    result.add(`${r},${c}`);
+  }
+  return result;
+}
+
+function collectExchangeableCells(state, exclude = null) {
+  if (!state?.board) return { cells: [], lockedSet: new Set() };
+  const lockedSet = buildLockedFieldSet(state);
+  const cells = [];
+  for (let r = 0; r < 3; r += 1) {
+    for (let c = 0; c < 3; c += 1) {
+      if (exclude && r === exclude.r && c === exclude.c) continue;
+      if (lockedSet.has(`${r},${c}`)) continue;
+      const cell = state.board?.[r]?.[c];
+      if (!cell || !cell.element) continue;
+      cells.push({ r, c });
+    }
+  }
+  return { cells, lockedSet };
+}
+
+function cancelFieldExchangeSelection() {
+  interactionState.pendingSpellFieldExchange = null;
+  clearHighlights();
+  try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+  try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+}
+
+function highlightFieldExchangeTargets(exclude) {
+  const state = typeof gameState !== 'undefined' ? gameState : (typeof window !== 'undefined' ? window.gameState : null);
+  if (!state) {
+    clearHighlights();
+    return 0;
+  }
+  const { cells } = collectExchangeableCells(state, exclude);
+  if (cells.length) highlightTiles(cells);
+  else clearHighlights();
+  return cells.length;
+}
+
+function finalizeFieldExchange(targetR, targetC, opts = {}) {
+  const pending = interactionState.pendingSpellFieldExchange;
+  if (!pending) return false;
+
+  const state = typeof gameState !== 'undefined' ? gameState : (typeof window !== 'undefined' ? window.gameState : null);
+  if (!state) {
+    cancelFieldExchangeSelection();
+    return false;
+  }
+
+  const firstPos = pending.first || {};
+  if (!Number.isInteger(firstPos.r) || !Number.isInteger(firstPos.c)) {
+    cancelFieldExchangeSelection();
+    return false;
+  }
+
+  if (firstPos.r === targetR && firstPos.c === targetC) {
+    showNotification('Нужно выбрать другое поле для обмена', 'error');
+    highlightFieldExchangeTargets(firstPos);
+    return true;
+  }
+
+  const { lockedSet } = collectExchangeableCells(state);
+  if (lockedSet.has(`${firstPos.r},${firstPos.c}`) || lockedSet.has(`${targetR},${targetC}`)) {
+    showNotification('Одно из полей защищено от обмена', 'error');
+    cancelFieldExchangeSelection();
+    return true;
+  }
+
+  const firstCell = state.board?.[firstPos.r]?.[firstPos.c] || null;
+  const secondCell = state.board?.[targetR]?.[targetC] || null;
+  if (!firstCell || !secondCell || !firstCell.element || !secondCell.element) {
+    showNotification('Поле недоступно для обмена', 'error');
+    cancelFieldExchangeSelection();
+    return true;
+  }
+
+  const activeIndex = typeof state.active === 'number' ? state.active : null;
+  const player = opts.pl || (activeIndex != null ? state.players?.[activeIndex] : null);
+  let handIndex = (opts.idx != null) ? opts.idx : pending.handIndex;
+  const spellTpl = opts.tpl || (handIndex != null ? player?.hand?.[handIndex] : pending.tpl) || pending.tpl;
+
+  if (!player || !spellTpl || spellTpl.id !== pending.spellId) {
+    showNotification('Заклинание недоступно', 'error');
+    cancelFieldExchangeSelection();
+    return true;
+  }
+
+  const cost = Number(spellTpl.cost) || 0;
+  if (player.mana < cost) {
+    showNotification('Недостаточно маны для обмена полей', 'error');
+    cancelFieldExchangeSelection();
+    return true;
+  }
+
+  if (handIndex == null || player.hand?.[handIndex]?.id !== spellTpl.id) {
+    handIndex = Array.isArray(player.hand)
+      ? player.hand.findIndex(card => card && card.id === spellTpl.id)
+      : -1;
+  }
+  if (handIndex < 0) {
+    showNotification('Карта заклинания уже недоступна', 'error');
+    cancelFieldExchangeSelection();
+    return true;
+  }
+
+  const prevFirst = firstCell.element;
+  const prevSecond = secondCell.element;
+
+  firstCell.element = prevSecond;
+  secondCell.element = prevFirst;
+
+  const events = [
+    { r: firstPos.r, c: firstPos.c, prevElement: prevFirst, nextElement: prevSecond },
+    { r: targetR, c: targetC, prevElement: prevSecond, nextElement: prevFirst },
+  ];
+
+  const logs = [];
+  const deaths = [];
+
+  const processCell = (r, c, prevElement, nextElement) => {
+    const cell = state.board?.[r]?.[c];
+    const unit = cell?.unit || null;
+    const tplUnit = unit ? CARDS?.[unit.tplId] : null;
+    const fieldLabel = `${r + 1},${c + 1}`;
+    logs.push(`${spellTpl.name}: поле (${fieldLabel}) ${prevElement}→${nextElement}.`);
+
+    if (!unit || !tplUnit) return;
+
+    const hpShift = applyFieldTransitionToUnit(unit, tplUnit, prevElement, nextElement);
+    if (hpShift?.deltaHp) {
+      const delta = hpShift.deltaHp;
+      const before = hpShift.beforeHp;
+      const after = hpShift.afterHp;
+      const unitName = tplUnit.name || 'Существо';
+      const msg = delta > 0
+        ? `${unitName} усиливается на новом поле: HP ${before}→${after}.`
+        : `${unitName} слабеет на новом поле: HP ${before}→${after}.`;
+      logs.push(msg);
+      spawnHpShiftText(r, c, delta);
+    }
+
+    const fatality = applyFieldFatalityCheck(unit, tplUnit, nextElement);
+    if (fatality?.dies) {
+      const fatalLog = describeFieldFatality(tplUnit, fatality, { name: tplUnit.name });
+      if (fatalLog) logs.push(fatalLog);
+    }
+
+    if ((unit.currentHP ?? tplUnit.hp ?? 0) <= 0) {
+      const deathEntry = createDeathEntry(state, unit, r, c) || {
+        r,
+        c,
+        owner: unit.owner,
+        tplId: unit.tplId,
+        uid: unit.uid ?? null,
+        element: nextElement,
+      };
+      deaths.push(deathEntry);
+    }
+  };
+
+  processCell(firstPos.r, firstPos.c, prevFirst, prevSecond);
+  processCell(targetR, targetC, prevSecond, prevFirst);
+
+  cancelFieldExchangeSelection();
+
+  const effectTile = opts.tileMesh || getTileMeshAt(targetR, targetC) || getTileMeshAt(firstPos.r, firstPos.c) || null;
+
+  playFieldquakeFx(events[0]);
+  playFieldquakeFx(events[1]);
+
+  for (const text of logs) addLog(text);
+
+  burnSpellCard(spellTpl, effectTile, opts.cardMesh || pending.cardMesh || null);
+  spendAndDiscardSpell(player, handIndex);
+  updateHand();
+
+  if (deaths.length) {
+    processSpellDeaths(deaths);
+  }
+
+  refreshPossessionsUI(state);
+  updateUnits();
+  updateUI();
+
+  addLog(`${spellTpl.name}: ход завершается.`);
+  requestAutoEndTurn();
+  return true;
+}
+
+function cancelMesmerLapseSelection() {
+  interactionState.pendingSpellLapse = null;
+  interactionState.pendingDiscardSelection = null;
+  clearHighlights();
+  try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+  try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+}
+
+function finalizeMesmerLapseDiscard(handIdx) {
+  const pending = interactionState.pendingSpellLapse;
+  if (!pending) return;
+
+  const state = typeof gameState !== 'undefined' ? gameState : (typeof window !== 'undefined' ? window.gameState : null);
+  if (!state) {
+    cancelMesmerLapseSelection();
+    return;
+  }
+
+  const activeIndex = typeof state.active === 'number' ? state.active : null;
+  const player = pending.player || (activeIndex != null ? state.players?.[activeIndex] : null);
+  if (!player) {
+    cancelMesmerLapseSelection();
+    return;
+  }
+
+  const opponentIndex = pending.opponentIndex != null ? pending.opponentIndex : (activeIndex === 0 ? 1 : 0);
+  const opponent = Number.isInteger(opponentIndex) ? state.players?.[opponentIndex] : null;
+
+  const spellTpl = pending.tpl || (pending.handIndex != null ? player.hand?.[pending.handIndex] : null);
+  if (!spellTpl || spellTpl.id !== pending.spellId) {
+    showNotification('Заклинание уже отменено', 'error');
+    cancelMesmerLapseSelection();
+    return;
+  }
+
+  if (!Number.isInteger(handIdx)) {
+    showNotification('Некорректный выбор карты', 'error');
+    cancelMesmerLapseSelection();
+    return;
+  }
+
+  const chosenTpl = discardHandCard(player, handIdx);
+  if (!chosenTpl || chosenTpl.type !== 'UNIT') {
+    showNotification('Нужно выбрать карту существа', 'error');
+    cancelMesmerLapseSelection();
+    return;
+  }
+
+  const manaLoss = Math.max(0, Number(chosenTpl.cost) || 0);
+  if (opponent) {
+    const before = capMana(opponent.mana);
+    const after = Math.max(0, before - manaLoss);
+    opponent.mana = after;
+    if (manaLoss > 0) {
+      addLog(`${spellTpl.name}: противник теряет ${manaLoss} маны.`);
+      try {
+        if (typeof window !== 'undefined') {
+          const drainEvent = {
+            amount: manaLoss,
+            from: opponentIndex,
+            before: { fromMana: before },
+            after: { fromMana: after },
+            drainOnly: true,
+          };
+          const animate = window.animateManaSteal || window.__ui?.mana?.animateManaSteal;
+          if (typeof animate === 'function') animate(drainEvent);
+        }
+      } catch (err) {
+        console.warn('[spell] Не удалось запустить анимацию потери маны:', err);
+      }
+    } else {
+      addLog(`${spellTpl.name}: существо без стоимости маны не отняло ресурс у противника.`);
+    }
+  }
+
+  normalizePlayersMana(state, [activeIndex, opponentIndex]);
+
+  let spellHandIndex = pending.handIndex;
+  if (spellHandIndex == null || player.hand?.[spellHandIndex]?.id !== spellTpl.id) {
+    spellHandIndex = Array.isArray(player.hand)
+      ? player.hand.findIndex(card => card && card.id === spellTpl.id)
+      : -1;
+  }
+  if (spellHandIndex < 0) {
+    showNotification('Карта заклинания уже недоступна', 'error');
+    cancelMesmerLapseSelection();
+    return;
+  }
+
+  burnSpellCard(spellTpl, pending.tileMesh || null, pending.cardMesh || null);
+  spendAndDiscardSpell(player, spellHandIndex);
+
+  const creatureName = chosenTpl.name || 'Существо';
+  addLog(`${spellTpl.name}: ${creatureName} отправлено в сброс.`);
+
+  cancelMesmerLapseSelection();
+
+  refreshPossessionsUI(state);
+  updateHand();
+  updateUI();
+}
 
 // Общая реализация ритуала Holy Feast
 function runHolyFeast({ tpl, pl, idx, cardMesh, tileMesh }) {
@@ -541,6 +849,17 @@ function finalizeTelekinesisTarget(targetR, targetC, opts = {}) {
 }
 
 export function handlePendingBoardClick({ unitMesh = null, tileMesh = null } = {}) {
+  if (interactionState.pendingSpellFieldExchange) {
+    const r = tileMesh?.userData?.row ?? unitMesh?.userData?.row ?? null;
+    const c = tileMesh?.userData?.col ?? unitMesh?.userData?.col ?? null;
+    if (r == null || c == null) {
+      showNotification('Нужно выбрать второе поле для обмена', 'error');
+      return true;
+    }
+    const resolvedTile = tileMesh || getTileMeshAt(r, c) || null;
+    finalizeFieldExchange(r, c, { tileMesh: resolvedTile });
+    return true;
+  }
   if (interactionState.pendingSpellTeleportation) {
     const r = unitMesh?.userData?.row ?? null;
     const c = unitMesh?.userData?.col ?? null;
@@ -575,6 +894,68 @@ export const handlers = {
         window.__ui.panels.showOrientationPanel();
         try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
       } catch {}
+    },
+  },
+
+  SPELL_YUGAS_MESMERIZING_FOG: {
+    requiresUnitTarget: true,
+    onUnit({ tpl, pl, idx, r, c, u, cardMesh, unitMesh }) {
+      const state = typeof gameState !== 'undefined' ? gameState : (typeof window !== 'undefined' ? window.gameState : null);
+      if (!state || !u) {
+        showNotification('Цель недоступна', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+      if (u.owner !== state.active) {
+        showNotification('Нужно выбрать союзное существо', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+
+      const directions = [
+        { dr: -1, dc: 0 },
+        { dr: 1, dc: 0 },
+        { dr: 0, dc: -1 },
+        { dr: 0, dc: 1 },
+      ];
+      const affected = [];
+      for (const dir of directions) {
+        const nr = r + dir.dr;
+        const nc = c + dir.dc;
+        if (nr < 0 || nr >= 3 || nc < 0 || nc >= 3) continue;
+        const enemy = state.board?.[nr]?.[nc]?.unit || null;
+        if (!enemy || enemy.owner === u.owner) continue;
+        const vectorR = r - nr;
+        const vectorC = c - nc;
+        let away = enemy.facing || 'N';
+        if (vectorR === 1 && vectorC === 0) away = 'N';
+        else if (vectorR === -1 && vectorC === 0) away = 'S';
+        else if (vectorR === 0 && vectorC === 1) away = 'W';
+        else if (vectorR === 0 && vectorC === -1) away = 'E';
+        enemy.facing = away;
+        affected.push({
+          name: CARDS?.[enemy.tplId]?.name || 'Существо',
+          r: nr,
+          c: nc,
+          dir: away,
+        });
+      }
+
+      const targetName = CARDS?.[u.tplId]?.name || 'союзник';
+      if (affected.length) {
+        const parts = affected.map(info => `${info.name} (${info.r + 1},${info.c + 1})`);
+        addLog(`${tpl.name}: ${parts.join(', ')} отворачиваются от ${targetName}.`);
+      } else {
+        addLog(`${tpl.name}: рядом с ${targetName} нет вражеских существ.`);
+      }
+
+      const effectTile = getTileMeshAt(r, c) || (unitMesh ? getTileMeshAt(unitMesh.userData?.row, unitMesh.userData?.col) : null);
+      burnSpellCard(tpl, effectTile, cardMesh);
+      spendAndDiscardSpell(pl, idx);
+      resetCardSelection();
+      updateHand();
+      updateUnits();
+      updateUI();
     },
   },
 
@@ -656,6 +1037,74 @@ export const handlers = {
         addLog(`${tpl.name}: вы добираете 2 карты.`);
         updateUI();
       })();
+    },
+  },
+
+  SPELL_SUMMONER_MESMERS_LAPSE: {
+    onCast({ tpl, pl, idx, cardMesh, tileMesh }) {
+      const state = typeof gameState !== 'undefined' ? gameState : (typeof window !== 'undefined' ? window.gameState : null);
+      if (!state) {
+        showNotification('Игра не готова к розыгрышу заклинания', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+      if (tpl.cost > pl.mana) {
+        showNotification('Недостаточно маны', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+      if (interactionState.pendingSpellLapse) {
+        showNotification('Сначала завершите текущий выбор карты для жертвы', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+      if (interactionState.pendingDiscardSelection) {
+        showNotification('Сначала завершите другой выбор карты', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+
+      const hand = Array.isArray(pl.hand) ? pl.hand : [];
+      const unitIndices = hand
+        .map((card, handIdx) => (card && card.type === 'UNIT' ? handIdx : -1))
+        .filter(i => i >= 0);
+      if (!unitIndices.length) {
+        showNotification('В руке нет существ для сброса', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+
+      interactionState.pendingSpellLapse = {
+        spellId: tpl.id,
+        handIndex: idx,
+        tpl,
+        player: pl,
+        opponentIndex: state.active === 0 ? 1 : 0,
+        cardMesh: cardMesh || null,
+        tileMesh: tileMesh || null,
+      };
+      interactionState.spellDragHandled = true;
+      if (cardMesh) returnCardToHand(cardMesh);
+
+      interactionState.pendingDiscardSelection = {
+        requiredType: 'UNIT',
+        forced: true,
+        invalidMessage: 'Нужно выбрать карту существа',
+        onPicked: pickedIdx => finalizeMesmerLapseDiscard(pickedIdx),
+      };
+
+      try {
+        window.__ui.panels.showPrompt(
+          'Выберите существо в руке для сброса',
+          () => {
+            cancelMesmerLapseSelection();
+            updateUI();
+          },
+        );
+      } catch {}
+
+      addLog(`${tpl.name}: выберите существо в руке для жертвы.`);
+      try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
     },
   },
 
@@ -1135,6 +1584,83 @@ export const handlers = {
       }, 350);
     },
   },
+
+  SPELL_CALL_OF_TIMELESS_JUNO: {
+    onBoard({ tpl, pl, idx, tileMesh, unitMesh, cardMesh }) {
+      const state = typeof gameState !== 'undefined' ? gameState : (typeof window !== 'undefined' ? window.gameState : null);
+      if (!state) {
+        showNotification('Игра не готова к обработке заклинания', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+
+      const r = tileMesh?.userData?.row ?? unitMesh?.userData?.row ?? null;
+      const c = tileMesh?.userData?.col ?? unitMesh?.userData?.col ?? null;
+      if (r == null || c == null) {
+        showNotification('Нужно выбрать поле на арене', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+
+      const pending = interactionState.pendingSpellFieldExchange;
+      if (!pending) {
+        if (tpl.cost > pl.mana) {
+          showNotification('Недостаточно маны', 'error');
+          if (cardMesh) returnCardToHand(cardMesh);
+          return;
+        }
+        const cell = state.board?.[r]?.[c];
+        if (!cell || !cell.element) {
+          showNotification('Поле недоступно', 'error');
+          if (cardMesh) returnCardToHand(cardMesh);
+          return;
+        }
+        const lockedSet = buildLockedFieldSet(state);
+        if (lockedSet.has(`${r},${c}`)) {
+          showNotification('Это поле защищено от обмена', 'error');
+          if (cardMesh) returnCardToHand(cardMesh);
+          return;
+        }
+        const available = highlightFieldExchangeTargets({ r, c });
+        if (!available) {
+          showNotification('Нет доступных полей для обмена', 'error');
+          if (cardMesh) returnCardToHand(cardMesh);
+          clearHighlights();
+          return;
+        }
+        interactionState.pendingSpellFieldExchange = {
+          spellId: tpl.id,
+          handIndex: idx,
+          first: { r, c },
+          tpl,
+          cardMesh: cardMesh || null,
+        };
+        interactionState.spellDragHandled = true;
+        if (cardMesh) returnCardToHand(cardMesh);
+        try {
+          window.__ui.panels.showPrompt(
+            'Выберите второе поле для обмена',
+            () => {
+              cancelFieldExchangeSelection();
+              updateUI();
+            },
+          );
+        } catch {}
+        addLog(`${tpl.name}: выберите второе поле, которое нужно обменять.`);
+        try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+        return;
+      }
+
+      if (pending.spellId !== tpl.id || pending.handIndex !== idx) {
+        showNotification('Сначала завершите текущий обмен полей', 'error');
+        if (cardMesh) returnCardToHand(cardMesh);
+        return;
+      }
+
+      const resolvedTile = tileMesh || (typeof r === 'number' && typeof c === 'number' ? getTileMeshAt(r, c) : null);
+      finalizeFieldExchange(r, c, { tpl, pl, idx, tileMesh: resolvedTile, cardMesh });
+    },
+  },
 };
 
 export function requiresUnitTarget(id) {
@@ -1164,7 +1690,15 @@ export function castSpellByDrag(ctx) {
   return false;
 }
 
-const api = { handlers, castSpellOnUnit, castSpellByDrag, requiresUnitTarget, handlePendingBoardClick };
+const api = {
+  handlers,
+  castSpellOnUnit,
+  castSpellByDrag,
+  requiresUnitTarget,
+  handlePendingBoardClick,
+  cancelFieldExchangeSelection,
+  cancelMesmerLapseSelection,
+};
 try {
   if (typeof window !== 'undefined') {
     window.__spells = api;

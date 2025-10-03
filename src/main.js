@@ -7,6 +7,7 @@ const STARTER_FIRESET = DECKS[0]?.cards || [];
 import * as Rules from './core/rules.js';
 import { reducer, A, startGame, drawOne, drawOneNoAdd, shuffle, countControlled, countUnits } from './core/state.js';
 import { netState, NET_ON } from './core/netState.js';
+import { normalizePlayersMana } from './core/mana.js';
 import { createStore, makeMiddleware } from './lib/store.js';
 // Scene modules (new)
 import {
@@ -187,6 +188,9 @@ if (typeof window !== 'undefined') {
 // Унифицированное применение нового состояния игры
 export function applyGameState(state) {
   try {
+    if (state && typeof state === 'object') {
+      normalizePlayersMana(state);
+    }
     // Обновляем глобальную переменную
     window.gameState = state;
     // Синхронизируем стораж, чтобы состояние не откатывалось в конце хода

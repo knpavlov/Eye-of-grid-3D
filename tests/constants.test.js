@@ -15,6 +15,8 @@ describe('constants helpers', () => {
     expect(capMana(9)).toBe(9);
     expect(capMana(10)).toBe(10);
     expect(capMana(11)).toBe(10);
+    expect(capMana(-5)).toBe(0);
+    expect(capMana('invalid')).toBe(0);
   });
 
   it('attackCost: prefers activation if provided', () => {
