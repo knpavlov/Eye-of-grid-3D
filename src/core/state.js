@@ -1,6 +1,7 @@
 ﻿// Game state: reducer + helpers
 import { capMana } from './constants.js';
 import { shuffle, drawOne, drawOneNoAdd, countControlled, countUnits, randomBoard, startGame } from './board.js';
+import { clampAllPlayersMana } from './mana.js';
 import { applyTurnStartManaEffects } from './abilities.js';
 
 export { shuffle, drawOne, drawOneNoAdd, countControlled, countUnits, randomBoard, startGame };
@@ -22,6 +23,7 @@ export function reducer(state, action) {
         startOptions.players = action.players;
       }
       const s = startGame(action.deck0, action.deck1, startOptions);
+      clampAllPlayersMana(s);
       s.__ver = (state?.__ver || 0) + 1;
       return s;
     }
@@ -30,7 +32,9 @@ export function reducer(state, action) {
       const incomingVer = Number(incoming?.__ver) || 0;
       const currentVer = Number(state?.__ver) || 0;
       if (incomingVer < currentVer) return state;
-      return { ...incoming };
+      const nextState = { ...incoming };
+      clampAllPlayersMana(nextState);
+      return nextState;
     }
     case A.END_TURN: {
       if (!state || state.winner != null) return state;
@@ -50,6 +54,7 @@ export function reducer(state, action) {
       // Optional draw: only enqueue for animation elsewhere; here push straight for logic
       const drawn = drawOneNoAdd(s, s.active);
       if (drawn) pl.hand.push(drawn);
+      clampAllPlayersMana(s);
       s.__ver = (s.__ver || 0) + 1;
       return s;
     }

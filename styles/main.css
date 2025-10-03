@@ -32,6 +32,32 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
   background: radial-gradient(circle at 40% 40%, rgba(224,242,254,0.95), rgba(14,165,233,0.85) 55%, rgba(37,99,235,0.65) 85%);
   box-shadow: 0 0 12px rgba(56,189,248,0.9);
 }
+.mana-drain-message {
+  position: fixed;
+  min-width: 120px;
+  padding: 8px 16px;
+  border-radius: 14px;
+  background: rgba(15,23,42,0.92);
+  color: #f97316;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-align: center;
+  pointer-events: none;
+  transform: translate(-50%, -10px) scale(0.92);
+  opacity: 0;
+  transition: opacity 180ms ease, transform 200ms ease;
+  box-shadow: 0 8px 20px rgba(15,23,42,0.45), 0 0 12px rgba(249,115,22,0.35);
+  text-shadow: 0 0 6px rgba(249,115,22,0.55);
+  z-index: 130;
+}
+.mana-drain-message--visible {
+  opacity: 1;
+  transform: translate(-50%, -22px) scale(1);
+}
+.mana-drain-message--hiding {
+  opacity: 0;
+  transform: translate(-50%, -34px) scale(0.94);
+}
 /* Кнопка завершения хода с круговым таймером **/
 .end-turn-btn {
   position: relative; width: 84px; height: 84px; border-radius: 50%;
