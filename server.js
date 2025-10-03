@@ -99,6 +99,23 @@ if (dbReadyOnStart) {
 const queue = [];
 const matches = new Map(); // matchId -> { room, sockets:[s0,s1], lastState, lastVer, timerSeconds, timerId }
 
+function clampPlayersMana(state) {
+  if (!state || !Array.isArray(state.players)) return state;
+  for (const player of state.players) {
+    if (!player) continue;
+    const current = Number(player.mana);
+    const normalized = capMana(Number.isFinite(current) ? current : 0);
+    player.mana = normalized;
+    if (typeof player._beforeMana === 'number') {
+      const before = capMana(player._beforeMana);
+      player._beforeMana = Math.min(before, normalized);
+    } else if (player && Object.prototype.hasOwnProperty.call(player, '_beforeMana') && player._beforeMana != null) {
+      try { delete player._beforeMana; } catch { player._beforeMana = undefined; }
+    }
+  }
+  return state;
+}
+
 function pairIfPossible() {
   pushLog({ ev: 'pairIfPossible:start', queueSize: queue.length });
 
@@ -308,7 +325,7 @@ io.on("connection", (socket) => {
     const m = matches.get(matchId);
     // Если это первый снапшот — принимаем и рассылаем
     if (!m.lastState) {
-      m.lastState = state ?? null;
+      m.lastState = clampPlayersMana(state ?? null) || null;
       try { m.lastVer = Number(state && state.__ver) || 0; } catch { m.lastVer = 0; }
       // сброс таймера на первый ход
       m.timerSeconds = 100;
@@ -331,10 +348,10 @@ io.on("connection", (socket) => {
       m.lastVer = incomingVer;
     } catch {}
     // Accept client state but keep server-authoritative turn/active
-    const incoming = state ?? m.lastState;
+    const incoming = clampPlayersMana(state ?? m.lastState) || m.lastState;
     const keptActive = m.lastState?.active;
     const keptTurn = m.lastState?.turn;
-    m.lastState = { ...incoming, active: keptActive, turn: keptTurn };
+    m.lastState = clampPlayersMana({ ...incoming, active: keptActive, turn: keptTurn });
     // Emit authoritative state only; turn changes happen via 'endTurn'
     // Emit authoritative state only; turn changes happen via endTurn
     io.to(m.room).emit("state", m.lastState);
@@ -394,6 +411,8 @@ io.on("connection", (socket) => {
       }
     } catch {}
 
+    // Обновляем версию состояния и предварительно нормализуем ману игроков
+    clampPlayersMana(st);
     // Bump version and persist
     try { st.__ver = (Number(st.__ver) || 0) + 1; } catch {}
     m.lastVer = Number(st.__ver) || (m.lastVer || 0);
@@ -451,6 +470,7 @@ io.on("connection", (socket) => {
       const pos = queue.indexOf(req);
       if (pos >= 0) queue.splice(pos, 1);
     }
+    clampPlayersMana(st);
     try { st.__ver = (Number(st.__ver) || 0) + 1; m.lastVer = st.__ver; } catch { m.lastVer = m.lastVer || 0; }
     m.lastState = st;
     try {
@@ -517,6 +537,22 @@ io.on("connection", (socket) => {
     pushLog({ ev: 'tileCrossfade', sid: socket.id, matchId, r: payload?.r, c: payload?.c, prev: payload?.prev, next: payload?.next });
   });
 
+  socket.on("manaDrainFx", (payload = {}) => {
+    const matchId = socket.data.matchId;
+    if (!matchId || !matches.has(matchId)) return;
+    const m = matches.get(matchId);
+    try { payload.bySeat = socket.data.seat; } catch {}
+    io.to(m.room).emit("manaDrainFx", payload);
+    pushLog({
+      ev: 'manaDrainFx',
+      sid: socket.id,
+      matchId,
+      amount: payload?.amount,
+      from: payload?.from,
+      drainOnly: payload?.drainOnly,
+    });
+  });
+
   // ритуальные спеллы (Holy Feast): подтверждение и визуальная синхронизация
   socket.on("ritualResolve", (payload) => {
     const matchId = socket.data.matchId;
@@ -563,12 +599,12 @@ io.on("connection", (socket) => {
         if (spellCard) pl.graveyard.push(spellCard);
         if (creatureCard) pl.graveyard.push(creatureCard);
       } catch {}
-      // +2 маны
-      const cap = (m) => Math.min(10, m);
-      const beforeMana = (pl.mana || 0);
-      pl.mana = cap(beforeMana + 2);
-      // Обновим версию состояния и разошлём
+      // +2 маны с нормализацией всего состояния
+      const beforeMana = Number(pl.mana) || 0;
+      pl.mana = capMana(beforeMana + 2);
+      clampPlayersMana(st);
       try { st.__ver = (Number(st.__ver) || 0) + 1; m.lastVer = st.__ver; } catch { m.lastVer = m.lastVer || 0; }
+      m.lastState = st;
       // ЯВНО сообщим клиентам, что ритуал завершён — чтобы они закрыли локальные UI-состояния
       io.to(m.room).emit("ritualResolve", { kind: 'HOLY_FEAST', by: seat, consumedIdx: creatureIdx, spellIdx, consumedCard: removed1?.id !== 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1?.id : removed2?.id, spellCard: removed1?.id === 'SPELL_PARMTETIC_HOLY_FEAST' ? removed1?.id : removed2?.id });
       io.to(m.room).emit("state", st);
