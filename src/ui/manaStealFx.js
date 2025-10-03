@@ -1,37 +1,70 @@
 // Анимация визуального эффекта кражи маны
+import { showManaDrainMessage } from './manaDrainMessage.js';
+
 export function animateManaSteal(event) {
   try {
     if (!event) return;
     const amountRaw = Number(event.amount || event.count || 0);
     const amount = Math.max(0, Math.floor(amountRaw));
     const fromIndex = Number.isInteger(event.from) ? event.from : null;
-    const toIndex = Number.isInteger(event.to) ? event.to : null;
-    if (amount <= 0 || fromIndex == null || toIndex == null) return;
+    const toIndexRaw = Number.isInteger(event.to) ? event.to : null;
+    const drainOnly = event?.drainOnly === true || event?.mode === 'DRAIN' || event?.drain === true;
+    if (amount <= 0 || fromIndex == null) return;
     const fromBar = document.getElementById(`mana-display-${fromIndex}`);
-    const toBar = document.getElementById(`mana-display-${toIndex}`);
-    if (!fromBar || !toBar) return;
+    if (!fromBar) return;
+    const toBar = (!drainOnly && toIndexRaw != null)
+      ? document.getElementById(`mana-display-${toIndexRaw}`)
+      : null;
+    if (!drainOnly && (!toBar || toIndexRaw == null)) return;
 
     const beforeFrom = Number.isFinite(event?.before?.fromMana)
       ? event.before.fromMana
       : (Number(event?.after?.fromMana) || 0) + amount;
-    const beforeTo = Number.isFinite(event?.before?.toMana)
+    const beforeTo = (!drainOnly && Number.isFinite(event?.before?.toMana))
       ? event.before.toMana
-      : Math.max(0, (Number(event?.after?.toMana) || 0) - amount);
-    const afterTo = Number.isFinite(event?.after?.toMana)
+      : (!drainOnly ? Math.max(0, (Number(event?.after?.toMana) || 0) - amount) : 0);
+    const afterTo = (!drainOnly && Number.isFinite(event?.after?.toMana))
       ? event.after.toMana
-      : Math.min(10, beforeTo + amount);
+      : (!drainOnly ? Math.min(10, beforeTo + amount) : 0);
+
+    const sourceName = typeof event?.source?.name === 'string' && event.source.name.trim()
+      ? event.source.name.trim()
+      : null;
+
+    const rawMessageText = [event?.messageText, event?.message, event?.hint]
+      .find(msg => typeof msg === 'string' && msg.trim());
+    const shouldNotifyLoss = (() => {
+      if (event?.notifyLoss === false) return false;
+      if (event?.notifyLoss === true) return amount > 0;
+      return drainOnly && amount > 0;
+    })();
+    if (shouldNotifyLoss && fromIndex != null && amount > 0) {
+      try {
+        showManaDrainMessage({
+          playerIndex: fromIndex,
+          amount,
+          text: rawMessageText,
+          sourceName,
+          duration: Number.isFinite(event?.messageDuration) ? event.messageDuration : undefined,
+        });
+      } catch (err) {
+        console.warn('[mana] Не удалось показать сообщение об утрате маны:', err);
+      }
+    }
 
     const fromSlots = [];
     for (let i = 0; i < amount; i += 1) {
       fromSlots.push(Math.max(0, Math.min(9, beforeFrom - 1 - i)));
     }
     const newSlots = [];
-    for (let idx = beforeTo; idx < afterTo; idx += 1) {
-      newSlots.push(Math.max(0, Math.min(9, idx)));
-    }
-    while (newSlots.length < amount) {
-      const fallback = newSlots.length ? newSlots[newSlots.length - 1] : Math.max(0, Math.min(9, afterTo - 1));
-      newSlots.push(fallback);
+    if (!drainOnly) {
+      for (let idx = beforeTo; idx < afterTo; idx += 1) {
+        newSlots.push(Math.max(0, Math.min(9, idx)));
+      }
+      while (newSlots.length < amount) {
+        const fallback = newSlots.length ? newSlots[newSlots.length - 1] : Math.max(0, Math.min(9, afterTo - 1));
+        newSlots.push(fallback);
+      }
     }
 
     const getSlotRect = (barEl, idx) => {
@@ -43,6 +76,54 @@ export function animateManaSteal(event) {
         if (last) return last.getBoundingClientRect();
       }
       return barEl.getBoundingClientRect();
+    };
+
+    const spawnDrain = (fromIdx, delayMs) => {
+      const fromRect = getSlotRect(fromBar, fromIdx);
+      if (!fromRect) return;
+      const orb = document.createElement('div');
+      orb.className = 'mana-orb--steal-fx';
+      orb.style.position = 'fixed';
+      orb.style.left = `${fromRect.left + fromRect.width / 2}px`;
+      orb.style.top = `${fromRect.top + fromRect.height / 2}px`;
+      orb.style.transform = 'translate(-50%, -50%) scale(0.9)';
+      orb.style.opacity = '0';
+      orb.style.zIndex = '90';
+      document.body.appendChild(orb);
+
+      const slotEl = fromBar.children?.[fromIdx];
+      if (slotEl) {
+        slotEl.style.transition = 'opacity 220ms ease';
+        slotEl.style.opacity = '0';
+        const restoreDelay = Math.max(260, delayMs + 260);
+        setTimeout(() => {
+          try { slotEl.style.opacity = '1'; } catch {}
+        }, restoreDelay);
+      }
+
+      const cleanup = () => {
+        try { if (orb.parentNode) orb.parentNode.removeChild(orb); } catch {}
+      };
+
+      const tl = window.gsap?.timeline({ delay: Math.max(0, delayMs) / 1000, onComplete: cleanup });
+      if (tl) {
+        tl.to(orb, { duration: 0.2, opacity: 1, scale: 1.05, ease: 'power2.out' })
+          .to(orb, { duration: 0.36, y: '-42', ease: 'power1.out' }, '>-0.06')
+          .to(orb, { duration: 0.28, opacity: 0, scale: 0.6, ease: 'power2.in' }, '>-0.2');
+      } else {
+        setTimeout(() => {
+          orb.style.transition = 'transform 260ms ease, opacity 260ms ease';
+          requestAnimationFrame(() => {
+            orb.style.opacity = '1';
+            orb.style.transform = 'translate(-50%, -80%) scale(1.05)';
+            setTimeout(() => {
+              orb.style.opacity = '0';
+              orb.style.transform = 'translate(-50%, -118%) scale(0.6)';
+              setTimeout(cleanup, 260);
+            }, 200);
+          });
+        }, Math.max(0, delayMs));
+      }
     };
 
     const spawnSteal = (fromIdx, toIdx, delayMs) => {
@@ -137,8 +218,12 @@ export function animateManaSteal(event) {
 
     for (let i = 0; i < amount; i += 1) {
       const fromIdx = fromSlots[i] ?? fromSlots[fromSlots.length - 1] ?? 0;
-      const toIdx = newSlots[i] ?? newSlots[newSlots.length - 1] ?? 0;
-      spawnSteal(fromIdx, toIdx, i * 140);
+      if (drainOnly) {
+        spawnDrain(fromIdx, i * 140);
+      } else {
+        const toIdx = newSlots[i] ?? newSlots[newSlots.length - 1] ?? 0;
+        spawnSteal(fromIdx, toIdx, i * 140);
+      }
     }
   } catch (err) {
     console.warn('[mana] animateManaSteal failed', err);
