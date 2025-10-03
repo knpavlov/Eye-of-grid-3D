@@ -47,6 +47,7 @@ export const interactionState = {
   pendingSpellTelekinesis: null,
   pendingSpellFieldExchange: null,
   pendingSpellLapse: null,
+  pendingSpellElementalDominion: null,
   spellDragHandled: false,
   // флаг для автоматического завершения хода после атаки
   autoEndTurnAfterAttack: false,
@@ -679,6 +680,7 @@ export function resetCardSelection() {
     || interactionState.pendingSpellTelekinesis
     || interactionState.pendingSpellFieldExchange
     || interactionState.pendingSpellLapse
+    || interactionState.pendingSpellElementalDominion
   ) {
     try { window.__ui?.panels?.hidePrompt?.(); } catch {}
   }
@@ -692,6 +694,10 @@ export function resetCardSelection() {
     try { window.__spells?.cancelMesmerLapseSelection?.(); } catch {}
     interactionState.pendingSpellLapse = null;
     interactionState.pendingDiscardSelection = null;
+  }
+  if (interactionState.pendingSpellElementalDominion) {
+    try { window.__spells?.cancelElementalDominionSelection?.(); } catch {}
+    interactionState.pendingSpellElementalDominion = null;
   }
   clearHighlights();
   clearPlacementHighlights();
