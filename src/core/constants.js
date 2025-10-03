@@ -29,7 +29,15 @@ export const facingDeg = { N: 0, E: -90, S: 180, W: 90 };
 // Helpers
 export const uid = () => Math.random().toString(36).slice(2, 9);
 export const inBounds = (r, c) => r >= 0 && r < 3 && c >= 0 && c < 3;
-export const capMana = (m) => Math.min(10, m);
+// Ограничение значения маны в допустимых границах (0..10) с приведением к целому числу
+export const capMana = (value) => {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return 0;
+  const normalized = Math.round(raw);
+  if (normalized <= 0) return 0;
+  if (normalized >= 10) return 10;
+  return normalized;
+};
 
 import { activationCost, rotateCost as rawRotateCost } from './abilities.js';
 

@@ -32,6 +32,21 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
   background: radial-gradient(circle at 40% 40%, rgba(224,242,254,0.95), rgba(14,165,233,0.85) 55%, rgba(37,99,235,0.65) 85%);
   box-shadow: 0 0 12px rgba(56,189,248,0.9);
 }
+.mana-drain-toast {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.55);
+  color: #fecaca;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-size: 13px;
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.7);
+  pointer-events: none;
+  user-select: none;
+  will-change: transform, opacity;
+}
 /* Кнопка завершения хода с круговым таймером **/
 .end-turn-btn {
   position: relative; width: 84px; height: 84px; border-radius: 50%;

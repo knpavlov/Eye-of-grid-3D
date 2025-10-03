@@ -827,6 +827,40 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
     }
   });
 
+  socket.on('manaDrainFx', (payload = {}) => {
+    try {
+      const bySeat = (typeof payload?.bySeat === 'number') ? payload.bySeat : null;
+      if (typeof MY_SEAT === 'number' && bySeat != null && MY_SEAT === bySeat) {
+        return;
+      }
+    } catch {}
+
+    try {
+      const fxModule = window.__ui?.manaStealFx || {};
+      if (typeof fxModule.playManaDrainFx === 'function') {
+        fxModule.playManaDrainFx(payload, { broadcast: false });
+        return;
+      }
+      const animate = fxModule.animateManaSteal
+        || window.animateManaSteal
+        || window.__ui?.mana?.animateManaSteal;
+      if (typeof animate === 'function') {
+        animate(payload);
+      }
+      const notify = fxModule.showManaDrainMessage
+        || window.__ui?.mana?.showManaDrainMessage;
+      const amount = Math.max(0, Math.floor(Number(payload?.amount) || 0));
+      const ownerIdx = Number.isInteger(payload?.toastOwnerIndex)
+        ? payload.toastOwnerIndex
+        : (Number.isInteger(payload?.from) ? payload.from : null);
+      if (typeof notify === 'function' && amount > 0 && ownerIdx != null) {
+        notify(ownerIdx, amount, payload?.toastOptions || {});
+      }
+    } catch (err) {
+      console.warn('[net] Ошибка показа удалённого эффекта потери маны:', err);
+    }
+  });
+
   // ===== 5) Queue / start =====
   function onFindMatchClick(deckId){
     const hasToken = connectWithCurrentToken({ refresh: true });
