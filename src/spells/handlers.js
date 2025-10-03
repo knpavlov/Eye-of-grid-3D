@@ -23,6 +23,12 @@ import { applyFieldFatalityCheck, describeFieldFatality } from '../core/abilityH
 import { highlightTiles, clearHighlights } from '../scene/highlight.js';
 import { createDeathEntry } from '../core/abilityHandlers/deathRecords.js';
 import { capMana } from '../core/constants.js';
+import {
+  computeElementalBurstPlan,
+  applyElementalBurstPlan,
+  countFieldsByElement,
+} from '../core/spells/elementalDominion.js';
+import { normalizeElementName } from '../core/utils/elements.js';
 
 // Универсальные хелперы для повторного использования механик заклинаний
 function getUnitMeshAt(r, c) {
@@ -147,6 +153,423 @@ function processSpellDeaths(deaths, { cause = 'SPELL', delayMs = 1000 } = {}) {
     updateUnits();
     updateUI();
   }, delayMs);
+}
+
+
+// --- Доминионские заклинания с жертвой существ ---
+
+const ELEMENTAL_LABELS = {
+  FIRE: { field: 'огненное поле', element: 'огненной стихии', plural: 'огненных' },
+  WATER: { field: 'водное поле', element: 'водной стихии', plural: 'водных' },
+  EARTH: { field: 'земное поле', element: 'земной стихии', plural: 'земных' },
+  FOREST: { field: 'лесное поле', element: 'лесной стихии', plural: 'лесных' },
+  BIOLITH: { field: 'биолитовое поле', element: 'биолитной стихии', plural: 'биолитовых' },
+};
+
+const ELEMENTAL_DOMINION_SPELLS = {
+  SPELL_SCIONDAR_INFERNO: {
+    element: 'FIRE',
+    requireFieldElement: 'FIRE',
+    selectionMode: 'SINGLE',
+  },
+  SPELL_ICE_FLOOD_OF_OKUNADA: {
+    element: 'WATER',
+    requireFieldElement: 'WATER',
+    selectionMode: 'SINGLE',
+  },
+  SPELL_FIST_OF_VERZAR: {
+    element: 'EARTH',
+    requireFieldElement: 'EARTH',
+    selectionMode: 'SINGLE',
+  },
+  SPELL_WRATHFUL_WINDS_OF_JUNO: {
+    element: 'FOREST',
+    requireFieldElement: 'FOREST',
+    selectionMode: 'SINGLE',
+  },
+  SPELL_BLINDING_SKIES: {
+    element: 'BIOLITH',
+    requireFieldElement: 'BIOLITH',
+    selectionMode: 'ALL_BIOLITH',
+  },
+};
+
+function getElementLabels(element) {
+  const normalized = normalizeElementName(element);
+  return ELEMENTAL_LABELS[normalized] || {
+    field: 'нужное поле',
+    element: 'нужной стихии',
+    plural: 'нужных',
+  };
+}
+
+function formatNameList(names) {
+  if (!Array.isArray(names) || !names.length) return '';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} и ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')} и ${names[names.length - 1]}`;
+}
+
+function cancelElementalBurstSelection() {
+  const pending = interactionState.pendingElementalBurst;
+  if (!pending) return;
+  if (pending.discards?.length) {
+    showNotification('Жертвоприношение уже началось, отмена невозможна.', 'error');
+    try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+    return;
+  }
+  interactionState.pendingElementalBurst = null;
+  interactionState.pendingDiscardSelection = null;
+  try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+  if (pending.cardMesh) {
+    try { pending.cardMesh.visible = true; } catch {}
+  }
+  resetCardSelection();
+  updateHand();
+  updateUI();
+}
+
+function updateElementalBurstPrompt(pending) {
+  if (!pending) return;
+  const cfg = pending.config || {};
+  const labels = getElementLabels(cfg.element);
+  const remaining = Math.max(0, (pending.discardCount || 0) - (pending.discards?.length || 0));
+  const neededMatch = Math.max(0, (pending.requiredMatches || 0) - (pending.matched || 0));
+  let message;
+  if (!pending.discards?.length) {
+    message = `Выберите 2 существа для жертвоприношения (минимум одно ${labels.element}).`;
+  } else if (remaining === 1 && neededMatch > 0) {
+    message = `Выберите существо ${labels.element} для завершения жертвы.`;
+  } else if (remaining > 0) {
+    message = `Выберите ещё ${remaining} существо для жертвоприношения.`;
+  } else {
+    message = 'Жертвоприношение завершается...';
+  }
+  try {
+    window.__ui?.panels?.showPrompt?.(message, () => {
+      cancelElementalBurstSelection();
+      updateUI();
+    });
+  } catch {}
+  try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+  return message;
+}
+
+function handleElementalBurstDiscard(handIdx) {
+  const pending = interactionState.pendingElementalBurst;
+  if (!pending) return;
+  const state = typeof gameState !== 'undefined' ? gameState : (typeof window !== 'undefined' ? window.gameState : null);
+  if (!state) {
+    cancelElementalBurstSelection();
+    return;
+  }
+  const player = Number.isInteger(pending.playerIndex) ? state.players?.[pending.playerIndex] : null;
+  if (!player) {
+    cancelElementalBurstSelection();
+    return;
+  }
+  if (!Number.isInteger(handIdx)) {
+    showNotification('Некорректный выбор карты', 'error');
+    return;
+  }
+  const cardTpl = player.hand?.[handIdx];
+  if (!cardTpl || cardTpl.type !== 'UNIT') {
+    showNotification('Нужно выбрать карту существа', 'error');
+    return;
+  }
+  const labels = getElementLabels(pending.config?.element);
+  const normalizedElement = normalizeElementName(cardTpl.element);
+  const remainingSlots = Math.max(0, (pending.discardCount || 0) - (pending.discards?.length || 0));
+  const neededMatch = Math.max(0, (pending.requiredMatches || 0) - (pending.matched || 0));
+  if (
+    neededMatch > 0
+    && normalizedElement !== pending.requiredElement
+    && remainingSlots <= neededMatch
+  ) {
+    showNotification(`Нужно выбрать существо ${labels.element}.`, 'error');
+    return;
+  }
+
+  const discarded = discardHandCard(player, handIdx);
+  if (!discarded) return;
+  const discardedElement = normalizeElementName(discarded.element);
+  pending.discards = Array.isArray(pending.discards) ? pending.discards : [];
+  pending.discards.push({ tplId: discarded.id, element: discardedElement });
+  if (discardedElement === pending.requiredElement) {
+    pending.matched = (pending.matched || 0) + 1;
+  }
+
+  const remaining = Math.max(0, (pending.discardCount || 0) - pending.discards.length);
+  if (remaining > 0) {
+    updateElementalBurstPrompt(pending);
+    return;
+  }
+
+  interactionState.pendingDiscardSelection = null;
+  finalizeElementalBurst();
+}
+
+function startElementalBurstDiscard() {
+  const pending = interactionState.pendingElementalBurst;
+  if (!pending) return;
+  updateElementalBurstPrompt(pending);
+  interactionState.pendingDiscardSelection = {
+    requiredType: 'UNIT',
+    forced: true,
+    invalidMessage: 'Нужно выбрать карту существа',
+    onPicked: handIdx => handleElementalBurstDiscard(handIdx),
+  };
+}
+
+function ensureSpellCardIndex(player, pending) {
+  if (!player || !pending) return -1;
+  const ref = pending.cardRef || pending.tpl || null;
+  if (!Array.isArray(player.hand)) return -1;
+  if (pending.handIndex != null && player.hand[pending.handIndex] === ref) {
+    return pending.handIndex;
+  }
+  const byRef = ref ? player.hand.indexOf(ref) : -1;
+  if (byRef >= 0) return byRef;
+  if (pending.spellId) {
+    return player.hand.findIndex(card => card && card.id === pending.spellId);
+  }
+  return -1;
+}
+
+function logElementalBurstSacrifice(pending) {
+  if (!pending?.tpl || !Array.isArray(pending.discards) || !pending.discards.length) return;
+  const names = pending.discards
+    .map(info => (info?.tplId && CARDS?.[info.tplId]?.name) || 'существо')
+    .filter(Boolean);
+  if (!names.length) return;
+  addLog(`${pending.tpl.name}: принесены в жертву ${formatNameList(names)}.`);
+}
+
+function finalizeElementalBurst() {
+  const pending = interactionState.pendingElementalBurst;
+  if (!pending) return;
+  interactionState.pendingElementalBurst = null;
+  try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+  try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+
+  const state = typeof gameState !== 'undefined' ? gameState : (typeof window !== 'undefined' ? window.gameState : null);
+  if (!state) return;
+  const player = Number.isInteger(pending.playerIndex) ? state.players?.[pending.playerIndex] : null;
+  if (!player) return;
+
+  let handIdx = ensureSpellCardIndex(player, pending);
+  if (handIdx < 0) {
+    showNotification('Карта заклинания уже недоступна', 'error');
+    return;
+  }
+
+  const cfg = pending.config || {};
+  const labels = getElementLabels(cfg.element);
+  const planConfig = { element: cfg.damageElement || cfg.element };
+  if (cfg.selectionMode === 'ALL_BIOLITH') {
+    planConfig.mode = 'ALL_BIOLITH';
+  } else if (pending.target) {
+    planConfig.centers = [pending.target];
+  } else {
+    planConfig.centers = [];
+  }
+
+  const plan = computeElementalBurstPlan(state, pending.playerIndex, planConfig);
+  const result = applyElementalBurstPlan(state, plan);
+  const tileMesh = pending.tileMesh || (pending.target ? getTileMeshAt(pending.target.r, pending.target.c) : null);
+
+  logElementalBurstSacrifice(pending);
+  addLog(`${pending.tpl.name}: количество ${labels.plural} полей = ${result.damage}.`);
+
+  if (Array.isArray(result.hits) && result.hits.length) {
+    for (const hit of result.hits) {
+      const tplName = CARDS?.[hit.tplId]?.name || 'Существо';
+      const dmg = Math.abs(hit.delta || 0);
+      const cellLabel = `(${hit.r + 1},${hit.c + 1})`;
+      addLog(`${pending.tpl.name}: ${tplName} ${cellLabel} получает ${dmg} урона (HP ${hit.before}→${hit.after}).`);
+      spawnHpShiftText(hit.r, hit.c, hit.delta);
+    }
+  } else {
+    addLog(`${pending.tpl.name}: подходящих вражеских целей не найдено.`);
+  }
+
+  burnSpellCard(pending.tpl, tileMesh, pending.cardMesh || null);
+  spendAndDiscardSpell(player, handIdx);
+  resetCardSelection();
+  updateHand();
+  refreshPossessionsUI(state);
+  updateUnits();
+  updateUI();
+
+  if (Array.isArray(result.deaths) && result.deaths.length) {
+    processSpellDeaths(result.deaths);
+  }
+}
+
+function startElementalBurst(ctx) {
+  const { tpl, pl, idx, tileMesh, cardMesh } = ctx;
+  const cfg = ELEMENTAL_DOMINION_SPELLS[tpl.id];
+  if (!cfg) return false;
+
+  const state = typeof gameState !== 'undefined' ? gameState : (typeof window !== 'undefined' ? window.gameState : null);
+  if (!state) {
+    showNotification('Игра не готова к обработке заклинания', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return true;
+  }
+
+  if (interactionState.pendingElementalBurst) {
+    showNotification('Сначала завершите текущее жертвоприношение.', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return true;
+  }
+  if (interactionState.pendingDiscardSelection) {
+    showNotification('Сначала завершите другой выбор карты.', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return true;
+  }
+
+  const labels = getElementLabels(cfg.element);
+  let target = null;
+  let resolvedTile = tileMesh || null;
+
+  if (cfg.selectionMode !== 'ALL_BIOLITH') {
+    const r = tileMesh?.userData?.row ?? null;
+    const c = tileMesh?.userData?.col ?? null;
+    if (r == null || c == null) {
+      showNotification(`Нужно выбрать ${labels.field}.`, 'error');
+      if (cardMesh) returnCardToHand(cardMesh);
+      return true;
+    }
+    const cell = state.board?.[r]?.[c];
+    const cellElement = normalizeElementName(cell?.element);
+    if (cellElement !== normalizeElementName(cfg.requireFieldElement)) {
+      showNotification(`Выберите ${labels.field}.`, 'error');
+      if (cardMesh) returnCardToHand(cardMesh);
+      return true;
+    }
+    target = { r, c };
+    if (!resolvedTile) {
+      resolvedTile = getTileMeshAt(r, c);
+    }
+  } else {
+    const totalBiolith = countFieldsByElement(state, 'BIOLITH');
+    if (!totalBiolith) {
+      showNotification('На арене нет биолитовых полей.', 'error');
+      if (cardMesh) returnCardToHand(cardMesh);
+      return true;
+    }
+  }
+
+  const handUnits = Array.isArray(pl.hand) ? pl.hand.filter(card => card?.type === 'UNIT') : [];
+  if (handUnits.length < 2) {
+    showNotification('В руке недостаточно существ для жертвы.', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return true;
+  }
+  const requiredElement = normalizeElementName(cfg.element);
+  const hasRequired = handUnits.some(card => normalizeElementName(card.element) === requiredElement);
+  if (!hasRequired) {
+    showNotification(`В руке нет существ ${labels.element}.`, 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return true;
+  }
+
+  interactionState.pendingElementalBurst = {
+    spellId: tpl.id,
+    tpl,
+    cardRef: tpl,
+    playerIndex: state.active,
+    handIndex: idx,
+    requiredElement,
+    requiredMatches: 1,
+    discardCount: 2,
+    discards: [],
+    matched: 0,
+    target,
+    tileMesh: resolvedTile || null,
+    cardMesh: cardMesh || null,
+    config: {
+      ...cfg,
+      element: cfg.element,
+      damageElement: cfg.element,
+    },
+  };
+
+  interactionState.spellDragHandled = true;
+  if (cardMesh) returnCardToHand(cardMesh);
+
+  addLog(`${tpl.name}: выберите карты существ для жертвы (минимум одно ${labels.element}).`);
+  startElementalBurstDiscard();
+  return true;
+}
+
+const RIOTOUS_IMPUNITY_ORDER = [
+  { r: 1, c: 1 },
+  { r: 0, c: 1 },
+  { r: 0, c: 2 },
+  { r: 1, c: 2 },
+  { r: 2, c: 2 },
+  { r: 2, c: 1 },
+  { r: 2, c: 0 },
+  { r: 1, c: 0 },
+  { r: 0, c: 0 },
+];
+
+function handleRiotousImpunity(ctx) {
+  const { tpl, pl, idx, cardMesh, tileMesh } = ctx;
+  const state = typeof gameState !== 'undefined' ? gameState : (typeof window !== 'undefined' ? window.gameState : null);
+  if (!state) {
+    showNotification('Игра не готова к обработке заклинания', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  const currentIdx = (typeof idx === 'number' && Array.isArray(pl.hand) && pl.hand[idx] === tpl)
+    ? idx
+    : (Array.isArray(pl.hand) ? pl.hand.indexOf(tpl) : -1);
+  if (currentIdx < 0) {
+    showNotification('Карта заклинания уже недоступна', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  const resolvedTile = tileMesh || getTileMeshAt(1, 1) || null;
+  burnSpellCard(tpl, resolvedTile, cardMesh || null);
+  spendAndDiscardSpell(pl, currentIdx);
+  resetCardSelection();
+  updateHand();
+  updateUI();
+
+  addLog(`${tpl.name}: существа сражаются по часовой стрелке, начиная с центра.`);
+
+  const runSequence = async () => {
+    for (const pos of RIOTOUS_IMPUNITY_ORDER) {
+      const cell = state.board?.[pos.r]?.[pos.c];
+      const unit = cell?.unit;
+      if (!unit) continue;
+      const tplUnit = CARDS?.[unit.tplId];
+      const currentHp = Number.isFinite(unit.currentHP) ? unit.currentHP : (tplUnit?.hp || 0);
+      if (currentHp <= 0) continue;
+      if (unit.lastAttackTurn === state.turn) {
+        unit.lastAttackTurn = state.turn - 1;
+      }
+      if (typeof window.performBattleSequence === 'function') {
+        try {
+          await window.performBattleSequence(pos.r, pos.c, true, { reason: 'SCIONS_RIOTOUS_IMPUNITY' });
+        } catch (err) {
+          console.error('[RiotousImpunity] Ошибка последовательности боя:', err);
+        }
+      }
+    }
+    addLog(`${tpl.name}: ход завершается.`);
+    requestAutoEndTurn();
+  };
+
+  runSequence().catch(err => {
+    console.error('[RiotousImpunity] Ошибка запуска последовательности:', err);
+    requestAutoEndTurn();
+  });
 }
 
 
@@ -912,6 +1335,48 @@ export function handlePendingBoardClick({ unitMesh = null, tileMesh = null } = {
 }
 
 export const handlers = {
+  SPELL_SCIONDAR_INFERNO: {
+    onBoard(ctx) {
+      startElementalBurst(ctx);
+    },
+  },
+
+  SPELL_ICE_FLOOD_OF_OKUNADA: {
+    onBoard(ctx) {
+      startElementalBurst(ctx);
+    },
+  },
+
+  SPELL_FIST_OF_VERZAR: {
+    onBoard(ctx) {
+      startElementalBurst(ctx);
+    },
+  },
+
+  SPELL_WRATHFUL_WINDS_OF_JUNO: {
+    onBoard(ctx) {
+      startElementalBurst(ctx);
+    },
+  },
+
+  SPELL_BLINDING_SKIES: {
+    onCast(ctx) {
+      startElementalBurst(ctx);
+    },
+    onBoard(ctx) {
+      startElementalBurst(ctx);
+    },
+  },
+
+  SPELL_SCIONS_RIOTOUS_IMPUNITY: {
+    onCast(ctx) {
+      handleRiotousImpunity(ctx);
+    },
+    onBoard(ctx) {
+      handleRiotousImpunity(ctx);
+    },
+  },
+
   SPELL_BEGUILING_FOG: {
     requiresUnitTarget: true,
     onUnit({ cardMesh, unitMesh, tpl }) {
