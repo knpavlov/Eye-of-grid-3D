@@ -23,6 +23,7 @@ import { applyFieldFatalityCheck, describeFieldFatality } from '../core/abilityH
 import { highlightTiles, clearHighlights } from '../scene/highlight.js';
 import { createDeathEntry } from '../core/abilityHandlers/deathRecords.js';
 import { capMana } from '../core/constants.js';
+import { stagedAttack } from '../core/rules.js';
 
 // Универсальные хелперы для повторного использования механик заклинаний
 function getUnitMeshAt(r, c) {
@@ -45,6 +46,621 @@ function spawnHpShiftText(r, c, delta) {
   if (!mesh) return;
   const color = delta > 0 ? '#22c55e' : '#ef4444';
   try { window.__fx.spawnDamageText(mesh, `${delta > 0 ? '+' : ''}${delta}`, color); } catch {}
+}
+
+function getActiveState() {
+  if (typeof gameState !== 'undefined') return gameState;
+  if (typeof window !== 'undefined' && window.gameState) return window.gameState;
+  if (typeof globalThis !== 'undefined' && globalThis.gameState) return globalThis.gameState;
+  return null;
+}
+
+const ELEMENTAL_OFFSETS = [
+  { dr: 0, dc: 0 },
+  { dr: -1, dc: 0 },
+  { dr: 1, dc: 0 },
+  { dr: 0, dc: -1 },
+  { dr: 0, dc: 1 },
+];
+
+const ELEMENT_LABELS = {
+  FIRE: 'огня',
+  WATER: 'воды',
+  EARTH: 'земли',
+  FOREST: 'леса',
+  BIOLITH: 'биолита',
+};
+
+function normalizeElement(raw) {
+  return raw ? String(raw).trim().toUpperCase() : '';
+}
+
+function formatElementGenitive(element) {
+  return ELEMENT_LABELS[normalizeElement(element)] || normalizeElement(element).toLowerCase();
+}
+
+function countElementFields(state, element) {
+  if (!state?.board) return 0;
+  const target = normalizeElement(element);
+  if (!target) return 0;
+  let total = 0;
+  for (let r = 0; r < 3; r += 1) {
+    for (let c = 0; c < 3; c += 1) {
+      if (normalizeElement(state.board?.[r]?.[c]?.element) === target) total += 1;
+    }
+  }
+  return total;
+}
+
+function collectElementalTargets(state, originR, originC, owner) {
+  const res = [];
+  if (!state?.board) return res;
+  for (const offset of ELEMENTAL_OFFSETS) {
+    const nr = originR + offset.dr;
+    const nc = originC + offset.dc;
+    if (nr < 0 || nr >= 3 || nc < 0 || nc >= 3) continue;
+    const cell = state.board?.[nr]?.[nc];
+    const unit = cell?.unit || null;
+    if (!unit) continue;
+    if (owner != null && unit.owner === owner) continue;
+    res.push({ r: nr, c: nc, unit });
+  }
+  return res;
+}
+
+function ensureSpellHandIndex(player, pending) {
+  if (!player || !pending) return -1;
+  let handIndex = pending.handIndex;
+  if (handIndex == null || player.hand?.[handIndex]?.id !== pending.spellId) {
+    handIndex = Array.isArray(player.hand)
+      ? player.hand.findIndex(card => card && card.id === pending.spellId)
+      : -1;
+  }
+  return handIndex;
+}
+
+function cancelElementalRitualSelection() {
+  const pending = interactionState.pendingElementalRitual;
+  if (!pending) return;
+  if (pending.selected?.length) {
+    showNotification('Ритуал уже в процессе, отмена недоступна', 'error');
+    return;
+  }
+  interactionState.pendingElementalRitual = null;
+  interactionState.pendingDiscardSelection = null;
+  try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+  try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+  if (pending.cardMesh) {
+    returnCardToHand(pending.cardMesh);
+  }
+  resetCardSelection();
+}
+
+function finalizeElementalRitual(pending) {
+  const state = getActiveState();
+  if (!state || !pending) {
+    cancelElementalRitualSelection();
+    return;
+  }
+  const active = typeof state.active === 'number' ? state.active : null;
+  const player = pending.player || (active != null ? state.players?.[active] : null);
+  if (!player) {
+    cancelElementalRitualSelection();
+    return;
+  }
+
+  const handIndex = ensureSpellHandIndex(player, pending);
+  const spellTpl = handIndex >= 0 ? player.hand?.[handIndex] : null;
+  if (!spellTpl || spellTpl.id !== pending.spellId) {
+    showNotification('Заклинание уже недоступно', 'error');
+    cancelElementalRitualSelection();
+    return;
+  }
+
+  const cost = Number(spellTpl.cost) || 0;
+  if (player.mana < cost) {
+    showNotification('Недостаточно маны для завершения ритуала', 'error');
+    cancelElementalRitualSelection();
+    return;
+  }
+
+  const element = pending.requiredElement;
+  const elementLabel = formatElementGenitive(element);
+  const damage = countElementFields(state, element);
+  const targets = collectElementalTargets(state, pending.targetR, pending.targetC, active);
+
+  if (damage <= 0) {
+    addLog(`${spellTpl.name}: на поле нет клеток стихии ${elementLabel}, урон отсутствует.`);
+  } else if (!targets.length) {
+    addLog(`${spellTpl.name}: врагов рядом с выбранным полем нет.`);
+  }
+
+  const deaths = [];
+  if (damage > 0) {
+    for (const target of targets) {
+      const unit = target.unit;
+      const tplUnit = CARDS?.[unit.tplId];
+      const before = unit.currentHP ?? tplUnit?.hp ?? 0;
+      if (before <= 0) continue;
+      const after = Math.max(0, before - damage);
+      unit.currentHP = after;
+      const mesh = getUnitMeshAt(target.r, target.c);
+      if (mesh) {
+        try { window.__fx?.spawnDamageText?.(mesh, `-${damage}`, '#ff5555'); } catch {}
+        try { window.__fx?.shakeMesh?.(mesh, 6, 0.12); } catch {}
+      }
+      const targetName = tplUnit?.name || 'Существо';
+      addLog(`${spellTpl.name}: ${targetName} получает ${damage} маг. урона (HP ${before}→${after}).`);
+      if (after <= 0) {
+        const deathEntry = createDeathEntry(state, unit, target.r, target.c) || {
+          r: target.r,
+          c: target.c,
+          owner: unit.owner,
+          tplId: unit.tplId,
+          uid: unit.uid ?? null,
+          element: state.board?.[target.r]?.[target.c]?.element || null,
+        };
+        deaths.push(deathEntry);
+        state.board[target.r][target.c].unit = null;
+      }
+    }
+  }
+
+  burnSpellCard(spellTpl, pending.tileMesh || null, pending.cardMesh || null);
+  spendAndDiscardSpell(player, handIndex);
+
+  interactionState.pendingElementalRitual = null;
+  interactionState.pendingDiscardSelection = null;
+  try { window.__ui?.panels?.hidePrompt?.(); } catch {}
+  try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+
+  if (deaths.length) {
+    processSpellDeaths(deaths);
+  } else {
+    refreshPossessionsUI(state);
+    updateUnits();
+    updateUI();
+  }
+  resetCardSelection();
+  updateHand();
+  updateUI();
+}
+
+function handleElementalRitualDiscard(handIdx) {
+  const pending = interactionState.pendingElementalRitual;
+  if (!pending) return;
+  const player = pending.player;
+  if (!player) {
+    cancelElementalRitualSelection();
+    return;
+  }
+  const cardTpl = discardHandCard(player, handIdx);
+  if (!cardTpl || cardTpl.type !== 'UNIT') {
+    showNotification('Нужно выбрать карту существа', 'error');
+    cancelElementalRitualSelection();
+    return;
+  }
+
+  pending.selected.push(cardTpl);
+  if (pending.requiredElement && normalizeElement(cardTpl.element) === normalizeElement(pending.requiredElement)) {
+    pending.requiredNeeded = Math.max(0, (pending.requiredNeeded || 0) - 1);
+  }
+  if (pending.selected.length >= 1) {
+    pending.allowCancel = false;
+    try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+  }
+
+  addLog(`${pending.tpl.name}: ${cardTpl.name || 'Существо'} сброшено.`);
+
+  const remaining = pending.requiredCount - pending.selected.length;
+  if (remaining > 0) {
+    return;
+  }
+
+  finalizeElementalRitual(pending);
+}
+
+function startElementalRitualSelection({ tpl, pl, idx, cardMesh, tileMesh, targetR, targetC, requiredElement }) {
+  const state = getActiveState();
+  if (!state) {
+    showNotification('Игра не готова к розыгрышу заклинания', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+  if (tpl.cost > pl.mana) {
+    showNotification('Недостаточно маны', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+  if (interactionState.pendingDiscardSelection) {
+    showNotification('Сначала завершите другой выбор карты', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  const hand = Array.isArray(pl.hand) ? pl.hand : [];
+  const unitCards = hand.filter(card => card && card.type === 'UNIT');
+  if (unitCards.length < 2) {
+    showNotification('Нужно минимум два существа в руке для ритуала', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  const requiredElementName = normalizeElement(requiredElement);
+  const hasRequired = unitCards.some(card => normalizeElement(card.element) === requiredElementName);
+  if (!hasRequired) {
+    showNotification('В руке нет существа требуемой стихии', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  const elementLabel = formatElementGenitive(requiredElement);
+
+  const filterFn = (cardData, index) => {
+    if (!cardData || cardData.type !== 'UNIT') return false;
+    const pending = interactionState.pendingElementalRitual;
+    if (!pending) return false;
+    const remainingSlots = pending.requiredCount - pending.selected.length;
+    const requiredLeft = pending.requiredNeeded || 0;
+    const matchesRequired = normalizeElement(cardData.element) === normalizeElement(pending.requiredElement);
+    if (requiredLeft >= remainingSlots) {
+      return matchesRequired;
+    }
+    if (!matchesRequired && requiredLeft > 0) {
+      const hand = Array.isArray(pending.player?.hand) ? pending.player.hand : [];
+      let potential = 0;
+      for (let i = 0; i < hand.length; i += 1) {
+        if (i === index) continue;
+        const candidate = hand[i];
+        if (candidate?.type !== 'UNIT') continue;
+        if (normalizeElement(candidate.element) === normalizeElement(pending.requiredElement)) potential += 1;
+      }
+      if (potential < requiredLeft) return false;
+    }
+    return true;
+  };
+
+  interactionState.pendingElementalRitual = {
+    spellId: tpl.id,
+    tpl,
+    player: pl,
+    handIndex: idx,
+    cardMesh: cardMesh || null,
+    tileMesh: tileMesh || null,
+    targetR,
+    targetC,
+    requiredElement,
+    requiredCount: 2,
+    requiredNeeded: 1,
+    selected: [],
+    allowCancel: true,
+  };
+
+  interactionState.pendingDiscardSelection = {
+    forced: true,
+    requiredType: 'UNIT',
+    filter: filterFn,
+    invalidMessage: `Нужно выбрать существо (минимум одно стихии ${elementLabel})`,
+    onPicked: handleElementalRitualDiscard,
+  };
+
+  interactionState.spellDragHandled = true;
+  if (cardMesh) returnCardToHand(cardMesh);
+
+  const promptText = `Выберите 2 существа в руке для сброса (минимум одно стихии ${elementLabel}).`;
+  try {
+    window.__ui?.panels?.showPrompt?.(promptText, () => {
+      cancelElementalRitualSelection();
+      updateUI();
+    });
+  } catch {}
+  addLog(`${tpl.name}: выберите 2 существа в руке, минимум одно стихии ${elementLabel}.`);
+  try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+}
+
+function castElementalRitualSpell(ctx, { fieldElement, requiredElement }) {
+  const { tpl, pl, idx, tileMesh, cardMesh } = ctx;
+  if (!tileMesh) {
+    showNotification('Нужно выбрать поле на арене', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+  const r = tileMesh.userData?.row ?? null;
+  const c = tileMesh.userData?.col ?? null;
+  if (r == null || c == null) {
+    showNotification('Некорректная цель для заклинания', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+  const state = getActiveState();
+  if (!state?.board?.[r]?.[c]) {
+    showNotification('Это поле недоступно', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+  const cellElement = normalizeElement(state.board[r][c].element);
+  const requiredField = normalizeElement(fieldElement);
+  if (!requiredField || cellElement !== requiredField) {
+    const label = formatElementGenitive(fieldElement || requiredElement);
+    showNotification(`Нужно выбрать поле стихии ${label}`, 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  startElementalRitualSelection({ tpl, pl, idx, cardMesh, tileMesh, targetR: r, targetC: c, requiredElement });
+}
+
+const RIOTOUS_OUTER_ORDER = {
+  N: [
+    { r: 0, c: 1 },
+    { r: 0, c: 2 },
+    { r: 1, c: 2 },
+    { r: 2, c: 2 },
+    { r: 2, c: 1 },
+    { r: 2, c: 0 },
+    { r: 1, c: 0 },
+    { r: 0, c: 0 },
+  ],
+  E: [
+    { r: 1, c: 2 },
+    { r: 2, c: 2 },
+    { r: 2, c: 1 },
+    { r: 2, c: 0 },
+    { r: 1, c: 0 },
+    { r: 0, c: 0 },
+    { r: 0, c: 1 },
+    { r: 0, c: 2 },
+  ],
+  S: [
+    { r: 2, c: 1 },
+    { r: 2, c: 0 },
+    { r: 1, c: 0 },
+    { r: 0, c: 0 },
+    { r: 0, c: 1 },
+    { r: 0, c: 2 },
+    { r: 1, c: 2 },
+    { r: 2, c: 2 },
+  ],
+  W: [
+    { r: 1, c: 0 },
+    { r: 0, c: 0 },
+    { r: 0, c: 1 },
+    { r: 0, c: 2 },
+    { r: 1, c: 2 },
+    { r: 2, c: 2 },
+    { r: 2, c: 1 },
+    { r: 2, c: 0 },
+  ],
+};
+
+const RIOTOUS_DIRECTION_LABELS = {
+  N: 'северного сектора',
+  E: 'восточного сектора',
+  S: 'южного сектора',
+  W: 'западного сектора',
+};
+
+function buildRiotousOrder(directionRaw) {
+  const dir = ['N', 'E', 'S', 'W'].includes(directionRaw) ? directionRaw : 'N';
+  const base = RIOTOUS_OUTER_ORDER[dir] || RIOTOUS_OUTER_ORDER.N;
+  return [{ r: 1, c: 1 }, ...base];
+}
+
+async function resolveForcedBattleAt(r, c) {
+  const state = getActiveState();
+  const unit = state?.board?.[r]?.[c]?.unit;
+  if (!unit) return false;
+  if (typeof window !== 'undefined' && typeof window.performBattleSequence === 'function') {
+    await window.performBattleSequence(r, c, true, { fromSpell: true });
+    return true;
+  }
+  if (!stagedAttack) return false;
+  const staged = stagedAttack(state, r, c, {});
+  if (!staged || staged.empty) return false;
+  staged.stepQuick?.();
+  staged.step1?.();
+  const res = staged.finish?.();
+  if (res?.n1) {
+    if (typeof window !== 'undefined') {
+      window.gameState = res.n1;
+      try { window.applyGameState?.(res.n1); } catch {}
+    }
+    if (typeof globalThis !== 'undefined') {
+      globalThis.gameState = res.n1;
+    }
+  }
+  return true;
+}
+
+async function runRiotousSequence({ direction, tpl, playerIndex, handIndex, cardMesh, tileMesh }) {
+  let state = getActiveState();
+  if (!state) {
+    showNotification('Игра не готова к розыгрышу заклинания', 'error');
+    return;
+  }
+
+  const activeIdx = typeof playerIndex === 'number'
+    ? playerIndex
+    : (typeof state.active === 'number' ? state.active : null);
+  if (activeIdx == null) {
+    showNotification('Не удалось определить активного игрока', 'error');
+    return;
+  }
+
+  let playerNow = state.players?.[activeIdx];
+  if (!playerNow) {
+    showNotification('Игрок не найден', 'error');
+    return;
+  }
+
+  let spellIndex = handIndex;
+  if (spellIndex == null || playerNow.hand?.[spellIndex]?.id !== tpl.id) {
+    spellIndex = Array.isArray(playerNow.hand)
+      ? playerNow.hand.findIndex(card => card && card.id === tpl.id)
+      : -1;
+  }
+  if (spellIndex == null || spellIndex < 0) {
+    showNotification('Заклинание уже недоступно', 'error');
+    return;
+  }
+  const spellTpl = playerNow.hand?.[spellIndex];
+  if (!spellTpl) {
+    showNotification('Заклинание уже недоступно', 'error');
+    return;
+  }
+  if (playerNow.mana < (spellTpl.cost || 0)) {
+    showNotification('Недостаточно маны', 'error');
+    return;
+  }
+
+  const order = buildRiotousOrder(direction);
+  const dirLabel = RIOTOUS_DIRECTION_LABELS[direction] || RIOTOUS_DIRECTION_LABELS.N;
+  addLog(`${tpl.name}: последовательность боёв начинается с ${dirLabel}.`);
+
+  const originalMarks = [];
+  for (let r = 0; r < 3; r += 1) {
+    for (let c = 0; c < 3; c += 1) {
+      const unit = state.board?.[r]?.[c]?.unit;
+      if (!unit) continue;
+      originalMarks.push({
+        uid: unit.uid ?? null,
+        owner: unit.owner,
+        tplId: unit.tplId,
+        last: unit.lastAttackTurn,
+        r,
+        c,
+      });
+    }
+  }
+
+  let triggered = false;
+  for (const pos of order) {
+    state = getActiveState();
+    const currentUnit = state?.board?.[pos.r]?.[pos.c]?.unit;
+    if (!currentUnit) continue;
+    if (currentUnit.lastAttackTurn === state.turn) {
+      currentUnit.lastAttackTurn = state.turn - 1;
+    }
+    const result = await resolveForcedBattleAt(pos.r, pos.c);
+    if (result) triggered = true;
+  }
+
+  const latestState = getActiveState();
+  if (latestState) {
+    for (const info of originalMarks) {
+      let targetUnit = null;
+      if (info.uid != null) {
+        outer: for (let r = 0; r < 3; r += 1) {
+          for (let c = 0; c < 3; c += 1) {
+            const unit = latestState.board?.[r]?.[c]?.unit;
+            if (unit && unit.uid === info.uid) {
+              targetUnit = unit;
+              break outer;
+            }
+          }
+        }
+      }
+      if (!targetUnit) {
+        const cellUnit = latestState.board?.[info.r]?.[info.c]?.unit;
+        if (cellUnit && cellUnit.owner === info.owner && cellUnit.tplId === info.tplId) {
+          targetUnit = cellUnit;
+        }
+      }
+      if (!targetUnit) continue;
+      if (targetUnit.lastAttackTurn === latestState.turn - 1) {
+        targetUnit.lastAttackTurn = info.last;
+      }
+    }
+  }
+
+  const finalState = getActiveState();
+  const playerFinal = finalState?.players?.[activeIdx];
+  if (!playerFinal) {
+    showNotification('Игрок не найден', 'error');
+    return;
+  }
+
+  let finalIndex = spellIndex;
+  if (playerFinal.hand?.[finalIndex]?.id !== tpl.id) {
+    finalIndex = Array.isArray(playerFinal.hand)
+      ? playerFinal.hand.findIndex(card => card && card.id === tpl.id)
+      : -1;
+  }
+  if (finalIndex == null || finalIndex < 0) {
+    showNotification('Заклинание уже недоступно', 'error');
+    return;
+  }
+  const finalSpellTpl = playerFinal.hand?.[finalIndex];
+  if (!finalSpellTpl) {
+    showNotification('Заклинание уже недоступно', 'error');
+    return;
+  }
+
+  burnSpellCard(finalSpellTpl, tileMesh || null, cardMesh || null);
+  spendAndDiscardSpell(playerFinal, finalIndex);
+  resetCardSelection();
+  updateHand();
+  refreshPossessionsUI(getActiveState());
+  updateUnits();
+  updateUI();
+
+  if (!triggered) {
+    addLog(`${tpl.name}: на поле нет существ, боёв не произошло.`);
+  }
+  addLog(`${tpl.name}: ход завершается.`);
+  requestAutoEndTurn();
+}
+
+function castRiotousImpunity(ctx) {
+  const { tpl, pl, idx, tileMesh, cardMesh } = ctx;
+  if (!tileMesh) {
+    showNotification('Нужно выбрать центральное поле', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+  const r = tileMesh.userData?.row ?? null;
+  const c = tileMesh.userData?.col ?? null;
+  if (r !== 1 || c !== 1) {
+    showNotification('Это заклинание разыгрывается на центральной клетке', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  const state = getActiveState();
+  if (!state) {
+    showNotification('Игра не готова к розыгрышу заклинания', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+  if (tpl.cost > pl.mana) {
+    showNotification('Недостаточно маны', 'error');
+    if (cardMesh) returnCardToHand(cardMesh);
+    return;
+  }
+
+  interactionState.pendingSpellOrientation = {
+    spellId: tpl.id,
+    onPick: (direction) => {
+      interactionState.pendingSpellOrientation = null;
+      try { window.__ui?.panels?.hideOrientationPanel?.(); } catch {}
+      try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+      Promise.resolve(runRiotousSequence({
+        direction,
+        tpl,
+        playerIndex: typeof state.active === 'number' ? state.active : null,
+        handIndex: idx,
+        cardMesh: cardMesh || null,
+        tileMesh: tileMesh || null,
+      })).catch(err => console.error('[spell] Ошибка при выполнении ритуала Scion:', err));
+    },
+  };
+
+  interactionState.spellDragHandled = true;
+  if (cardMesh) returnCardToHand(cardMesh);
+
+  addLog(`${tpl.name}: выберите направление, откуда начнётся круг боёв.`);
+  try { window.__ui?.panels?.showOrientationPanel?.(); } catch {}
+  try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
 }
 
 function performFieldquakeAcrossBoard(state, positions, opts = {}) {
@@ -917,11 +1533,90 @@ export const handlers = {
     onUnit({ cardMesh, unitMesh, tpl }) {
       // Allow rotating any target in any direction via orientation panel
       try {
-        interactionState.pendingSpellOrientation = { spellCardMesh: cardMesh, unitMesh };
+        const spellCardMesh = cardMesh || null;
+        const targetUnitMesh = unitMesh || null;
+        interactionState.pendingSpellOrientation = {
+          spellId: tpl.id,
+          spellCardMesh,
+          unitMesh: targetUnitMesh,
+          onPick: (direction) => {
+            try {
+              const state = typeof gameState !== 'undefined' ? gameState : (typeof window !== 'undefined' ? window.gameState : null);
+              if (!state) return;
+              const active = typeof state.active === 'number' ? state.active : null;
+              if (active == null) return;
+              const player = state.players?.[active];
+              if (!player) return;
+              let handIndex = spellCardMesh?.userData?.handIndex;
+              if (handIndex == null || player.hand?.[handIndex]?.id !== tpl.id) {
+                handIndex = Array.isArray(player.hand) ? player.hand.findIndex(card => card && card.id === tpl.id) : -1;
+              }
+              if (handIndex == null || handIndex < 0) return;
+              const cardInHand = player.hand?.[handIndex];
+              if (!cardInHand || cardInHand.id !== tpl.id) return;
+              const mesh = targetUnitMesh;
+              const r = mesh?.userData?.row;
+              const c = mesh?.userData?.col;
+              if (r == null || c == null) return;
+              const cell = state.board?.[r]?.[c];
+              const unitRef = cell?.unit || null;
+              if (!unitRef) return;
+              const tplUnit = CARDS?.[unitRef.tplId];
+              unitRef.facing = direction;
+              addLog(`${tpl.name}: ${tplUnit?.name || 'Существо'} повёрнуто в ${direction}.`);
+              burnSpellCard(cardInHand, null, spellCardMesh);
+              spendAndDiscardSpell(player, handIndex);
+              resetCardSelection();
+              updateHand();
+              updateUnits();
+              updateUI();
+            } finally {
+              interactionState.pendingSpellOrientation = null;
+              try { window.__ui?.panels?.hideOrientationPanel?.(); } catch {}
+              try { window.__ui?.cancelButton?.refreshCancelButton?.(); } catch {}
+            }
+          },
+        };
         addLog(`${tpl.name}: выберите направление для цели.`);
         window.__ui.panels.showOrientationPanel();
         try { window.__ui?.cancelButton?.refreshCancelButton(); } catch {}
       } catch {}
+    },
+  },
+
+  SPELL_SCIONDAR_INFERNO: {
+    onBoard(ctx) {
+      castElementalRitualSpell(ctx, { fieldElement: 'FIRE', requiredElement: 'FIRE' });
+    },
+  },
+
+  SPELL_ICE_FLOOD_OF_OKUNADA: {
+    onBoard(ctx) {
+      castElementalRitualSpell(ctx, { fieldElement: 'WATER', requiredElement: 'WATER' });
+    },
+  },
+
+  SPELL_FIST_OF_VERZAR: {
+    onBoard(ctx) {
+      castElementalRitualSpell(ctx, { fieldElement: 'EARTH', requiredElement: 'EARTH' });
+    },
+  },
+
+  SPELL_WRATHFUL_WINDS_OF_JUNO: {
+    onBoard(ctx) {
+      castElementalRitualSpell(ctx, { fieldElement: 'FOREST', requiredElement: 'FOREST' });
+    },
+  },
+
+  SPELL_BLINDING_SKIES: {
+    onBoard(ctx) {
+      castElementalRitualSpell(ctx, { fieldElement: 'BIOLITH', requiredElement: 'BIOLITH' });
+    },
+  },
+
+  SPELL_SCIONS_RIOTOUS_IMPUNITY: {
+    onBoard(ctx) {
+      castRiotousImpunity(ctx);
     },
   },
 
@@ -1726,6 +2421,7 @@ const api = {
   handlePendingBoardClick,
   cancelFieldExchangeSelection,
   cancelMesmerLapseSelection,
+  cancelElementalRitualSelection,
 };
 try {
   if (typeof window !== 'undefined') {
