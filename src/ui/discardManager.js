@@ -469,6 +469,7 @@ function prepareSelection() {
     forced: true,
     keepAfterPick: true,
     requestId: req.id,
+    ignoreSummoningLock: true,
     onPicked: (handIdx) => {
       handleDiscard(handIdx, { auto: false });
     },

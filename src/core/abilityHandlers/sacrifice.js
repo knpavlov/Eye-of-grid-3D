@@ -46,6 +46,7 @@ function normalizeSacrificeEntry(entry, tpl) {
     elements,
     allowAnyElement,
     requireNonCubic: entry.requireNonCubic !== false,
+    ignoreSummoningLock: entry.ignoreSummoningLock !== false,
   };
 }
 
@@ -96,6 +97,7 @@ export function collectSacrificeActions(state, context = {}) {
       r,
       c,
       unitUid: unit.uid ?? null,
+      ignoreSummoningLock: config.ignoreSummoningLock !== false,
     });
   }
   return actions;
