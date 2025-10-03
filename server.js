@@ -517,6 +517,22 @@ io.on("connection", (socket) => {
     pushLog({ ev: 'tileCrossfade', sid: socket.id, matchId, r: payload?.r, c: payload?.c, prev: payload?.prev, next: payload?.next });
   });
 
+  socket.on("manaDrainFx", (payload = {}) => {
+    const matchId = socket.data.matchId;
+    if (!matchId || !matches.has(matchId)) return;
+    const m = matches.get(matchId);
+    try { payload.bySeat = socket.data.seat; } catch {}
+    io.to(m.room).emit("manaDrainFx", payload);
+    pushLog({
+      ev: 'manaDrainFx',
+      sid: socket.id,
+      matchId,
+      amount: payload?.amount,
+      from: payload?.from,
+      drainOnly: payload?.drainOnly,
+    });
+  });
+
   // ритуальные спеллы (Holy Feast): подтверждение и визуальная синхронизация
   socket.on("ritualResolve", (payload) => {
     const matchId = socket.data.matchId;
