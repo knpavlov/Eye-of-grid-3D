@@ -1,15 +1,8 @@
 // Логика способности "mana steal" (кража маны)
 import { CARDS } from '../cards.js';
+import { capMana } from '../constants.js';
 
 const ROLE_FRONT_OWNER = 'FRONT_OWNER';
-
-const capMana = (value) => {
-  const num = Math.floor(Number(value) || 0);
-  if (!Number.isFinite(num)) return 0;
-  if (num < 0) return 0;
-  if (num > 10) return 10;
-  return num;
-};
 
 function ensureQueue(state) {
   if (!state) return null;
