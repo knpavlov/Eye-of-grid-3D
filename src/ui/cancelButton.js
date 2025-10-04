@@ -3,6 +3,10 @@ import { interactionState, returnCardToHand, undoPendingSummonManaGain } from '.
 import { clearHighlights } from '../scene/highlight.js';
 import { capMana } from '../core/constants.js';
 import { refreshPossessionsUI } from './possessions.js';
+import { cancelElementalDominionSelection as cancelDominionRitual } from '../spells/handlers.js';
+
+// Флаг, чтобы не ставить несколько повторных инициализаций до готовности DOM
+let domSetupScheduled = false;
 
 function refundSummon(row, col) {
   const gs = window.gameState;
@@ -71,8 +75,30 @@ export function refreshCancelButton() {
 }
 
 export function setupCancelButton() {
+  if (typeof document === 'undefined') return;
   const btn = document.getElementById('cancel-play-btn');
-  if (!btn) return;
+  if (!btn) {
+    if (!domSetupScheduled) {
+      domSetupScheduled = true;
+      const retry = () => {
+        domSetupScheduled = false;
+        setupCancelButton();
+      };
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', retry, { once: true });
+      } else if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(retry);
+      } else {
+        setTimeout(retry, 0);
+      }
+    }
+    return;
+  }
+  if (btn.dataset.cancelSetup === 'true') {
+    refreshCancelButton();
+    return;
+  }
+  btn.dataset.cancelSetup = 'true';
   btn.addEventListener('click', () => {
     try {
       if (interactionState.pendingPlacement) {
@@ -91,6 +117,18 @@ export function setupCancelButton() {
         window.__spells?.cancelMesmerLapseSelection?.();
         interactionState.pendingSpellLapse = null;
         interactionState.pendingDiscardSelection = null;
+      } else if (interactionState.pendingSpellElementalDominion) {
+        // Отменяем ритуальные доминионские заклинания через прямой импорт,
+        // чтобы не зависеть от наличия window.__spells в рантайме
+        try {
+          cancelDominionRitual();
+        } catch {
+          window.__spells?.cancelElementalDominionSelection?.();
+        }
+        interactionState.pendingDiscardSelection = null;
+      } else if (interactionState.pendingDiscardSelection?.onCancel) {
+        // Для ритуальных сбросов предусмотрен собственный откат состояния
+        try { interactionState.pendingDiscardSelection.onCancel(); } catch {}
       } else if (interactionState.selectedCard) {
         returnCardToHand(interactionState.selectedCard);
         interactionState.selectedCard = null;
