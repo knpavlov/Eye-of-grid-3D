@@ -3,13 +3,43 @@ import { getActiveUser } from '../auth/sessionStore.js';
 import { logout as authLogout } from './authScreen.js';
 
 let firstOpen = true;
+let scheduledOpen = null;
+
+function scheduleOpen(initial) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (scheduledOpen) {
+    // Если уже ждём появления <body>, обновляем только флаг начального открытия
+    scheduledOpen.initial = scheduledOpen.initial || initial;
+    return;
+  }
+  scheduledOpen = { initial: !!initial };
+  const retry = () => {
+    const payload = scheduledOpen;
+    scheduledOpen = null;
+    if (payload) {
+      open(payload.initial);
+    }
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', retry, { once: true });
+  } else if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(retry);
+  } else {
+    setTimeout(retry, 0);
+  }
+}
 
 export function open(initial = false) {
   if (typeof document === 'undefined') return;
+  const body = document.body;
+  if (!body) {
+    scheduleOpen(initial);
+    return;
+  }
   if (initial) firstOpen = true;
   const existing = document.getElementById('main-menu-overlay');
   if (existing) {
-    try { document.body.removeChild(existing); } catch {}
+    try { body.removeChild(existing); } catch {}
   }
   const overlay = document.createElement('div');
   overlay.id = 'main-menu-overlay';
@@ -103,6 +133,8 @@ export function open(initial = false) {
         window.socket?.disconnect();
         window.NET_ACTIVE = false;
         window.__opponentDeckId = null;
+        window.__opponentDeckCards = null;
+        window.__matchDecks = null;
         window.MY_SEAT = null;
         window.updateIndicator?.();
         window.updateInputLock?.();
@@ -156,7 +188,7 @@ export function open(initial = false) {
     });
   }
 
-  document.body.appendChild(overlay);
+  body.appendChild(overlay);
 }
 
 const api = { open };

@@ -135,7 +135,7 @@ const netMiddleware = makeMiddleware(({ getState, next, action }) => {
 export const store = createStore(reducer, undefined, [netMiddleware]);
 try { window.__store = store; } catch {}
 
-const initialSessionState = initSessionStore();
+initSessionStore();
 let menuAutoOpened = false;
 
 function tryOpenMainMenu(initial = false) {
@@ -153,18 +153,25 @@ function handleAuthStateForMenu(state) {
       tryOpenMainMenu(true);
     }
   } else {
+    const initial = !menuAutoOpened;
     menuAutoOpened = false;
+    tryOpenMainMenu(initial);
   }
 }
 
 function setupAuthUI() {
   initAuthScreen({
     onAuthenticated() {
-      tryOpenMainMenu(true);
+      if (!menuAutoOpened) {
+        tryOpenMainMenu(false);
+      }
     },
   });
   handleAuthStateForMenu(getStateSnapshot());
   onSessionChange(handleAuthStateForMenu);
+  if (!menuAutoOpened) {
+    tryOpenMainMenu(true);
+  }
 }
 
 // Initialize only if no existing gameState is present (non-destructive)
@@ -178,9 +185,6 @@ if (typeof window !== 'undefined') {
     document.addEventListener('DOMContentLoaded', setupAuthUI, { once: true });
   } else {
     setupAuthUI();
-  }
-  if (initialSessionState?.authenticated) {
-    tryOpenMainMenu(true);
   }
 }
 
