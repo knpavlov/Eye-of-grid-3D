@@ -100,6 +100,21 @@ if (dbReadyOnStart) {
 const queue = [];
 const matches = new Map(); // matchId -> { room, sockets:[s0,s1], lastState, lastVer, timerSeconds, timerId }
 
+function sanitizeDeckSnapshot(rawDeck, fallbackId = null) {
+  // Превращаем сохранённую на сервере колоду в безопасную копию для клиента
+  if (!rawDeck) {
+    if (!fallbackId) return null;
+    return { id: fallbackId, name: fallbackId, cards: [] };
+  }
+  const id = typeof rawDeck.id === 'string' && rawDeck.id.trim() ? rawDeck.id.trim() : (fallbackId || null);
+  const name = typeof rawDeck.name === 'string' && rawDeck.name.trim() ? rawDeck.name.trim() : (id || '');
+  const cardsSource = Array.isArray(rawDeck.cards) ? rawDeck.cards : [];
+  const cards = cardsSource
+    .filter(Boolean)
+    .map(card => ({ ...(typeof card === 'object' && card ? card : {}) }));
+  return { id, name, cards };
+}
+
 function pairIfPossible() {
   pushLog({ ev: 'pairIfPossible:start', queueSize: queue.length });
 
@@ -174,12 +189,16 @@ function pairIfPossible() {
     s0.data.queueing = false; s1.data.queueing = false;
 
     const deckIds = [s0.data.deckId, s1.data.deckId];
+    const deckSnapshots = [
+      sanitizeDeckSnapshot(s0.data.deckSnapshot, deckIds[0]),
+      sanitizeDeckSnapshot(s1.data.deckSnapshot, deckIds[1]),
+    ];
     const players = [s0.data.user, s1.data.user].map(user => ({
       id: user?.id,
       nickname: user?.nickname,
     }));
-    s0.emit("matchFound", { matchId, seat: 0, decks: deckIds, players });
-    s1.emit("matchFound", { matchId, seat: 1, decks: deckIds, players });
+    s0.emit("matchFound", { matchId, seat: 0, decks: deckIds, players, deckSnapshots });
+    s1.emit("matchFound", { matchId, seat: 1, decks: deckIds, players, deckSnapshots });
     pushLog({ ev: 'matchFound', matchId, sids: [s0.id, s1.id], deckIds });
 
     // Старт серверного таймера тиков (без авто-энда)

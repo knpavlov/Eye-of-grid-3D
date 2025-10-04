@@ -916,18 +916,51 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
       hideQueueModal();
     }
   });
-  socket.on('matchFound', ({ matchId, seat, decks, players })=>{
+  socket.on('matchFound', ({ matchId, seat, decks, players, deckSnapshots })=>{
     hideQueueModal();
     setMatchPlayers(players);
     try { updateIndicator(); } catch {}
     try {
-      const all = window.DECKS || [];
-      if (Array.isArray(decks) && decks.length === 2) {
-        const myId = decks[seat];
-        const oppId = decks[1 - seat];
+      const deckIds = Array.isArray(decks) ? decks.slice(0, 2) : [];
+      const myId = deckIds[seat];
+      const oppId = deckIds[1 - seat];
+      const rawSnapshots = Array.isArray(deckSnapshots) ? deckSnapshots : [];
+
+      const cloneDeck = (src, fallbackId) => {
+        if (!src) return null;
+        const id = typeof src.id === 'string' && src.id.trim() ? src.id.trim() : (fallbackId || null);
+        const name = typeof src.name === 'string' && src.name.trim() ? src.name.trim() : (id || '');
+        const cards = Array.isArray(src.cards)
+          ? src.cards.filter(Boolean).map(card => ({ ...(typeof card === 'object' && card ? card : {}) }))
+          : [];
+        if (!cards.length) return null;
+        return { id, name, cards };
+      };
+
+      const findLocalDeck = (id) => {
+        if (!id) return null;
+        const all = window.DECKS || [];
+        const found = all.find(deck => deck && deck.id === id);
+        if (!found) return null;
+        return cloneDeck(found, id);
+      };
+
+      const mySnapshot = rawSnapshots[seat];
+      const oppSnapshot = rawSnapshots[1 - seat];
+
+      const myDeckObj = cloneDeck(mySnapshot, myId) || findLocalDeck(myId) || null;
+      const oppDeckObj = cloneDeck(oppSnapshot, oppId) || findLocalDeck(oppId) || null;
+
+      if (myDeckObj) {
+        window.__selectedDeckObj = myDeckObj;
+      }
+      if (oppDeckObj) {
+        window.__opponentDeckObj = oppDeckObj;
+      } else if (typeof window.__opponentDeckObj !== 'undefined') {
+        try { delete window.__opponentDeckObj; } catch {}
+      }
+      if (oppId) {
         window.__opponentDeckId = oppId;
-        const myDeck = all.find(d => d.id === myId) || all[0];
-        window.__selectedDeckObj = myDeck;
       }
     } catch {}
     console.log('[MATCH] Match found, setting MY_SEAT to:', seat, 'matchId:', matchId, 'decks:', decks, 'players:', players);
