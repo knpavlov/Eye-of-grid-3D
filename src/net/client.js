@@ -185,6 +185,37 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
     return resolved;
   }
 
+  // Предзагружаем иллюстрации всех карт, известных на этапе матча
+  function preloadIllustrationsForDecks(decks = []) {
+    try {
+      if (typeof window === 'undefined') return;
+      const cardsModule = window.__cards;
+      if (!cardsModule || typeof cardsModule.preloadCardIllustrations !== 'function') return;
+      const seen = new Set();
+      const toPreload = [];
+      const pushCard = (entry) => {
+        const tpl = resolveCardTemplate(entry);
+        if (!tpl) return;
+        const id = tpl.id || tpl.cardId || tpl.tplId;
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        toPreload.push(tpl);
+      };
+      decks.forEach(deck => {
+        if (!deck) return;
+        const resolved = Array.isArray(deck.cardsResolved)
+          ? deck.cardsResolved
+          : resolveDeckTemplates(deck.cards);
+        resolved.forEach(pushCard);
+      });
+      if (toPreload.length) {
+        cardsModule.preloadCardIllustrations(toPreload);
+      }
+    } catch (err) {
+      console.warn('[net] Не удалось предзагрузить иллюстрации колод:', err);
+    }
+  }
+
   function cloneDeckInfo(info, { includeResolved = false } = {}) {
     if (!info || typeof info !== 'object') {
       return { id: null, name: '', description: '', cards: [], ...(includeResolved ? { cardsResolved: [] } : {}) };
@@ -1061,6 +1092,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
         opponent: cloneDeckInfo(opponentDeckResolved, { includeResolved: true }),
       };
       updateMatchDecksOnWindow();
+      preloadIllustrationsForDecks(decksWithResolved);
 
       const myId = announcedDecks[seatIndex] || currentMatchDecks.my.id;
       const oppId = announcedDecks[opponentIndex] || currentMatchDecks.opponent.id;
