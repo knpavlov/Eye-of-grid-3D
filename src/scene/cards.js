@@ -36,6 +36,122 @@ const CARD_FACE_LAYOUT = {
 const CARD_IMAGES = {};
 const CARD_PENDING = {};
 
+// Утилиты для работы с иллюстрациями карт (отдельно от логики отрисовки)
+function sanitizeCardNameForFile(name = '', { hyphen = false } = {}) {
+  return String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s_-]/g, '')
+    .replace(/\s+/g, hyphen ? '-' : '_')
+    .trim();
+}
+
+function getIllustrationCacheKeys(cardData) {
+  if (!cardData) return [];
+  const id = typeof cardData.id === 'string' ? cardData.id : null;
+  const idLower = id ? id.toLowerCase() : null;
+  const nameUnderscore = sanitizeCardNameForFile(cardData.name || '');
+  const nameHyphen = sanitizeCardNameForFile(cardData.name || '', { hyphen: true });
+  const keys = [id, idLower, nameUnderscore, nameHyphen]
+    .filter(Boolean);
+  return Array.from(new Set(keys));
+}
+
+function cacheIllustration(cardData, image) {
+  if (!cardData || !image) return;
+  const keys = getIllustrationCacheKeys(cardData);
+  for (const key of keys) {
+    CARD_IMAGES[key] = image;
+  }
+}
+
+function findCachedIllustration(cardData) {
+  if (!cardData) return null;
+  const keys = getIllustrationCacheKeys(cardData);
+  for (const key of keys) {
+    if (CARD_IMAGES[key]) return CARD_IMAGES[key];
+  }
+  return null;
+}
+
+function getIllustrationUrlCandidates(cardData) {
+  if (!cardData) return [];
+  const id = typeof cardData.id === 'string' ? cardData.id : null;
+  const name = typeof cardData.name === 'string' ? cardData.name : '';
+  const normalizedUnderscore = sanitizeCardNameForFile(name);
+  const normalizedHyphen = sanitizeCardNameForFile(name, { hyphen: true });
+  const candidates = [];
+  if (id) {
+    candidates.push(`card images/${id}.png`);
+    candidates.push(`card images/${id.toLowerCase()}.png`);
+  }
+  if (normalizedUnderscore) {
+    candidates.push(`card images/${normalizedUnderscore}.png`);
+  }
+  if (normalizedHyphen && normalizedHyphen !== normalizedUnderscore) {
+    candidates.push(`card images/${normalizedHyphen}.png`);
+  }
+  return Array.from(new Set(candidates));
+}
+
+function ensureIllustrationLoad(cardData) {
+  if (!cardData) return;
+  const already = findCachedIllustration(cardData);
+  if (already) return;
+  const pendingKey = getIllustrationCacheKeys(cardData)[0];
+  if (pendingKey && CARD_PENDING[pendingKey]) return;
+  if (pendingKey) CARD_PENDING[pendingKey] = true;
+  const urls = getIllustrationUrlCandidates(cardData);
+  let attempt = 0;
+  (function tryLoad() {
+    if (attempt >= urls.length) {
+      if (pendingKey) CARD_PENDING[pendingKey] = false;
+      return;
+    }
+    const url = urls[attempt];
+    const image = new Image();
+    image.onload = () => {
+      cacheIllustration(cardData, image);
+      if (pendingKey) CARD_PENDING[pendingKey] = false;
+      try { if (window.requestCardsRedraw) window.requestCardsRedraw(); } catch {}
+    };
+    image.onerror = () => {
+      attempt += 1;
+      tryLoad();
+    };
+    image.src = encodeURI(url);
+  })();
+}
+
+function normalizeCardRef(ref) {
+  if (!ref) return null;
+  if (typeof ref === 'string') {
+    const cardsDb = (typeof window !== 'undefined' && window.CARDS) || null;
+    if (cardsDb && cardsDb[ref]) return cardsDb[ref];
+    return { id: ref, name: ref };
+  }
+  if (typeof ref === 'object') return ref;
+  return null;
+}
+
+export function ensureCardIllustration(cardRef) {
+  const cardData = normalizeCardRef(cardRef);
+  if (!cardData) return;
+  ensureIllustrationLoad(cardData);
+}
+
+export function ensureCardIllustrations(list = []) {
+  if (!Array.isArray(list)) return;
+  const seen = new Set();
+  for (const entry of list) {
+    const data = normalizeCardRef(entry);
+    if (!data) continue;
+    const key = typeof data.id === 'string' ? data.id : (typeof data.name === 'string' ? data.name : null);
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    ensureIllustrationLoad(data);
+  }
+}
+
 // Формирование краткой подписи с ограничением карт (без смешения с логикой рендера)
 function formatLimitLabel(limit) {
   if (!limit || typeof limit.amount !== 'number' || limit.amount <= 0) {
@@ -190,27 +306,8 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   ctx.strokeRect(illX, illY, illW, illH);
   ctx.restore();
 
-  let img = CARD_IMAGES[cardData.id] || CARD_IMAGES[cardData.id?.toLowerCase?.()] || CARD_IMAGES[(cardData.name || '').toLowerCase().replace(/[^a-z0-9\s_-]/g, '').replace(/\s+/g, '_')];
-  if (!img && !CARD_PENDING[cardData.id]) {
-    CARD_PENDING[cardData.id] = true;
-    const candidates = [
-      `card images/${cardData.id}.png`,
-      `card images/${(cardData.id || '').toLowerCase()}.png`,
-      `card images/${(cardData.name || '').toLowerCase().replace(/[^a-z0-9\s_-]/g, '').replace(/\s+/g, '_')}.png`,
-      `card images/${(cardData.name || '').toLowerCase().replace(/[^a-z0-9\s_-]/g, '').replace(/\s+/g, '-')}.png`
-    ];
-    (function tryLoad(i) {
-      if (i >= candidates.length) { CARD_PENDING[cardData.id] = false; return; }
-      const im = new Image();
-      im.onload = () => {
-        CARD_IMAGES[cardData.id] = im;
-        CARD_PENDING[cardData.id] = false;
-        try { if (window.requestCardsRedraw) window.requestCardsRedraw(); } catch {}
-      };
-      im.onerror = () => tryLoad(i + 1);
-      im.src = encodeURI(candidates[i]);
-    })(0);
-  }
+  const img = findCachedIllustration(cardData);
+  if (!img) ensureIllustrationLoad(cardData);
   if (img && img.complete && !(typeof location !== 'undefined' && location.protocol === 'file:')) {
     const ar = img.width / img.height;
     let w = illW, h = illH;
@@ -574,7 +671,8 @@ function attachIllustrationPlane(cardMesh, cardData) {
   if (!cardMesh || !cardData) return;
   const prev = cardMesh.children?.find(ch => ch.userData && ch.userData.kind === 'illustrationPlane');
   if (prev) { try { cardMesh.remove(prev); } catch {} }
-  const img = CARD_IMAGES[cardData.id] || CARD_IMAGES[cardData.id?.toLowerCase?.()] || CARD_IMAGES[(cardData.name||'').toLowerCase().replace(/[^a-z0-9\s_-]/g,'').replace(/\s+/g,'_')];
+  const img = findCachedIllustration(cardData);
+  if (!img) ensureIllustrationLoad(cardData);
   const DESIGN_W = 832, DESIGN_H = 1248;
   const W = 256, H = 356;
   const illDesign = CARD_FACE_LAYOUT.art;
@@ -642,5 +740,18 @@ export function createCard3D(cardData, isInHand = false, hpOverride = null, atkO
 }
 
 // Expose caches for legacy access
-try { if (typeof window !== 'undefined') { window.__cards = { getCachedTexture, preloadCardTextures, createCard3D, drawCardFace, CARD_TEX, CARD_IMAGES }; } } catch {}
+try {
+  if (typeof window !== 'undefined') {
+    window.__cards = {
+      getCachedTexture,
+      preloadCardTextures,
+      createCard3D,
+      drawCardFace,
+      ensureCardIllustration,
+      ensureCardIllustrations,
+      CARD_TEX,
+      CARD_IMAGES,
+    };
+  }
+} catch {}
 
