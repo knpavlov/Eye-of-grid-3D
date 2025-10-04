@@ -916,17 +916,41 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
       hideQueueModal();
     }
   });
-  socket.on('matchFound', ({ matchId, seat, decks, players })=>{
+  socket.on('matchFound', ({ matchId, seat, decks, players, deckSnapshots })=>{
     hideQueueModal();
     setMatchPlayers(players);
     try { updateIndicator(); } catch {}
     try {
+      // Берём снимки колод из сервера и приводим их к безопасному и предсказуемому формату
+      const sanitizedSnapshots = Array.isArray(deckSnapshots)
+        ? deckSnapshots.map((snap) => {
+            if (!snap || typeof snap !== 'object') return null;
+            const cards = Array.isArray(snap.cards) ? snap.cards.slice() : [];
+            const payload = {
+              id: typeof snap.id === 'string' ? snap.id : null,
+              name: typeof snap.name === 'string' ? snap.name : null,
+              cards,
+            };
+            if (typeof snap.description === 'string') payload.description = snap.description;
+            if (typeof snap.version === 'number') payload.version = snap.version;
+            return payload;
+          })
+        : [];
+      if (sanitizedSnapshots.length) {
+        try { window.__matchDecks = sanitizedSnapshots; } catch {}
+      }
       const all = window.DECKS || [];
       if (Array.isArray(decks) && decks.length === 2) {
         const myId = decks[seat];
         const oppId = decks[1 - seat];
         window.__opponentDeckId = oppId;
-        const myDeck = all.find(d => d.id === myId) || all[0];
+        const matchMyDeck = sanitizedSnapshots[seat];
+        const matchOppDeck = sanitizedSnapshots[1 - seat];
+        if (matchOppDeck) {
+          try { window.__opponentDeckSnapshot = matchOppDeck; } catch {}
+        }
+        const myDeckFromLocal = all.find(d => d.id === myId);
+        const myDeck = matchMyDeck || myDeckFromLocal || all[0] || null;
         window.__selectedDeckObj = myDeck;
       }
     } catch {}

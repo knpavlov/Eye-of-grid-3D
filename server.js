@@ -174,12 +174,25 @@ function pairIfPossible() {
     s0.data.queueing = false; s1.data.queueing = false;
 
     const deckIds = [s0.data.deckId, s1.data.deckId];
+    // Подготавливаем упрощённые снимки колод, чтобы оба клиента получили точные списки карт
+    const deckSnapshots = [s0.data.deckSnapshot, s1.data.deckSnapshot].map((deck, idx) => {
+      if (!deck || typeof deck !== 'object') return null;
+      const cards = Array.isArray(deck.cards) ? deck.cards.slice() : [];
+      const base = {
+        id: typeof deck.id === 'string' ? deck.id : null,
+        name: typeof deck.name === 'string' ? deck.name : `Deck ${idx + 1}`,
+        cards,
+      };
+      if (typeof deck.description === 'string') base.description = deck.description;
+      if (typeof deck.version === 'number') base.version = deck.version;
+      return base;
+    });
     const players = [s0.data.user, s1.data.user].map(user => ({
       id: user?.id,
       nickname: user?.nickname,
     }));
-    s0.emit("matchFound", { matchId, seat: 0, decks: deckIds, players });
-    s1.emit("matchFound", { matchId, seat: 1, decks: deckIds, players });
+    s0.emit("matchFound", { matchId, seat: 0, decks: deckIds, players, deckSnapshots });
+    s1.emit("matchFound", { matchId, seat: 1, decks: deckIds, players, deckSnapshots });
     pushLog({ ev: 'matchFound', matchId, sids: [s0.id, s1.id], deckIds });
 
     // Старт серверного таймера тиков (без авто-энда)

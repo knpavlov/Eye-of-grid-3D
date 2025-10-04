@@ -367,6 +367,10 @@
     
     async function initGame() {
       const decks = window.DECKS || [];
+      const seat = typeof window.MY_SEAT === 'number' ? window.MY_SEAT : 0;
+      const matchDecks = Array.isArray(window.__matchDecks) ? window.__matchDecks : [];
+      const matchMyDeck = matchDecks[seat];
+      const matchOppDeck = matchDecks[1 - seat];
       let chosen = window.__selectedDeckObj;
       if (!chosen) {
         try {
@@ -376,8 +380,13 @@
           chosen = decks[0];
         }
       }
-      const myDeck = chosen ? chosen.cards : (decks[0]?.cards || []);
-      let oppDeck = myDeck;
+      // Используем серверный снимок колоды, если он есть, иначе опираемся на локальный выбор
+      const myDeck = Array.isArray(matchMyDeck?.cards)
+        ? matchMyDeck.cards.slice()
+        : (chosen ? chosen.cards : (decks[0]?.cards || []));
+      let oppDeck = Array.isArray(matchOppDeck?.cards)
+        ? matchOppDeck.cards.slice()
+        : myDeck;
       try {
         const oppId = window.__opponentDeckId;
         if (oppId) {
