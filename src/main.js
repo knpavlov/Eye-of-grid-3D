@@ -214,12 +214,31 @@ try {
     updateTileMaterialsFor: Board.updateTileMaterialsFor,
     createProceduralTileTexture: Board.createProceduralTileTexture,
   };
+  // Сохраняем ранее выставленный API карточек (например, расширенный кэш иллюстраций)
+  const prevCardsApi = (typeof window.__cards === 'object' && window.__cards) ? window.__cards : {};
   window.__cards = {
+    ...prevCardsApi,
     getCachedTexture: Cards.getCachedTexture,
     preloadCardTextures: Cards.preloadCardTextures,
     createCard3D: Cards.createCard3D,
     drawCardFace: Cards.drawCardFace,
   };
+  // Дополняем интерфейс методами предзагрузки и кэша, если они ещё не прокинуты модулем scene/cards
+  if (typeof window.__cards.ensureCardIllustration !== 'function') {
+    window.__cards.ensureCardIllustration = Cards.ensureCardIllustration;
+  }
+  if (typeof window.__cards.preloadCardIllustration !== 'function') {
+    window.__cards.preloadCardIllustration = Cards.preloadCardIllustration;
+  }
+  if (typeof window.__cards.preloadCardIllustrations !== 'function') {
+    window.__cards.preloadCardIllustrations = Cards.preloadCardIllustrations;
+  }
+  if (!window.__cards.CARD_TEX) {
+    window.__cards.CARD_TEX = Cards.CARD_TEX;
+  }
+  if (!window.__cards.CARD_IMAGES) {
+    window.__cards.CARD_IMAGES = Cards.CARD_IMAGES;
+  }
   window.__units = {
     updateUnits: Units.updateUnits,
   };
