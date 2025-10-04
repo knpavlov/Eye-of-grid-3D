@@ -366,25 +366,76 @@
         // Взаимодействия с 3D-сценой вынесены в модуль src/scene/interactions.js
     
     async function initGame() {
-      const decks = window.DECKS || [];
+      const decks = Array.isArray(window.DECKS) ? window.DECKS : [];
+      const matchDecks = (typeof window !== 'undefined' && window.__matchDecks)
+        ? window.__matchDecks
+        : null;
+      const isOnlineMatch = typeof window !== 'undefined' && !!window.NET_ACTIVE;
+      const toCardIds = (list) => Array.isArray(list)
+        ? list.map(card => {
+            if (typeof card === 'string') return card;
+            if (card && typeof card === 'object' && typeof card.id === 'string') return card.id;
+            if (card && typeof card === 'object' && typeof card.cardId === 'string') return card.cardId;
+            return null;
+          }).filter(Boolean)
+        : [];
+      const toCardData = (list) => {
+        const cardsDb = (typeof window !== 'undefined' && window.CARDS) || {};
+        if (!Array.isArray(list)) return [];
+        return list
+          .map(card => {
+            if (!card) return null;
+            if (typeof card === 'object' && card.type) return card;
+            if (typeof card === 'object' && typeof card.id === 'string' && cardsDb[card.id]) {
+              return cardsDb[card.id];
+            }
+            if (typeof card === 'object' && typeof card.cardId === 'string' && cardsDb[card.cardId]) {
+              return cardsDb[card.cardId];
+            }
+            if (typeof card === 'string' && cardsDb[card]) return cardsDb[card];
+            return null;
+          })
+          .filter(Boolean);
+      };
+
       let chosen = window.__selectedDeckObj;
       if (!chosen) {
         try {
           const id = localStorage.getItem('selectedDeckId');
-          chosen = decks.find(d => d.id === id) || decks[0];
+          chosen = decks.find(d => d && d.id === id) || decks[0];
         } catch {
           chosen = decks[0];
         }
       }
-      const myDeck = chosen ? chosen.cards : (decks[0]?.cards || []);
-      let oppDeck = myDeck;
-      try {
-        const oppId = window.__opponentDeckId;
-        if (oppId) {
-          const found = decks.find(d => d.id === oppId);
-          if (found) oppDeck = found.cards;
-        }
-      } catch {}
+
+      let myDeckCardIds = isOnlineMatch && Array.isArray(matchDecks?.my?.cards) && matchDecks.my.cards.length
+        ? [...matchDecks.my.cards]
+        : toCardIds(chosen?.cards);
+      if (!myDeckCardIds.length) {
+        myDeckCardIds = toCardIds(decks[0]?.cards || []);
+      }
+
+      let oppDeckCardIds = isOnlineMatch && Array.isArray(matchDecks?.opponent?.cards) && matchDecks.opponent.cards.length
+        ? [...matchDecks.opponent.cards]
+        : [];
+      if (!oppDeckCardIds.length) {
+        oppDeckCardIds = myDeckCardIds.slice();
+        try {
+          const oppId = window.__opponentDeckId;
+          if (oppId) {
+            const found = decks.find(d => d && d.id === oppId);
+            if (found) oppDeckCardIds = toCardIds(found.cards);
+          }
+        } catch {}
+      }
+      let myDeckCards = toCardData(myDeckCardIds);
+      if (!myDeckCards.length) {
+        myDeckCards = toCardData(toCardIds(decks[0]?.cards || []));
+      }
+      let oppDeckCards = toCardData(oppDeckCardIds);
+      if (!oppDeckCards.length) {
+        oppDeckCards = toCardData(myDeckCardIds);
+      }
       const fallbackSeatName = (seat) => `Player ${seat + 1}`;
       const matchPlayersSnapshot = Array.isArray(window.__matchPlayers) ? window.__matchPlayers : [];
       let playerProfiles;
@@ -418,7 +469,7 @@
       }
       try { window.__net?.setMatchPlayers?.(playerProfiles); } catch {}
       try { window.__matchPlayers = playerProfiles.map(p => ({ ...p })); } catch {}
-      gameState = startGame(myDeck, oppDeck, { players: playerProfiles });
+      gameState = startGame(myDeckCards, oppDeckCards, { players: playerProfiles });
       try { window.applyGameState(gameState); } catch {}
       
       // Сразу строим сцену и мета-объекты, без задержки появления
