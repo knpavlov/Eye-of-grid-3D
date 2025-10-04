@@ -36,6 +36,106 @@ const CARD_FACE_LAYOUT = {
 const CARD_IMAGES = {};
 const CARD_PENDING = {};
 
+// Получаем шаблон карты из глобальной базы, если на вход передана только строка
+function resolveCardData(card) {
+  if (!card) return null;
+  if (typeof card === 'string') {
+    try {
+      if (typeof window !== 'undefined' && window.CARDS) {
+        return window.CARDS[card] || null;
+      }
+    } catch {}
+    return { id: card };
+  }
+  if (card && typeof card === 'object' && card.id && (!card.name || card.name === card.id)) {
+    try {
+      if (typeof window !== 'undefined' && window.CARDS && window.CARDS[card.id]) {
+        return { ...window.CARDS[card.id], ...card };
+      }
+    } catch {}
+  }
+  return card;
+}
+
+// Формируем список ключей для поиска и кеширования иллюстраций
+function getIllustrationKeys(cardData) {
+  const keys = [];
+  if (!cardData) return keys;
+  if (cardData.id) {
+    keys.push(String(cardData.id));
+    keys.push(String(cardData.id).toLowerCase());
+  }
+  if (cardData.name) {
+    const slug = String(cardData.name)
+      .toLowerCase()
+      .replace(/[^a-z0-9\s_-]/g, '')
+      .replace(/\s+/g, '_');
+    if (slug) {
+      keys.push(slug);
+      keys.push(slug.replace(/_/g, '-'));
+    }
+  }
+  return keys.filter(Boolean);
+}
+
+// Создаём список кандидатов для загрузки иллюстраций
+function getIllustrationCandidates(cardData) {
+  const keys = getIllustrationKeys(cardData);
+  return keys.map(key => `card images/${key}.png`);
+}
+
+// Сохраняем успешно загруженную иллюстрацию под всеми подходящими ключами
+function registerIllustration(cardData, image) {
+  const keys = getIllustrationKeys(cardData);
+  keys.forEach(key => {
+    if (!key) return;
+    CARD_IMAGES[key] = image;
+  });
+}
+
+// Ищем подходящую иллюстрацию в кеше
+function lookupIllustration(cardData) {
+  const keys = getIllustrationKeys(cardData);
+  for (const key of keys) {
+    if (key && CARD_IMAGES[key]) return CARD_IMAGES[key];
+  }
+  return null;
+}
+
+// Запускаем загрузку иллюстрации, если она ещё не кеширована
+export function ensureCardIllustration(card) {
+  const cardData = resolveCardData(card);
+  if (!cardData) return;
+  if (lookupIllustration(cardData)) return;
+  const candidates = getIllustrationCandidates(cardData);
+  if (!candidates.length) return;
+  const pendingKey = getIllustrationKeys(cardData)[0];
+  if (pendingKey && CARD_PENDING[pendingKey]) return;
+  if (pendingKey) CARD_PENDING[pendingKey] = true;
+  (function tryLoad(i) {
+    if (i >= candidates.length) {
+      if (pendingKey) CARD_PENDING[pendingKey] = false;
+      return;
+    }
+    const im = new Image();
+    im.onload = () => {
+      registerIllustration(cardData, im);
+      if (pendingKey) CARD_PENDING[pendingKey] = false;
+      try { if (window.requestCardsRedraw) window.requestCardsRedraw(); } catch {}
+    };
+    im.onerror = () => tryLoad(i + 1);
+    im.src = encodeURI(candidates[i]);
+  })(0);
+}
+
+// Массовая предзагрузка иллюстраций для списков карт
+export function preloadCardIllustrations(cards = []) {
+  const list = Array.isArray(cards) ? cards : [cards];
+  list.forEach(card => {
+    try { ensureCardIllustration(card); } catch {}
+  });
+}
+
 // Формирование краткой подписи с ограничением карт (без смешения с логикой рендера)
 function formatLimitLabel(limit) {
   if (!limit || typeof limit.amount !== 'number' || limit.amount <= 0) {
@@ -190,26 +290,10 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   ctx.strokeRect(illX, illY, illW, illH);
   ctx.restore();
 
-  let img = CARD_IMAGES[cardData.id] || CARD_IMAGES[cardData.id?.toLowerCase?.()] || CARD_IMAGES[(cardData.name || '').toLowerCase().replace(/[^a-z0-9\s_-]/g, '').replace(/\s+/g, '_')];
-  if (!img && !CARD_PENDING[cardData.id]) {
-    CARD_PENDING[cardData.id] = true;
-    const candidates = [
-      `card images/${cardData.id}.png`,
-      `card images/${(cardData.id || '').toLowerCase()}.png`,
-      `card images/${(cardData.name || '').toLowerCase().replace(/[^a-z0-9\s_-]/g, '').replace(/\s+/g, '_')}.png`,
-      `card images/${(cardData.name || '').toLowerCase().replace(/[^a-z0-9\s_-]/g, '').replace(/\s+/g, '-')}.png`
-    ];
-    (function tryLoad(i) {
-      if (i >= candidates.length) { CARD_PENDING[cardData.id] = false; return; }
-      const im = new Image();
-      im.onload = () => {
-        CARD_IMAGES[cardData.id] = im;
-        CARD_PENDING[cardData.id] = false;
-        try { if (window.requestCardsRedraw) window.requestCardsRedraw(); } catch {}
-      };
-      im.onerror = () => tryLoad(i + 1);
-      im.src = encodeURI(candidates[i]);
-    })(0);
+  let img = lookupIllustration(cardData);
+  if (!img) {
+    ensureCardIllustration(cardData);
+    img = lookupIllustration(cardData);
   }
   if (img && img.complete && !(typeof location !== 'undefined' && location.protocol === 'file:')) {
     const ar = img.width / img.height;
@@ -642,5 +726,18 @@ export function createCard3D(cardData, isInHand = false, hpOverride = null, atkO
 }
 
 // Expose caches for legacy access
-try { if (typeof window !== 'undefined') { window.__cards = { getCachedTexture, preloadCardTextures, createCard3D, drawCardFace, CARD_TEX, CARD_IMAGES }; } } catch {}
+try {
+  if (typeof window !== 'undefined') {
+    window.__cards = {
+      getCachedTexture,
+      preloadCardTextures,
+      createCard3D,
+      drawCardFace,
+      ensureCardIllustration,
+      preloadCardIllustrations,
+      CARD_TEX,
+      CARD_IMAGES,
+    };
+  }
+} catch {}
 
