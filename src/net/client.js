@@ -1,6 +1,7 @@
 import { getServerBase } from './config.js';
 import { initSessionStore, getSessionToken, onSessionChange, handleUnauthorized } from '../auth/sessionStore.js';
 import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
+import { hydrateDeck, getDeckById } from '../core/decks.js';
 
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
@@ -105,6 +106,36 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
 
   function resetMatchPlayers() {
     setMatchPlayers([]);
+  }
+
+  function extractDeckId(entry) {
+    if (typeof entry === 'string' && entry.trim()) return entry.trim();
+    if (entry && typeof entry === 'object' && typeof entry.id === 'string' && entry.id.trim()) {
+      return entry.id.trim();
+    }
+    return null;
+  }
+
+  function resolveDeckFromPayload(entry, fallback = null) {
+    const id = extractDeckId(entry);
+    if (id) {
+      try {
+        const known = typeof getDeckById === 'function' ? getDeckById(id) : null;
+        if (known) return known;
+      } catch {}
+      const all = (typeof window !== 'undefined' && Array.isArray(window.DECKS)) ? window.DECKS : [];
+      const fromLocal = all.find(deck => deck && deck.id === id);
+      if (fromLocal) return fromLocal;
+    }
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      try {
+        const hydrated = hydrateDeck(entry);
+        if (hydrated) return hydrated;
+      } catch (err) {
+        console.warn('[net] Не удалось гидратировать колоду из матча', err);
+      }
+    }
+    return fallback;
   }
 
   // ===== 3) Queue modal + countdown =====
@@ -921,15 +952,27 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
     setMatchPlayers(players);
     try { updateIndicator(); } catch {}
     try {
-      const all = window.DECKS || [];
-      if (Array.isArray(decks) && decks.length === 2) {
-        const myId = decks[seat];
-        const oppId = decks[1 - seat];
-        window.__opponentDeckId = oppId;
-        const myDeck = all.find(d => d.id === myId) || all[0];
-        window.__selectedDeckObj = myDeck;
+      if (Array.isArray(decks) && decks.length >= 2) {
+        const myEntry = decks[seat] ?? null;
+        const oppEntry = decks[(1 - seat + decks.length) % decks.length] ?? null;
+        const previousSelection = (typeof window !== 'undefined') ? window.__selectedDeckObj || null : null;
+        const myDeck = resolveDeckFromPayload(myEntry, previousSelection);
+        if (myDeck) {
+          window.__selectedDeckObj = myDeck;
+          try { window.__selectedDeckId = myDeck.id; } catch {}
+        }
+        const opponentDeck = resolveDeckFromPayload(oppEntry, null);
+        const opponentId = extractDeckId(oppEntry);
+        if (opponentDeck) {
+          window.__opponentDeckObj = opponentDeck;
+          window.__opponentDeckId = opponentDeck.id || opponentId || null;
+        } else if (opponentId) {
+          window.__opponentDeckId = opponentId;
+        }
       }
-    } catch {}
+    } catch (err) {
+      console.warn('[net] Ошибка обработки колод матча', err);
+    }
     console.log('[MATCH] Match found, setting MY_SEAT to:', seat, 'matchId:', matchId, 'decks:', decks, 'players:', players);
     // Логирование для отладки
     try { (window.socket || socket).emit('debugLog', { event: 'matchFound_received', seat, matchId, decks }); } catch {}

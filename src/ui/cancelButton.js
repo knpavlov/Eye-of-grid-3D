@@ -91,6 +91,11 @@ export function setupCancelButton() {
         window.__spells?.cancelMesmerLapseSelection?.();
         interactionState.pendingSpellLapse = null;
         interactionState.pendingDiscardSelection = null;
+      } else if (interactionState.pendingSpellElementalDominion) {
+        window.__spells?.cancelElementalDominionSelection?.();
+      } else if (interactionState.pendingDiscardSelection?.onCancel) {
+        // Для ритуальных сбросов предусмотрен собственный откат состояния
+        try { interactionState.pendingDiscardSelection.onCancel(); } catch {}
       } else if (interactionState.selectedCard) {
         returnCardToHand(interactionState.selectedCard);
         interactionState.selectedCard = null;
