@@ -152,9 +152,18 @@ function handleAuthStateForMenu(state) {
     if (!menuAutoOpened) {
       tryOpenMainMenu(true);
     }
-  } else {
-    menuAutoOpened = false;
+    return;
   }
+  // Если пользователь не авторизован, всё равно показываем главное меню,
+  // чтобы офлайн-режим и локальные функции оставались доступны.
+  menuAutoOpened = false;
+  if (typeof document === 'undefined') return;
+  const menuNode = document.getElementById('main-menu-overlay');
+  if (menuNode) {
+    menuAutoOpened = true;
+    return;
+  }
+  tryOpenMainMenu(true);
 }
 
 function setupAuthUI() {
@@ -178,9 +187,6 @@ if (typeof window !== 'undefined') {
     document.addEventListener('DOMContentLoaded', setupAuthUI, { once: true });
   } else {
     setupAuthUI();
-  }
-  if (initialSessionState?.authenticated) {
-    tryOpenMainMenu(true);
   }
 }
 

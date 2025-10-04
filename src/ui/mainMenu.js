@@ -103,6 +103,8 @@ export function open(initial = false) {
         window.socket?.disconnect();
         window.NET_ACTIVE = false;
         window.__opponentDeckId = null;
+        window.__opponentDeckCards = null;
+        window.__matchDecks = null;
         window.MY_SEAT = null;
         window.updateIndicator?.();
         window.updateInputLock?.();
