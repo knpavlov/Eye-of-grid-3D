@@ -216,6 +216,26 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
 
   updateMatchDecksOnWindow();
 
+  function preloadDeckIllustrations(deckInfos) {
+    try {
+      if (typeof window === 'undefined') return;
+      const cardsApi = window.__cards;
+      if (!cardsApi || typeof cardsApi.preloadCardIllustrations !== 'function') return;
+      const source = Array.isArray(deckInfos) ? deckInfos : [];
+      const templates = [];
+      for (const deck of source) {
+        const resolved = Array.isArray(deck?.cardsResolved) ? deck.cardsResolved : [];
+        for (const tpl of resolved) {
+          if (tpl && typeof tpl === 'object') templates.push(tpl);
+        }
+      }
+      if (!templates.length) return;
+      cardsApi.preloadCardIllustrations(templates);
+    } catch (err) {
+      console.warn('[net] Не удалось инициировать предзагрузку иллюстраций колод:', err);
+    }
+  }
+
   // ===== 3) Queue modal + countdown =====
   let queueModal=null, startModal=null;
   function showQueueModal(){
@@ -1061,6 +1081,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
         opponent: cloneDeckInfo(opponentDeckResolved, { includeResolved: true }),
       };
       updateMatchDecksOnWindow();
+      preloadDeckIllustrations(decksWithResolved);
 
       const myId = announcedDecks[seatIndex] || currentMatchDecks.my.id;
       const oppId = announcedDecks[opponentIndex] || currentMatchDecks.opponent.id;
