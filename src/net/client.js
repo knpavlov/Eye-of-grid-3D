@@ -105,6 +105,12 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
 
   function resetMatchPlayers() {
     setMatchPlayers([]);
+    try {
+      if (typeof window !== 'undefined') {
+        window.__matchDecks = null;
+        window.__opponentDeckCards = null;
+      }
+    } catch {}
   }
 
   // ===== 3) Queue modal + countdown =====
@@ -916,18 +922,56 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
       hideQueueModal();
     }
   });
-  socket.on('matchFound', ({ matchId, seat, decks, players })=>{
+  socket.on('matchFound', ({ matchId, seat, decks, deckCards, players })=>{
     hideQueueModal();
     setMatchPlayers(players);
     try { updateIndicator(); } catch {}
     try {
       const all = window.DECKS || [];
+      const normalizedDecks = Array.isArray(deckCards)
+        ? deckCards.map(entry => {
+            if (!entry) return null;
+            const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : null;
+            const name = typeof entry.name === 'string' ? entry.name : '';
+            const cards = Array.isArray(entry.cards)
+              ? entry.cards.filter(card => !!card)
+              : [];
+            return { id, name, cards };
+          })
+        : [];
+      try { window.__matchDecks = normalizedDecks; } catch {}
       if (Array.isArray(decks) && decks.length === 2) {
         const myId = decks[seat];
         const oppId = decks[1 - seat];
         window.__opponentDeckId = oppId;
-        const myDeck = all.find(d => d.id === myId) || all[0];
-        window.__selectedDeckObj = myDeck;
+
+        const myLocalDeck = all.find(d => d.id === myId) || null;
+        const fallbackEntry = normalizedDecks[seat] || null;
+        let resolvedDeck = myLocalDeck;
+        if (!resolvedDeck && fallbackEntry) {
+          resolvedDeck = {
+            id: fallbackEntry.id || myId || null,
+            name: fallbackEntry.name || myLocalDeck?.name || 'Deck',
+            description: myLocalDeck?.description || '',
+            cards: Array.isArray(fallbackEntry.cards) ? [...fallbackEntry.cards] : [],
+          };
+        }
+        if (!resolvedDeck && all.length) {
+          resolvedDeck = all[0];
+        }
+        if (resolvedDeck) {
+          window.__selectedDeckObj = resolvedDeck;
+        }
+
+        const opponentEntry = normalizedDecks[1 - seat] || null;
+        if (opponentEntry && Array.isArray(opponentEntry.cards)) {
+          window.__opponentDeckCards = [...opponentEntry.cards];
+        } else {
+          const oppLocalDeck = all.find(d => d.id === oppId);
+          window.__opponentDeckCards = oppLocalDeck && Array.isArray(oppLocalDeck.cards)
+            ? [...oppLocalDeck.cards]
+            : null;
+        }
       }
     } catch {}
     console.log('[MATCH] Match found, setting MY_SEAT to:', seat, 'matchId:', matchId, 'decks:', decks, 'players:', players);
