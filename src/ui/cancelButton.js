@@ -3,6 +3,7 @@ import { interactionState, returnCardToHand, undoPendingSummonManaGain } from '.
 import { clearHighlights } from '../scene/highlight.js';
 import { capMana } from '../core/constants.js';
 import { refreshPossessionsUI } from './possessions.js';
+import { cancelElementalDominionSelection as cancelDominionRitual } from '../spells/handlers.js';
 
 function refundSummon(row, col) {
   const gs = window.gameState;
@@ -91,6 +92,18 @@ export function setupCancelButton() {
         window.__spells?.cancelMesmerLapseSelection?.();
         interactionState.pendingSpellLapse = null;
         interactionState.pendingDiscardSelection = null;
+      } else if (interactionState.pendingSpellElementalDominion) {
+        // Отменяем ритуальные доминионские заклинания через прямой импорт,
+        // чтобы не зависеть от наличия window.__spells в рантайме
+        try {
+          cancelDominionRitual();
+        } catch {
+          window.__spells?.cancelElementalDominionSelection?.();
+        }
+        interactionState.pendingDiscardSelection = null;
+      } else if (interactionState.pendingDiscardSelection?.onCancel) {
+        // Для ритуальных сбросов предусмотрен собственный откат состояния
+        try { interactionState.pendingDiscardSelection.onCancel(); } catch {}
       } else if (interactionState.selectedCard) {
         returnCardToHand(interactionState.selectedCard);
         interactionState.selectedCard = null;
