@@ -56,6 +56,76 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
     opponent: { id: null, name: '', description: '', cards: [], cardsResolved: [] },
   };
 
+  // Кэш уже запрошенных на предзагрузку иллюстраций, чтобы не дёргать лишний раз
+  const PRELOADED_ILLUSTRATION_IDS = new Set();
+  const PENDING_ILLUSTRATIONS = new Map();
+  let pendingIllustrationsTimer = null;
+
+  function getTemplateIdForArt(tpl) {
+    if (!tpl || typeof tpl !== 'object') return null;
+    if (typeof tpl.id === 'string' && tpl.id.trim()) return tpl.id.trim();
+    if (typeof tpl.cardId === 'string' && tpl.cardId.trim()) return tpl.cardId.trim();
+    if (typeof tpl.tplId === 'string' && tpl.tplId.trim()) return tpl.tplId.trim();
+    return null;
+  }
+
+  function flushPendingIllustrations() {
+    if (typeof window === 'undefined') return false;
+    const cardsApi = window.__cards;
+    if (!cardsApi) return false;
+    if (!PENDING_ILLUSTRATIONS.size) return true;
+    const batch = Array.from(PENDING_ILLUSTRATIONS.entries());
+    const templates = batch.map(([, tpl]) => tpl);
+    if (!templates.length) return true;
+    try {
+      if (typeof cardsApi.preloadCardIllustrations === 'function') {
+        cardsApi.preloadCardIllustrations(templates);
+      } else if (typeof cardsApi.preloadCardIllustration === 'function') {
+        for (const tpl of templates) cardsApi.preloadCardIllustration(tpl);
+      } else {
+        return false;
+      }
+    } catch (err) {
+      console.warn('[net] Ошибка при отправке батча иллюстраций на предзагрузку:', err);
+      return false;
+    }
+    for (const [id] of batch) {
+      PRELOADED_ILLUSTRATION_IDS.add(id);
+      PENDING_ILLUSTRATIONS.delete(id);
+    }
+    return true;
+  }
+
+  function schedulePendingIllustrationsFlush() {
+    if (pendingIllustrationsTimer != null) return;
+    pendingIllustrationsTimer = setInterval(() => {
+      try {
+        const ok = flushPendingIllustrations();
+        if (ok && !PENDING_ILLUSTRATIONS.size) {
+          clearInterval(pendingIllustrationsTimer);
+          pendingIllustrationsTimer = null;
+        }
+      } catch (err) {
+        console.warn('[net] Отложенная предзагрузка иллюстраций завершилась с ошибкой:', err);
+      }
+    }, 350);
+  }
+
+  function queueIllustrationsForPreload(templates) {
+    if (!Array.isArray(templates) || !templates.length) return;
+    let added = false;
+    for (const tpl of templates) {
+      if (!tpl || typeof tpl !== 'object') continue;
+      const id = getTemplateIdForArt(tpl);
+      if (!id || PRELOADED_ILLUSTRATION_IDS.has(id) || PENDING_ILLUSTRATIONS.has(id)) continue;
+      PENDING_ILLUSTRATIONS.set(id, tpl);
+      added = true;
+    }
+    if (!added) return;
+    const flushed = flushPendingIllustrations();
+    if (!flushed) schedulePendingIllustrationsFlush();
+  }
+
   function sanitizePlayerEntry(entry, index) {
     const fallback = FALLBACK_SEAT_NAMES[index] || `Player ${index + 1}`;
     if (!entry || typeof entry !== 'object') {
@@ -215,6 +285,134 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
   }
 
   updateMatchDecksOnWindow();
+
+  function preloadDeckIllustrations(deckInfos) {
+    try {
+      const source = Array.isArray(deckInfos) ? deckInfos : [];
+      const templates = [];
+      for (const deck of source) {
+        const resolved = Array.isArray(deck?.cardsResolved) ? deck.cardsResolved : [];
+        if (resolved.length) {
+          for (const tpl of resolved) {
+            if (tpl && typeof tpl === 'object') templates.push(tpl);
+          }
+          continue;
+        }
+        const rawCards = Array.isArray(deck?.cards) ? deck.cards : [];
+        for (const ref of rawCards) {
+          const tpl = resolveCardTemplate(ref);
+          if (tpl) templates.push(tpl);
+        }
+      }
+      if (!templates.length) return;
+      queueIllustrationsForPreload(templates);
+    } catch (err) {
+      console.warn('[net] Не удалось инициировать предзагрузку иллюстраций колод:', err);
+    }
+  }
+
+  function preloadIllustrationsFromState(state) {
+    try {
+      if (!state || typeof state !== 'object') return;
+      const templates = [];
+      const pushRef = (ref) => {
+        if (!ref) return;
+        const tpl = resolveCardTemplate(ref);
+        if (tpl) {
+          templates.push(tpl);
+          return;
+        }
+        if (typeof ref === 'string' && ref.trim()) {
+          templates.push({ id: ref.trim() });
+          return;
+        }
+        if (typeof ref === 'object') {
+          const fallbackId = (typeof ref.id === 'string' && ref.id.trim())
+            || (typeof ref.cardId === 'string' && ref.cardId.trim())
+            || (typeof ref.tplId === 'string' && ref.tplId.trim())
+            || null;
+          if (fallbackId) templates.push({ id: fallbackId });
+        }
+      };
+      const pushTplId = (tplId) => {
+        if (!tplId) return;
+        pushRef({ tplId });
+      };
+
+      const board = Array.isArray(state.board) ? state.board : [];
+      for (const row of board) {
+        if (!Array.isArray(row)) continue;
+        for (const cell of row) {
+          if (!cell || typeof cell !== 'object') continue;
+          const unit = cell.unit;
+          if (unit && typeof unit === 'object') {
+            pushTplId(unit.tplId || unit.id);
+            if (unit.card) pushRef(unit.card);
+          }
+          const spellCandidates = [cell.spell, cell.card, cell.pendingCard, cell.trap, cell.relic];
+          for (const candidate of spellCandidates) {
+            if (candidate) pushRef(candidate);
+          }
+        }
+      }
+
+      const players = Array.isArray(state.players) ? state.players : [];
+      for (const player of players) {
+        if (!player || typeof player !== 'object') continue;
+        const zones = [
+          player.hand,
+          player.deck,
+          player.discard,
+          player.graveyard,
+          player.removed,
+          player.exile,
+          player.fieldSpells,
+          player.revealedCards,
+          player.ritual,
+          player.rituals,
+          player.setAside,
+        ];
+        for (const zone of zones) {
+          if (!zone) continue;
+          if (Array.isArray(zone)) {
+            for (const entry of zone) pushRef(entry);
+          } else if (typeof zone === 'object') {
+            if (zone.card) pushRef(zone.card);
+            if (zone.tpl) pushRef(zone.tpl);
+            pushRef(zone);
+          } else {
+            pushRef(zone);
+          }
+        }
+      }
+
+      const discardQueue = Array.isArray(state.pendingDiscards) ? state.pendingDiscards : [];
+      for (const req of discardQueue) {
+        if (!req || typeof req !== 'object') continue;
+        if (req.source) pushRef(req.source);
+        const optionLists = [];
+        if (Array.isArray(req.cards)) optionLists.push(req.cards);
+        if (Array.isArray(req.options)) optionLists.push(req.options);
+        for (const list of optionLists) {
+          for (const entry of list) pushRef(entry);
+        }
+      }
+
+      const stackEntries = Array.isArray(state.stack) ? state.stack : [];
+      for (const entry of stackEntries) {
+        if (!entry || typeof entry !== 'object') continue;
+        if (entry.card) pushRef(entry.card);
+        if (entry.source) pushRef(entry.source);
+        if (entry.targetCard) pushRef(entry.targetCard);
+      }
+
+      if (templates.length) {
+        queueIllustrationsForPreload(templates);
+      }
+    } catch (err) {
+      console.warn('[net] Не удалось собрать иллюстрации из состояния матча:', err);
+    }
+  }
 
   // ===== 3) Queue modal + countdown =====
   let queueModal=null, startModal=null;
@@ -442,6 +640,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
   socket.on('state', async (state)=>{
     if (!state) return;
     const prev = APPLYING ? null : (gameState ? JSON.parse(JSON.stringify(gameState)) : null);
+    try { preloadIllustrationsFromState(state); } catch {}
     // Предварительно определяем добор карты, чтобы скрыть её до окончания анимации
     let __drawDelta = 0;
     let __drawCards = [];
@@ -1061,6 +1260,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
         opponent: cloneDeckInfo(opponentDeckResolved, { includeResolved: true }),
       };
       updateMatchDecksOnWindow();
+      preloadDeckIllustrations(decksWithResolved);
 
       const myId = announcedDecks[seatIndex] || currentMatchDecks.my.id;
       const oppId = announcedDecks[opponentIndex] || currentMatchDecks.opponent.id;
