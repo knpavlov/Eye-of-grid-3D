@@ -367,6 +367,20 @@
     
     async function initGame() {
       const decks = window.DECKS || [];
+      const normalizeCards = (cards) => (Array.isArray(cards)
+        ? cards.map((card) => (typeof card === 'string' ? card.trim() : '')).filter(Boolean)
+        : []);
+      const pickDeckFromObj = (deckObj) => {
+        if (!deckObj) return [];
+        if (Array.isArray(deckObj)) return normalizeCards(deckObj);
+        if (Array.isArray(deckObj.cards)) return normalizeCards(deckObj.cards);
+        return [];
+      };
+      const getDeckById = (id) => {
+        if (!id) return [];
+        const found = decks.find((d) => d && d.id === id);
+        return pickDeckFromObj(found);
+      };
       let chosen = window.__selectedDeckObj;
       if (!chosen) {
         try {
@@ -376,15 +390,32 @@
           chosen = decks[0];
         }
       }
-      const myDeck = chosen ? chosen.cards : (decks[0]?.cards || []);
-      let oppDeck = myDeck;
-      try {
-        const oppId = window.__opponentDeckId;
-        if (oppId) {
-          const found = decks.find(d => d.id === oppId);
-          if (found) oppDeck = found.cards;
-        }
-      } catch {}
+      const seatIndex = (typeof window.MY_SEAT === 'number' && window.MY_SEAT >= 0 && window.MY_SEAT <= 1)
+        ? window.MY_SEAT
+        : 0;
+      const deckSnapshots = Array.isArray(window.__matchDeckSnapshots) ? window.__matchDeckSnapshots : [];
+      const mySnapshotDeck = pickDeckFromObj(deckSnapshots[seatIndex]);
+      const oppSnapshotDeck = pickDeckFromObj(deckSnapshots[1 - seatIndex]);
+      const myLocalDeck = pickDeckFromObj(chosen);
+      const myDefaultDeck = myLocalDeck.length ? myLocalDeck : pickDeckFromObj(decks[0]);
+      const myDeck = mySnapshotDeck.length ? mySnapshotDeck : myDefaultDeck;
+      const resolveOpponentDeck = () => {
+        if (oppSnapshotDeck.length) return oppSnapshotDeck;
+        try {
+          const oppId = window.__opponentDeckId;
+          if (oppId) {
+            const byId = getDeckById(oppId);
+            if (byId.length) return byId;
+          }
+        } catch {}
+        const alternative = decks.find((d) => d && d.id && chosen && d.id !== chosen.id) || decks[1];
+        const altDeck = pickDeckFromObj(alternative);
+        if (altDeck.length) return altDeck;
+        const anyDeck = decks.map(pickDeckFromObj).find((cards) => cards.length);
+        if (anyDeck && anyDeck.length) return anyDeck;
+        return myDeck.slice();
+      };
+      const oppDeck = resolveOpponentDeck();
       const fallbackSeatName = (seat) => `Player ${seat + 1}`;
       const matchPlayersSnapshot = Array.isArray(window.__matchPlayers) ? window.__matchPlayers : [];
       let playerProfiles;
