@@ -1062,6 +1062,27 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
       };
       updateMatchDecksOnWindow();
 
+      try {
+        const preloadSource = [];
+        if (Array.isArray(myDeckResolved.cardsResolved)) preloadSource.push(...myDeckResolved.cardsResolved);
+        if (Array.isArray(opponentDeckResolved.cardsResolved)) preloadSource.push(...opponentDeckResolved.cardsResolved);
+        const cardsModule = (typeof window !== 'undefined') ? window.__cards : null;
+        if (cardsModule && preloadSource.length) {
+          // Загружаем иллюстрации заранее, чтобы на поле у обоих игроков сразу были видны арты
+          if (typeof cardsModule.ensureCardIllustrations === 'function') {
+            cardsModule.ensureCardIllustrations(preloadSource);
+          } else if (typeof cardsModule.ensureCardIllustration === 'function') {
+            const seen = new Set();
+            for (const card of preloadSource) {
+              const key = (card && typeof card.id === 'string') ? card.id : (card && typeof card === 'string' ? card : null);
+              if (key && seen.has(key)) continue;
+              if (key) seen.add(key);
+              cardsModule.ensureCardIllustration(card);
+            }
+          }
+        }
+      } catch {}
+
       const myId = announcedDecks[seatIndex] || currentMatchDecks.my.id;
       const oppId = announcedDecks[opponentIndex] || currentMatchDecks.opponent.id;
       if (oppId) window.__opponentDeckId = oppId;
