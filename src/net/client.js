@@ -49,6 +49,13 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
   }));
   try { window.__matchPlayers = matchPlayers.map(p => ({ ...p })); } catch {}
 
+  let currentMatchDecks = {
+    seat: null,
+    decks: [],
+    my: { id: null, name: '', description: '', cards: [], cardsResolved: [] },
+    opponent: { id: null, name: '', description: '', cards: [], cardsResolved: [] },
+  };
+
   function sanitizePlayerEntry(entry, index) {
     const fallback = FALLBACK_SEAT_NAMES[index] || `Player ${index + 1}`;
     if (!entry || typeof entry !== 'object') {
@@ -105,7 +112,109 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
 
   function resetMatchPlayers() {
     setMatchPlayers([]);
+    currentMatchDecks = {
+      seat: null,
+      decks: [],
+      my: { id: null, name: '', description: '', cards: [], cardsResolved: [] },
+      opponent: { id: null, name: '', description: '', cards: [], cardsResolved: [] },
+    };
+    updateMatchDecksOnWindow();
   }
+
+  function extractCardId(card) {
+    if (typeof card === 'string') return card;
+    if (card && typeof card === 'object') {
+      if (typeof card.id === 'string') return card.id;
+      if (typeof card.cardId === 'string') return card.cardId;
+    }
+    return null;
+  }
+
+  function normalizeDeckInfo(entry) {
+    if (!entry) return { id: null, name: '', description: '', cards: [] };
+    if (Array.isArray(entry)) {
+      return {
+        id: null,
+        name: '',
+        description: '',
+        cards: entry.map(extractCardId).filter(Boolean),
+      };
+    }
+    if (typeof entry === 'object') {
+      const id = typeof entry.id === 'string' ? entry.id : null;
+      const name = typeof entry.name === 'string' ? entry.name : '';
+      const description = typeof entry.description === 'string' ? entry.description : '';
+      const cardsSource = Array.isArray(entry.cards) ? entry.cards : [];
+      const cards = cardsSource.map(extractCardId).filter(Boolean);
+      return { id, name, description, cards };
+    }
+    return { id: null, name: '', description: '', cards: [] };
+  }
+
+  function getCardsDatabase() {
+    try {
+      if (typeof window !== 'undefined' && window.CARDS && typeof window.CARDS === 'object') {
+        return window.CARDS;
+      }
+    } catch {}
+    return {};
+  }
+
+  function resolveCardTemplate(ref) {
+    if (!ref) return null;
+    const cardsDb = getCardsDatabase();
+    if (typeof ref === 'string') {
+      return cardsDb[ref] || null;
+    }
+    if (typeof ref === 'object') {
+      if (typeof ref.id === 'string' && cardsDb[ref.id]) return cardsDb[ref.id];
+      if (typeof ref.cardId === 'string' && cardsDb[ref.cardId]) return cardsDb[ref.cardId];
+      if (typeof ref.tplId === 'string' && cardsDb[ref.tplId]) return cardsDb[ref.tplId];
+      return ref;
+    }
+    return null;
+  }
+
+  function resolveDeckTemplates(cardRefs) {
+    const source = Array.isArray(cardRefs) ? cardRefs : [];
+    const resolved = [];
+    for (const ref of source) {
+      const tpl = resolveCardTemplate(ref);
+      if (tpl) resolved.push(tpl);
+    }
+    return resolved;
+  }
+
+  function cloneDeckInfo(info, { includeResolved = false } = {}) {
+    if (!info || typeof info !== 'object') {
+      return { id: null, name: '', description: '', cards: [], ...(includeResolved ? { cardsResolved: [] } : {}) };
+    }
+    const clone = {
+      id: typeof info.id === 'string' ? info.id : null,
+      name: typeof info.name === 'string' ? info.name : '',
+      description: typeof info.description === 'string' ? info.description : '',
+      cards: Array.isArray(info.cards) ? info.cards.slice() : [],
+    };
+    if (includeResolved) {
+      clone.cardsResolved = Array.isArray(info.cardsResolved)
+        ? info.cardsResolved.slice()
+        : resolveDeckTemplates(clone.cards);
+    }
+    return clone;
+  }
+
+  function updateMatchDecksOnWindow() {
+    try {
+      window.__matchDecks = {
+        seat: currentMatchDecks.seat,
+        decks: currentMatchDecks.decks.map(deck => cloneDeckInfo(deck, { includeResolved: true })),
+        my: cloneDeckInfo(currentMatchDecks.my, { includeResolved: true }),
+        opponent: cloneDeckInfo(currentMatchDecks.opponent, { includeResolved: true }),
+      };
+    } catch {}
+  }
+
+  updateMatchDecksOnWindow();
 
   // ===== 3) Queue modal + countdown =====
   let queueModal=null, startModal=null;
@@ -916,24 +1025,72 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
       hideQueueModal();
     }
   });
-  socket.on('matchFound', ({ matchId, seat, decks, players })=>{
+  socket.on('matchFound', ({ matchId, seat, decks, deckLists, players })=>{
     hideQueueModal();
     setMatchPlayers(players);
     try { updateIndicator(); } catch {}
     try {
-      const all = window.DECKS || [];
-      if (Array.isArray(decks) && decks.length === 2) {
-        const myId = decks[seat];
-        const oppId = decks[1 - seat];
-        window.__opponentDeckId = oppId;
-        const myDeck = all.find(d => d.id === myId) || all[0];
-        window.__selectedDeckObj = myDeck;
+      const seatIndex = seat === 1 ? 1 : 0;
+      const opponentIndex = seatIndex === 0 ? 1 : 0;
+      const providedLists = Array.isArray(deckLists) ? deckLists : [];
+      const announcedDecks = Array.isArray(decks) ? decks : [];
+      const localDecks = Array.isArray(window.DECKS) ? window.DECKS : [];
+
+      const normalizedDecks = [0, 1].map(index => {
+        const provided = providedLists[index];
+        const normalized = normalizeDeckInfo(provided);
+        if (normalized.cards.length) return normalized;
+        const deckId = announcedDecks[index];
+        if (!deckId) return normalized;
+        const local = localDecks.find(d => d && d.id === deckId);
+        return local ? normalizeDeckInfo(local) : normalized;
+      });
+
+      const decksWithResolved = normalizedDecks.map(deck => ({
+        ...deck,
+        cardsResolved: resolveDeckTemplates(deck.cards),
+      }));
+
+      const myDeckResolved = decksWithResolved[seatIndex] || { id: null, name: '', description: '', cards: [], cardsResolved: [] };
+      const opponentDeckResolved = decksWithResolved[opponentIndex] || { id: null, name: '', description: '', cards: [], cardsResolved: [] };
+
+      currentMatchDecks = {
+        seat: seatIndex,
+        decks: decksWithResolved.map(deck => cloneDeckInfo(deck, { includeResolved: true })),
+        my: cloneDeckInfo(myDeckResolved, { includeResolved: true }),
+        opponent: cloneDeckInfo(opponentDeckResolved, { includeResolved: true }),
+      };
+      updateMatchDecksOnWindow();
+
+      const myId = announcedDecks[seatIndex] || currentMatchDecks.my.id;
+      const oppId = announcedDecks[opponentIndex] || currentMatchDecks.opponent.id;
+      if (oppId) window.__opponentDeckId = oppId;
+
+      const preferredLocal = localDecks.find(d => d && d.id === myId);
+      if (preferredLocal) {
+        window.__selectedDeckObj = {
+          ...preferredLocal,
+          cards: Array.isArray(currentMatchDecks.my.cardsResolved)
+            ? currentMatchDecks.my.cardsResolved.slice()
+            : resolveDeckTemplates(currentMatchDecks.my.cards),
+        };
+      } else if (currentMatchDecks.my.cards.length) {
+        window.__selectedDeckObj = {
+          id: currentMatchDecks.my.id || myId || null,
+          name: currentMatchDecks.my.name || 'Selected deck',
+          description: currentMatchDecks.my.description || '',
+          cards: Array.isArray(currentMatchDecks.my.cardsResolved)
+            ? currentMatchDecks.my.cardsResolved.slice()
+            : resolveDeckTemplates(currentMatchDecks.my.cards),
+        };
+      } else if (localDecks.length) {
+        window.__selectedDeckObj = localDecks[0];
       }
     } catch {}
     console.log('[MATCH] Match found, setting MY_SEAT to:', seat, 'matchId:', matchId, 'decks:', decks, 'players:', players);
     // Логирование для отладки
     try { (window.socket || socket).emit('debugLog', { event: 'matchFound_received', seat, matchId, decks }); } catch {}
-    
+
     // Полный сброс локального состояния предыдущего матча перед стартом нового
     try { if (window.__pendingBattleFlushTimer) { clearInterval(window.__pendingBattleFlushTimer); window.__pendingBattleFlushTimer = null; } } catch {}
     try { PENDING_BATTLE_ANIMS = []; PENDING_RETALIATIONS = []; } catch {}
