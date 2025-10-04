@@ -174,12 +174,30 @@ function pairIfPossible() {
     s0.data.queueing = false; s1.data.queueing = false;
 
     const deckIds = [s0.data.deckId, s1.data.deckId];
+    const deckSnapshots = [s0.data.deckSnapshot, s1.data.deckSnapshot]
+      .map((deck) => {
+        if (!deck) return null;
+        try {
+          const cardsSource = Array.isArray(deck.cards) ? deck.cards : [];
+          const cards = cardsSource
+            .map((card) => (typeof card === 'string' ? card.trim() : ''))
+            .filter(Boolean);
+          return {
+            id: typeof deck.id === 'string' ? deck.id : null,
+            name: typeof deck.name === 'string' ? deck.name : '',
+            cards,
+            version: typeof deck.version === 'number' ? deck.version : Number(deck.version) || null,
+          };
+        } catch {
+          return null;
+        }
+      });
     const players = [s0.data.user, s1.data.user].map(user => ({
       id: user?.id,
       nickname: user?.nickname,
     }));
-    s0.emit("matchFound", { matchId, seat: 0, decks: deckIds, players });
-    s1.emit("matchFound", { matchId, seat: 1, decks: deckIds, players });
+    s0.emit("matchFound", { matchId, seat: 0, decks: deckIds, deckSnapshots, players });
+    s1.emit("matchFound", { matchId, seat: 1, decks: deckIds, deckSnapshots, players });
     pushLog({ ev: 'matchFound', matchId, sids: [s0.id, s1.id], deckIds });
 
     // Старт серверного таймера тиков (без авто-энда)

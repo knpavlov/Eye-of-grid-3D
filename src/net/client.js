@@ -916,7 +916,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
       hideQueueModal();
     }
   });
-  socket.on('matchFound', ({ matchId, seat, decks, players })=>{
+  socket.on('matchFound', ({ matchId, seat, decks, deckSnapshots, players })=>{
     hideQueueModal();
     setMatchPlayers(players);
     try { updateIndicator(); } catch {}
@@ -929,6 +929,24 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
         const myDeck = all.find(d => d.id === myId) || all[0];
         window.__selectedDeckObj = myDeck;
       }
+    } catch {}
+    try {
+      const normalized = Array.isArray(deckSnapshots)
+        ? deckSnapshots.map((snapshot) => {
+            if (!snapshot) return null;
+            const cards = Array.isArray(snapshot.cards)
+              ? snapshot.cards.map((card) => (typeof card === 'string' ? card.trim() : ''))
+                  .filter(Boolean)
+              : [];
+            const id = typeof snapshot.id === 'string' ? snapshot.id : null;
+            const name = typeof snapshot.name === 'string' ? snapshot.name : '';
+            const version = typeof snapshot.version === 'number'
+              ? snapshot.version
+              : (Number(snapshot.version) || null);
+            return { id, name, version, cards };
+          })
+        : [];
+      window.__matchDeckSnapshots = normalized;
     } catch {}
     console.log('[MATCH] Match found, setting MY_SEAT to:', seat, 'matchId:', matchId, 'decks:', decks, 'players:', players);
     // Логирование для отладки
@@ -961,6 +979,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
   socket.on('opponentLeft', ()=>{
     console.log('[MATCH] Opponent left, MY_SEAT:', MY_SEAT);
     NET_ACTIVE=false; updateIndicator(); updateInputLock();
+    try { window.__matchDeckSnapshots = null; } catch {}
     // Показываем победу оставшемуся в игре игроку
     showVictoryModal({ reason: 'opponentLeft', winnerSeat: MY_SEAT });
     try { if (queueModal) hideQueueModal(); } catch {}
@@ -1196,6 +1215,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
     // затем уже сбрасываем локальные флаги. Иначе у обоих будет "Поражение".
     showVictoryModal({ winnerSeat, reason: reason || 'resign' });
     NET_ACTIVE=false; APPLYING=false;
+    try { window.__matchDeckSnapshots = null; } catch {}
     // Сбрасываем seat после показа модалки
     MY_SEAT=null; try { window.MY_SEAT = null; } catch {}
     updateIndicator(); updateInputLock();
