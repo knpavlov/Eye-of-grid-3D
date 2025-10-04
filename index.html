@@ -367,24 +367,44 @@
     
     async function initGame() {
       const decks = window.DECKS || [];
-      let chosen = window.__selectedDeckObj;
+      const cloneCards = (cards) => (Array.isArray(cards)
+        ? cards.filter(Boolean).map(card => ({ ...(typeof card === 'object' && card ? card : {}) }))
+        : []);
+      const ensureDeckObject = (deckLike) => {
+        if (!deckLike) return null;
+        if (Array.isArray(deckLike.cards) && deckLike.cards.length) {
+          return { ...deckLike, cards: cloneCards(deckLike.cards) };
+        }
+        return null;
+      };
+      const pickFromCatalog = (id) => {
+        if (!id) return null;
+        const found = decks.find(d => d && d.id === id);
+        return ensureDeckObject(found);
+      };
+
+      let chosen = ensureDeckObject(window.__selectedDeckObj);
       if (!chosen) {
         try {
           const id = localStorage.getItem('selectedDeckId');
-          chosen = decks.find(d => d.id === id) || decks[0];
+          chosen = pickFromCatalog(id) || ensureDeckObject(decks[0]);
         } catch {
-          chosen = decks[0];
+          chosen = ensureDeckObject(decks[0]);
         }
       }
-      const myDeck = chosen ? chosen.cards : (decks[0]?.cards || []);
-      let oppDeck = myDeck;
-      try {
-        const oppId = window.__opponentDeckId;
-        if (oppId) {
-          const found = decks.find(d => d.id === oppId);
-          if (found) oppDeck = found.cards;
-        }
-      } catch {}
+
+      const myDeck = chosen ? cloneCards(chosen.cards) : cloneCards(decks[0]?.cards);
+
+      let oppDeckObj = ensureDeckObject(window.__opponentDeckObj);
+      if (!oppDeckObj) {
+        try {
+          const oppId = window.__opponentDeckId;
+          oppDeckObj = pickFromCatalog(oppId);
+        } catch {}
+      }
+      const oppDeck = oppDeckObj
+        ? cloneCards(oppDeckObj.cards)
+        : myDeck.map(card => ({ ...(typeof card === 'object' && card ? card : {}) }));
       const fallbackSeatName = (seat) => `Player ${seat + 1}`;
       const matchPlayersSnapshot = Array.isArray(window.__matchPlayers) ? window.__matchPlayers : [];
       let playerProfiles;
@@ -515,7 +535,14 @@
       const tplBefore = unitBefore ? CARDS[unitBefore.tplId] : null;
       const attackerName = tplBefore?.name || 'Существо';
       const staged = stagedAttack(gameState, r, c, opts);
-      if (!staged || staged.empty) return;
+      if (!staged || staged.empty) {
+        try {
+          if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+            window.dispatchEvent(new Event('battle-sequence-resolved'));
+          }
+        } catch {}
+        return;
+      }
       // flashy заставка BATTLE (сокращённая)
       await showBattleSplash();
 
@@ -712,16 +739,34 @@
               gameState.board[pos.r][pos.c].unit.lastAttackTurn = gameState.turn;
             }
             setTimeout(() => {
-              updateUnits(finalState); updateUI();
-              for (const l of res.logLines.reverse()) addLog(l);
-              try { schedulePush('battle-finish', { force: true }); } catch {}
-              if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
-                window.__interactions.interactionState.autoEndTurnAfterAttack = false;
+              try {
+                updateUnits(finalState); updateUI();
+                for (const l of res.logLines.reverse()) addLog(l);
+                try { schedulePush('battle-finish', { force: true }); } catch {}
+                if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
+                  window.__interactions.interactionState.autoEndTurnAfterAttack = false;
+                  try {
+                    if (window.__interactions?.requestAutoEndTurn) {
+                      window.__interactions.requestAutoEndTurn();
+                    } else {
+                      endTurn();
+                    }
+                  } catch {}
+                }
+                if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                  window.dispatchEvent(new Event('battle-sequence-resolved'));
+                }
+              } catch {
                 try {
                   if (window.__interactions?.requestAutoEndTurn) {
                     window.__interactions.requestAutoEndTurn();
                   } else {
                     endTurn();
+                  }
+                } catch {}
+                try {
+                  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                    window.dispatchEvent(new Event('battle-sequence-resolved'));
                   }
                 } catch {}
               }
@@ -732,19 +777,37 @@
           } else {
             // Если смертей нет — подождём, пока анимация контратаки завершится, затем обновим визуально
         setTimeout(() => {
-          updateUnits(finalState); updateUI(); for (const l of res.logLines.reverse()) addLog(l);
-          const pos2 = attackerPos;
-          if (markAttackTurn && gameState.board[pos2.r]?.[pos2.c]?.unit) {
-            gameState.board[pos2.r][pos2.c].unit.lastAttackTurn = gameState.turn;
-          }
-          try { schedulePush('battle-finish', { force: true }); } catch {}
-          if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
-            window.__interactions.interactionState.autoEndTurnAfterAttack = false;
+          try {
+            updateUnits(finalState); updateUI(); for (const l of res.logLines.reverse()) addLog(l);
+            const pos2 = attackerPos;
+            if (markAttackTurn && gameState.board[pos2.r]?.[pos2.c]?.unit) {
+              gameState.board[pos2.r][pos2.c].unit.lastAttackTurn = gameState.turn;
+            }
+            try { schedulePush('battle-finish', { force: true }); } catch {}
+            if (window.__interactions?.interactionState?.autoEndTurnAfterAttack) {
+              window.__interactions.interactionState.autoEndTurnAfterAttack = false;
+              try {
+                if (window.__interactions?.requestAutoEndTurn) {
+                  window.__interactions.requestAutoEndTurn();
+                } else {
+                  endTurn();
+                }
+              } catch {}
+            }
+            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+              window.dispatchEvent(new Event('battle-sequence-resolved'));
+            }
+          } catch {
             try {
               if (window.__interactions?.requestAutoEndTurn) {
                 window.__interactions.requestAutoEndTurn();
               } else {
                 endTurn();
+              }
+            } catch {}
+            try {
+              if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                window.dispatchEvent(new Event('battle-sequence-resolved'));
               }
             } catch {}
           }
