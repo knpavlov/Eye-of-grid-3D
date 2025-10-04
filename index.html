@@ -366,25 +366,49 @@
         // Взаимодействия с 3D-сценой вынесены в модуль src/scene/interactions.js
     
     async function initGame() {
-      const decks = window.DECKS || [];
+      const decks = Array.isArray(window.DECKS) ? window.DECKS : [];
+      const matchDecks = (typeof window !== 'undefined' && window.__matchDecks)
+        ? window.__matchDecks
+        : null;
+      const isOnlineMatch = typeof window !== 'undefined' && !!window.NET_ACTIVE;
+      const toCardIds = (list) => Array.isArray(list)
+        ? list.map(card => {
+            if (typeof card === 'string') return card;
+            if (card && typeof card === 'object' && typeof card.id === 'string') return card.id;
+            return null;
+          }).filter(Boolean)
+        : [];
+
       let chosen = window.__selectedDeckObj;
       if (!chosen) {
         try {
           const id = localStorage.getItem('selectedDeckId');
-          chosen = decks.find(d => d.id === id) || decks[0];
+          chosen = decks.find(d => d && d.id === id) || decks[0];
         } catch {
           chosen = decks[0];
         }
       }
-      const myDeck = chosen ? chosen.cards : (decks[0]?.cards || []);
-      let oppDeck = myDeck;
-      try {
-        const oppId = window.__opponentDeckId;
-        if (oppId) {
-          const found = decks.find(d => d.id === oppId);
-          if (found) oppDeck = found.cards;
-        }
-      } catch {}
+
+      let myDeckCards = isOnlineMatch && Array.isArray(matchDecks?.my?.cards) && matchDecks.my.cards.length
+        ? [...matchDecks.my.cards]
+        : toCardIds(chosen?.cards);
+      if (!myDeckCards.length) {
+        myDeckCards = toCardIds(decks[0]?.cards || []);
+      }
+
+      let oppDeckCards = isOnlineMatch && Array.isArray(matchDecks?.opponent?.cards) && matchDecks.opponent.cards.length
+        ? [...matchDecks.opponent.cards]
+        : [];
+      if (!oppDeckCards.length) {
+        oppDeckCards = myDeckCards.slice();
+        try {
+          const oppId = window.__opponentDeckId;
+          if (oppId) {
+            const found = decks.find(d => d && d.id === oppId);
+            if (found) oppDeckCards = toCardIds(found.cards);
+          }
+        } catch {}
+      }
       const fallbackSeatName = (seat) => `Player ${seat + 1}`;
       const matchPlayersSnapshot = Array.isArray(window.__matchPlayers) ? window.__matchPlayers : [];
       let playerProfiles;
@@ -418,7 +442,7 @@
       }
       try { window.__net?.setMatchPlayers?.(playerProfiles); } catch {}
       try { window.__matchPlayers = playerProfiles.map(p => ({ ...p })); } catch {}
-      gameState = startGame(myDeck, oppDeck, { players: playerProfiles });
+      gameState = startGame(myDeckCards, oppDeckCards, { players: playerProfiles });
       try { window.applyGameState(gameState); } catch {}
       
       // Сразу строим сцену и мета-объекты, без задержки появления

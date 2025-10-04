@@ -100,6 +100,25 @@ if (dbReadyOnStart) {
 const queue = [];
 const matches = new Map(); // matchId -> { room, sockets:[s0,s1], lastState, lastVer, timerSeconds, timerId }
 
+function sanitizeDeckSnapshot(deck) {
+  // Приводим снапшот колоды к безопасному для рассылки виду
+  if (!deck || typeof deck !== 'object') {
+    return { id: null, name: '', description: '', cards: [] };
+  }
+  const id = typeof deck.id === 'string' ? deck.id : null;
+  const name = typeof deck.name === 'string' ? deck.name : '';
+  const description = typeof deck.description === 'string' ? deck.description : '';
+  const cardsSource = Array.isArray(deck.cards) ? deck.cards : [];
+  const cards = cardsSource
+    .map(card => {
+      if (typeof card === 'string') return card;
+      if (card && typeof card === 'object' && typeof card.id === 'string') return card.id;
+      return null;
+    })
+    .filter(Boolean);
+  return { id, name, description, cards };
+}
+
 function pairIfPossible() {
   pushLog({ ev: 'pairIfPossible:start', queueSize: queue.length });
 
@@ -160,10 +179,13 @@ function pairIfPossible() {
     s0.join(room);
     s1.join(room);
 
+    const deckLists = [sanitizeDeckSnapshot(s0.data.deckSnapshot), sanitizeDeckSnapshot(s1.data.deckSnapshot)];
+
     matches.set(matchId, {
       room,
       sockets:[s0,s1],
       players:[s0.data.user, s1.data.user],
+      deckLists,
       lastState:null,
       lastVer:0,
       timerSeconds: 100,
@@ -178,8 +200,8 @@ function pairIfPossible() {
       id: user?.id,
       nickname: user?.nickname,
     }));
-    s0.emit("matchFound", { matchId, seat: 0, decks: deckIds, players });
-    s1.emit("matchFound", { matchId, seat: 1, decks: deckIds, players });
+    s0.emit("matchFound", { matchId, seat: 0, decks: deckIds, deckLists, players });
+    s1.emit("matchFound", { matchId, seat: 1, decks: deckIds, deckLists, players });
     pushLog({ ev: 'matchFound', matchId, sids: [s0.id, s1.id], deckIds });
 
     // Старт серверного таймера тиков (без авто-энда)
