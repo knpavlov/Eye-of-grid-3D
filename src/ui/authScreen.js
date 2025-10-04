@@ -27,6 +27,7 @@ let optionsRef = {};
 let syncingDecks = false;
 let stylesInjected = false;
 let hideTimer = null;
+let waitingForBody = false;
 
 const BODY_OVERLAY_CLASS = 'auth-overlay-open';
 
@@ -76,14 +77,40 @@ function ensureStyles() {
 }
 
 function ensureRoot() {
-  if (root || typeof document === 'undefined') return;
+  if (typeof document === 'undefined') return;
+  const body = document.body;
+  if (!body) {
+    if (!waitingForBody) {
+      waitingForBody = true;
+      const retry = () => {
+        waitingForBody = false;
+        ensureRoot();
+        // После появления корня сразу перерисовываем содержимое
+        if (root) {
+          try { render(); } catch {}
+        }
+      };
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', retry, { once: true });
+      } else if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(retry);
+      } else {
+        setTimeout(retry, 0);
+      }
+    }
+    return;
+  }
   ensureStyles();
-  root = document.createElement('div');
-  root.id = 'auth-overlay';
-  root.className = 'auth-layer auth-hidden';
-  root.style.display = 'none';
-  root.style.pointerEvents = 'none';
-  document.body.appendChild(root);
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'auth-overlay';
+    root.className = 'auth-layer auth-hidden';
+    root.style.display = 'none';
+    root.style.pointerEvents = 'none';
+  }
+  if (!body.contains(root)) {
+    body.appendChild(root);
+  }
 }
 
 function renderSavedProfiles(container) {
