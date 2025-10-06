@@ -1,6 +1,6 @@
 // Units rendering on the board
 import { getCtx } from './context.js';
-import { createCard3D, drawCardFace } from './cards.js';
+import { createCard3D, drawCardFace, isCardIllustrationReady } from './cards.js';
 import { renderFieldLocks } from './fieldlocks.js';
 import { isUnitPossessed, hasInvisibility, getUnitProtection } from '../core/abilities.js';
 import { attachPossessionOverlay, disposePossessionOverlay } from './possessionOverlay.js';
@@ -156,6 +156,8 @@ export function updateUnits(gameState) {
       if (!unit) continue;
 
       const cardData = CARDS[unit.tplId];
+      // Проверяем готовность иллюстрации, чтобы обновить карточку в момент подгрузки арта
+      const artReady = isCardIllustrationReady(cardData);
       const stats = effectiveStats(cell, unit, { state: gameState, r, c });
       const hpValue = typeof unit.currentHP === 'number' ? unit.currentHP : (cardData?.hp || 0);
       const atkValue = stats.atk ?? 0;
@@ -183,7 +185,10 @@ export function updateUnits(gameState) {
         const lastHp = mesh.userData?.lastHp;
         const lastAtk = mesh.userData?.lastAtk;
         const lastActivation = mesh.userData?.lastActivation;
-        if (lastHp !== hpValue || lastAtk !== atkValue || lastActivation !== activationValue) {
+        const prevArtReady = mesh.userData?.artReady === true;
+        const statsChanged = lastHp !== hpValue || lastAtk !== atkValue || lastActivation !== activationValue;
+        // Если показатели не изменились, но иллюстрация стала доступна, перерисовываем текстуру
+        if (statsChanged || (artReady && !prevArtReady)) {
           updateCardTexture(mesh, cardData, hpValue, atkValue, { activationOverride: activationValue });
         }
         if (mesh.parent == null && cardGroup) {
@@ -193,6 +198,7 @@ export function updateUnits(gameState) {
 
       const protectionValue = Math.max(0, getUnitProtection(gameState, r, c, { unit, tpl: cardData }));
       mesh.userData = mesh.userData || {};
+      mesh.userData.artReady = artReady;
       const prevProtection = typeof mesh.userData.lastProtection === 'number' ? mesh.userData.lastProtection : 0;
       const protectionDelta = protectionValue - prevProtection;
       mesh.userData.type = 'unit';
