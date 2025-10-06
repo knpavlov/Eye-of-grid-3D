@@ -1,6 +1,6 @@
 // Units rendering on the board
 import { getCtx } from './context.js';
-import { createCard3D, drawCardFace } from './cards.js';
+import { createCard3D, drawCardFace, consumeIllustrationReady } from './cards.js';
 import { renderFieldLocks } from './fieldlocks.js';
 import { isUnitPossessed, hasInvisibility, getUnitProtection } from '../core/abilities.js';
 import { attachPossessionOverlay, disposePossessionOverlay } from './possessionOverlay.js';
@@ -157,6 +157,7 @@ export function updateUnits(gameState) {
 
       const cardData = CARDS[unit.tplId];
       const stats = effectiveStats(cell, unit, { state: gameState, r, c });
+      const artVersion = consumeIllustrationReady(cardData);
       const hpValue = typeof unit.currentHP === 'number' ? unit.currentHP : (cardData?.hp || 0);
       const atkValue = stats.atk ?? 0;
       const fieldElement = cell?.element;
@@ -178,13 +179,25 @@ export function updateUnits(gameState) {
           try { cardGroup.add(mesh); } catch {}
         }
         updateCardTexture(mesh, cardData, hpValue, atkValue, { activationOverride: activationValue });
+        mesh.userData = mesh.userData || {};
+        mesh.userData.lastIllustrationVersion = artVersion || 0;
       } else {
         ensureGlow(mesh, unit.owner, THREE);
         const lastHp = mesh.userData?.lastHp;
         const lastAtk = mesh.userData?.lastAtk;
         const lastActivation = mesh.userData?.lastActivation;
-        if (lastHp !== hpValue || lastAtk !== atkValue || lastActivation !== activationValue) {
+        const lastIllustrationVersion = typeof mesh.userData?.lastIllustrationVersion === 'number'
+          ? mesh.userData.lastIllustrationVersion
+          : 0;
+        if (
+          lastHp !== hpValue
+          || lastAtk !== atkValue
+          || lastActivation !== activationValue
+          || (artVersion && artVersion !== lastIllustrationVersion)
+        ) {
           updateCardTexture(mesh, cardData, hpValue, atkValue, { activationOverride: activationValue });
+          mesh.userData = mesh.userData || {};
+          mesh.userData.lastIllustrationVersion = artVersion || lastIllustrationVersion;
         }
         if (mesh.parent == null && cardGroup) {
           try { cardGroup.add(mesh); } catch {}
