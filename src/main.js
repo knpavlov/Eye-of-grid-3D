@@ -214,11 +214,26 @@ try {
     updateTileMaterialsFor: Board.updateTileMaterialsFor,
     createProceduralTileTexture: Board.createProceduralTileTexture,
   };
+  // Сохраняем расширенный API карт, который собирает модуль scene/cards.js,
+  // и добавляем поверх него актуальные ссылки на методы. Это важно для
+  // сетевого слоя: он использует window.__cards.preloadCardIllustrations,
+  // чтобы заранее загрузить изображения карт обеих колод. Ранее мы
+  // перезаписывали объект целиком и теряли эти методы, из-за чего клиент,
+  // у которого не было карты в своей колоде, не получал иллюстрацию
+  // противника. Теперь мы объединяем существующий объект с новыми
+  // экспортами, чтобы обеспечить доступ ко всему набору функций.
+  const existingCardsApi = (typeof window.__cards === 'object' && window.__cards)
+    ? window.__cards
+    : {};
   window.__cards = {
+    ...existingCardsApi,
     getCachedTexture: Cards.getCachedTexture,
     preloadCardTextures: Cards.preloadCardTextures,
     createCard3D: Cards.createCard3D,
     drawCardFace: Cards.drawCardFace,
+    ensureCardIllustration: Cards.ensureCardIllustration,
+    preloadCardIllustration: Cards.preloadCardIllustration,
+    preloadCardIllustrations: Cards.preloadCardIllustrations,
   };
   window.__units = {
     updateUnits: Units.updateUnits,
