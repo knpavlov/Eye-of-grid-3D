@@ -36,6 +36,10 @@ const CARD_FACE_LAYOUT = {
 const CARD_IMAGES = {};
 const CARD_PENDING = {};
 
+// Версии загруженных иллюстраций (инкремент при каждом успешном onload)
+const CARD_ILLUSTRATION_READY = new Map();
+let CARD_ILLUSTRATION_COUNTER = 1;
+
 // Нормализуем ключи и пути, чтобы обращаться к одной иллюстрации из разных мест
 function getIllustrationLookupKeys(cardData) {
   const keys = [];
@@ -90,6 +94,31 @@ function cacheIllustrationForKeys(cardData, image) {
   }
 }
 
+function markIllustrationReady(cardData) {
+  const keys = getIllustrationLookupKeys(cardData);
+  if (!keys.length) return;
+  CARD_ILLUSTRATION_COUNTER += 1;
+  if (CARD_ILLUSTRATION_COUNTER >= Number.MAX_SAFE_INTEGER) {
+    CARD_ILLUSTRATION_COUNTER = 1;
+  }
+  const version = CARD_ILLUSTRATION_COUNTER;
+  for (const key of keys) {
+    if (!key) continue;
+    CARD_ILLUSTRATION_READY.set(key, version);
+  }
+}
+
+export function consumeIllustrationReady(cardData) {
+  const keys = getIllustrationLookupKeys(cardData);
+  let version = 0;
+  for (const key of keys) {
+    if (!key) continue;
+    const entry = CARD_ILLUSTRATION_READY.get(key);
+    if (entry && entry > version) version = entry;
+  }
+  return version;
+}
+
 function getPendingEntry(key, keys) {
   const entry = CARD_PENDING[key];
   if (entry) return entry;
@@ -135,6 +164,7 @@ export function ensureCardIllustration(cardData, { onLoad, onError } = {}) {
     const image = new Image();
     image.onload = () => {
       cacheIllustrationForKeys(cardData, image);
+      markIllustrationReady(cardData);
       const callbacks = entry.callbacks.slice();
       delete CARD_PENDING[pendingKey];
       for (const cb of callbacks) {
@@ -772,6 +802,7 @@ try {
       ensureCardIllustration,
       preloadCardIllustration,
       preloadCardIllustrations,
+      consumeIllustrationReady,
       CARD_TEX,
       CARD_IMAGES,
     };
