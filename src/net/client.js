@@ -1,7 +1,7 @@
 import { getServerBase } from './config.js';
 import { initSessionStore, getSessionToken, onSessionChange, handleUnauthorized } from '../auth/sessionStore.js';
 import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
-import { mergeExternalCardTemplates } from '../core/cards.js';
+import { mergeExternalCardTemplates, getCardTemplateByName } from '../core/cards.js';
 
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
@@ -320,15 +320,33 @@ import { mergeExternalCardTemplates } from '../core/cards.js';
       const pushRef = (ref) => {
         if (!ref) return;
         const tpl = resolveCardTemplate(ref);
-        if (tpl) {
-          templates.push(tpl);
-          return;
-        }
-        if (typeof ref === 'string' && ref.trim()) {
-          templates.push({ id: ref.trim() });
+        if (tpl) { templates.push(tpl); return; }
+        if (typeof ref === 'string') {
+          const trimmed = ref.trim();
+          if (!trimmed) return;
+          const tplByName = getCardTemplateByName(trimmed);
+          if (tplByName) { templates.push(tplByName); return; }
+          templates.push({ id: trimmed });
           return;
         }
         if (typeof ref === 'object') {
+          const names = new Set();
+          const pushName = (value) => {
+            if (typeof value !== 'string') return;
+            const trimmed = value.trim();
+            if (!trimmed) return;
+            names.add(trimmed);
+          };
+          pushName(ref.name);
+          pushName(ref.displayName);
+          pushName(ref.cardName);
+          if (Array.isArray(ref.altNames)) {
+            for (const alt of ref.altNames) pushName(alt);
+          }
+          for (const name of names) {
+            const tplByName = getCardTemplateByName(name);
+            if (tplByName) { templates.push(tplByName); return; }
+          }
           const fallbackId = (typeof ref.id === 'string' && ref.id.trim())
             || (typeof ref.cardId === 'string' && ref.cardId.trim())
             || (typeof ref.tplId === 'string' && ref.tplId.trim())
