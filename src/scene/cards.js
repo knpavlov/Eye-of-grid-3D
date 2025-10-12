@@ -37,14 +37,30 @@ const CARD_IMAGES = {};
 const CARD_PENDING = {};
 
 // Нормализуем ключи и пути, чтобы обращаться к одной иллюстрации из разных мест
-function getIllustrationLookupKeys(cardData) {
-  const keys = [];
+export function getIllustrationLookupKeys(cardData) {
+  const result = [];
+  const seen = new Set();
+  const push = (value) => {
+    if (!value || typeof value !== 'string') return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (seen.has(trimmed)) return;
+    seen.add(trimmed);
+    result.push(trimmed);
+  };
+
   const rawId = typeof cardData?.id === 'string' ? cardData.id.trim() : '';
   if (rawId) {
-    keys.push(rawId);
-    const lower = rawId.toLowerCase();
-    if (lower !== rawId) keys.push(lower);
+    // Добавляем сразу несколько регистров и варианты с заменой разделителей,
+    // чтобы гарантированно найти файл иллюстрации, даже если сервер прислал tplId в нижнем регистре.
+    push(rawId);
+    push(rawId.toLowerCase());
+    push(rawId.toUpperCase());
+    const swappedSeparators = rawId.replace(/[-\s]/g, '_');
+    push(swappedSeparators);
+    push(swappedSeparators.toUpperCase());
   }
+
   const name = typeof cardData?.name === 'string' ? cardData.name.trim() : '';
   if (name) {
     const normalized = name
@@ -52,19 +68,15 @@ function getIllustrationLookupKeys(cardData) {
       .replace(/[^a-z0-9\s_-]/g, '')
       .replace(/\s+/g, '_');
     if (normalized) {
-      keys.push(normalized);
+      push(normalized);
+      push(normalized.toUpperCase());
       const hyphenated = normalized.replace(/_/g, '-');
-      if (hyphenated && hyphenated !== normalized) keys.push(hyphenated);
+      push(hyphenated);
+      push(hyphenated.toUpperCase());
     }
   }
-  const unique = [];
-  const seen = new Set();
-  for (const key of keys) {
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    unique.push(key);
-  }
-  return unique;
+
+  return result;
 }
 
 function getIllustrationSourceCandidates(cardData) {
