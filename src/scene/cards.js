@@ -37,7 +37,7 @@ const CARD_IMAGES = {};
 const CARD_PENDING = {};
 
 // Нормализуем ключи и пути, чтобы обращаться к одной иллюстрации из разных мест
-function getIllustrationLookupKeys(cardData) {
+export function getIllustrationLookupKeys(cardData) {
   const keys = [];
   const rawId = typeof cardData?.id === 'string' ? cardData.id.trim() : '';
   if (rawId) {
@@ -327,11 +327,20 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   ctx.strokeRect(illX, illY, illW, illH);
   ctx.restore();
 
-  const img = ensureCardIllustration(cardData, {
-    onLoad: () => {
-      try { if (window.requestCardsRedraw) window.requestCardsRedraw(); } catch {}
-    },
-  });
+  const artSources = [];
+  const illustrationRef = opts.illustrationRef;
+  if (illustrationRef && !artSources.includes(illustrationRef)) artSources.push(illustrationRef);
+  if (cardData && !artSources.includes(cardData)) artSources.push(cardData);
+  const requestRedraw = () => {
+    try { if (window.requestCardsRedraw) window.requestCardsRedraw(); } catch {}
+  };
+  let img = null;
+  for (const source of artSources) {
+    const candidate = ensureCardIllustration(source, { onLoad: requestRedraw });
+    if (!img && candidate && candidate.complete) {
+      img = candidate;
+    }
+  }
   if (img && img.complete && !(typeof location !== 'undefined' && location.protocol === 'file:')) {
     const ar = img.width / img.height;
     let w = illW, h = illH;
