@@ -15,6 +15,180 @@ function getTHREE() {
   return THREE;
 }
 
+// --- Вспомогательные функции для подбора шаблона карты ---
+const CARD_NAME_INDEX = { map: null, source: null };
+
+function getCardsDatabase() {
+  try {
+    if (typeof window !== 'undefined' && window.CARDS && typeof window.CARDS === 'object') {
+      return window.CARDS;
+    }
+  } catch {}
+  return null;
+}
+
+function normalizeNameKey(name) {
+  if (typeof name !== 'string') return '';
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s_-]/g, '')
+    .replace(/\s+/g, '_');
+}
+
+function getCardByName(name, cardsDb) {
+  if (!cardsDb) return null;
+  const key = normalizeNameKey(name);
+  if (!key) return null;
+  if (!CARD_NAME_INDEX.map || CARD_NAME_INDEX.source !== cardsDb) {
+    CARD_NAME_INDEX.map = new Map();
+    CARD_NAME_INDEX.source = cardsDb;
+    for (const card of Object.values(cardsDb)) {
+      const cardNameKey = normalizeNameKey(card?.name);
+      if (cardNameKey && !CARD_NAME_INDEX.map.has(cardNameKey)) {
+        CARD_NAME_INDEX.map.set(cardNameKey, card);
+      }
+    }
+  }
+  return CARD_NAME_INDEX.map.get(key) || null;
+}
+
+function toFiniteNumber(...values) {
+  for (const value of values) {
+    if (value == null) continue;
+    const num = Number(value);
+    if (Number.isFinite(num)) return num;
+  }
+  return null;
+}
+
+function collectIdCandidates(target, list) {
+  if (!target) return;
+  const push = (val) => {
+    if (typeof val !== 'string') return;
+    const trimmed = val.trim();
+    if (!trimmed || list.includes(trimmed)) return;
+    list.push(trimmed);
+  };
+  if (typeof target === 'string') {
+    push(target);
+    return;
+  }
+  if (typeof target !== 'object') return;
+  push(target.tplId);
+  push(target.id);
+  push(target.cardId);
+  push(target.templateId);
+  push(target.legacyId);
+}
+
+function collectNameCandidates(target, list) {
+  if (!target) return;
+  const push = (val) => {
+    if (typeof val !== 'string') return;
+    const trimmed = val.trim();
+    if (!trimmed || list.includes(trimmed)) return;
+    list.push(trimmed);
+  };
+  if (typeof target === 'string') return;
+  if (typeof target.name === 'string') push(target.name);
+}
+
+function resolveCardDataForUnit(unit) {
+  if (!unit) return null;
+  const cardsDb = getCardsDatabase();
+  const idCandidates = [];
+  const nameCandidates = [];
+  const objectCandidates = [];
+
+  const addObjectCandidate = (obj) => {
+    if (!obj || typeof obj !== 'object') return;
+    objectCandidates.push(obj);
+  };
+
+  collectIdCandidates(unit.tplId, idCandidates);
+  collectIdCandidates(unit.id, idCandidates);
+  collectIdCandidates(unit.cardId, idCandidates);
+  collectIdCandidates(unit.templateId, idCandidates);
+  if (typeof unit.name === 'string') nameCandidates.push(unit.name.trim());
+
+  if (unit.card) {
+    collectIdCandidates(unit.card, idCandidates);
+    collectNameCandidates(unit.card, nameCandidates);
+    if (typeof unit.card === 'object') addObjectCandidate(unit.card);
+  }
+  if (unit.tpl) {
+    collectIdCandidates(unit.tpl, idCandidates);
+    collectNameCandidates(unit.tpl, nameCandidates);
+    addObjectCandidate(unit.tpl);
+  }
+  if (unit.template) {
+    collectIdCandidates(unit.template, idCandidates);
+    collectNameCandidates(unit.template, nameCandidates);
+    addObjectCandidate(unit.template);
+  }
+  if (unit.cardData) {
+    collectIdCandidates(unit.cardData, idCandidates);
+    collectNameCandidates(unit.cardData, nameCandidates);
+    addObjectCandidate(unit.cardData);
+  }
+
+  if (cardsDb) {
+    for (const id of idCandidates) {
+      if (cardsDb[id]) return cardsDb[id];
+      const upper = id.toUpperCase();
+      if (upper !== id && cardsDb[upper]) return cardsDb[upper];
+      const lower = id.toLowerCase();
+      if (lower !== id && cardsDb[lower]) return cardsDb[lower];
+    }
+    for (const name of nameCandidates) {
+      const foundByName = getCardByName(name, cardsDb);
+      if (foundByName) return foundByName;
+    }
+  }
+
+  for (const candidate of objectCandidates) {
+    if (candidate && typeof candidate === 'object') {
+      return { ...candidate };
+    }
+  }
+
+  if (!idCandidates.length && !nameCandidates.length) {
+    return null;
+  }
+
+  const fallbackId = idCandidates[0] || null;
+  const fallbackName = nameCandidates[0] || fallbackId || 'Неизвестная карта';
+  const cost = toFiniteNumber(unit.card?.cost, unit.cost, unit.baseCost) ?? 0;
+  const activation = toFiniteNumber(unit.card?.activation, unit.activation);
+  const atk = toFiniteNumber(unit.card?.atk, unit.atk, unit.baseAtk, unit.currentAtk);
+  const hp = toFiniteNumber(unit.card?.hp, unit.hp, unit.baseHp, unit.currentHP);
+  const element = (typeof unit.element === 'string' && unit.element.trim())
+    ? unit.element.trim()
+    : (typeof unit.card?.element === 'string' ? unit.card.element : 'NEUTRAL');
+  const desc = typeof unit.card?.desc === 'string'
+    ? unit.card.desc
+    : (typeof unit.card?.text === 'string' ? unit.card.text : '');
+
+  const fallback = {
+    id: fallbackId || fallbackName || 'UNKNOWN_CARD',
+    name: fallbackName || 'Неизвестная карта',
+    type: 'UNIT',
+    cost,
+    activation: activation != null ? activation : Math.max(0, cost - 1),
+    atk: atk != null ? atk : 0,
+    hp: hp != null ? hp : 0,
+    element,
+    desc,
+  };
+  if (Array.isArray(unit.attacks)) fallback.attacks = unit.attacks.slice();
+  else if (Array.isArray(unit.card?.attacks)) fallback.attacks = unit.card.attacks.slice();
+  if (Array.isArray(unit.blindspots)) fallback.blindspots = unit.blindspots.slice();
+  else if (Array.isArray(unit.card?.blindspots)) fallback.blindspots = unit.card.blindspots.slice();
+
+  return fallback;
+}
+
 function updateCardTexture(mesh, cardData, hpValue, atkValue, opts = {}) {
   try {
     const material = Array.isArray(mesh.material) ? mesh.material[2] : mesh.material;
@@ -188,7 +362,6 @@ export function updateUnits(gameState) {
   const ctx = getCtx();
   const THREE = getTHREE();
   const { cardGroup } = ctx;
-  const CARDS = (typeof window !== 'undefined' && window.CARDS) || {};
   const effectiveStats = (typeof window !== 'undefined' && window.effectiveStats) || (() => ({ atk: 0, hp: 0 }));
   const facingDeg = (typeof window !== 'undefined' && window.facingDeg) || { N: 0, E: -90, S: 180, W: 90 };
   const viewerSeat = (() => {
@@ -216,7 +389,7 @@ export function updateUnits(gameState) {
       try { updateFrameHighlight(ctx.tileFrames?.[r]?.[c], unit, viewerSeat, THREE); } catch {}
       if (!unit) continue;
 
-      const cardData = CARDS[unit.tplId];
+      const cardData = resolveCardDataForUnit(unit) || {};
       // Проверяем готовность иллюстрации, чтобы обновить карточку в момент подгрузки арта
       const artReady = isCardIllustrationReady(cardData);
       const stats = effectiveStats(cell, unit, { state: gameState, r, c });
