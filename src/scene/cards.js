@@ -37,7 +37,7 @@ const CARD_IMAGES = {};
 const CARD_PENDING = {};
 
 // Нормализуем ключи и пути, чтобы обращаться к одной иллюстрации из разных мест
-function getIllustrationLookupKeys(cardData) {
+export function getIllustrationLookupKeys(cardData) {
   const keys = [];
   const rawId = typeof cardData?.id === 'string' ? cardData.id.trim() : '';
   if (rawId) {
