@@ -36,6 +36,143 @@ const CARD_FACE_LAYOUT = {
 const CARD_IMAGES = {};
 const CARD_PENDING = {};
 
+// Нормализуем ключи и пути, чтобы обращаться к одной иллюстрации из разных мест
+function getIllustrationLookupKeys(cardData) {
+  const keys = [];
+  const rawId = typeof cardData?.id === 'string' ? cardData.id.trim() : '';
+  if (rawId) {
+    keys.push(rawId);
+    const lower = rawId.toLowerCase();
+    if (lower !== rawId) keys.push(lower);
+  }
+  const name = typeof cardData?.name === 'string' ? cardData.name.trim() : '';
+  if (name) {
+    const normalized = name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s_-]/g, '')
+      .replace(/\s+/g, '_');
+    if (normalized) {
+      keys.push(normalized);
+      const hyphenated = normalized.replace(/_/g, '-');
+      if (hyphenated && hyphenated !== normalized) keys.push(hyphenated);
+    }
+  }
+  const unique = [];
+  const seen = new Set();
+  for (const key of keys) {
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(key);
+  }
+  return unique;
+}
+
+function getIllustrationSourceCandidates(cardData) {
+  return getIllustrationLookupKeys(cardData).map(key => ({
+    key,
+    url: encodeURI(`card images/${key}.png`),
+  }));
+}
+
+function findCachedIllustration(cardData) {
+  const keys = getIllustrationLookupKeys(cardData);
+  for (const key of keys) {
+    const img = CARD_IMAGES[key];
+    if (img) return img;
+  }
+  return null;
+}
+
+export function isCardIllustrationReady(cardData) {
+  const img = findCachedIllustration(cardData);
+  return !!(img && img.complete);
+}
+
+function cacheIllustrationForKeys(cardData, image) {
+  const keys = getIllustrationLookupKeys(cardData);
+  for (const key of keys) {
+    CARD_IMAGES[key] = image;
+  }
+}
+
+function getPendingEntry(key, keys) {
+  const entry = CARD_PENDING[key];
+  if (entry) return entry;
+  const next = { loading: false, callbacks: [], errorCallbacks: [], keys };
+  CARD_PENDING[key] = next;
+  return next;
+}
+
+// Единая точка предзагрузки иллюстраций, чтобы расшаривать их между всеми клиентами
+export function ensureCardIllustration(cardData, { onLoad, onError } = {}) {
+  if (!cardData) return null;
+  const existing = findCachedIllustration(cardData);
+  if (existing && existing.complete) {
+    return existing;
+  }
+  const keys = getIllustrationLookupKeys(cardData);
+  if (!keys.length) {
+    if (typeof onError === 'function') {
+      try { onError(); } catch {}
+    }
+    return existing;
+  }
+  const pendingKey = keys[0];
+  const entry = getPendingEntry(pendingKey, keys);
+  if (typeof onLoad === 'function') entry.callbacks.push(onLoad);
+  if (typeof onError === 'function') entry.errorCallbacks.push(onError);
+  if (entry.loading) {
+    return existing;
+  }
+  entry.loading = true;
+  const candidates = getIllustrationSourceCandidates(cardData);
+  let idx = 0;
+  const tryLoad = () => {
+    if (idx >= candidates.length) {
+      const failures = entry.errorCallbacks.slice();
+      delete CARD_PENDING[pendingKey];
+      for (const cb of failures) {
+        try { cb(); } catch {}
+      }
+      return;
+    }
+    const candidate = candidates[idx++];
+    const image = new Image();
+    image.onload = () => {
+      cacheIllustrationForKeys(cardData, image);
+      const callbacks = entry.callbacks.slice();
+      delete CARD_PENDING[pendingKey];
+      for (const cb of callbacks) {
+        try { cb(image); } catch {}
+      }
+    };
+    image.onerror = () => {
+      tryLoad();
+    };
+    image.src = candidate.url;
+  };
+  tryLoad();
+  return existing;
+}
+
+// Массовая предзагрузка для списков карт (например, обе колоды матча)
+export function preloadCardIllustrations(cards) {
+  if (!Array.isArray(cards)) return;
+  const seen = new Set();
+  for (const card of cards) {
+    if (!card) continue;
+    const key = getIllustrationLookupKeys(card)[0];
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    ensureCardIllustration(card);
+  }
+}
+
+// Упрощённый алиас для единичной карты
+export function preloadCardIllustration(cardData) {
+  ensureCardIllustration(cardData);
+}
+
 // Формирование краткой подписи с ограничением карт (без смешения с логикой рендера)
 function formatLimitLabel(limit) {
   if (!limit || typeof limit.amount !== 'number' || limit.amount <= 0) {
@@ -190,27 +327,11 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   ctx.strokeRect(illX, illY, illW, illH);
   ctx.restore();
 
-  let img = CARD_IMAGES[cardData.id] || CARD_IMAGES[cardData.id?.toLowerCase?.()] || CARD_IMAGES[(cardData.name || '').toLowerCase().replace(/[^a-z0-9\s_-]/g, '').replace(/\s+/g, '_')];
-  if (!img && !CARD_PENDING[cardData.id]) {
-    CARD_PENDING[cardData.id] = true;
-    const candidates = [
-      `card images/${cardData.id}.png`,
-      `card images/${(cardData.id || '').toLowerCase()}.png`,
-      `card images/${(cardData.name || '').toLowerCase().replace(/[^a-z0-9\s_-]/g, '').replace(/\s+/g, '_')}.png`,
-      `card images/${(cardData.name || '').toLowerCase().replace(/[^a-z0-9\s_-]/g, '').replace(/\s+/g, '-')}.png`
-    ];
-    (function tryLoad(i) {
-      if (i >= candidates.length) { CARD_PENDING[cardData.id] = false; return; }
-      const im = new Image();
-      im.onload = () => {
-        CARD_IMAGES[cardData.id] = im;
-        CARD_PENDING[cardData.id] = false;
-        try { if (window.requestCardsRedraw) window.requestCardsRedraw(); } catch {}
-      };
-      im.onerror = () => tryLoad(i + 1);
-      im.src = encodeURI(candidates[i]);
-    })(0);
-  }
+  const img = ensureCardIllustration(cardData, {
+    onLoad: () => {
+      try { if (window.requestCardsRedraw) window.requestCardsRedraw(); } catch {}
+    },
+  });
   if (img && img.complete && !(typeof location !== 'undefined' && location.protocol === 'file:')) {
     const ar = img.width / img.height;
     let w = illW, h = illH;
@@ -574,7 +695,11 @@ function attachIllustrationPlane(cardMesh, cardData) {
   if (!cardMesh || !cardData) return;
   const prev = cardMesh.children?.find(ch => ch.userData && ch.userData.kind === 'illustrationPlane');
   if (prev) { try { cardMesh.remove(prev); } catch {} }
-  const img = CARD_IMAGES[cardData.id] || CARD_IMAGES[cardData.id?.toLowerCase?.()] || CARD_IMAGES[(cardData.name||'').toLowerCase().replace(/[^a-z0-9\s_-]/g,'').replace(/\s+/g,'_')];
+  const img = ensureCardIllustration(cardData, {
+    onLoad: () => {
+      try { attachIllustrationPlane(cardMesh, cardData); } catch {}
+    },
+  });
   const DESIGN_W = 832, DESIGN_H = 1248;
   const W = 256, H = 356;
   const illDesign = CARD_FACE_LAYOUT.art;
@@ -642,5 +767,20 @@ export function createCard3D(cardData, isInHand = false, hpOverride = null, atkO
 }
 
 // Expose caches for legacy access
-try { if (typeof window !== 'undefined') { window.__cards = { getCachedTexture, preloadCardTextures, createCard3D, drawCardFace, CARD_TEX, CARD_IMAGES }; } } catch {}
+try {
+  if (typeof window !== 'undefined') {
+    window.__cards = {
+      getCachedTexture,
+      preloadCardTextures,
+      createCard3D,
+      drawCardFace,
+      ensureCardIllustration,
+      isCardIllustrationReady,
+      preloadCardIllustration,
+      preloadCardIllustrations,
+      CARD_TEX,
+      CARD_IMAGES,
+    };
+  }
+} catch {}
 
