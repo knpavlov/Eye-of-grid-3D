@@ -122,6 +122,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
       added = true;
     }
     if (!added) return;
+    try { window.__cardArt?.markKnownCards?.(templates); } catch {}
     const flushed = flushPendingIllustrations();
     if (!flushed) schedulePendingIllustrationsFlush();
   }
