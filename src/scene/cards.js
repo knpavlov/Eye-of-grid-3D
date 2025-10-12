@@ -36,35 +36,65 @@ const CARD_FACE_LAYOUT = {
 const CARD_IMAGES = {};
 const CARD_PENDING = {};
 
+// Канонизация идентификатора под формат файлов и шаблонов
+export function canonicalizeCardId(rawId) {
+  if (typeof rawId !== 'string') return '';
+  const trimmed = rawId.trim();
+  if (!trimmed) return '';
+  const replaced = trimmed
+    .replace(/[\s-]+/g, '_')
+    .replace(/[^a-zA-Z0-9_]/g, '_')
+    .replace(/_+/g, '_');
+  return replaced.toUpperCase();
+}
+
 // Нормализуем ключи и пути, чтобы обращаться к одной иллюстрации из разных мест
-function getIllustrationLookupKeys(cardData) {
+export function getIllustrationLookupKeys(cardData) {
+  const seen = new Set();
   const keys = [];
+  const push = (value) => {
+    if (typeof value !== 'string') return;
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    keys.push(trimmed);
+  };
+
   const rawId = typeof cardData?.id === 'string' ? cardData.id.trim() : '';
   if (rawId) {
-    keys.push(rawId);
-    const lower = rawId.toLowerCase();
-    if (lower !== rawId) keys.push(lower);
+    const canonical = canonicalizeCardId(rawId);
+    push(canonical);
+    push(rawId);
+    push(rawId.toUpperCase());
+    push(rawId.toLowerCase());
+    push(canonical.toLowerCase());
+    const normalized = rawId.replace(/[\s-]+/g, '_');
+    push(normalized);
+    push(normalized.toUpperCase());
+    push(normalized.toLowerCase());
+    const hyphen = canonical.replace(/_/g, '-');
+    push(hyphen);
+    push(hyphen.toLowerCase());
   }
+
   const name = typeof cardData?.name === 'string' ? cardData.name.trim() : '';
   if (name) {
+    const canonicalName = canonicalizeCardId(name);
+    push(canonicalName);
+    push(canonicalName.toLowerCase());
     const normalized = name
       .toLowerCase()
       .replace(/[^a-z0-9\s_-]/g, '')
       .replace(/\s+/g, '_');
-    if (normalized) {
-      keys.push(normalized);
-      const hyphenated = normalized.replace(/_/g, '-');
-      if (hyphenated && hyphenated !== normalized) keys.push(hyphenated);
-    }
+    push(normalized);
+    const hyphenated = normalized.replace(/_/g, '-');
+    push(hyphenated);
+    const hyphenFromCanonical = canonicalName.replace(/_/g, '-');
+    push(hyphenFromCanonical);
+    push(hyphenFromCanonical.toLowerCase());
   }
-  const unique = [];
-  const seen = new Set();
-  for (const key of keys) {
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    unique.push(key);
-  }
-  return unique;
+
+  return keys;
 }
 
 function getIllustrationSourceCandidates(cardData) {
@@ -327,11 +357,20 @@ export function drawCardFace(ctx, cardData, width, height, hpOverride = null, at
   ctx.strokeRect(illX, illY, illW, illH);
   ctx.restore();
 
-  const img = ensureCardIllustration(cardData, {
-    onLoad: () => {
-      try { if (window.requestCardsRedraw) window.requestCardsRedraw(); } catch {}
-    },
-  });
+  const artSources = [];
+  const illustrationRef = opts.illustrationRef;
+  if (illustrationRef && !artSources.includes(illustrationRef)) artSources.push(illustrationRef);
+  if (cardData && !artSources.includes(cardData)) artSources.push(cardData);
+  const requestRedraw = () => {
+    try { if (window.requestCardsRedraw) window.requestCardsRedraw(); } catch {}
+  };
+  let img = null;
+  for (const source of artSources) {
+    const candidate = ensureCardIllustration(source, { onLoad: requestRedraw });
+    if (!img && candidate && candidate.complete) {
+      img = candidate;
+    }
+  }
   if (img && img.complete && !(typeof location !== 'undefined' && location.protocol === 'file:')) {
     const ar = img.width / img.height;
     let w = illW, h = illH;
