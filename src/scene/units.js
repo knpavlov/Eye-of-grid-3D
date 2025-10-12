@@ -1,6 +1,6 @@
 // Units rendering on the board
 import { getCtx } from './context.js';
-import { createCard3D, drawCardFace } from './cards.js';
+import { createCard3D, drawCardFace, isCardIllustrationReady, ensureCardIllustration } from './cards.js';
 import { renderFieldLocks } from './fieldlocks.js';
 import { isUnitPossessed, hasInvisibility, getUnitProtection } from '../core/abilities.js';
 import { attachPossessionOverlay, disposePossessionOverlay } from './possessionOverlay.js';
@@ -13,6 +13,65 @@ function getTHREE() {
   const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
   if (!THREE) throw new Error('THREE not available');
   return THREE;
+}
+
+// Отслеживаем юниты, ожидающие загрузку иллюстрации, чтобы обновить текстуру сразу после готовности арта
+const pendingIllustrationWatchers = new Map();
+
+function cancelIllustrationWatcher(mesh) {
+  if (!mesh) return;
+  const key = mesh.uuid;
+  if (!key) return;
+  const entry = pendingIllustrationWatchers.get(key);
+  if (!entry) return;
+  entry.cancelled = true;
+  entry.mesh = null;
+  entry.cardData = null;
+  pendingIllustrationWatchers.delete(key);
+}
+
+function ensureIllustrationWatcher(mesh, cardData) {
+  if (!mesh || !cardData) return;
+  const key = mesh.uuid;
+  if (!key) return;
+  let entry = pendingIllustrationWatchers.get(key);
+  if (entry) {
+    entry.mesh = mesh;
+    entry.cardData = cardData;
+    entry.cancelled = false;
+    return;
+  }
+  entry = {
+    mesh,
+    cardData,
+    cancelled: false,
+  };
+  entry.handleLoad = () => {
+    if (entry.cancelled) return;
+    const targetMesh = entry.mesh;
+    const tpl = entry.cardData;
+    if (!targetMesh || !tpl) {
+      pendingIllustrationWatchers.delete(key);
+      return;
+    }
+    try {
+      const hpValue = targetMesh.userData?.lastHp ?? null;
+      const atkValue = targetMesh.userData?.lastAtk ?? null;
+      const activationValue = targetMesh.userData?.lastActivation ?? null;
+      updateCardTexture(targetMesh, tpl, hpValue, atkValue, { activationOverride: activationValue });
+      if (targetMesh.userData) targetMesh.userData.artReady = true;
+    } catch {}
+    pendingIllustrationWatchers.delete(key);
+  };
+  entry.handleError = () => {
+    pendingIllustrationWatchers.delete(key);
+  };
+  pendingIllustrationWatchers.set(key, entry);
+  try {
+    ensureCardIllustration(cardData, { onLoad: entry.handleLoad, onError: entry.handleError });
+  } catch {
+    pendingIllustrationWatchers.delete(key);
+  }
 }
 
 function updateCardTexture(mesh, cardData, hpValue, atkValue, opts = {}) {
@@ -156,6 +215,8 @@ export function updateUnits(gameState) {
       if (!unit) continue;
 
       const cardData = CARDS[unit.tplId];
+      // Проверяем готовность иллюстрации, чтобы обновить карточку в момент подгрузки арта
+      const artReady = isCardIllustrationReady(cardData);
       const stats = effectiveStats(cell, unit, { state: gameState, r, c });
       const hpValue = typeof unit.currentHP === 'number' ? unit.currentHP : (cardData?.hp || 0);
       const atkValue = stats.atk ?? 0;
@@ -183,7 +244,10 @@ export function updateUnits(gameState) {
         const lastHp = mesh.userData?.lastHp;
         const lastAtk = mesh.userData?.lastAtk;
         const lastActivation = mesh.userData?.lastActivation;
-        if (lastHp !== hpValue || lastAtk !== atkValue || lastActivation !== activationValue) {
+        const prevArtReady = mesh.userData?.artReady === true;
+        const statsChanged = lastHp !== hpValue || lastAtk !== atkValue || lastActivation !== activationValue;
+        // Если показатели не изменились, но иллюстрация стала доступна, перерисовываем текстуру
+        if (statsChanged || (artReady && !prevArtReady)) {
           updateCardTexture(mesh, cardData, hpValue, atkValue, { activationOverride: activationValue });
         }
         if (mesh.parent == null && cardGroup) {
@@ -193,6 +257,7 @@ export function updateUnits(gameState) {
 
       const protectionValue = Math.max(0, getUnitProtection(gameState, r, c, { unit, tpl: cardData }));
       mesh.userData = mesh.userData || {};
+      mesh.userData.artReady = artReady;
       const prevProtection = typeof mesh.userData.lastProtection === 'number' ? mesh.userData.lastProtection : 0;
       const protectionDelta = protectionValue - prevProtection;
       mesh.userData.type = 'unit';
@@ -204,6 +269,12 @@ export function updateUnits(gameState) {
       mesh.userData.lastHp = hpValue;
       mesh.userData.lastAtk = atkValue;
       mesh.userData.lastActivation = activationValue;
+
+      if (artReady) {
+        cancelIllustrationWatcher(mesh);
+      } else {
+        ensureIllustrationWatcher(mesh, cardData);
+      }
 
       const targetRotation = (facingDeg[unit.facing] || 0) * Math.PI / 180;
       mesh.rotation.y = targetRotation;
@@ -238,6 +309,7 @@ export function updateUnits(gameState) {
   if (oldMap instanceof Map) {
     for (const [uid, mesh] of oldMap.entries()) {
       if (usedUids.has(uid)) continue;
+      cancelIllustrationWatcher(mesh);
       try { setInvisibilityFx(mesh, false); } catch {}
       try { disposePossessionOverlay(mesh); } catch {}
       try {

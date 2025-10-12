@@ -83,6 +83,11 @@ function findCachedIllustration(cardData) {
   return null;
 }
 
+export function isCardIllustrationReady(cardData) {
+  const img = findCachedIllustration(cardData);
+  return !!(img && img.complete);
+}
+
 function cacheIllustrationForKeys(cardData, image) {
   const keys = getIllustrationLookupKeys(cardData);
   for (const key of keys) {
@@ -770,6 +775,7 @@ try {
       createCard3D,
       drawCardFace,
       ensureCardIllustration,
+      isCardIllustrationReady,
       preloadCardIllustration,
       preloadCardIllustrations,
       CARD_TEX,
