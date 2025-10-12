@@ -1,6 +1,6 @@
 // Units rendering on the board
 import { getCtx } from './context.js';
-import { createCard3D, drawCardFace } from './cards.js';
+import { createCard3D, drawCardFace, isCardIllustrationReady } from './cards.js';
 import { renderFieldLocks } from './fieldlocks.js';
 import { isUnitPossessed, hasInvisibility, getUnitProtection } from '../core/abilities.js';
 import { attachPossessionOverlay, disposePossessionOverlay } from './possessionOverlay.js';
@@ -14,6 +14,82 @@ function getTHREE() {
   if (!THREE) throw new Error('THREE not available');
   return THREE;
 }
+
+let illustrationListenerAttached = false;
+
+// Отложенный повторный рендер юнитов, когда догружается иллюстрация
+function scheduleUnitsIllustrationRefresh() {
+  if (typeof window === 'undefined') return;
+  try {
+    if (typeof window.requestCardsRedraw === 'function') {
+      window.requestCardsRedraw();
+      return;
+    }
+  } catch {}
+  try {
+    clearTimeout(window.__unitsIllustrationRefreshT);
+    window.__unitsIllustrationRefreshT = setTimeout(() => {
+      try {
+        if (window.gameState) {
+          updateUnits(window.gameState);
+        }
+      } catch {}
+    }, 16);
+  } catch {}
+}
+
+function shouldRefreshUnitsForCard(detail) {
+  if (!detail) return false;
+  const ctx = getCtx();
+  const meshes = Array.isArray(ctx.unitMeshes) ? ctx.unitMeshes : [];
+  if (!meshes.length) return false;
+  const cardId = detail.id ? String(detail.id) : null;
+  const cardName = typeof detail.name === 'string' ? detail.name.toLowerCase() : null;
+  const eventKeys = Array.isArray(detail.keys)
+    ? detail.keys.map(k => String(k).toLowerCase())
+    : [];
+  for (const mesh of meshes) {
+    const cardData = mesh?.userData?.cardData;
+    if (!cardData) continue;
+    if (cardId && cardData.id === cardId) return true;
+    if (cardName && typeof cardData.name === 'string' && cardData.name.toLowerCase() === cardName) return true;
+    if (eventKeys.length) {
+      const cardKeys = [];
+      if (cardData.id) cardKeys.push(String(cardData.id).toLowerCase());
+      if (cardData.name) cardKeys.push(String(cardData.name).trim().toLowerCase());
+      if (cardData.name) {
+        const normalized = String(cardData.name)
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9\s_-]/g, '')
+          .replace(/\s+/g, '_');
+        if (normalized) {
+          cardKeys.push(normalized);
+          cardKeys.push(normalized.replace(/_/g, '-'));
+        }
+      }
+      for (const key of cardKeys) {
+        if (eventKeys.includes(key)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function handleCardIllustrationReady(event) {
+  const detail = event?.detail;
+  if (!shouldRefreshUnitsForCard(detail)) return;
+  scheduleUnitsIllustrationRefresh();
+}
+
+function ensureIllustrationListener() {
+  if (illustrationListenerAttached) return;
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+  window.addEventListener('card-illustration-ready', handleCardIllustrationReady, { passive: true });
+  illustrationListenerAttached = true;
+}
+
+ensureIllustrationListener();
 
 function updateCardTexture(mesh, cardData, hpValue, atkValue, opts = {}) {
   try {
@@ -156,6 +232,8 @@ export function updateUnits(gameState) {
       if (!unit) continue;
 
       const cardData = CARDS[unit.tplId];
+      // Проверяем готовность иллюстрации, чтобы обновить карточку в момент подгрузки арта
+      const artReady = isCardIllustrationReady(cardData);
       const stats = effectiveStats(cell, unit, { state: gameState, r, c });
       const hpValue = typeof unit.currentHP === 'number' ? unit.currentHP : (cardData?.hp || 0);
       const atkValue = stats.atk ?? 0;
@@ -183,7 +261,10 @@ export function updateUnits(gameState) {
         const lastHp = mesh.userData?.lastHp;
         const lastAtk = mesh.userData?.lastAtk;
         const lastActivation = mesh.userData?.lastActivation;
-        if (lastHp !== hpValue || lastAtk !== atkValue || lastActivation !== activationValue) {
+        const prevArtReady = mesh.userData?.artReady === true;
+        const statsChanged = lastHp !== hpValue || lastAtk !== atkValue || lastActivation !== activationValue;
+        // Если показатели не изменились, но иллюстрация стала доступна, перерисовываем текстуру
+        if (statsChanged || (artReady && !prevArtReady)) {
           updateCardTexture(mesh, cardData, hpValue, atkValue, { activationOverride: activationValue });
         }
         if (mesh.parent == null && cardGroup) {
@@ -193,6 +274,7 @@ export function updateUnits(gameState) {
 
       const protectionValue = Math.max(0, getUnitProtection(gameState, r, c, { unit, tpl: cardData }));
       mesh.userData = mesh.userData || {};
+      mesh.userData.artReady = artReady;
       const prevProtection = typeof mesh.userData.lastProtection === 'number' ? mesh.userData.lastProtection : 0;
       const protectionDelta = protectionValue - prevProtection;
       mesh.userData.type = 'unit';

@@ -83,11 +83,32 @@ function findCachedIllustration(cardData) {
   return null;
 }
 
+export function isCardIllustrationReady(cardData) {
+  const img = findCachedIllustration(cardData);
+  return !!(img && img.complete);
+}
+
 function cacheIllustrationForKeys(cardData, image) {
   const keys = getIllustrationLookupKeys(cardData);
   for (const key of keys) {
     CARD_IMAGES[key] = image;
   }
+}
+
+function notifyIllustrationReady(cardData, image) {
+  if (!cardData || typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
+    return;
+  }
+  try {
+    const detail = {
+      id: cardData.id || null,
+      name: typeof cardData.name === 'string' ? cardData.name : null,
+      keys: getIllustrationLookupKeys(cardData),
+      width: typeof image?.naturalWidth === 'number' && image.naturalWidth > 0 ? image.naturalWidth : (image?.width ?? null),
+      height: typeof image?.naturalHeight === 'number' && image.naturalHeight > 0 ? image.naturalHeight : (image?.height ?? null),
+    };
+    window.dispatchEvent(new CustomEvent('card-illustration-ready', { detail }));
+  } catch {}
 }
 
 function getPendingEntry(key, keys) {
@@ -135,6 +156,7 @@ export function ensureCardIllustration(cardData, { onLoad, onError } = {}) {
     const image = new Image();
     image.onload = () => {
       cacheIllustrationForKeys(cardData, image);
+      notifyIllustrationReady(cardData, image);
       const callbacks = entry.callbacks.slice();
       delete CARD_PENDING[pendingKey];
       for (const cb of callbacks) {
@@ -770,6 +792,7 @@ try {
       createCard3D,
       drawCardFace,
       ensureCardIllustration,
+      isCardIllustrationReady,
       preloadCardIllustration,
       preloadCardIllustrations,
       CARD_TEX,
