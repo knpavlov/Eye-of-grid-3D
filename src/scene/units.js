@@ -1,6 +1,7 @@
 // Units rendering on the board
 import { getCtx } from './context.js';
-import { createCard3D, drawCardFace, isCardIllustrationReady, ensureCardIllustration } from './cards.js';
+import { createCard3D, drawCardFace, isCardIllustrationReady } from './cards.js';
+import { subscribeCardIllustration } from './cardArtRegistry.js';
 import { renderFieldLocks } from './fieldlocks.js';
 import { isUnitPossessed, hasInvisibility, getUnitProtection } from '../core/abilities.js';
 import { attachPossessionOverlay, disposePossessionOverlay } from './possessionOverlay.js';
@@ -13,6 +14,80 @@ function getTHREE() {
   const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
   if (!THREE) throw new Error('THREE not available');
   return THREE;
+}
+
+function extractCardIdCandidate(value) {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed || null;
+  }
+  if (typeof value === 'object') {
+    const fields = ['id', 'cardId', 'card_id', 'tplId', 'tpl_id'];
+    for (const field of fields) {
+      const raw = value[field];
+      if (typeof raw === 'string' && raw.trim()) {
+        return raw.trim();
+      }
+    }
+  }
+  return null;
+}
+
+function normalizeCardLike(source, fallbackId) {
+  if (!source || typeof source !== 'object') return null;
+  const normalized = { ...source };
+  const id = extractCardIdCandidate(source) || (typeof fallbackId === 'string' ? fallbackId : null);
+  if (id && (!normalized.id || typeof normalized.id !== 'string')) {
+    normalized.id = id;
+  }
+  return normalized;
+}
+
+// Логика восстановления карточных данных для юнита, чтобы отделить визуализацию от сетевых особенностей.
+function resolveUnitCardData(unit, cardsDb) {
+  if (!unit || typeof unit !== 'object') return null;
+  const fallbackId = extractCardIdCandidate(unit.tplId)
+    || extractCardIdCandidate(unit.id)
+    || extractCardIdCandidate(unit.cardId)
+    || null;
+  const sources = [];
+  if (fallbackId && cardsDb && typeof cardsDb === 'object') {
+    const fromDb = cardsDb[fallbackId];
+    if (fromDb) sources.push(fromDb);
+  }
+  if (unit.template && typeof unit.template === 'object') sources.push(unit.template);
+  if (unit.tpl && typeof unit.tpl === 'object') sources.push(unit.tpl);
+  if (unit.card && typeof unit.card === 'object') sources.push(unit.card);
+  if (unit.data && typeof unit.data === 'object') sources.push(unit.data);
+
+  const merged = {};
+  let hasData = false;
+  for (const candidate of sources) {
+    const normalized = normalizeCardLike(candidate, fallbackId);
+    if (!normalized) continue;
+    Object.assign(merged, normalized);
+    hasData = true;
+  }
+
+  if (!hasData) {
+    if (!fallbackId) return null;
+    const minimal = { id: fallbackId };
+    if (typeof unit.name === 'string' && unit.name.trim()) minimal.name = unit.name.trim();
+    if (typeof unit.element === 'string' && unit.element.trim()) minimal.element = unit.element.trim();
+    if (typeof unit.cost === 'number') minimal.cost = unit.cost;
+    if (typeof unit.activation === 'number') minimal.activation = unit.activation;
+    if (typeof unit.atk === 'number') minimal.atk = unit.atk;
+    if (typeof unit.hp === 'number') minimal.hp = unit.hp;
+    return minimal;
+  }
+
+  if (!merged.id && fallbackId) merged.id = fallbackId;
+  if (!merged.name && typeof unit.name === 'string' && unit.name.trim()) merged.name = unit.name.trim();
+  if (!merged.element && typeof unit.element === 'string' && unit.element.trim()) merged.element = unit.element.trim();
+  if (merged.atk == null && typeof unit.atk === 'number') merged.atk = unit.atk;
+  if (merged.hp == null && typeof unit.hp === 'number') merged.hp = unit.hp;
+  return merged;
 }
 
 function updateCardTexture(mesh, cardData, hpValue, atkValue, opts = {}) {
@@ -29,65 +104,41 @@ function updateCardTexture(mesh, cardData, hpValue, atkValue, opts = {}) {
   } catch {}
 }
 
-// Уникально идентифицируем иллюстрацию, чтобы не подписываться повторно
-function getCardArtKey(cardData) {
-  if (!cardData || typeof cardData !== 'object') return null;
-  const direct = typeof cardData.id === 'string' && cardData.id.trim();
-  if (direct) return direct.trim();
-  const tplId = typeof cardData.tplId === 'string' && cardData.tplId.trim();
-  if (tplId) return tplId.trim();
-  const legacy = typeof cardData.cardId === 'string' && cardData.cardId.trim();
-  if (legacy) return legacy.trim();
-  const name = typeof cardData.name === 'string' && cardData.name.trim();
-  return name ? name.trim() : null;
-}
-
-// Подписываемся на загрузку иллюстрации конкретной карты и обновляем её текстуру на поле
-function scheduleIllustrationRefresh(mesh, cardData) {
-  if (!mesh || !cardData) return;
-  const key = getCardArtKey(cardData);
-  if (!key) return;
+// Через централизованный реестр подписываемся на готовность иллюстрации,
+// чтобы все клиенты синхронно реагировали на появление арта соперника.
+function attachIllustrationSubscription(mesh, cardData, uid) {
+  if (!mesh) return;
   mesh.userData = mesh.userData || {};
-  const existing = mesh.userData.pendingArtRefresh;
-  if (existing && existing.key === key && existing.unitUid === mesh.userData.unitUid) {
+  const prevUnsub = mesh.userData.artSubscription;
+  if (typeof prevUnsub === 'function') {
+    try { prevUnsub(); } catch {}
+  }
+  mesh.userData.artSubscription = null;
+  if (!cardData) {
+    mesh.userData.artReady = false;
     return;
   }
-  const pending = { key, unitUid: mesh.userData.unitUid, onLoad: null, onError: null };
-  const onLoad = () => {
-    try {
-      const data = mesh.userData || {};
-      if (!data || data.unitUid !== pending.unitUid) return;
-      updateCardTexture(mesh, data.cardData || cardData, data.lastHp, data.lastAtk, {
-        activationOverride: data.lastActivation,
-      });
-    } finally {
+  const { ready, unsubscribe } = subscribeCardIllustration(cardData, {
+    onReady: () => {
       try {
-        if (mesh.userData && mesh.userData.pendingArtRefresh?.key === key && mesh.userData.pendingArtRefresh?.unitUid === mesh.userData.unitUid) {
-          mesh.userData.pendingArtRefresh = null;
+        const data = mesh.userData || {};
+        if (!data || data.unitUid !== uid) return;
+        updateCardTexture(mesh, data.cardData || cardData, data.lastHp, data.lastAtk, {
+          activationOverride: data.lastActivation,
+        });
+        data.artReady = true;
+      } catch {}
+    },
+    onError: () => {
+      try {
+        if (mesh.userData && mesh.userData.unitUid === uid) {
+          mesh.userData.artReady = false;
         }
       } catch {}
-    }
-  };
-  const onError = () => {
-    try {
-      if (mesh.userData && mesh.userData.pendingArtRefresh?.key === key && mesh.userData.pendingArtRefresh?.unitUid === mesh.userData.unitUid) {
-        mesh.userData.pendingArtRefresh = null;
-      }
-    } catch {}
-  };
-  pending.onLoad = onLoad;
-  pending.onError = onError;
-  mesh.userData.pendingArtRefresh = pending;
-  ensureCardIllustration(cardData, { onLoad, onError });
-}
-
-// Сбрасываем отложенный запрос на перерисовку иллюстрации
-function clearIllustrationRefresh(mesh) {
-  try {
-    if (mesh?.userData) {
-      mesh.userData.pendingArtRefresh = null;
-    }
-  } catch {}
+    },
+  });
+  mesh.userData.artSubscription = unsubscribe;
+  mesh.userData.artReady = ready;
 }
 
 function ensureGlow(mesh, owner, THREE) {
@@ -216,7 +267,11 @@ export function updateUnits(gameState) {
       try { updateFrameHighlight(ctx.tileFrames?.[r]?.[c], unit, viewerSeat, THREE); } catch {}
       if (!unit) continue;
 
-      const cardData = CARDS[unit.tplId];
+      const cardData = resolveUnitCardData(unit, CARDS) || (() => {
+        const id = extractCardIdCandidate(unit.tplId) || extractCardIdCandidate(unit.id);
+        if (!id) return {};
+        return { id, name: typeof unit.name === 'string' ? unit.name : id };
+      })();
       // Проверяем готовность иллюстрации, чтобы обновить карточку в момент подгрузки арта
       const artReady = isCardIllustrationReady(cardData);
       const stats = effectiveStats(cell, unit, { state: gameState, r, c });
@@ -271,11 +326,7 @@ export function updateUnits(gameState) {
       mesh.userData.lastHp = hpValue;
       mesh.userData.lastAtk = atkValue;
       mesh.userData.lastActivation = activationValue;
-      if (!artReady) {
-        scheduleIllustrationRefresh(mesh, cardData);
-      } else {
-        clearIllustrationRefresh(mesh);
-      }
+      attachIllustrationSubscription(mesh, cardData, uid);
 
       const targetRotation = (facingDeg[unit.facing] || 0) * Math.PI / 180;
       mesh.rotation.y = targetRotation;
@@ -325,7 +376,11 @@ export function updateUnits(gameState) {
           mesh.userData.__moveTween = null;
         }
       } catch {}
-      clearIllustrationRefresh(mesh);
+      try {
+        const unsub = mesh.userData?.artSubscription;
+        if (typeof unsub === 'function') unsub();
+        if (mesh.userData) mesh.userData.artSubscription = null;
+      } catch {}
       try { if (mesh.parent) mesh.parent.remove(mesh); } catch {}
     }
   }
