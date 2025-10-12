@@ -1,6 +1,6 @@
 // Units rendering on the board
 import { getCtx } from './context.js';
-import { createCard3D, drawCardFace } from './cards.js';
+import { createCard3D, drawCardFace, isCardIllustrationReady } from './cards.js';
 import { renderFieldLocks } from './fieldlocks.js';
 import { isUnitPossessed, hasInvisibility, getUnitProtection } from '../core/abilities.js';
 import { attachPossessionOverlay, disposePossessionOverlay } from './possessionOverlay.js';
@@ -13,6 +13,53 @@ function getTHREE() {
   const THREE = ctx.THREE || (typeof window !== 'undefined' ? window.THREE : undefined);
   if (!THREE) throw new Error('THREE not available');
   return THREE;
+}
+
+function collectIdCandidates(unit) {
+  const ids = [];
+  const push = (value) => {
+    if (typeof value !== 'string') return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    ids.push(trimmed);
+  };
+  if (unit && typeof unit === 'object') {
+    push(unit.tplId);
+    push(unit.cardId);
+    push(unit.id);
+  }
+  return ids;
+}
+
+// Подбираем шаблон карты для юнита, используя общую базу и снапшот карты в состоянии
+function resolveUnitCardData(unit, cardsDb) {
+  if (!unit) return null;
+  const idCandidates = collectIdCandidates(unit);
+  for (const id of idCandidates) {
+    const fromDb = cardsDb?.[id];
+    if (fromDb) return fromDb;
+  }
+  const fallbacks = [unit.card, unit.tpl];
+  for (const candidate of fallbacks) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    if (candidate.id) return candidate;
+    if (idCandidates.length) {
+      return { ...candidate, id: idCandidates[0] };
+    }
+    return { ...candidate };
+  }
+  const fallbackName = typeof unit.name === 'string' ? unit.name : (idCandidates[0] || '');
+  return {
+    id: idCandidates[0] || '',
+    name: fallbackName || 'Unknown Unit',
+    type: unit.type || 'UNIT',
+    cost: unit.cost ?? 0,
+    activation: unit.activation ?? 0,
+    element: unit.element || 'NEUTRAL',
+    atk: unit.atk ?? unit.baseAtk ?? 0,
+    hp: unit.hp ?? unit.baseHp ?? 0,
+    desc: unit.desc || '',
+  };
 }
 
 function updateCardTexture(mesh, cardData, hpValue, atkValue, opts = {}) {
@@ -155,7 +202,9 @@ export function updateUnits(gameState) {
       try { updateFrameHighlight(ctx.tileFrames?.[r]?.[c], unit, viewerSeat, THREE); } catch {}
       if (!unit) continue;
 
-      const cardData = CARDS[unit.tplId];
+      const cardData = resolveUnitCardData(unit, CARDS);
+      // Проверяем готовность иллюстрации, чтобы обновить карточку в момент подгрузки арта
+      const artReady = isCardIllustrationReady(cardData);
       const stats = effectiveStats(cell, unit, { state: gameState, r, c });
       const hpValue = typeof unit.currentHP === 'number' ? unit.currentHP : (cardData?.hp || 0);
       const atkValue = stats.atk ?? 0;
@@ -183,7 +232,10 @@ export function updateUnits(gameState) {
         const lastHp = mesh.userData?.lastHp;
         const lastAtk = mesh.userData?.lastAtk;
         const lastActivation = mesh.userData?.lastActivation;
-        if (lastHp !== hpValue || lastAtk !== atkValue || lastActivation !== activationValue) {
+        const prevArtReady = mesh.userData?.artReady === true;
+        const statsChanged = lastHp !== hpValue || lastAtk !== atkValue || lastActivation !== activationValue;
+        // Если показатели не изменились, но иллюстрация стала доступна, перерисовываем текстуру
+        if (statsChanged || (artReady && !prevArtReady)) {
           updateCardTexture(mesh, cardData, hpValue, atkValue, { activationOverride: activationValue });
         }
         if (mesh.parent == null && cardGroup) {
@@ -193,6 +245,7 @@ export function updateUnits(gameState) {
 
       const protectionValue = Math.max(0, getUnitProtection(gameState, r, c, { unit, tpl: cardData }));
       mesh.userData = mesh.userData || {};
+      mesh.userData.artReady = artReady;
       const prevProtection = typeof mesh.userData.lastProtection === 'number' ? mesh.userData.lastProtection : 0;
       const protectionDelta = protectionValue - prevProtection;
       mesh.userData.type = 'unit';
