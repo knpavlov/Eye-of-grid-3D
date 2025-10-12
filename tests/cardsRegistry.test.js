@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CARDS, mergeExternalCardTemplates } from '../src/core/cards.js';
+import { CARDS, mergeExternalCardTemplates, getCardTemplateByName } from '../src/core/cards.js';
 
 describe('mergeExternalCardTemplates', () => {
   it('добавляет новую карту и создаёт псевдонимы', () => {
@@ -30,5 +30,20 @@ describe('mergeExternalCardTemplates', () => {
         delete CARDS[key];
       }
     }
+  });
+
+  it('ищет шаблон по имени, если идентификатор неизвестен', () => {
+    const existing = getCardTemplateByName('Flame Magus');
+    expect(existing).toBe(CARDS.FIRE_FLAME_MAGUS);
+    const customId = 'TEST_LOOKUP_BY_NAME';
+    mergeExternalCardTemplates([{ id: customId, name: 'Custom Challenger', type: 'UNIT' }]);
+    expect(getCardTemplateByName('custom challenger')).toBe(CARDS[customId]);
+    expect(getCardTemplateByName('Custom Challenger')).toBe(CARDS[customId]);
+    for (const key of Object.keys(CARDS)) {
+      if (CARDS[key]?.id === customId) {
+        delete CARDS[key];
+      }
+    }
+    expect(getCardTemplateByName('Custom Challenger')).toBeNull();
   });
 });

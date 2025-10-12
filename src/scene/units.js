@@ -7,7 +7,7 @@ import { attachPossessionOverlay, disposePossessionOverlay } from './possessionO
 import { setInvisibilityFx } from './unitFx.js';
 import { resetUnitHover } from './unitTooltip.js';
 import { spawnProtectionPopup } from './effects.js';
-import { mergeExternalCardTemplates } from '../core/cards.js';
+import { mergeExternalCardTemplates, getCardTemplateByName } from '../core/cards.js';
 
 function getTHREE() {
   const ctx = getCtx();
@@ -60,10 +60,45 @@ function mergeTemplateSource(source, fallbackId, cardsDb) {
   return cardsDb?.[id] || null;
 }
 
+function collectUnitNameCandidates(unit) {
+  const names = new Set();
+  const push = (value) => {
+    if (typeof value !== 'string') return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    names.add(trimmed);
+  };
+  if (!unit || typeof unit !== 'object') return [];
+  push(unit.name);
+  push(unit.displayName);
+  push(unit.cardName);
+  push(unit.revealedName);
+  const sources = [unit.card, unit.tpl, unit.template, unit.definition];
+  for (const source of sources) {
+    if (!source || typeof source !== 'object') continue;
+    push(source.name);
+    push(source.displayName);
+    push(source.cardName);
+  }
+  return Array.from(names);
+}
+
+function findTemplateByNames(candidates) {
+  if (!Array.isArray(candidates)) return null;
+  for (const name of candidates) {
+    const tpl = getCardTemplateByName(name);
+    if (tpl) return tpl;
+  }
+  return null;
+}
+
 function ensureCardTemplateForUnit(unit, cardsDb) {
   if (!unit) return null;
   const directId = pickTemplateId(unit);
   if (directId && cardsDb?.[directId]) return cardsDb[directId];
+  const nameCandidates = collectUnitNameCandidates(unit);
+  const templateByName = findTemplateByNames(nameCandidates);
+  if (templateByName) return templateByName;
   const fallbackId = directId
     || (typeof unit.tplId === 'string' && unit.tplId.trim())
     || (typeof unit.id === 'string' && unit.id.trim())
@@ -72,7 +107,11 @@ function ensureCardTemplateForUnit(unit, cardsDb) {
   for (const source of sources) {
     const tpl = mergeTemplateSource(source, fallbackId, cardsDb);
     if (tpl) return tpl;
+    const tplByName = findTemplateByNames(collectUnitNameCandidates(source));
+    if (tplByName) return tplByName;
   }
+  const finalByName = findTemplateByNames(nameCandidates);
+  if (finalByName) return finalByName;
   if (!fallbackId) return null;
   const fallback = {
     id: fallbackId,

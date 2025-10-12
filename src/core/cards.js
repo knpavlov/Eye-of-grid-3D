@@ -1888,6 +1888,63 @@ export const CARDS = Object.fromEntries(
   Object.entries(RAW_CARDS).map(([id, card]) => [id, { ...card }])
 );
 
+// Индекс по именам карт — помогает находить шаблон, даже если известна только подпись
+const CARD_NAME_INDEX = new Map();
+
+function normalizeCardName(value) {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  try {
+    return trimmed
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, ' ')
+      .trim()
+      .toLowerCase();
+  } catch {
+    return trimmed.toLowerCase();
+  }
+}
+
+function indexCardByName(record) {
+  if (!record || typeof record !== 'object') return;
+  const id = typeof record.id === 'string' ? record.id : null;
+  if (!id) return;
+  const pushName = (value) => {
+    const normalized = normalizeCardName(value);
+    if (!normalized) return;
+    CARD_NAME_INDEX.set(normalized, id);
+  };
+  pushName(record.name);
+  if (Array.isArray(record.altNames)) {
+    for (const alt of record.altNames) pushName(alt);
+  }
+  if (record.displayName) pushName(record.displayName);
+}
+
+function rebuildCardNameIndex() {
+  CARD_NAME_INDEX.clear();
+  for (const record of Object.values(CARDS)) {
+    indexCardByName(record);
+  }
+}
+
+rebuildCardNameIndex();
+
+export function getCardTemplateByName(name) {
+  const normalized = normalizeCardName(name);
+  if (!normalized) return null;
+  const id = CARD_NAME_INDEX.get(normalized);
+  if (!id) return null;
+  const tpl = CARDS[id];
+  if (!tpl) {
+    CARD_NAME_INDEX.delete(normalized);
+    return null;
+  }
+  return tpl;
+}
+
 // ==== Динамическая регистрация шаблонов карт ====
 
 function cloneExternalValue(value) {
@@ -2013,6 +2070,7 @@ export function mergeExternalCardTemplates(source) {
     const merged = mergeCardRecords(CARDS[id], template);
     CARDS[id] = merged;
     attachCardAliases(merged, aliases);
+    indexCardByName(merged);
   }
 }
 
