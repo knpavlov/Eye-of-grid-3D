@@ -1887,3 +1887,135 @@ const RAW_CARDS = {
 export const CARDS = Object.fromEntries(
   Object.entries(RAW_CARDS).map(([id, card]) => [id, { ...card }])
 );
+
+// ==== Динамическая регистрация шаблонов карт ====
+
+function cloneExternalValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => cloneExternalValue(item));
+  }
+  if (value && typeof value === 'object') {
+    return { ...value };
+  }
+  return value;
+}
+
+function pickExternalCardId(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    return trimmed ? trimmed : null;
+  }
+  if (typeof raw !== 'object') return null;
+  const candidates = [raw.id, raw.cardId, raw.tplId];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (trimmed) return trimmed;
+    }
+  }
+  return null;
+}
+
+function normalizeExternalTemplate(raw) {
+  const id = pickExternalCardId(raw);
+  if (!id) return null;
+  const aliases = new Set();
+  const template = {};
+  if (raw && typeof raw === 'object') {
+    for (const [key, value] of Object.entries(raw)) {
+      if (typeof value === 'function') continue;
+      if (key === 'id' || key === 'cardId' || key === 'tplId') continue;
+      template[key] = cloneExternalValue(value);
+    }
+  }
+  template.id = id;
+  template.cardId = typeof raw?.cardId === 'string' && raw.cardId.trim() ? raw.cardId.trim() : id;
+  template.tplId = typeof raw?.tplId === 'string' && raw.tplId.trim() ? raw.tplId.trim() : id;
+  aliases.add(id);
+  aliases.add(template.cardId);
+  aliases.add(template.tplId);
+  aliases.add(id.toUpperCase());
+  aliases.add(id.toLowerCase());
+  return { template, aliases };
+}
+
+function mergeCardRecords(existing, incoming) {
+  if (!existing) {
+    return { ...incoming };
+  }
+  const result = { ...existing };
+  for (const [key, valueRaw] of Object.entries(incoming)) {
+    if (key === 'id') continue;
+    if (valueRaw === undefined || valueRaw === null) continue;
+    const value = cloneExternalValue(valueRaw);
+    const prev = result[key];
+    if (prev === undefined || prev === null) {
+      result[key] = value;
+      continue;
+    }
+    if (typeof value === 'string') {
+      if (typeof prev !== 'string' || !prev.trim()) {
+        result[key] = value;
+      }
+      continue;
+    }
+    if (typeof value === 'number') {
+      if (!Number.isFinite(prev)) {
+        result[key] = value;
+      }
+      continue;
+    }
+    if (Array.isArray(value)) {
+      if (!Array.isArray(prev) || prev.length === 0) {
+        result[key] = value;
+      }
+      continue;
+    }
+    if (value && typeof value === 'object') {
+      if (prev && typeof prev === 'object' && !Array.isArray(prev)) {
+        result[key] = { ...prev, ...value };
+      }
+      continue;
+    }
+    if (prev === '' || prev === false) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function attachCardAliases(record, aliases) {
+  if (!record || !aliases) return;
+  const mainId = record.id;
+  for (const alias of aliases) {
+    if (typeof alias !== 'string') continue;
+    const trimmed = alias.trim();
+    if (!trimmed || trimmed === mainId) continue;
+    const current = CARDS[trimmed];
+    if (current && current !== record) continue;
+    CARDS[trimmed] = record;
+  }
+}
+
+/**
+ * Регистрирует один или несколько внешних шаблонов карт, дополняя локальную базу.
+ * Используется сетевым кодом, чтобы мы знали о картах противника и могли показать их арт.
+ */
+export function mergeExternalCardTemplates(source) {
+  if (!source) return;
+  const list = Array.isArray(source) ? source : [source];
+  for (const entry of list) {
+    const normalized = normalizeExternalTemplate(entry);
+    if (!normalized) continue;
+    const { template, aliases } = normalized;
+    const id = template.id;
+    const merged = mergeCardRecords(CARDS[id], template);
+    CARDS[id] = merged;
+    attachCardAliases(merged, aliases);
+  }
+}
+
+export function mergeExternalCardTemplate(entry) {
+  mergeExternalCardTemplates(entry);
+}
