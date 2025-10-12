@@ -101,6 +101,70 @@ export function getIllustrationLookupKeys(cardData) {
   return unique;
 }
 
+function normalizeVisualValue(value, depth = 0) {
+  if (value == null) return '';
+  if (depth > 4) return '';
+  if (Array.isArray(value)) {
+    return value
+      .map(entry => normalizeVisualValue(entry, depth + 1))
+      .filter(Boolean)
+      .join(',');
+  }
+  if (typeof value === 'object') {
+    const keys = Object.keys(value).sort();
+    const parts = [];
+    for (const key of keys) {
+      const normalized = normalizeVisualValue(value[key], depth + 1);
+      if (!normalized) continue;
+      parts.push(`${key}:${normalized}`);
+    }
+    return parts.join(';');
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return '';
+    return String(value);
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    return trimmed;
+  }
+  return '';
+}
+
+// Компактная сигнатура визуально значимых полей карты.
+// Используется для отслеживания изменений между снапшотами
+// (например, когда один и тот же юнит трансформируется в другой шаблон).
+export function getCardVisualSignature(cardData) {
+  if (!cardData || typeof cardData !== 'object') return 'null';
+  const baseId = normalizeVisualValue(cardData.id)
+    || normalizeVisualValue(cardData.cardId)
+    || normalizeVisualValue(cardData.tplId);
+  const parts = [
+    baseId,
+    normalizeVisualValue(cardData.name),
+    normalizeVisualValue(cardData.type),
+    normalizeVisualValue(cardData.element),
+    normalizeVisualValue(cardData.cost),
+    normalizeVisualValue(cardData.activation),
+    normalizeVisualValue(cardData.hp),
+    normalizeVisualValue(cardData.atk),
+    normalizeVisualValue(cardData.desc) || normalizeVisualValue(cardData.text),
+    normalizeVisualValue(cardData.keywords),
+    normalizeVisualValue(cardData.attacks),
+    normalizeVisualValue(cardData.attackSchemes),
+    normalizeVisualValue(cardData.magicAttackArea || cardData.magicArea),
+    normalizeVisualValue(cardData.altArt),
+    normalizeVisualValue(cardData.altArtId),
+    normalizeVisualValue(cardData.illustration),
+  ];
+  const signature = parts.filter(Boolean).join('|');
+  return signature || 'generic-card';
+}
+
 function getIllustrationSourceCandidates(cardData) {
   return getIllustrationLookupKeys(cardData).map(key => ({
     key,
@@ -787,6 +851,7 @@ export function createCard3D(cardData, isInHand = false, hpOverride = null, atkO
   const card = new THREE.Mesh(geometry, materials);
   card.castShadow = true; card.receiveShadow = false; card.renderOrder = isInHand ? 3000 : 1200;
   card.userData = { type: 'card', cardData, isInHand, originalPosition: new THREE.Vector3(), originalRotation: new THREE.Euler() };
+  try { card.userData.lastCardSignature = getCardVisualSignature(cardData); } catch {}
   if (isInHand) { card.scale.set(0.54, 1, 0.54); }
   try {
     const w = geometry.parameters.width; const t = geometry.parameters.height; const h = geometry.parameters.depth;

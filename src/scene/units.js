@@ -1,6 +1,6 @@
 // Units rendering on the board
 import { getCtx } from './context.js';
-import { createCard3D, drawCardFace, isCardIllustrationReady, ensureCardIllustration } from './cards.js';
+import { createCard3D, drawCardFace, isCardIllustrationReady, ensureCardIllustration, getCardVisualSignature } from './cards.js';
 import { renderFieldLocks } from './fieldlocks.js';
 import { isUnitPossessed, hasInvisibility, getUnitProtection } from '../core/abilities.js';
 import { attachPossessionOverlay, disposePossessionOverlay } from './possessionOverlay.js';
@@ -98,21 +98,31 @@ function ensureCardTemplateForUnit(unit, cardsDb) {
   return cardsDb?.[fallbackId] || fallback;
 }
 
-function ensureIllustrationWatcher(mesh, cardData) {
+function ensureIllustrationWatcher(mesh, cardData, opts = {}) {
   if (!mesh || !cardData) return;
   const key = mesh.uuid;
   if (!key) return;
+  const forceReload = opts && opts.forceReload;
   let entry = pendingIllustrationWatchers.get(key);
+  if (entry && forceReload) {
+    entry.cancelled = true;
+    entry.mesh = null;
+    entry.cardData = null;
+    pendingIllustrationWatchers.delete(key);
+    entry = null;
+  }
   if (entry) {
     entry.mesh = mesh;
     entry.cardData = cardData;
     entry.cancelled = false;
+    entry.signature = getCardVisualSignature(cardData);
     return;
   }
   entry = {
     mesh,
     cardData,
     cancelled: false,
+    signature: getCardVisualSignature(cardData),
   };
   entry.handleLoad = () => {
     if (entry.cancelled) return;
@@ -122,12 +132,21 @@ function ensureIllustrationWatcher(mesh, cardData) {
       pendingIllustrationWatchers.delete(key);
       return;
     }
+    const expectedSignature = entry.signature;
+    const currentSignature = targetMesh.userData?.lastCardSignature || null;
+    if (expectedSignature && currentSignature && expectedSignature !== currentSignature) {
+      pendingIllustrationWatchers.delete(key);
+      return;
+    }
     try {
       const hpValue = targetMesh.userData?.lastHp ?? null;
       const atkValue = targetMesh.userData?.lastAtk ?? null;
       const activationValue = targetMesh.userData?.lastActivation ?? null;
       updateCardTexture(targetMesh, tpl, hpValue, atkValue, { activationOverride: activationValue });
-      if (targetMesh.userData) targetMesh.userData.artReady = true;
+      if (targetMesh.userData) {
+        targetMesh.userData.artReady = true;
+        if (entry.signature) targetMesh.userData.lastCardSignature = entry.signature;
+      }
     } catch {}
     pendingIllustrationWatchers.delete(key);
   };
@@ -301,6 +320,9 @@ export function updateUnits(gameState) {
 
       let mesh = oldMap.get(uid);
       const existedBefore = !!mesh;
+      const prevSignature = existedBefore ? (mesh.userData?.lastCardSignature || null) : null;
+      const nextSignature = getCardVisualSignature(cardData);
+      const templateChanged = !existedBefore || prevSignature !== nextSignature;
       if (!mesh) {
         mesh = createCard3D(cardData, false, hpValue, atkValue);
         ensureGlow(mesh, unit.owner, THREE);
@@ -319,7 +341,7 @@ export function updateUnits(gameState) {
         const prevArtReady = mesh.userData?.artReady === true;
         const statsChanged = lastHp !== hpValue || lastAtk !== atkValue || lastActivation !== activationValue;
         // Если показатели не изменились, но иллюстрация стала доступна, перерисовываем текстуру
-        if (statsChanged || (artReady && !prevArtReady)) {
+        if (templateChanged || statsChanged || (artReady && !prevArtReady)) {
           updateCardTexture(mesh, cardData, hpValue, atkValue, { activationOverride: activationValue });
         }
         if (mesh.parent == null && cardGroup) {
@@ -341,11 +363,12 @@ export function updateUnits(gameState) {
       mesh.userData.lastHp = hpValue;
       mesh.userData.lastAtk = atkValue;
       mesh.userData.lastActivation = activationValue;
+      mesh.userData.lastCardSignature = nextSignature;
 
       if (artReady) {
         cancelIllustrationWatcher(mesh);
       } else {
-        ensureIllustrationWatcher(mesh, cardData);
+        ensureIllustrationWatcher(mesh, cardData, { forceReload: templateChanged });
       }
 
       const targetRotation = (facingDeg[unit.facing] || 0) * Math.PI / 180;
