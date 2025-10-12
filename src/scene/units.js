@@ -1,6 +1,7 @@
 // Units rendering on the board
 import { getCtx } from './context.js';
-import { createCard3D, drawCardFace, isCardIllustrationReady, ensureCardIllustration } from './cards.js';
+import { createCard3D, drawCardFace, isCardIllustrationReady } from './cards.js';
+import { subscribeCardIllustration } from './cardArtRegistry.js';
 import { renderFieldLocks } from './fieldlocks.js';
 import { isUnitPossessed, hasInvisibility, getUnitProtection } from '../core/abilities.js';
 import { attachPossessionOverlay, disposePossessionOverlay } from './possessionOverlay.js';
@@ -29,65 +30,41 @@ function updateCardTexture(mesh, cardData, hpValue, atkValue, opts = {}) {
   } catch {}
 }
 
-// Уникально идентифицируем иллюстрацию, чтобы не подписываться повторно
-function getCardArtKey(cardData) {
-  if (!cardData || typeof cardData !== 'object') return null;
-  const direct = typeof cardData.id === 'string' && cardData.id.trim();
-  if (direct) return direct.trim();
-  const tplId = typeof cardData.tplId === 'string' && cardData.tplId.trim();
-  if (tplId) return tplId.trim();
-  const legacy = typeof cardData.cardId === 'string' && cardData.cardId.trim();
-  if (legacy) return legacy.trim();
-  const name = typeof cardData.name === 'string' && cardData.name.trim();
-  return name ? name.trim() : null;
-}
-
-// Подписываемся на загрузку иллюстрации конкретной карты и обновляем её текстуру на поле
-function scheduleIllustrationRefresh(mesh, cardData) {
-  if (!mesh || !cardData) return;
-  const key = getCardArtKey(cardData);
-  if (!key) return;
+// Через централизованный реестр подписываемся на готовность иллюстрации,
+// чтобы все клиенты синхронно реагировали на появление арта соперника.
+function attachIllustrationSubscription(mesh, cardData, uid) {
+  if (!mesh) return;
   mesh.userData = mesh.userData || {};
-  const existing = mesh.userData.pendingArtRefresh;
-  if (existing && existing.key === key && existing.unitUid === mesh.userData.unitUid) {
+  const prevUnsub = mesh.userData.artSubscription;
+  if (typeof prevUnsub === 'function') {
+    try { prevUnsub(); } catch {}
+  }
+  mesh.userData.artSubscription = null;
+  if (!cardData) {
+    mesh.userData.artReady = false;
     return;
   }
-  const pending = { key, unitUid: mesh.userData.unitUid, onLoad: null, onError: null };
-  const onLoad = () => {
-    try {
-      const data = mesh.userData || {};
-      if (!data || data.unitUid !== pending.unitUid) return;
-      updateCardTexture(mesh, data.cardData || cardData, data.lastHp, data.lastAtk, {
-        activationOverride: data.lastActivation,
-      });
-    } finally {
+  const { ready, unsubscribe } = subscribeCardIllustration(cardData, {
+    onReady: () => {
       try {
-        if (mesh.userData && mesh.userData.pendingArtRefresh?.key === key && mesh.userData.pendingArtRefresh?.unitUid === mesh.userData.unitUid) {
-          mesh.userData.pendingArtRefresh = null;
+        const data = mesh.userData || {};
+        if (!data || data.unitUid !== uid) return;
+        updateCardTexture(mesh, data.cardData || cardData, data.lastHp, data.lastAtk, {
+          activationOverride: data.lastActivation,
+        });
+        data.artReady = true;
+      } catch {}
+    },
+    onError: () => {
+      try {
+        if (mesh.userData && mesh.userData.unitUid === uid) {
+          mesh.userData.artReady = false;
         }
       } catch {}
-    }
-  };
-  const onError = () => {
-    try {
-      if (mesh.userData && mesh.userData.pendingArtRefresh?.key === key && mesh.userData.pendingArtRefresh?.unitUid === mesh.userData.unitUid) {
-        mesh.userData.pendingArtRefresh = null;
-      }
-    } catch {}
-  };
-  pending.onLoad = onLoad;
-  pending.onError = onError;
-  mesh.userData.pendingArtRefresh = pending;
-  ensureCardIllustration(cardData, { onLoad, onError });
-}
-
-// Сбрасываем отложенный запрос на перерисовку иллюстрации
-function clearIllustrationRefresh(mesh) {
-  try {
-    if (mesh?.userData) {
-      mesh.userData.pendingArtRefresh = null;
-    }
-  } catch {}
+    },
+  });
+  mesh.userData.artSubscription = unsubscribe;
+  mesh.userData.artReady = ready;
 }
 
 function ensureGlow(mesh, owner, THREE) {
@@ -271,11 +248,7 @@ export function updateUnits(gameState) {
       mesh.userData.lastHp = hpValue;
       mesh.userData.lastAtk = atkValue;
       mesh.userData.lastActivation = activationValue;
-      if (!artReady) {
-        scheduleIllustrationRefresh(mesh, cardData);
-      } else {
-        clearIllustrationRefresh(mesh);
-      }
+      attachIllustrationSubscription(mesh, cardData, uid);
 
       const targetRotation = (facingDeg[unit.facing] || 0) * Math.PI / 180;
       mesh.rotation.y = targetRotation;
@@ -325,7 +298,11 @@ export function updateUnits(gameState) {
           mesh.userData.__moveTween = null;
         }
       } catch {}
-      clearIllustrationRefresh(mesh);
+      try {
+        const unsub = mesh.userData?.artSubscription;
+        if (typeof unsub === 'function') unsub();
+        if (mesh.userData) mesh.userData.artSubscription = null;
+      } catch {}
       try { if (mesh.parent) mesh.parent.remove(mesh); } catch {}
     }
   }
