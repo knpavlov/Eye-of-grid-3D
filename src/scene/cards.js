@@ -37,14 +37,54 @@ const CARD_IMAGES = {};
 const CARD_PENDING = {};
 
 // Нормализуем ключи и пути, чтобы обращаться к одной иллюстрации из разных мест
-function getIllustrationLookupKeys(cardData) {
-  const keys = [];
-  const rawId = typeof cardData?.id === 'string' ? cardData.id.trim() : '';
-  if (rawId) {
-    keys.push(rawId);
-    const lower = rawId.toLowerCase();
-    if (lower !== rawId) keys.push(lower);
-  }
+export function getIllustrationLookupKeys(cardData) {
+  const unique = [];
+  const seen = new Set();
+
+  const push = (value) => {
+    if (typeof value !== 'string') return;
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    unique.push(trimmed);
+  };
+
+  const pushWithVariants = (value) => {
+    if (typeof value !== 'string') return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    const lower = trimmed.toLowerCase();
+    const upper = trimmed.toUpperCase();
+    const normalized = trimmed
+      .replace(/[^a-zA-Z0-9\s_-]/g, '_')
+      .replace(/\s+/g, '_')
+      .replace(/__+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    const hyphenated = normalized.replace(/_/g, '-');
+
+    push(trimmed);
+    if (lower !== trimmed) push(lower);
+    if (upper !== trimmed) push(upper);
+    if (normalized && normalized !== trimmed) {
+      push(normalized);
+      const normalizedUpper = normalized.toUpperCase();
+      const normalizedLower = normalized.toLowerCase();
+      if (normalizedUpper !== normalized) push(normalizedUpper);
+      if (normalizedLower !== normalized) push(normalizedLower);
+    }
+    if (hyphenated && hyphenated !== normalized) {
+      push(hyphenated);
+      const hyphenUpper = hyphenated.toUpperCase();
+      const hyphenLower = hyphenated.toLowerCase();
+      if (hyphenUpper !== hyphenated) push(hyphenUpper);
+      if (hyphenLower !== hyphenated) push(hyphenLower);
+    }
+  };
+
+  pushWithVariants(cardData?.id);
+  pushWithVariants(cardData?.tplId);
+  pushWithVariants(cardData?.cardId);
+
   const name = typeof cardData?.name === 'string' ? cardData.name.trim() : '';
   if (name) {
     const normalized = name
@@ -52,18 +92,12 @@ function getIllustrationLookupKeys(cardData) {
       .replace(/[^a-z0-9\s_-]/g, '')
       .replace(/\s+/g, '_');
     if (normalized) {
-      keys.push(normalized);
+      push(normalized);
       const hyphenated = normalized.replace(/_/g, '-');
-      if (hyphenated && hyphenated !== normalized) keys.push(hyphenated);
+      if (hyphenated && hyphenated !== normalized) push(hyphenated);
     }
   }
-  const unique = [];
-  const seen = new Set();
-  for (const key of keys) {
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    unique.push(key);
-  }
+
   return unique;
 }
 
