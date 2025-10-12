@@ -18,6 +18,130 @@ function getTHREE() {
 // Отслеживаем юниты, ожидающие загрузку иллюстрации, чтобы обновить текстуру сразу после готовности арта
 const pendingIllustrationWatchers = new Map();
 
+// Кэш резервных карточных шаблонов: используем, когда глобальная база не содержит нужного id
+const fallbackCardCache = new Map();
+
+// Универсальный способ получить строковый идентификатор карты из разных объектов
+function extractCardId(ref) {
+  if (!ref) return null;
+  if (typeof ref === 'string') {
+    const trimmed = ref.trim();
+    return trimmed ? trimmed : null;
+  }
+  if (typeof ref === 'object') {
+    const candidates = [ref.id, ref.cardId, ref.tplId];
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+  }
+  return null;
+}
+
+// Берём первое числовое значение из списка кандидатов
+function pickNumber(...values) {
+  for (const value of values) {
+    if (value == null) continue;
+    const num = Number(value);
+    if (Number.isFinite(num)) return num;
+  }
+  return null;
+}
+
+// Лёгкая нормализация имени из идентификатора
+function humanizeId(id) {
+  if (!id) return 'Неизвестная карта';
+  return id
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b([a-z])/gi, (m) => m.toUpperCase());
+}
+
+// Неглубокое копирование массивов с объектами, чтобы не держать ссылку на исходные данные
+function cloneArray(value) {
+  if (!Array.isArray(value)) return undefined;
+  return value.map(item => (item && typeof item === 'object') ? { ...item } : item);
+}
+
+// Формируем стабильный объект шаблона, когда глобальная база карт не содержит нужного id
+function buildFallbackCardTemplate(source = {}, unit = null) {
+  const baseId = extractCardId(source) || extractCardId(unit);
+  if (!baseId) return null;
+  const cached = fallbackCardCache.get(baseId) || { id: baseId, tplId: baseId };
+
+  const type = source.type || cached.type || unit?.type || 'UNIT';
+  const defaultActivation = type === 'UNIT' ? 1 : 0;
+  const defaultHp = type === 'UNIT' ? 1 : 0;
+
+  const name = (typeof source.name === 'string' && source.name.trim())
+    ? source.name.trim()
+    : ((typeof cached.name === 'string' && cached.name.trim())
+      ? cached.name
+      : (typeof unit?.name === 'string' && unit.name.trim())
+        ? unit.name.trim()
+        : humanizeId(baseId));
+
+  const descText = typeof source.desc === 'string' ? source.desc
+    : typeof source.text === 'string' ? source.text
+      : typeof cached.desc === 'string' ? cached.desc
+        : (typeof cached.text === 'string' ? cached.text : '');
+
+  cached.name = name;
+  cached.type = type;
+  cached.element = source.element || cached.element || unit?.element || null;
+  cached.race = source.race || cached.race || unit?.race || null;
+  cached.affiliation = source.affiliation || cached.affiliation || unit?.affiliation || null;
+  cached.cardLimit = source.cardLimit || cached.cardLimit || null;
+  cached.locked = typeof source.locked === 'boolean' ? source.locked
+    : (typeof cached.locked === 'boolean' ? cached.locked : !!unit?.locked);
+  cached.cost = pickNumber(source.cost, cached.cost, unit?.cost, 0) ?? 0;
+  cached.activation = pickNumber(source.activation, source.act, cached.activation, unit?.activation, defaultActivation) ?? defaultActivation;
+  cached.atk = pickNumber(source.atk, source.attack, cached.atk, unit?.atk, unit?.attack, unit?.currentAtk, 0) ?? 0;
+  cached.hp = pickNumber(source.hp, source.health, cached.hp, unit?.hp, unit?.currentHP, defaultHp) ?? defaultHp;
+  cached.desc = descText;
+  cached.text = typeof source.text === 'string' ? source.text : cached.text;
+  cached.keywords = Array.isArray(source.keywords) ? source.keywords.slice() : (Array.isArray(cached.keywords) ? cached.keywords.slice() : undefined);
+  cached.blindspots = cloneArray(source.blindspots) || cloneArray(cached.blindspots);
+  cached.attacks = cloneArray(source.attacks) || cloneArray(cached.attacks);
+
+  fallbackCardCache.set(baseId, cached);
+  return cached;
+}
+
+// Унифицированное разрешение шаблона карты для юнита на поле
+function resolveCardTemplateForUnit(unit, cardsDb) {
+  if (!unit) return null;
+  const db = cardsDb || {};
+
+  const primaryCandidates = [unit.tplId, unit.cardId, unit.id];
+  for (const candidateId of primaryCandidates) {
+    const resolvedId = extractCardId(candidateId);
+    if (resolvedId && db[resolvedId]) return db[resolvedId];
+  }
+
+  const candidates = [unit.card, unit.tpl, unit.template, unit.originalCard, unit.sourceCard];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (typeof candidate === 'string') {
+      const byId = candidate.trim();
+      if (byId && db[byId]) return db[byId];
+      const fallback = buildFallbackCardTemplate({ id: byId }, unit);
+      if (fallback) return fallback;
+      continue;
+    }
+    if (typeof candidate === 'object') {
+      const candidateId = extractCardId(candidate);
+      if (candidateId && db[candidateId]) return db[candidateId];
+      const fallback = buildFallbackCardTemplate(candidate, unit);
+      if (fallback) return fallback;
+    }
+  }
+
+  const fallback = buildFallbackCardTemplate(unit, unit);
+  return fallback;
+}
+
 function cancelIllustrationWatcher(mesh) {
   if (!mesh) return;
   const key = mesh.uuid;
@@ -214,7 +338,8 @@ export function updateUnits(gameState) {
       try { updateFrameHighlight(ctx.tileFrames?.[r]?.[c], unit, viewerSeat, THREE); } catch {}
       if (!unit) continue;
 
-      const cardData = CARDS[unit.tplId];
+      const cardData = resolveCardTemplateForUnit(unit, CARDS);
+      if (!cardData) continue;
       // Проверяем готовность иллюстрации, чтобы обновить карточку в момент подгрузки арта
       const artReady = isCardIllustrationReady(cardData);
       const stats = effectiveStats(cell, unit, { state: gameState, r, c });
