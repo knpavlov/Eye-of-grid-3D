@@ -7,6 +7,7 @@ import { attachPossessionOverlay, disposePossessionOverlay } from './possessionO
 import { setInvisibilityFx } from './unitFx.js';
 import { resetUnitHover } from './unitTooltip.js';
 import { spawnProtectionPopup } from './effects.js';
+import { mergeExternalCardTemplates } from '../core/cards.js';
 
 function getTHREE() {
   const ctx = getCtx();
@@ -28,6 +29,73 @@ function cancelIllustrationWatcher(mesh) {
   entry.mesh = null;
   entry.cardData = null;
   pendingIllustrationWatchers.delete(key);
+}
+
+function pickTemplateId(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    return trimmed || null;
+  }
+  if (typeof raw !== 'object') return null;
+  const candidates = [raw.id, raw.tplId, raw.cardId];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (trimmed) return trimmed;
+    }
+  }
+  return null;
+}
+
+function mergeTemplateSource(source, fallbackId, cardsDb) {
+  if (!source || typeof source !== 'object') return null;
+  const id = pickTemplateId(source) || fallbackId;
+  if (!id) return null;
+  const enriched = { ...source };
+  if (typeof enriched.id !== 'string' || !enriched.id.trim()) enriched.id = id;
+  if (typeof enriched.tplId !== 'string' || !enriched.tplId.trim()) enriched.tplId = id;
+  if (typeof enriched.cardId !== 'string' || !enriched.cardId.trim()) enriched.cardId = id;
+  try { mergeExternalCardTemplates([enriched]); } catch {}
+  return cardsDb?.[id] || null;
+}
+
+function ensureCardTemplateForUnit(unit, cardsDb) {
+  if (!unit) return null;
+  const directId = pickTemplateId(unit);
+  if (directId && cardsDb?.[directId]) return cardsDb[directId];
+  const fallbackId = directId
+    || (typeof unit.tplId === 'string' && unit.tplId.trim())
+    || (typeof unit.id === 'string' && unit.id.trim())
+    || null;
+  const sources = [unit.card, unit.tpl, unit.template, unit.definition];
+  for (const source of sources) {
+    const tpl = mergeTemplateSource(source, fallbackId, cardsDb);
+    if (tpl) return tpl;
+  }
+  if (!fallbackId) return null;
+  const fallback = {
+    id: fallbackId,
+    tplId: fallbackId,
+    cardId: fallbackId,
+    name: typeof unit.name === 'string' && unit.name.trim() ? unit.name.trim() : fallbackId,
+    type: typeof unit.type === 'string' && unit.type.trim() ? unit.type.trim() : 'UNIT',
+  };
+  if (typeof unit.element === 'string' && unit.element.trim()) fallback.element = unit.element.trim();
+  if (Number.isFinite(unit.cost)) fallback.cost = unit.cost;
+  if (Number.isFinite(unit.activation)) fallback.activation = unit.activation;
+  const atkValue = Number.isFinite(unit.atk)
+    ? unit.atk
+    : (Number.isFinite(unit.attack) ? unit.attack : (Number.isFinite(unit.baseAtk) ? unit.baseAtk : null));
+  if (Number.isFinite(atkValue)) fallback.atk = atkValue;
+  const hpValue = Number.isFinite(unit.hp)
+    ? unit.hp
+    : (Number.isFinite(unit.baseHp) ? unit.baseHp : (Number.isFinite(unit.currentHP) ? unit.currentHP : null));
+  if (Number.isFinite(hpValue)) fallback.hp = hpValue;
+  if (typeof unit.desc === 'string' && unit.desc.trim()) fallback.desc = unit.desc.trim();
+  if (typeof unit.text === 'string' && unit.text.trim()) fallback.text = unit.text.trim();
+  try { mergeExternalCardTemplates([fallback]); } catch {}
+  return cardsDb?.[fallbackId] || fallback;
 }
 
 function ensureIllustrationWatcher(mesh, cardData) {
@@ -214,7 +282,11 @@ export function updateUnits(gameState) {
       try { updateFrameHighlight(ctx.tileFrames?.[r]?.[c], unit, viewerSeat, THREE); } catch {}
       if (!unit) continue;
 
-      const cardData = CARDS[unit.tplId];
+      let cardData = CARDS[unit.tplId];
+      if (!cardData) {
+        cardData = ensureCardTemplateForUnit(unit, CARDS);
+      }
+      if (!cardData) continue;
       // Проверяем готовность иллюстрации, чтобы обновить карточку в момент подгрузки арта
       const artReady = isCardIllustrationReady(cardData);
       const stats = effectiveStats(cell, unit, { state: gameState, r, c });

@@ -1887,3 +1887,294 @@ const RAW_CARDS = {
 export const CARDS = Object.fromEntries(
   Object.entries(RAW_CARDS).map(([id, card]) => [id, { ...card }])
 );
+
+// ==== Индексы канонических карт для поиска совпадений по входящим данным ====
+
+const CARD_NAME_INDEX = new Map(); // нормализованное имя -> Set(id)
+const CARD_NUMBER_INDEX = new Map(); // cardNumber -> Set(id)
+
+function normalizeCardName(raw) {
+  if (typeof raw !== 'string') return '';
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9\s]/g, '');
+}
+
+function toFiniteNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function indexCardRecord(record) {
+  if (!record || typeof record !== 'object') return;
+  const id = typeof record.id === 'string' ? record.id.trim() : '';
+  if (!id) return;
+  const cardNumber = toFiniteNumber(record.cardNumber);
+  if (cardNumber != null) {
+    let bucket = CARD_NUMBER_INDEX.get(cardNumber);
+    if (!bucket) {
+      bucket = new Set();
+      CARD_NUMBER_INDEX.set(cardNumber, bucket);
+    }
+    bucket.add(id);
+  }
+  const normalizedName = normalizeCardName(record.name);
+  if (normalizedName) {
+    let bucket = CARD_NAME_INDEX.get(normalizedName);
+    if (!bucket) {
+      bucket = new Set();
+      CARD_NAME_INDEX.set(normalizedName, bucket);
+    }
+    bucket.add(id);
+  }
+}
+
+for (const record of Object.values(CARDS)) {
+  indexCardRecord(record);
+}
+
+function refineCandidatesByStringField(candidateIds, fieldName, sample) {
+  if (!candidateIds.length) return candidateIds;
+  const value = typeof sample?.[fieldName] === 'string' ? sample[fieldName].trim() : '';
+  if (!value) return candidateIds;
+  const upperValue = value.toUpperCase();
+  const filtered = candidateIds.filter(id => {
+    const record = CARDS[id];
+    if (!record) return false;
+    const raw = typeof record[fieldName] === 'string' ? record[fieldName].trim() : '';
+    if (!raw) return false;
+    return raw.toUpperCase() === upperValue;
+  });
+  return filtered.length ? filtered : candidateIds;
+}
+
+function refineCandidatesByNumberField(candidateIds, fieldName, sample) {
+  if (!candidateIds.length) return candidateIds;
+  const num = toFiniteNumber(sample?.[fieldName]);
+  if (num == null) return candidateIds;
+  const filtered = candidateIds.filter(id => {
+    const record = CARDS[id];
+    if (!record) return false;
+    return toFiniteNumber(record[fieldName]) === num;
+  });
+  return filtered.length ? filtered : candidateIds;
+}
+
+function findCanonicalIdForTemplate(template) {
+  if (!template || typeof template !== 'object') return null;
+  const candidates = new Set();
+  const byNumber = toFiniteNumber(template.cardNumber);
+  if (byNumber != null) {
+    const bucket = CARD_NUMBER_INDEX.get(byNumber);
+    if (bucket) {
+      for (const id of bucket) candidates.add(id);
+    }
+  }
+  const normalizedName = normalizeCardName(template.name || template.cardName || template.title);
+  if (normalizedName) {
+    const bucket = CARD_NAME_INDEX.get(normalizedName);
+    if (bucket) {
+      for (const id of bucket) candidates.add(id);
+    }
+  }
+  if (!candidates.size) return null;
+  let candidateIds = Array.from(candidates);
+  candidateIds.sort();
+  candidateIds = refineCandidatesByStringField(candidateIds, 'element', template);
+  candidateIds = refineCandidatesByStringField(candidateIds, 'type', template);
+  candidateIds = refineCandidatesByNumberField(candidateIds, 'cost', template);
+  candidateIds = refineCandidatesByNumberField(candidateIds, 'activation', template);
+  candidateIds = refineCandidatesByNumberField(candidateIds, 'atk', template);
+  candidateIds = refineCandidatesByNumberField(candidateIds, 'hp', template);
+  return candidateIds[0] || null;
+}
+
+// ==== Динамическая регистрация шаблонов карт ====
+
+function cloneExternalValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => cloneExternalValue(item));
+  }
+  if (value && typeof value === 'object') {
+    return { ...value };
+  }
+  return value;
+}
+
+function pickExternalCardId(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    return trimmed ? trimmed : null;
+  }
+  if (typeof raw !== 'object') return null;
+  const candidates = [raw.id, raw.cardId, raw.tplId];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (trimmed) return trimmed;
+    }
+  }
+  return null;
+}
+
+function normalizeExternalTemplate(raw) {
+  const id = pickExternalCardId(raw);
+  if (!id) return null;
+  const aliases = new Set();
+  const template = {};
+  if (raw && typeof raw === 'object') {
+    for (const [key, value] of Object.entries(raw)) {
+      if (typeof value === 'function') continue;
+      if (key === 'id' || key === 'cardId' || key === 'tplId') continue;
+      template[key] = cloneExternalValue(value);
+    }
+  }
+  template.id = id;
+  template.cardId = typeof raw?.cardId === 'string' && raw.cardId.trim() ? raw.cardId.trim() : id;
+  template.tplId = typeof raw?.tplId === 'string' && raw.tplId.trim() ? raw.tplId.trim() : id;
+  aliases.add(id);
+  aliases.add(template.cardId);
+  aliases.add(template.tplId);
+  aliases.add(id.toUpperCase());
+  aliases.add(id.toLowerCase());
+  return { template, aliases };
+}
+
+function mergeCardRecords(existing, incoming) {
+  if (!incoming || typeof incoming !== 'object') {
+    return existing || null;
+  }
+  if (!existing) {
+    const created = {};
+    for (const [key, valueRaw] of Object.entries(incoming)) {
+      if (valueRaw === undefined) continue;
+      if (key === 'id') {
+        created.id = valueRaw;
+        continue;
+      }
+      created[key] = cloneExternalValue(valueRaw);
+    }
+    if (created.id == null && incoming.id != null) {
+      created.id = incoming.id;
+    }
+    return created;
+  }
+  const result = existing;
+  for (const [key, valueRaw] of Object.entries(incoming)) {
+    if (key === 'id') continue;
+    if (valueRaw === undefined || valueRaw === null) continue;
+    const value = cloneExternalValue(valueRaw);
+    const prev = result[key];
+    if (prev === undefined || prev === null) {
+      result[key] = value;
+      continue;
+    }
+    if (typeof value === 'string') {
+      if (typeof prev !== 'string' || !prev.trim()) {
+        result[key] = value;
+      }
+      continue;
+    }
+    if (typeof value === 'number') {
+      if (!Number.isFinite(prev)) {
+        result[key] = value;
+      }
+      continue;
+    }
+    if (Array.isArray(value)) {
+      if (!Array.isArray(prev) || prev.length === 0) {
+        result[key] = value;
+      }
+      continue;
+    }
+    if (value && typeof value === 'object') {
+      if (prev && typeof prev === 'object' && !Array.isArray(prev)) {
+        result[key] = { ...prev, ...value };
+      }
+      continue;
+    }
+    if (prev === '' || prev === false) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function attachCardAliases(record, aliases) {
+  if (!record || !aliases) return;
+  const mainId = record.id;
+  if (typeof mainId === 'string' && mainId.trim()) {
+    CARDS[mainId] = record;
+  }
+  for (const alias of aliases) {
+    if (typeof alias !== 'string') continue;
+    const trimmed = alias.trim();
+    if (!trimmed || trimmed === mainId) continue;
+    const current = CARDS[trimmed];
+    if (current && current !== record) {
+      const currentId = typeof current.id === 'string' ? current.id.trim() : '';
+      const recordId = typeof record.id === 'string' ? record.id.trim() : '';
+      if (currentId && recordId && currentId !== recordId) {
+        continue;
+      }
+    }
+    CARDS[trimmed] = record;
+  }
+}
+
+/**
+ * Регистрирует один или несколько внешних шаблонов карт, дополняя локальную базу.
+ * Используется сетевым кодом, чтобы мы знали о картах противника и могли показать их арт.
+ */
+export function mergeExternalCardTemplates(source) {
+  if (!source) return;
+  const list = Array.isArray(source) ? source : [source];
+  for (const entry of list) {
+    const normalized = normalizeExternalTemplate(entry);
+    if (!normalized) continue;
+    const { template, aliases } = normalized;
+    let targetRecord = null;
+    let targetId = null;
+    for (const alias of aliases) {
+      if (typeof alias !== 'string') continue;
+      const trimmed = alias.trim();
+      if (!trimmed) continue;
+      const candidate = CARDS[trimmed];
+      if (candidate) {
+        targetRecord = candidate;
+        targetId = typeof candidate.id === 'string' && candidate.id.trim() ? candidate.id.trim() : trimmed;
+        break;
+      }
+    }
+    if (!targetRecord) {
+      const canonicalId = findCanonicalIdForTemplate(template);
+      if (typeof canonicalId === 'string') {
+        const trimmedCanonical = canonicalId.trim();
+        if (trimmedCanonical && CARDS[trimmedCanonical]) {
+          targetRecord = CARDS[trimmedCanonical];
+          targetId = trimmedCanonical;
+          aliases.add(trimmedCanonical);
+          aliases.add(trimmedCanonical.toLowerCase());
+          aliases.add(trimmedCanonical.toUpperCase());
+        }
+      }
+    }
+    if (!targetRecord) {
+      targetId = template.id;
+      targetRecord = CARDS[targetId] || null;
+    }
+    const merged = mergeCardRecords(targetRecord, template);
+    if (!targetRecord && targetId) {
+      CARDS[targetId] = merged;
+    }
+    indexCardRecord(merged);
+    attachCardAliases(merged, aliases);
+  }
+}
+
+export function mergeExternalCardTemplate(entry) {
+  mergeExternalCardTemplates(entry);
+}

@@ -1,6 +1,7 @@
 import { getServerBase } from './config.js';
 import { initSessionStore, getSessionToken, onSessionChange, handleUnauthorized } from '../auth/sessionStore.js';
 import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
+import { mergeExternalCardTemplates } from '../core/cards.js';
 
   /* MODULE: network/multiplayer
      Purpose: handle server connection, matchmaking, state sync,
@@ -305,6 +306,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
         }
       }
       if (!templates.length) return;
+      mergeExternalCardTemplates(templates);
       queueIllustrationsForPreload(templates);
     } catch (err) {
       console.warn('[net] Не удалось инициировать предзагрузку иллюстраций колод:', err);
@@ -407,6 +409,7 @@ import { playFieldquakeFx } from '../scene/fieldquakeFx.js';
       }
 
       if (templates.length) {
+        mergeExternalCardTemplates(templates);
         queueIllustrationsForPreload(templates);
       }
     } catch (err) {
