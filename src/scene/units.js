@@ -15,6 +15,65 @@ function getTHREE() {
   return THREE;
 }
 
+// Отслеживаем юниты, ожидающие загрузку иллюстрации, чтобы обновить текстуру сразу после готовности арта
+const pendingIllustrationWatchers = new Map();
+
+function cancelIllustrationWatcher(mesh) {
+  if (!mesh) return;
+  const key = mesh.uuid;
+  if (!key) return;
+  const entry = pendingIllustrationWatchers.get(key);
+  if (!entry) return;
+  entry.cancelled = true;
+  entry.mesh = null;
+  entry.cardData = null;
+  pendingIllustrationWatchers.delete(key);
+}
+
+function ensureIllustrationWatcher(mesh, cardData) {
+  if (!mesh || !cardData) return;
+  const key = mesh.uuid;
+  if (!key) return;
+  let entry = pendingIllustrationWatchers.get(key);
+  if (entry) {
+    entry.mesh = mesh;
+    entry.cardData = cardData;
+    entry.cancelled = false;
+    return;
+  }
+  entry = {
+    mesh,
+    cardData,
+    cancelled: false,
+  };
+  entry.handleLoad = () => {
+    if (entry.cancelled) return;
+    const targetMesh = entry.mesh;
+    const tpl = entry.cardData;
+    if (!targetMesh || !tpl) {
+      pendingIllustrationWatchers.delete(key);
+      return;
+    }
+    try {
+      const hpValue = targetMesh.userData?.lastHp ?? null;
+      const atkValue = targetMesh.userData?.lastAtk ?? null;
+      const activationValue = targetMesh.userData?.lastActivation ?? null;
+      updateCardTexture(targetMesh, tpl, hpValue, atkValue, { activationOverride: activationValue });
+      if (targetMesh.userData) targetMesh.userData.artReady = true;
+    } catch {}
+    pendingIllustrationWatchers.delete(key);
+  };
+  entry.handleError = () => {
+    pendingIllustrationWatchers.delete(key);
+  };
+  pendingIllustrationWatchers.set(key, entry);
+  try {
+    ensureCardIllustration(cardData, { onLoad: entry.handleLoad, onError: entry.handleError });
+  } catch {
+    pendingIllustrationWatchers.delete(key);
+  }
+}
+
 function updateCardTexture(mesh, cardData, hpValue, atkValue, opts = {}) {
   try {
     const material = Array.isArray(mesh.material) ? mesh.material[2] : mesh.material;
@@ -277,6 +336,12 @@ export function updateUnits(gameState) {
         clearIllustrationRefresh(mesh);
       }
 
+      if (artReady) {
+        cancelIllustrationWatcher(mesh);
+      } else {
+        ensureIllustrationWatcher(mesh, cardData);
+      }
+
       const targetRotation = (facingDeg[unit.facing] || 0) * Math.PI / 180;
       mesh.rotation.y = targetRotation;
 
@@ -310,6 +375,7 @@ export function updateUnits(gameState) {
   if (oldMap instanceof Map) {
     for (const [uid, mesh] of oldMap.entries()) {
       if (usedUids.has(uid)) continue;
+      cancelIllustrationWatcher(mesh);
       try { setInvisibilityFx(mesh, false); } catch {}
       try { disposePossessionOverlay(mesh); } catch {}
       try {
