@@ -53,7 +53,93 @@ export const interactionState = {
   autoEndTurnAfterAttack: false,
   // список событий получения маны, которые можно отменить при отмене призыва
   pendingSummonManaGain: null,
+  // блокировки открытия меню действий до завершения автоатаки
+  unitMenuLocks: new Set(),
 };
+
+const AUTO_ATTACK_MENU_LOCK_MS = 12000;
+const unitMenuLockTimers = new Map();
+
+function ensureUnitMenuLockSet() {
+  if (!(interactionState.unitMenuLocks instanceof Set)) {
+    interactionState.unitMenuLocks = new Set();
+  }
+  return interactionState.unitMenuLocks;
+}
+
+function scheduleUnitMenuUnlock(uid) {
+  if (uid == null || typeof window === 'undefined') return;
+  if (unitMenuLockTimers.has(uid)) return;
+  try {
+    const timer = window.setTimeout(() => {
+      unlockUnitMenuByUid(uid);
+    }, AUTO_ATTACK_MENU_LOCK_MS);
+    unitMenuLockTimers.set(uid, timer);
+  } catch {}
+}
+
+function cancelUnitMenuUnlock(uid) {
+  if (uid == null || typeof window === 'undefined') return;
+  const timer = unitMenuLockTimers.get(uid);
+  if (timer != null) {
+    try { window.clearTimeout(timer); } catch {}
+    unitMenuLockTimers.delete(uid);
+  }
+}
+
+function clearAllUnitMenuTimers() {
+  if (typeof window === 'undefined') {
+    unitMenuLockTimers.clear();
+    return;
+  }
+  for (const timer of unitMenuLockTimers.values()) {
+    if (timer != null) {
+      try { window.clearTimeout(timer); } catch {}
+    }
+  }
+  unitMenuLockTimers.clear();
+}
+
+function lockUnitMenuForUnit(unit) {
+  if (!unit) return;
+  const uid = unit.uid ?? null;
+  if (uid == null) return;
+  const locks = ensureUnitMenuLockSet();
+  locks.add(uid);
+  scheduleUnitMenuUnlock(uid);
+  try { window.__ui?.panels?.hideUnitActionPanel?.(); } catch {}
+}
+
+export function unlockUnitMenuByUid(uid = null) {
+  const locks = ensureUnitMenuLockSet();
+  if (uid == null) {
+    locks.clear();
+    clearAllUnitMenuTimers();
+    return;
+  }
+  if (locks.delete(uid)) {
+    cancelUnitMenuUnlock(uid);
+  }
+}
+
+export function isUnitMenuLockedByUid(uid) {
+  if (uid == null) return false;
+  const locks = ensureUnitMenuLockSet();
+  return locks.has(uid);
+}
+
+export function isUnitMenuLockedForMesh(unitMesh) {
+  if (!unitMesh) return false;
+  const uid = unitMesh.userData?.unitData?.uid ?? unitMesh.userData?.unitUid ?? null;
+  return isUnitMenuLockedByUid(uid);
+}
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('battle-sequence-resolved', () => {
+    // По завершении боевой анимации снимаем все временные блокировки
+    unlockUnitMenuByUid(null);
+  });
+}
 
 function normalizeManaGainEntries(entries) {
   if (!Array.isArray(entries)) return [];
@@ -442,6 +528,9 @@ function onMouseDown(event) {
     if (interactionState.selectedCard && interactionState.selectedCard.userData.cardData.type === 'SPELL') {
       castSpellOnUnit(interactionState.selectedCard, unitMesh);
     } else if (unitMesh.userData.unitData.owner === gameState.active) {
+      if (isUnitMenuLockedForMesh(unitMesh)) {
+        return;
+      }
       interactionState.selectedUnit = unitMesh;
       try { window.__ui.panels.showUnitActionPanel(unitMesh); } catch {}
     }
@@ -1373,6 +1462,7 @@ export function placeUnitWithDirection(direction) {
               }
             }
             interactionState.autoEndTurnAfterAttack = true;
+            lockUnitMenuForUnit(unitAfterPlacement || unit);
             window.performBattleSequence(row, col, true, opts);
             clearPendingSummonManaGain();
           }
