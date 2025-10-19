@@ -4,6 +4,15 @@ let _btn = null;
 let _timerId = null;
 let _seconds = 0;
 const URGENT_THRESHOLD = 10;
+let _autoEnabled = true;
+try {
+  if (typeof window !== 'undefined' && typeof window.__turnTimerAutoEnabled === 'boolean') {
+    _autoEnabled = !!window.__turnTimerAutoEnabled;
+  }
+} catch {}
+let _autoTriggered = false;
+let _toggleEl = null;
+let _toggleListener = null;
 
 function _syncButton() {
   try {
@@ -18,8 +27,38 @@ function _syncButton() {
   } catch {}
 }
 
+function _syncToggleState() {
+  if (!_toggleEl) return;
+  try { _toggleEl.checked = !!_autoEnabled; } catch {}
+}
+
+function _handleExpire() {
+  if (_autoTriggered || !_autoEnabled) return;
+  const w = typeof window !== 'undefined' ? window : null;
+  if (!w) return;
+  const gameState = w.gameState;
+  const seat = (typeof w.MY_SEAT === 'number') ? w.MY_SEAT : null;
+  if (seat != null && gameState && gameState.active !== seat) return;
+  _autoTriggered = true;
+  stop();
+  try { w.__interactions?.requestAutoEndTurn?.(); } catch {}
+  if (!gameState || seat == null || gameState.active === seat) {
+    try { w.showNotification?.('Время вышло — ход завершён автоматически.', 'info'); } catch {}
+  }
+}
+
+function _tick() {
+  const next = Math.max(0, (_seconds || 0) - 1);
+  _setSeconds(next);
+  if (next <= 0) {
+    _handleExpire();
+  }
+}
+
 function _setSeconds(v) {
-  _seconds = Math.max(0, Number(v) || 0);
+  const next = Math.max(0, Number(v) || 0);
+  _seconds = next;
+  if (next > 0) { _autoTriggered = false; }
   try { if (typeof window !== 'undefined') window.__turnTimerSeconds = _seconds; } catch {}
   _syncButton();
 }
@@ -36,10 +75,11 @@ export function attach(buttonOrId) {
 export function start(seconds) {
   try { if (_timerId) { clearInterval(_timerId); _timerId = null; } } catch {}
   if (typeof seconds === 'number') _setSeconds(seconds);
-  _timerId = setInterval(() => {
-    _setSeconds(Math.max(0, (_seconds || 0) - 1));
-  }, 1000);
+  _timerId = setInterval(_tick, 1000);
   _syncButton();
+  if (_seconds <= 0) {
+    _handleExpire();
+  }
   return api;
 }
 
@@ -69,7 +109,31 @@ export function init({ buttonId = 'end-turn-btn', seconds = 100 } = {}) {
   return api;
 }
 
-const api = { attach, start, stop, reset, set, getSeconds, init };
+export function setAutoEnabled(enabled) {
+  _autoEnabled = !!enabled;
+  try { if (typeof window !== 'undefined') window.__turnTimerAutoEnabled = _autoEnabled; } catch {}
+  if (!_autoEnabled) { _autoTriggered = false; }
+  _syncToggleState();
+  return api;
+}
+
+export function isAutoEnabled() { return _autoEnabled; }
+
+export function bindAutoToggle(inputOrId) {
+  if (typeof document === 'undefined') return api;
+  const el = typeof inputOrId === 'string' ? document.getElementById(inputOrId) : inputOrId;
+  if (!el) return api;
+  if (_toggleListener && _toggleEl) {
+    try { _toggleEl.removeEventListener('change', _toggleListener); } catch {}
+  }
+  _toggleEl = el;
+  _toggleListener = () => { setAutoEnabled(_toggleEl.checked); };
+  _toggleEl.addEventListener('change', _toggleListener);
+  _syncToggleState();
+  return api;
+}
+
+const api = { attach, start, stop, reset, set, getSeconds, init, setAutoEnabled, isAutoEnabled, bindAutoToggle };
 
 try { if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.turnTimer = api; } } catch {}
 

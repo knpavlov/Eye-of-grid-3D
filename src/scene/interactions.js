@@ -715,6 +715,15 @@ function endCardDrag() {
 }
 
 function returnCardToHand(card) {
+  if (!card) return;
+  try {
+    gsap.killTweensOf(card.position);
+    gsap.killTweensOf(card.rotation);
+    gsap.killTweensOf(card.scale);
+  } catch {}
+  if (card.userData) {
+    card.userData.isInHand = true;
+  }
   gsap.to(card.position, {
     x: card.userData.originalPosition.x,
     y: card.userData.originalPosition.y,
@@ -1027,6 +1036,15 @@ export function placeUnitWithDirection(direction) {
       return;
     }
   }
+  const player = gameState.players[gameState.active];
+  const summonCost = (incarnation?.active ? (incarnation.cost ?? cardData.cost ?? 0) : cardData.cost) ?? 0;
+  if (summonCost > player.mana) {
+    showNotification('Not enough mana!', 'error');
+    returnCardToHand(card);
+    try { window.__ui.panels.hideOrientationPanel(); } catch {}
+    interactionState.pendingPlacement = null;
+    return;
+  }
   if (card) {
     card.userData = card.userData || {};
     card.userData.isInHand = false;
@@ -1037,15 +1055,8 @@ export function placeUnitWithDirection(direction) {
       }
     } catch {}
   }
-  const player = gameState.players[gameState.active];
-  const summonCost = (incarnation?.active ? (incarnation.cost ?? cardData.cost ?? 0) : cardData.cost) ?? 0;
-  if (summonCost > player.mana) {
-    showNotification('Not enough mana!', 'error');
-    returnCardToHand(card);
-    try { window.__ui.panels.hideOrientationPanel(); } catch {}
-    interactionState.pendingPlacement = null;
-    return;
-  }
+  const countControlledFn = (typeof window.countControlled === 'function') ? window.countControlled : null;
+  const controlBefore = countControlledFn ? countControlledFn(gameState, gameState.active) : null;
   let summonEndedTurn = false;
   const endTurnAfterSummon = () => {
     if (summonEndedTurn) return;
@@ -1211,6 +1222,17 @@ export function placeUnitWithDirection(direction) {
   const placedUnit = gameState.board[row][col].unit;
   const placedTpl = placedUnit ? window.CARDS?.[placedUnit.tplId] : null;
   const placedAlive = placedUnit && ((placedUnit.currentHP ?? placedTpl?.hp ?? cardData.hp) > 0);
+  if (
+    placedAlive
+    && countControlledFn
+    && typeof controlBefore === 'number'
+    && controlBefore < 4
+  ) {
+    const controlAfter = countControlledFn(gameState, placedUnit.owner);
+    if (controlAfter >= 4) {
+      try { window.__ui?.checkSplash?.playCheckAlert?.(placedUnit.owner); } catch {}
+    }
+  }
   if (placedAlive) {
     const playersBeforeMana = Array.isArray(gameState.players)
       ? gameState.players.map(pl => ({ mana: Math.max(0, Number(pl?.mana || 0)) }))

@@ -39,6 +39,7 @@ import './ui/statusChip.js';
 import * as InputLock from './ui/inputLock.js';
 import { attachUIEvents } from './ui/domEvents.js';
 import * as BattleSplash from './ui/battleSplash.js';
+import * as CheckSplash from './ui/checkSplash.js';
 import * as DeckSelect from './ui/deckSelect.js';
 import * as MainMenu from './ui/mainMenu.js';
 import * as DeckBuilder from './ui/deckBuilder.js';
@@ -247,6 +248,7 @@ try {
   window.__ui.discardManager = window.__ui.discardManager || { initDiscardManager, syncWithState: syncDiscardManager };
   window.__ui.deckBuilder = DeckBuilder;
   window.__ui.mainMenu = MainMenu;
+  window.__ui.checkSplash = CheckSplash;
   window.updateUI = updateUI;
   window.__fx = SceneEffects;
   window.playFieldquakeFx = playFieldquakeFx;
@@ -259,6 +261,7 @@ try {
   window.forceTurnSplashWithRetry = Banner.forceTurnSplashWithRetry;
   window.requestTurnSplash = Banner.requestTurnSplash;
   window.showBattleSplash = BattleSplash.showBattleSplash;
+  window.showCheckSplash = CheckSplash.showCheckSplash;
   window.attachUIEvents = attachUIEvents;
   window.__ui.cancelButton.setupCancelButton();
   window.playDeltaAnimations = playDeltaAnimations;
@@ -270,4 +273,16 @@ try { UISync.attachSocketUIRefresh(); if (typeof window !== 'undefined') { windo
 
 try { initDebugControls(); } catch {}
 try { initDiscardManager(); } catch {}
+
+const setupTimerToggleBinding = () => {
+  try { TurnTimer.bindAutoToggle('turn-timer-toggle'); } catch {}
+};
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupTimerToggleBinding, { once: true });
+  } else {
+    setupTimerToggleBinding();
+  }
+}
 
