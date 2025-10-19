@@ -1,5 +1,10 @@
 // Кнопка отмены действий при установке карты или выборе цели
-import { interactionState, returnCardToHand, undoPendingSummonManaGain } from '../scene/interactions.js';
+import {
+  interactionState,
+  returnCardToHand,
+  undoPendingSummonManaGain,
+  unlockSummonActionMenuLock,
+} from '../scene/interactions.js';
 import { clearHighlights } from '../scene/highlight.js';
 import { capMana } from '../core/constants.js';
 import { refreshPossessionsUI } from './possessions.js';
@@ -50,6 +55,7 @@ function cancelTargetSelection() {
   interactionState.magicFrom = null;
   interactionState.pendingAttack = null;
   interactionState.autoEndTurnAfterAttack = false;
+  unlockSummonActionMenuLock();
   try { window.__ui?.panels?.hideUnitActionPanel?.(); } catch {}
   window.updateUnits?.();
   window.updateHand?.();
