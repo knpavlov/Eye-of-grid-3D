@@ -7,6 +7,13 @@ export function hideOrientationPanel(){ try { document.getElementById('orientati
 export function showUnitActionPanel(unitMesh){
   try {
     if (!unitMesh) return;
+    if (typeof window !== 'undefined') {
+      const locked = window.__interactions?.isUnitMenuLockedForMesh;
+      if (typeof locked === 'function' && locked(unitMesh)) {
+        // Блокируем меню до завершения автоатаки
+        return;
+      }
+    }
     try { if (typeof window !== 'undefined') window.selectedUnit = unitMesh; } catch {}
     const unitData = unitMesh.userData?.unitData; const cardData = unitMesh.userData?.cardData; const gs = (typeof window !== 'undefined') ? window.gameState : null;
     if (!gs || !unitData || !cardData) return;
