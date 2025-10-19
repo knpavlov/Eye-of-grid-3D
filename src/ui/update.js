@@ -97,6 +97,7 @@ export function updateUI(gameState) {
   const controlB = countControlled(state, 1);
   const ci0 = doc.getElementById('control-info-0'); if (ci0) ci0.textContent = `Контроль: ${controlA}`;
   const ci1 = doc.getElementById('control-info-1'); if (ci1) ci1.textContent = `Контроль: ${controlB}`;
+  try { window.__ui?.checkAlert?.syncControlPanels?.({ counts: [controlA, controlB] }); } catch {}
 
   const playerNames = [
     (typeof state.players?.[0]?.name === 'string' && state.players[0].name.trim()) ? state.players[0].name.trim() : 'Player 1',
