@@ -400,7 +400,7 @@ const RAW_CARDS = {
     id: 'WATER_MERCENARY_SAVIOR_LATOO', name: 'Mercenary Savior Latoo', type: 'UNIT', cost: 3, activation: 2,
     element: 'WATER', atk: 2, hp: 3,
     attackType: 'STANDARD',
-    attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE' } ],
+    attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE', ignoreBlocking: true } ],
     plusAtkIfTargetOnElement: { element: 'WATER', amount: 1 },
     auraGrantDodgeOnElement: { element: 'WATER', attempts: 1, includeSelf: false },
     dodge: { chance: 0.5, attempts: 1 },
@@ -416,7 +416,7 @@ const RAW_CARDS = {
     id: 'WATER_TRITONAN_HARPOONSMAN', name: 'Tritonan Harpoonsman', type: 'UNIT', cost: 2, activation: 1,
     element: 'WATER', atk: 1, hp: 2,
     attackType: 'STANDARD',
-    attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE' } ],
+    attacks: [ { dir: 'N', ranges: [1, 2], group: 'LINE', ignoreBlocking: true } ],
     gainDodgeOnElement: { element: 'WATER', attempts: 1 },
     desc: 'While on a Water field Tritonan Harpoonsman gains Dodge attempt.'
   },

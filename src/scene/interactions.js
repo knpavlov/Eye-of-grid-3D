@@ -53,7 +53,11 @@ export const interactionState = {
   autoEndTurnAfterAttack: false,
   // список событий получения маны, которые можно отменить при отмене призыва
   pendingSummonManaGain: null,
+  // блокировка открытия меню действий сразу после автоатаки
+  summonActionMenuLock: null,
 };
+
+let battleResolvedListenerAttached = false;
 
 function normalizeManaGainEntries(entries) {
   if (!Array.isArray(entries)) return [];
@@ -106,6 +110,20 @@ export function undoPendingSummonManaGain() {
   try { window.updateUI?.(gs); } catch {}
 }
 
+function lockSummonActionMenu(info = {}) {
+  // Сохраняем причину блокировки, чтобы облегчить отладку сложных случаев
+  interactionState.summonActionMenuLock = info || { reason: 'summon-auto' };
+}
+
+export function unlockSummonActionMenuLock() {
+  // Сбрасываем блокировку меню действий после завершения автоатаки
+  interactionState.summonActionMenuLock = null;
+}
+
+export function isSummonActionMenuLocked() {
+  return !!interactionState.summonActionMenuLock;
+}
+
 const AUTO_END_TURN_RETRY_MS = 120;
 const AUTO_END_TURN_MAX_ATTEMPTS = 60;
 
@@ -145,6 +163,12 @@ function processManaStealEvents(events, opts = {}) {
       console.warn('[mana] Не удалось анимировать кражу маны:', err);
     }
   }
+}
+
+function handleBattleResolvedAfterSummon() {
+  // Как только автоатака завершилась, возвращаем доступ к меню действий
+  if (!interactionState.summonActionMenuLock) return;
+  unlockSummonActionMenuLock();
 }
 
 // Планировщик авто-завершения хода, который дожидается окончания анимаций и разблокировки ввода
@@ -442,6 +466,11 @@ function onMouseDown(event) {
     if (interactionState.selectedCard && interactionState.selectedCard.userData.cardData.type === 'SPELL') {
       castSpellOnUnit(interactionState.selectedCard, unitMesh);
     } else if (unitMesh.userData.unitData.owner === gameState.active) {
+      if (isSummonActionMenuLocked()) {
+        // Сообщаем игроку, что сначала нужно дождаться завершения автоатаки
+        try { window.__ui?.notifications?.show('Дождитесь завершения автоатаки.', 'info'); } catch {}
+        return;
+      }
       interactionState.selectedUnit = unitMesh;
       try { window.__ui.panels.showUnitActionPanel(unitMesh); } catch {}
     }
@@ -833,6 +862,9 @@ function performMagicAttack(from, targetMesh) {
       interactionState.autoEndTurnAfterAttack = false;
       requestAutoEndTurn();
     }
+    if (from?.cancelMode === 'summon') {
+      unlockSummonActionMenuLock();
+    }
   };
 
   if (deathVisuals.length) {
@@ -869,7 +901,18 @@ function performChosenAttack(from, targetMesh) {
   }
   const hits = window.computeHits(gameState, from.r, from.c, opts);
   if (!hits.length) { showNotification('Incorrect target', 'error'); return false; }
-  window.performBattleSequence(from.r, from.c, true, opts);
+  try {
+    const battle = window.performBattleSequence(from.r, from.c, true, opts);
+    if (from?.cancelMode === 'summon' && battle && typeof battle.then === 'function') {
+      Promise.resolve(battle).catch(() => { unlockSummonActionMenuLock(); });
+    }
+  } catch (err) {
+    if (from?.cancelMode === 'summon') {
+      unlockSummonActionMenuLock();
+    }
+    console.error('[interactions] Ошибка запуска выбранной атаки:', err);
+    return false;
+  }
   clearPendingSummonManaGain();
   return true;
 }
@@ -1327,6 +1370,7 @@ export function placeUnitWithDirection(direction) {
         }
         if (cells.length && (allowFriendly || hasEnemy)) {
           interactionState.magicFrom = { r: row, c: col, cancelMode: 'summon', owner: unit.owner };
+          lockSummonActionMenu({ reason: 'summon-magic', r: row, c: col });
           interactionState.autoEndTurnAfterAttack = true;
           highlightTiles(cells);
           // Показываем явное уведомление, чтобы игрок понимал, что нужно выбрать цель
@@ -1354,6 +1398,7 @@ export function placeUnitWithDirection(direction) {
         if (hitsAll.length && hasEnemy) {
           if (needsChoice && hitsAll.length > 1) {
             interactionState.pendingAttack = { r: row, c: col, cancelMode: 'summon', owner: unit.owner, profile };
+            lockSummonActionMenu({ reason: 'summon-pending', r: row, c: col });
             interactionState.autoEndTurnAfterAttack = true;
             highlightTiles(hitsAll);
             window.__ui?.log?.add?.(`${tpl.name}: choose a target for the attack.`);
@@ -1373,7 +1418,16 @@ export function placeUnitWithDirection(direction) {
               }
             }
             interactionState.autoEndTurnAfterAttack = true;
-            window.performBattleSequence(row, col, true, opts);
+            lockSummonActionMenu({ reason: 'summon-auto', r: row, c: col });
+            try {
+              const battle = window.performBattleSequence(row, col, true, opts);
+              if (battle && typeof battle.then === 'function') {
+                Promise.resolve(battle).catch(() => { unlockSummonActionMenuLock(); });
+              }
+            } catch (err) {
+              unlockSummonActionMenuLock();
+              console.error('[interactions] Ошибка запуска автоатаки после призыва:', err);
+            }
             clearPendingSummonManaGain();
           }
           if (unlockTriggered) {
@@ -1403,6 +1457,10 @@ export function setupInteractions() {
   const ctx = getCtx();
   const { renderer } = ctx;
   if (!renderer || !renderer.domElement) return;
+  if (!battleResolvedListenerAttached && typeof window !== 'undefined') {
+    window.addEventListener('battle-sequence-resolved', handleBattleResolvedAfterSummon);
+    battleResolvedListenerAttached = true;
+  }
   renderer.domElement.addEventListener('mousemove', onMouseMove);
   renderer.domElement.addEventListener('mousedown', onMouseDown);
   renderer.domElement.addEventListener('mouseup', onMouseUp);
