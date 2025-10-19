@@ -23,6 +23,7 @@ import { applyDeathRepositionEffects } from '../core/abilityHandlers/deathReposi
 import { createDeathEntry } from '../core/abilityHandlers/deathRecords.js';
 import { animateManaSteal } from '../ui/manaStealFx.js';
 import { playFieldquakeFxBatch } from './fieldquakeFx.js';
+import { countControlled } from '../core/board.js';
 
 // Centralized interaction state
 export const interactionState = {
@@ -715,25 +716,47 @@ function endCardDrag() {
 }
 
 function returnCardToHand(card) {
+  if (!card) return;
+  const ctx = getCtx();
+  if (card.parent == null && ctx?.cardGroup) {
+    try { ctx.cardGroup.add(card); } catch {}
+  }
+  card.userData = card.userData || {};
+  card.userData.isInHand = true;
+  if (ctx && Array.isArray(ctx.handCardMeshes)) {
+    ctx.handCardMeshes = ctx.handCardMeshes.filter(Boolean);
+    if (!ctx.handCardMeshes.includes(card)) {
+      ctx.handCardMeshes.push(card);
+    }
+  }
+  try {
+    gsap.killTweensOf(card.position);
+    gsap.killTweensOf(card.rotation);
+    gsap.killTweensOf(card.scale);
+  } catch {}
+  const targetPos = card.userData.originalPosition || card.position;
+  const targetRot = card.userData.originalRotation || card.rotation;
   gsap.to(card.position, {
-    x: card.userData.originalPosition.x,
-    y: card.userData.originalPosition.y,
-    z: card.userData.originalPosition.z,
+    x: targetPos.x,
+    y: targetPos.y,
+    z: targetPos.z,
     duration: 0.3,
     ease: 'power2.inOut',
   });
   gsap.to(card.rotation, {
-    x: card.userData.originalRotation.x,
-    y: card.userData.originalRotation.y,
-    z: card.userData.originalRotation.z,
+    x: targetRot.x,
+    y: targetRot.y,
+    z: targetRot.z,
     duration: 0.3,
   });
+  const scaleTarget = card.userData.isInHand ? 0.54 : 1;
   gsap.to(card.scale, {
-    x: card.userData && card.userData.isInHand ? 0.54 : 1,
+    x: scaleTarget,
     y: 1,
-    z: card.userData && card.userData.isInHand ? 0.54 : 1,
+    z: scaleTarget,
     duration: 0.3,
   });
+  try { card.renderOrder = 2000; } catch {}
 }
 
 export { returnCardToHand };
@@ -1016,6 +1039,9 @@ export function placeUnitWithDirection(direction) {
   if (!interactionState.pendingPlacement) return;
   const { card, row, col, handIndex, incarnation } = interactionState.pendingPlacement;
   const cardData = card.userData.cardData;
+  const controlBefore = gameState
+    ? [countControlled(gameState, 0), countControlled(gameState, 1)]
+    : [0, 0];
   if (!incarnation) {
     const placementCheck = canSummonOnEmptyCell(gameState, gameState.active, row, col);
     if (!placementCheck.allowed) {
@@ -1333,6 +1359,15 @@ export function placeUnitWithDirection(direction) {
   }
   // Синхронизируем состояние после призыва
   try { window.applyGameState(gameState); } catch {}
+  try {
+    const controlAfter = [
+      countControlled(gameState, 0),
+      countControlled(gameState, 1),
+    ];
+    try { window.__ui?.checkAlert?.syncControlPanels?.({ counts: controlAfter }); } catch {}
+  } catch (err) {
+    console.warn('[interactions] Не удалось проверить состояние CHECK', err);
+  }
   const ctx = getCtx();
   const targetPos = ctx.tileMeshes[row][col].position.clone();
   // Используем ту же высоту, что и при окончательной отрисовке юнита

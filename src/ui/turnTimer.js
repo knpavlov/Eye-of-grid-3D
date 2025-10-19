@@ -4,6 +4,8 @@ let _btn = null;
 let _timerId = null;
 let _seconds = 0;
 const URGENT_THRESHOLD = 10;
+let _onExpire = null;
+let _expireFired = false;
 
 function _syncButton() {
   try {
@@ -19,9 +21,24 @@ function _syncButton() {
 }
 
 function _setSeconds(v) {
-  _seconds = Math.max(0, Number(v) || 0);
+  const next = Math.max(0, Number(v) || 0);
+  _seconds = next;
+  if (next > 0) {
+    _expireFired = false;
+  }
   try { if (typeof window !== 'undefined') window.__turnTimerSeconds = _seconds; } catch {}
   _syncButton();
+  if (next <= 0) {
+    _triggerExpire();
+  }
+}
+
+function _triggerExpire() {
+  if (_expireFired) return;
+  _expireFired = true;
+  if (typeof _onExpire === 'function') {
+    try { _onExpire(); } catch (err) { console.warn('[turnTimer] onExpire handler error', err); }
+  }
 }
 
 export function attach(buttonOrId) {
@@ -35,7 +52,10 @@ export function attach(buttonOrId) {
 
 export function start(seconds) {
   try { if (_timerId) { clearInterval(_timerId); _timerId = null; } } catch {}
-  if (typeof seconds === 'number') _setSeconds(seconds);
+  if (typeof seconds === 'number') {
+    _setSeconds(seconds);
+  }
+  _expireFired = _seconds <= 0;
   _timerId = setInterval(() => {
     _setSeconds(Math.max(0, (_seconds || 0) - 1));
   }, 1000);
@@ -51,6 +71,7 @@ export function stop() {
 
 export function reset(seconds = 100) {
   stop();
+  _expireFired = false;
   _setSeconds(seconds);
   return api;
 }
@@ -62,6 +83,11 @@ export function set(seconds) {
 
 export function getSeconds() { return _seconds; }
 
+export function onExpire(handler) {
+  _onExpire = (typeof handler === 'function') ? handler : null;
+  return api;
+}
+
 export function init({ buttonId = 'end-turn-btn', seconds = 100 } = {}) {
   attach(buttonId);
   reset(seconds);
@@ -69,7 +95,7 @@ export function init({ buttonId = 'end-turn-btn', seconds = 100 } = {}) {
   return api;
 }
 
-const api = { attach, start, stop, reset, set, getSeconds, init };
+const api = { attach, start, stop, reset, set, getSeconds, init, onExpire };
 
 try { if (typeof window !== 'undefined') { window.__ui = window.__ui || {}; window.__ui.turnTimer = api; } } catch {}
 
