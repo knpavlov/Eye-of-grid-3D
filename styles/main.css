@@ -105,6 +105,8 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
   transition: left .5s;
 }
 .glossy-btn:hover::after { left: 150%; }
+.timer-toggle { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: 0.04em; }
+.timer-toggle-input { width: 16px; height: 16px; accent-color: #f97316; cursor: pointer; }
 /* Prompt: кликабельна только панель, остальное кликается сквозь */
 #prompt-panel { pointer-events: none; }
 #prompt-panel .overlay-panel { pointer-events: auto; }
@@ -127,6 +129,18 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0f172a; col
 .battle-flash-bg { position: absolute; inset: 0; background: radial-gradient(80% 60% at 50% 50%, rgba(255,255,255,0.08), rgba(0,0,0,0.8)); mix-blend-mode: screen; }
 .battle-flash-text { position: relative; font-weight: 900; letter-spacing: 0.08em; text-shadow: 0 0 20px rgba(255, 236, 153, .9), 0 0 40px rgba(255, 98, 0, .7); }
 .battle-flash-scan { position:absolute; inset:0; background: linear-gradient( to bottom, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100% ); transform: translateY(-100%); }
+/* Spectacular CHECK splash */
+.check-wrap { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 32px 48px; border-radius: 28px; overflow: hidden; }
+.check-glow { position: absolute; inset: -40px; background: radial-gradient(70% 70% at 50% 50%, rgba(220,38,38,0.6), rgba(79,70,229,0.45), rgba(15,23,42,0.92)); filter: blur(6px); }
+.check-frame { position: absolute; inset: 0; border-radius: 28px; border: 2px solid rgba(248,113,113,0.85); box-shadow: 0 0 24px rgba(248,113,113,0.35); mix-blend-mode: screen; }
+.check-title { position: relative; font-size: clamp(48px, 8vw, 88px); font-weight: 900; letter-spacing: 0.22em; color: #fef9c3; text-transform: uppercase; text-shadow: 0 0 24px rgba(248,250,252,0.75), 0 0 44px rgba(248,113,113,0.65); }
+.check-subtitle { position: relative; font-size: clamp(16px, 3.4vw, 24px); font-weight: 600; letter-spacing: 0.12em; color: #fee2e2; text-transform: uppercase; text-shadow: 0 0 18px rgba(248,113,113,0.45); }
+
+@keyframes controlWarningPulse {
+  0%   { box-shadow: 0 0 0 2px rgba(239,68,68,0.82), 0 0 14px rgba(239,68,68,0.45); transform: translateY(0); }
+  100% { box-shadow: 0 0 0 3px rgba(248,113,113,0.95), 0 0 24px rgba(248,113,113,0.75); transform: translateY(-2px); }
+}
+.control-warning { animation: controlWarningPulse 0.9s ease-in-out infinite alternate; border-color: rgba(248,113,113,0.75); color: #fee2e2; }
 /* Tooltip для 3D-колод/кладбищ */
 #hover-tooltip { position: fixed; pointer-events: none; z-index: 50; }
 

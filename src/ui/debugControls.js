@@ -1,5 +1,6 @@
 // Простейшие отладочные элементы управления (чистый UI-код)
 import { grantManaToAllPlayers } from '../core/mana.js';
+import { bindToggle as bindTurnTimerToggle } from './turnTimerAuto.js';
 
 let initialized = false;
 
@@ -30,34 +31,41 @@ export function initDebugControls() {
   const setup = () => {
     if (initialized) return;
     const button = document.getElementById('debug-mana-btn');
-    if (!button) return;
+    const toggle = document.getElementById('auto-turn-toggle');
+    if (!button && !toggle) return;
 
-    const handleClick = () => {
-      try {
-        const state = window.gameState;
-        if (!state) return;
-        if (isOnline() && !isActivePlayer(state)) {
-          window.showNotification?.('Сейчас ходит оппонент — бонусная мана недоступна.', 'warning');
-          return;
-        }
-        const result = grantManaToAllPlayers(state, 10);
-        if (!result.entries.length) {
-          window.showNotification?.('Мана уже на максимуме.', 'info');
-          return;
-        }
-        window.addLog?.('DEBUG: оба игрока получают +10 маны.');
-        window.updateUI?.(state);
-        window.updateUnits?.(state);
-        window.updateHand?.(state);
+    if (button) {
+      const handleClick = () => {
         try {
-          window.schedulePush?.('debug-mana', { force: true });
-        } catch {}
-      } catch (err) {
-        console.error('[debugControls] Ошибка применения бонусной маны', err);
-      }
-    };
+          const state = window.gameState;
+          if (!state) return;
+          if (isOnline() && !isActivePlayer(state)) {
+            window.showNotification?.('Сейчас ходит оппонент — бонусная мана недоступна.', 'warning');
+            return;
+          }
+          const result = grantManaToAllPlayers(state, 10);
+          if (!result.entries.length) {
+            window.showNotification?.('Мана уже на максимуме.', 'info');
+            return;
+          }
+          window.addLog?.('DEBUG: оба игрока получают +10 маны.');
+          window.updateUI?.(state);
+          window.updateUnits?.(state);
+          window.updateHand?.(state);
+          try {
+            window.schedulePush?.('debug-mana', { force: true });
+          } catch {}
+        } catch (err) {
+          console.error('[debugControls] Ошибка применения бонусной маны', err);
+        }
+      };
 
-    button.addEventListener('click', handleClick);
+      button.addEventListener('click', handleClick);
+    }
+
+    if (toggle) {
+      bindTurnTimerToggle(toggle);
+    }
     initialized = true;
   };
 

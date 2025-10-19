@@ -50,6 +50,8 @@ import * as CancelButton from './ui/cancelButton.js';
 import { initDebugControls } from './ui/debugControls.js';
 import { initDiscardManager, syncWithState as syncDiscardManager } from './ui/discardManager.js';
 import { initAuthScreen } from './ui/authScreen.js';
+import * as CheckAlert from './ui/checkAlert.js';
+import * as TurnTimerAuto from './ui/turnTimerAuto.js';
 import { initSessionStore, onSessionChange, getStateSnapshot } from './auth/sessionStore.js';
 import { playFieldquakeFx, playFieldquakeFxBatch } from './scene/fieldquakeFx.js';
 
@@ -243,6 +245,8 @@ try {
   window.__ui.inputLock = InputLock;
   window.__ui.summonLock = SummonLock;
   window.__ui.cancelButton = CancelButton;
+  window.__ui.checkAlert = CheckAlert;
+  window.__ui.turnTimerAuto = TurnTimerAuto;
   window.__ui.deckSelect = DeckSelect;
   window.__ui.discardManager = window.__ui.discardManager || { initDiscardManager, syncWithState: syncDiscardManager };
   window.__ui.deckBuilder = DeckBuilder;
@@ -270,4 +274,5 @@ try { UISync.attachSocketUIRefresh(); if (typeof window !== 'undefined') { windo
 
 try { initDebugControls(); } catch {}
 try { initDiscardManager(); } catch {}
+try { TurnTimerAuto.initAutoTurnTimer(); } catch {}
 
