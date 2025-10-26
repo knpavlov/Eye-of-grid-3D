@@ -769,7 +769,11 @@ export function createCard3D(cardData, isInHand = false, hpOverride = null, atkO
 // Expose caches for legacy access
 try {
   if (typeof window !== 'undefined') {
+    const existingCardsApi = (typeof window.__cards === 'object' && window.__cards)
+      ? window.__cards
+      : {};
     window.__cards = {
+      ...existingCardsApi,
       getCachedTexture,
       preloadCardTextures,
       createCard3D,
